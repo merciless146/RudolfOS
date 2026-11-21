@@ -5,6 +5,27 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Native: the window's menu of an app that draws its own title bar says whether it can use Rudolf's instead. For apps
+  whose own bar holds only the title and the three buttons, "Title bar: Rudolf's" cuts their own bar away and frames them
+  as any other window, remembered for each account and app; for others the menu says Rudolf's would hide their menus and
+  buttons.
+- Native: one title bar for apps that draw their own. Discord, Steam, Claude, VS Code and other Electron and Chromium apps,
+  and GTK 3 and 4 apps with a header bar, no longer get Rudolf's title bar above their own: their window keeps Rudolf's edge,
+  round corners and resize edges, and their own bar does the rest, as on Standard. Moving them by their bar, resizing them
+  from any edge or corner, their maximize, restore and minimize buttons, a double-click on their bar, the keyboard's Move
+  and Size from their window menu, and a right-click on a GTK header bar (the window's menu) all work, with the same limits
+  and transitions as Rudolf's own title bar. GTK's invisible shadow margins are cut away. Every other window keeps Rudolf's
+  title bar as before.
+- New (docs/plan-1.6.1.md Part 19): game mode does more, on Standard and Native alike. While a game is full screen the
+  processor is asked for its full speed (AMD's amd_pstate and Intel's intel_pstate; not with battery saver), and behind a
+  Linux game the desktop's own work waits (its processor time lowered, its animations stopped); notifications are held and
+  one says how many came after, as before. Everything goes back as it was when the game leaves full screen or ends, a crash
+  included. Games that ask for Feral's GameMode (gamemoderun, Steam's launch option, Flatpak games through the portal) get
+  the processor's speed, and nothing else. Settings › System health › Memory › Game mode turns it all off and on.
+- Apps that can use the system's title bar are asked to, once: the first time Rudolf OS starts Chromium, Brave, Edge, Vivaldi,
+  Chrome or ungoogled Chromium from Flathub, Debian's Chromium, VS Code or VSCodium, it turns on their "use the system title
+  bar" setting, so they get Rudolf's title bar with nothing lost. Only when you have not chosen otherwise in the app; your
+  other settings are kept.
 - Native: idle windows give their memory back. Notepad or File Explorer minimized, or hidden behind another window, for a
   while (Settings › System › Idle windows: on by default on computers with under 6 GB of memory, after 10 minutes) is closed
   behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size
@@ -152,6 +173,13 @@ Summary: In progress.
   Secure Boot, in place of the browser's built-in key: the drive taken out of the computer, or another system started on
   it, cannot read the sign-ins, saved site passwords and cards. Without a TPM, as before. Turning Secure Boot off or on
   makes a new key once: websites ask you to sign in again. Settings › Oracle › Website data says which way it is kept.
+
+- New (docs/plan-1.6.1.md Part 19): NVIDIA's own graphics driver, by choice, for GeForce 16 and newer: Settings › Display ›
+  Graphics driver, "Open (NVK)" (the default) or "NVIDIA's driver" (NVIDIA's open kernel modules and its OpenGL and Vulkan
+  libraries, a signed system extension from Settings › Update and recovery › System extensions; its modules signed for
+  Secure Boot like the kernel's own, checked by the kernel). If it cannot be used (a module refused, Xorg not starting, the
+  desktop not coming up), the computer goes back to the open driver by itself and says so. Recovery mode always uses the
+  open driver.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.
