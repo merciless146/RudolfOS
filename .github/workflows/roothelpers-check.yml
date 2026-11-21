@@ -23,6 +23,7 @@ jobs:
           sudo sh iso/qt/host/roothelpers161_t.sh
           for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh debhome_t.sh drop161_t.sh debacct59_t.sh; do echo "== $t"; sudo sh iso/qt/host/$t || exit 1; done
           echo "== homeapi_t.sh through the drives helper (1.6.1 drives part 2)"; sudo env HAT_VIA=helper sh iso/qt/host/homeapi_t.sh
+          echo "== vaultnative60_t.sh, and through the drives helper"; sudo sh iso/qt/host/vaultnative60_t.sh && sudo env VN_VIA=helper sh iso/qt/host/vaultnative60_t.sh
           echo "== listeners59_t.sh"; sh iso/qt/host/listeners59_t.sh   # (as ci_release.sh runs it: not as root)
           FUZZ_SECONDS=60 sh iso/qt/host/fuzz59_t.sh
   qemu:

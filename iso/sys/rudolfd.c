@@ -4218,6 +4218,7 @@ static int vault_locked(void) { return !access(VAULT_ID, F_OK) && !vault_open();
 static void vault_dev(char *o, size_t n) { char *d = slurp("/etc/rudolf/persist", NULL); if (d) trim(d); snprintf(o, n, "%s", d && !strncmp(d, "/dev/", 5) ? d : ""); free(d); }
 static int vault_feature(void)
 {
+	if (root_home_fwd()) return root_vault_feature();   /* (1.6.1 Part 11: rudolfd-roothome.inc) */
 	char dev[64]; vault_dev(dev, sizeof dev); if (!dev[0] || strchr(dev, '\'')) return 0;
 	char c[160]; snprintf(c, sizeof c, "tune2fs -l '%s' 2>/dev/null | grep -i '^Filesystem features'", dev);
 	char *o = run_out(c); int on = o && strstr(o, " encrypt"); free(o); return on;
@@ -4247,6 +4248,7 @@ static int vault_json_ok(const char *b, size_t n) { if (!b || n < 2 || n > 256 *
    vault50.js unwraps it with) */
 static int vault_add_key(const unsigned char *key, char *m, size_t mn)
 {
+	if (root_home_fwd()) return root_vault_unlock(key, m, mn);   /* (1.6.1 Part 11) */
 	if (!vault_set()) { snprintf(m, mn, "encryption is not set up"); return 409; }
 	if (!access(RUN "/vault-restart", F_OK)) { snprintf(m, mn, "restart the computer first: the drive was prepared for encryption"); return 409; }
 	int fd = open(PERSIST, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
@@ -4296,7 +4298,7 @@ static void api_vault(struct req *r, const char *what, int post)
 			char dev[64], c[200]; vault_dev(dev, sizeof dev);
 			if (!dev[0] || strchr(dev, '\'')) { reply_err(r->fd, 409, "the drive that keeps your files was not found"); return; }
 			snprintf(c, sizeof c, "tune2fs -O encrypt '%s' >" RUN "/vault.err 2>&1", dev);
-			if (run(c)) { char *e = slurp(RUN "/vault.err", NULL); if (e) trim(e); reply_err(r->fd, 500, e && *e ? e : "the drive could not be prepared for encryption"); free(e); return; }
+			if (root_home_fwd() ? root_vault_prepare() : run(c)) { char *e = slurp(RUN "/vault.err", NULL); if (e) trim(e); reply_err(r->fd, 500, e && *e ? e : "the drive could not be prepared for encryption"); free(e); return; }
 			/* (tune2fs writes the superblock through the same block cache the kernel uses, so the feature is on at once;
 			   if the kernel still refuses the folder, unlock says to restart) */
 		}
@@ -4328,7 +4330,7 @@ static void api_vault(struct req *r, const char *what, int post)
 	if (!strcmp(what, "move")) {
 		if (!vault_open()) { reply_err(r->fd, 409, "the encrypted folder is locked"); return; }
 		if (job_running()) { reply_err(r->fd, 409, "another job is running"); return; }
-		write_str(PERSIST "/etc/vault.moving", ""); start_job("vault", "/usr/lib/rudolf/vault-move"); reply_ok(r->fd, "moving"); return;
+		write_str(PERSIST "/etc/vault.moving", ""); if (root_home_fwd()) root_vault_move(); else start_job("vault", "/usr/lib/rudolf/vault-move"); reply_ok(r->fd, "moving"); return;
 	}
 	reply_err(r->fd, 404, "unknown vault request");
 }

@@ -6,7 +6,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 ## 1.6.1 (in progress)
 Summary: In progress.
 - Security: signing in and out with your files on the disk (the encrypted folder opened with your key, your Oracle
-  folder, Linux apps' folders, your account's own Linux user's session) is done by the drives helper as root, no longer
+  folder, Linux apps' folders, your account's own Linux user's session) and opening the encrypted folder of
+  Settings › Security (and preparing the drive for it) are done by the drives helper as root, no longer
   by rudolfd, which reads every request of the desktop: the key goes to it on a pipe, never as an argument, and the
   account is checked again there (a removed account is refused). Nothing changes on screen.
 - Fixed: the release build no longer stops when linux-firmware updates a file: it takes linux-firmware at the commit the firmware list was made from (the list's new "R" line), and a check runs that fetch on every change to the list.

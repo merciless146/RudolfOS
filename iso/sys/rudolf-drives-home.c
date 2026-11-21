@@ -7,6 +7,9 @@
  *   drives-home lock ACCT
  *   drives-home bind ACCT UID         (rudolfd's start, the account signed in: its folders bound again)
  *   drives-home store                 (rudolfd's start, nobody signed in: the downloads' store bound)
+ *   drives-home vault-unlock          1.5.0's encrypted folder opened (vault_add_key): its key on standard input
+ *   drives-home vault-feature         1 or 0: the drive that keeps the files has ext4's encrypt feature (vault_feature)
+ *   drives-home vault-prepare         the feature added (vault/setup), what tune2fs says in RUN/vault.err as before
  *
  * These are rudolfd's own functions (home_unlock, home_lock, home_bind, dl_store_bind and what they call: the
  * fscrypt key and policy, the Oracle folder of 1.6.0 Part 22, the binds, the downloads' store, the account's Linux
@@ -37,6 +40,18 @@ static int uid_arg(const char *acct, const char *s)
 	if (u == 1000) return 1000;
 	unsigned a = au_uid(acct); return a && u == (long)a ? (int)u : -1;
 }
+/* 128 hex digits (and a newline at most) from standard input into key; 0 when it was one. Standard input is /dev/null after. */
+static int read_key(unsigned char key[64])
+{
+	char hx[132]; size_t n = 0; ssize_t r;
+	while (n < sizeof hx - 1 && ((r = read(0, hx + n, sizeof hx - 1 - n)) > 0 || (r < 0 && errno == EINTR))) if (r > 0) n += (size_t)r;
+	{ int nul = open("/dev/null", O_RDONLY | O_CLOEXEC); if (nul >= 0) { dup2(nul, 0); close(nul); } }   /* (nothing started inherits the key's pipe) */
+	if (n == 129 && hx[128] == '\n') n = 128;
+	int bad = n != 128;
+	for (int i = 0; i < 64 && !bad; i++) { int a = hexval(hx[2 * i]), b = hexval(hx[2 * i + 1]); if (a < 0 || b < 0) bad = 1; else key[i] = (unsigned char)(a << 4 | b); }
+	explicit_bzero(hx, sizeof hx); if (bad) explicit_bzero(key, 64);
+	return bad ? -1 : 0;
+}
 int main(int argc, char **argv)
 {
 	root_home_here = 1; au_on = 1; signal(SIGPIPE, SIG_IGN);
@@ -53,14 +68,7 @@ int main(int argc, char **argv)
 	if (!strcmp(op, "unlock") && argc == 5) {
 		const char *acct = argv[2]; int session = !strcmp(argv[3], "1"), uid = uid_arg(acct, argv[4]);
 		if ((!session && strcmp(argv[3], "0")) || uid < 0) return answer(400, "bad account");
-		char hx[132]; size_t n = 0; ssize_t r;
-		while (n < sizeof hx - 1 && ((r = read(0, hx + n, sizeof hx - 1 - n)) > 0 || (r < 0 && errno == EINTR))) if (r > 0) n += (size_t)r;
-		{ int nul = open("/dev/null", O_RDONLY | O_CLOEXEC); if (nul >= 0) { dup2(nul, 0); close(nul); } }   /* (nothing started inherits the key's pipe) */
-		if (n == 129 && hx[128] == '\n') n = 128;
-		unsigned char key[64]; int bad = n != 128;
-		for (int i = 0; i < 64 && !bad; i++) { int a = hexval(hx[2 * i]), b = hexval(hx[2 * i + 1]); if (a < 0 || b < 0) bad = 1; else key[i] = (unsigned char)(a << 4 | b); }
-		explicit_bzero(hx, sizeof hx);
-		if (bad) { explicit_bzero(key, sizeof key); return answer(400, "bad key"); }
+		unsigned char key[64]; if (read_key(key)) return answer(400, "bad key");
 		home_uid = uid;
 		char err[200] = ""; int made = 0, st = home_unlock(acct, key, session, err, sizeof err, &made); explicit_bzero(key, sizeof key);
 		return answer(st, st ? err : made ? "made" : "unlocked");
@@ -75,6 +83,20 @@ int main(int argc, char **argv)
 		return home_bind(argv[2], err, sizeof err) ? answer(500, err) : 0;
 	}
 	if (!strcmp(op, "store") && argc == 2) { dl_store_bind(); return 0; }
-	fprintf(stderr, "usage: drives-home unlock ACCT 0|1 UID | lock ACCT | bind ACCT UID | store\n");
+	if (!strcmp(op, "vault-unlock") && argc == 2) {
+		unsigned char key[64]; if (read_key(key)) return answer(400, "bad key");
+		char m[200] = ""; int code = vault_add_key(key, m, sizeof m); explicit_bzero(key, sizeof key);
+		return answer(code, code ? m : "");
+	}
+	if (!strcmp(op, "vault-feature") && argc == 2) { int on = vault_feature(); answer(0, on ? "1" : "0"); return 0; }
+	if (!strcmp(op, "vault-prepare") && argc == 2) {
+		/* (as api_vault's setup did: the drive /etc/rudolf/persist names, what tune2fs says in RUN/vault.err) */
+		char dev[64], c[200]; vault_dev(dev, sizeof dev);
+		if (!dev[0] || strchr(dev, '\'')) return answer(409, "the drive that keeps your files was not found");
+		health_add("disk", "the drive that keeps the files (%s) is being prepared for encryption (tune2fs -O encrypt)", dev);
+		snprintf(c, sizeof c, "tune2fs -O encrypt '%s' >" RUN "/vault.err 2>&1", dev);
+		return run(c) ? answer(500, "") : 0;
+	}
+	fprintf(stderr, "usage: drives-home unlock ACCT 0|1 UID | lock ACCT | bind ACCT UID | store | vault-unlock | vault-feature | vault-prepare\n");
 	return answer(400, "unknown action");
 }

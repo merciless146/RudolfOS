@@ -13,7 +13,11 @@
  * (rudolfd-home.inc, rudolfd-users.inc, rudolfd.c's downloads' store) built as a program of their own
  * (rudolf-drives-home.c), so what they do is the same line for line. Its answer: one line (made, unlocked, busy, or
  * the error) and the status HTTP-300 (0 when all is well). rudolfd's API is unchanged: home/unlock, home/lock and the
- * native sign-in and sign-out answer as before. Where there is no drives-home (rudolfd built for the host tests, or
+ * native sign-in and sign-out answer as before.
+ * The vault (1.5.0's encrypted folder, /persist/vault) the same way: drives vault-unlock (its key on standard input),
+ * vault-feature (whether the drive has ext4's encrypt feature: tune2fs -l of the block device), vault-prepare (the
+ * feature added at setup: tune2fs -O encrypt, its output in RUN/vault.err as before), vault-move (the job).
+ * Where there is no drives-home (rudolfd built for the host tests, or
  * put on an older system by hand) and rudolfd is root, it does the work itself as before. */
 static void dl_store_state(void);
 static int root_home_here;   /* 1: this process is drives-home itself (rudolf-drives-home.c sets it) */
@@ -73,3 +77,24 @@ static void root_home_store(void)
 	if (root_home_ask(av, NULL, 0, o, sizeof o)) fprintf(stderr, "rudolfd: the downloads store was not bound (the drives helper)\n");
 	dl_store_state();
 }
+static int root_vault_unlock(const unsigned char *key, char *m, size_t mn)
+{
+	char hx[129], o[200]; for (int i = 0; i < 64; i++) sprintf(hx + 2 * i, "%02x", key[i]);
+	const char *av[] = { "drives", "vault-unlock", NULL };
+	int st = root_home_ask(av, hx, 128, o, sizeof o); explicit_bzero(hx, sizeof hx);
+	dl_store_state();   /* (the unlock binds the downloads' store again: dl_home_boot) */
+	if (!st) return 0;
+	snprintf(m, mn, "%s", *o && st >= 100 && st <= 252 ? o : "the encrypted folder could not be opened (the drives helper did not run)");
+	return root_home_http(st);
+}
+static int root_vault_feature(void)
+{
+	const char *av[] = { "drives", "vault-feature", NULL }; char o[32];
+	return !root_home_ask(av, NULL, 0, o, sizeof o) && !strcmp(o, "1");
+}
+static int root_vault_prepare(void)
+{
+	const char *av[] = { "drives", "vault-prepare", NULL }; char o[32];
+	return root_home_ask(av, NULL, 0, o, sizeof o) ? 1 : 0;
+}
+static void root_vault_move(void) { const char *av[] = { "drives", "vault-move", NULL }; root_job("vault", av); }

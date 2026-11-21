@@ -25,6 +25,7 @@ sh qt/host/listeners59_t.sh || { echo "something listens that sys/root/usr/share
 python3 qt/host/rootbuild161_t.py || { echo "the root helpers are not built and installed as they must be (see above)"; exit 1; }
 sudo sh qt/host/roothelpers161_t.sh || { echo "the root helpers' test failed (see above)"; exit 1; }
 sudo env HAT_VIA=helper sh qt/host/homeapi_t.sh || { echo "the accounts' folders through the drives helper failed (see above)"; exit 1; }
+sudo env VN_VIA=helper sh qt/host/vaultnative60_t.sh || { echo "the encrypted folder through the drives helper failed (see above)"; exit 1; }
 W=$(realpath -m work); rm -rf "$W"; mkdir -p "$W/new"
 export SOURCE_DATE_EPOCH=1760000000
 pv() { sed -n "s/^$1 //p" "$PREV/manifest.txt"; }

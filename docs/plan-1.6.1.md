@@ -246,7 +246,7 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Drives | `home_unlock`, `home_lock`, `home_key_*`, `home_policy_id` (sign-in's home/unlock, home/lock, desktop.inc) | fscrypt: FS_IOC_ADD/REMOVE_ENCRYPTION_KEY, SET_ENCRYPTION_POLICY on /persist/accounts/ID, the folder made and given to the account's user | **drives** (moved, part 2: with Oracle's /persist/oracle/ID) |
 | Drives | `home_bind`, `home_unbind`, `home_debian_rebind` | bind mounts of the account's folders over /home/rudolf/…; rudolf-debian rebind | **drives** (moved, part 2) |
 | Drives | `dl_store_bind`, `dl_store_dirs`, `dl_acct_dir`, `dl_home_boot` | bind mount of the downloads' store; chown of its folders to 1000 | **drives** (moved, part 2: dl_store_bind, dl_store_dirs, dl_store_tidy, dl_home_boot's binds); dl_acct_dir next |
-| Drives | the vault: `vault_add_key`, `vault_key_spec_remove`, `vault_feature` (POST vault/*), vault-move (job), the Flatpak bind at unlock | fscrypt on the encrypted folder (1.5.0), tune2fs -l, mount --bind of /var/lib/flatpak, vault-move | drives (next) |
+| Drives | the vault: `vault_add_key`, `vault_key_spec_remove`, `vault_feature` (POST vault/*), vault-move (job), the Flatpak bind at unlock | fscrypt on the encrypted folder (1.5.0), tune2fs -l, mount --bind of /var/lib/flatpak, vault-move | **drives** (moved, part 2; vault.json: the drop) |
 | Drives | `addpart` (rudolfd --addpart, run by the scripts) | BLKPG ioctl on a disk | stays (a separate run by root scripts, not a request) |
 | Drives | `api_disks`, `api_storage` (storage-measure) | blkid of every disk (needs read access to /dev), du of the whole system | drives (read-only actions) |
 | Updates | sys/check, sys/download, sys/tostable, sys/return (jobs) | rudolf-update: slots on RUDOLFDATA, the manifest's signature, the ESP | **updates** (moved) |
@@ -397,9 +397,14 @@ rudolfd runs as root today (they keep running as root, from the helper).
   standard input only, removed accounts, drives-home refused by name by rudolf-rootd, and the whole chain on an
   encrypted ext4 with the accounts' users in a copy of /etc: the same answers and the same state through the helper,
   with and without rudolf-rootd, as rudolfd doing it itself); homeapi_t.sh with HAT_VIA=helper (its 69 checks through
-  the helper, and 2 more); in QEMU t160_t.py with R161_FIX (roothelpers-check.yml). Not moved yet: the vault (1.5.0's
-  encrypted folder: vault/*, vault-move, the Flatpak bind), dl_acct_dir's chown.
-- Next: the vault (drives); accounts (au_start, au_sync, au_install: /etc, au_move_folder, au_kill_user of a removed
+  the helper, and 2 more); in QEMU t160_t.py with R161_FIX (roothelpers-check.yml).
+  The vault (1.5.0's encrypted folder) with it: `drives vault-unlock` (its key on standard input: vault_add_key, from
+  POST vault/unlock and the native sign-in; with the Flatpak bind and the downloads' store again), `vault-feature`
+  (tune2fs -l of the drive: GET vault, GET home), `vault-prepare` (tune2fs -O encrypt at setup, its output in
+  RUN/vault.err as before; now said in the health log, Disk), `vault-move` (the job); vaultnative60_t.sh with
+  VN_VIA=helper. Not moved yet: vault/setup's and vault/store's vault.json in /persist/etc (rudolfd's own files: the
+  drop's step), dl_acct_dir's chown of the downloads' folders.
+- Next: accounts (au_start, au_sync, au_install: /etc, au_move_folder, au_kill_user of a removed
   account; the keyring's su; the administrator's check, if the owner wants it in the helpers, with the password on
   standard input); power; network; packages; display; other; then the drop.
 

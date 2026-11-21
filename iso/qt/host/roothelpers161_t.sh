@@ -16,7 +16,7 @@ trap 'for p in $RDP $BKP; do kill $p 2>/dev/null; done; pkill -KILL -U 47103 2>/
 
 # ---- the stand-in tree
 mkdir -p $T/sys/class/block/sdb $T/sys/class/block/sdb1 $T/sys/block/sdb $T/lib $T/home/rudolf/Downloads $T/home/rudolf/Documents $T/media $T/run/drives $T/root $T/etc
-for s in devplug install.sh bootfiles.sh mkstick.sh keepfiles.sh; do
+for s in devplug install.sh bootfiles.sh mkstick.sh keepfiles.sh vault-move; do
 	printf '#!/bin/sh\necho "%s $*|sha=$RUDOLF_IMG_SHA|path=$PATH|leak=$LEAKME|uid=$(id -u)" >> %s/calls\n[ "$1" = --info ] || echo "ran %s $*"\n[ "$1" = --info ] && echo "{\\"rudolf\\":true,\\"info\\":{\\"disk\\":\\"$2\\"}}"\n[ "$1" = eject ] && [ "$2" = sdb ] && { echo "a file on the drive is still open" >&2; exit 1; }\nexit 0\n' "$s" $T "$s" > $T/lib/$s
 	chmod 755 $T/lib/$s
 done
@@ -110,6 +110,10 @@ b=0; for a in "home-unlock|uABCdef12|1" "home-unlock|uABCdef12|1|1000|$K" "home-
 ok "H6. the wrong arguments: the key as an argument, a session that is not 0 or 1, an owner that is another account's or root's, a removed account's, a checksum, an unknown action: refused, nothing run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
 mv $T/root/drives-home $T/dh.standin; o=$($D home-lock uABCdef12 2>/dev/null); r=$?; mv $T/dh.standin $T/root/drives-home
 ok "H7. drives-home missing: 500 (status 200), said" "$([ $r = 200 ] && echo "$o" | grep -q 'could not be opened' && echo 1)" "$r $o"
+o=$(printf %s "$K" | $D vault-unlock 2>&1); r=$?; $D vault-feature </dev/null >/dev/null 2>&1; r2=$?; $D vault-prepare </dev/null >/dev/null 2>&1; r3=$?; $D vault-move </dev/null >/dev/null 2>&1; r4=$?; c=$(calls)
+ok "H8. the vault (1.5.0's encrypted folder): vault-unlock with its key on standard input, vault-feature, vault-prepare to drives-home; vault-move the script" "$([ $r$r2$r3$r4 = 0000 ] && echo "$c" | grep -q "^dh vault-unlock|in=$KS|path=/usr/sbin:/usr/bin:/sbin:/bin|leak=|uid=0" && echo "$c" | grep -q '^dh vault-feature|' && echo "$c" | grep -q '^dh vault-prepare|' && echo "$c" | grep -q '^vault-move |' && echo 1)" "$r$r2$r3$r4 $c"
+b=0; for a in "vault-unlock|$K" "vault-feature|/dev/sda" "vault-prepare|/dev/sda" "vault-move|now" "vault-unlock|--sha=$SHA"; do IFS='|'; set -- $a; IFS=$OIFS; $D "$@" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $a)"; }; done
+ok "...any argument for them (a key, a device, a checksum): refused, nothing run" "$([ $b = 0 ] && [ -z "$(calls)" ] && echo 1)" "$b"
 printf 'uABCdef12 1003 moved\nuOTHER999 1005\n' > $T/aumap
 
 # ---- the updates helper's checks
@@ -232,6 +236,7 @@ hprobe() {
 	api GET home; hpost 'home/unlock?acct=uOTHER999' "$K2"; hpost 'home/unlock?acct=uOTHER999' "$K1"; hpost 'home/unlock?acct=uLINKed01' "$K1"
 	hpost 'home/unlock?acct=guest' "$K1"; hpost 'home/unlock?acct=uABCdef12&session=1' "$K1"
 	hpost 'home/lock?acct=uABCdef12'; hstate; hpost 'home/lock?acct=uOTHER999'; hpost 'home/lock?acct=uNOTHERE1'; api GET home
+	api GET vault; hpost vault/unlock "$K1"; hpost vault/move
 	ls -ld /persist/accounts/uLINKed01 | cut -c1; ls /etc/home-keys /etc/Documents 2>&1 | grep -c "No such"
 }
 hreset() { rm -rf /persist/accounts /persist/oracle /run/rudolf/home-session /run/rudolf/home-keys /run/rudolf/acct-session.env; mkdir -p /persist/accounts; ln -s /etc /persist/accounts/uLINKed01; }

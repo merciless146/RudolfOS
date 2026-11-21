@@ -18,6 +18,10 @@
  *                                     folder unreadable again)
  *   drives home-bind ACCT UID         rudolfd started again while ACCT is signed in: its binds and session again
  *   drives home-store                 rudolfd's start with nobody signed in: the downloads' store bound
+ *   drives vault-unlock               1.5.0's encrypted folder (/persist/vault) opened: its key on standard input
+ *   drives vault-feature              whether the drive that keeps the files has ext4's encrypt feature
+ *   drives vault-prepare              that feature added (Settings' encryption set up: tune2fs -O encrypt)
+ *   drives vault-move                 vault-move: Debian, Flatpak's apps and Downloads into the encrypted folder
  * (the home-* actions: ACCT is checked here, then rudolfd's own functions do the work, built as drives-home:
  * rudolf-drives-home.c)
  *
@@ -150,6 +154,14 @@ int main(int argc, char **argv)
 		char *s[] = { (char *)op, a[0], NULL }; return run_script("devplug", s, NULL);
 	}
 	if (!strncmp(op, "home-", 5) && (!strcmp(op, "home-unlock") || !strcmp(op, "home-lock") || !strcmp(op, "home-bind") || !strcmp(op, "home-store"))) { if (sha) return refuse("a checksum for an account's folder", op); return home_action(op, a, n); }
+	if (!strcmp(op, "vault-unlock") || !strcmp(op, "vault-feature") || !strcmp(op, "vault-prepare")) {
+		if (n || sha) return refuse("arguments for the encrypted folder", op);
+		char path[PATH_MAX]; snprintf(path, sizeof path, "%s/drives-home", ROOTDIR);
+		char *argv2[] = { "drives-home", (char *)op, NULL }, *env[] = { RR_PATH, NULL };
+		execve(path, argv2, env); fprintf(stderr, "drives-home could not be started: %s\n", strerror(errno));
+		printf("the encrypted folder could not be opened (drives-home did not start)\n"); return 200;
+	}
+	if (!strcmp(op, "vault-move")) { if (n || sha) return refuse("arguments for vault-move", op); char *s[] = { NULL }; return run_script("vault-move", s, NULL); }
 	if (!strcmp(op, "info")) {
 		if (n != 1 || !rr_dev_ok(a[0], 16)) return refuse("a disk name that is not one", n ? a[0] : "");
 		if (!is_disk(a[0])) return gone("a disk the kernel does not have");
