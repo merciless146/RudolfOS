@@ -137,7 +137,8 @@ const dlKeyOf=p=>String(p).startsWith(DLSHDIR)?DLRK:DLRKA();
 function dlRefsAdd(p){const K=dlKeyOf(p),k=ld(K,{});k[p]={w:'fs',u:'',miss:0};svj(K,k)}
 function dlWalk(n,path,out){for(const k in n){const v=n[k];if(isDir(v))dlWalk(v,path.concat(k),out);else if(isDlRef(v))out.push({path:path.concat(k),v})}return out}
 const dlSame=(a,b)=>a.length==b.length&&a.every((x,i)=>String(x).toUpperCase()==String(b[i]).toUpperCase());
-const dlIn=(p,dir)=>p.length==dir.length+1&&dlSame(p.slice(0,-1),dir);
+/* (1.6.1: anywhere under dir, a sub-folder's too: Extract here makes folders of references in Downloads, dlzip61.js) */
+const dlUnder=(p,dir)=>p.length>dir.length&&dlSame(p.slice(0,dir.length),dir);
 /* 1.5.5: once per computer, C:\DOWNLOADS (every account's, 1.2.7 to 1.5.4) goes to its owner: with one account (and
    perhaps the guest) into that account's Downloads, its large files into the account's folder on the disk; with
    several, nobody can know whose they are: it stays readable by all as C:\SHARED DOWNLOADS (BEFORE 1.5.5), its large
@@ -158,25 +159,28 @@ async function dlMigrate(){const C=fs['C:'];if(DLMIG||!USER||USER.r=='guest'||!i
  if(one)notify('Downloads',`Your downloads (${moved}) are in your own Downloads folder now, kept with your other files.${stuck.length?' '+stuck.length+' could not be moved and are listed as before: '+stuck.slice(0,3).join(', '):''}`,{action:()=>explorer(downloadsPath())});
  else notify('Downloads from before 1.5.5',`Every account has its own Downloads now. The ${moved} downloads from before are in C:\\SHARED DOWNLOADS (BEFORE 1.5.5), which every account can open${isAdmin()?': move them into an account, or delete them':''}.`,{action:()=>explorer(DLSHARED)});
  return true}
-/* one set of references: those in `place` (a Downloads folder), for the files in `dir` on the disk, tracked in `key` */
+/* one set of references: those in `place` (a Downloads folder, 1.6.1: and its sub-folders, at any depth), for the files in `dir`
+   on the disk, tracked in `key`. A reference in a sub-folder of Downloads stays where it is; only those at Downloads' top are given
+   their entry's name on the disk */
 async function dlScope({dir,key,place,acct}){const P=node(place);if(!isDir(P))return false;let changed=false,moved=0;
  const mine=p=>String(p).startsWith(dir)||acct!='shared'&&String(p).includes('/.quarantine/');
  /* references to these files elsewhere in this account's home or on C: outside the homes go back to `place`;
     copies of the same file (made before 1.6.1) are made files of their own (dlDupFix), never dropped unseen */
  /* (1.6.1: a copy made before 1.6.1, Copy and Paste of such a file, named the same file: it is made a file of its own on the disk,
     as Copy does now (dlDupFix); one that cannot be is left as it is and said so, never deleted unseen) */
- const inD=new Map(),dups=[];Object.keys(P).forEach(n=>{const v=P[n];if(!isDlRef(v))return;const i=dlRefInfo(v);if(!i||!mine(i.p))return;if(inD.has(i.p))dups.push({at:P,n,i});else inD.set(i.p,{path:place.concat(n),v})});
+ const inD=new Map(),dups=[];dlWalk(P,place,[]).forEach(x=>{const i=dlRefInfo(x.v);if(!i||!mine(i.p))return;const dp=x.path.slice(0,-1);if(inD.has(i.p))dups.push({at:node(dp),dp,n:x.path.at(-1),i});else inD.set(i.p,{path:x.path,v:x.v})});
  const C=fs['C:'],looks=[homePath()];Object.keys(C).filter(k=>k!='USERS').forEach(k=>looks.push(['C:',k]));
  for(const L of looks){const n=node(L);if(!n)continue;const all=isDlRef(n)?[{path:L,v:n}]:isDir(n)?dlWalk(n,L,[]):[];
-  for(const x of all){if(dlIn(x.path,place))continue;const i=dlRefInfo(x.v);if(!i||!mine(i.p)||!String(i.p).startsWith(dir))continue;
+  for(const x of all){if(dlUnder(x.path,place))continue;const i=dlRefInfo(x.v);if(!i||!mine(i.p)||!String(i.p).startsWith(dir))continue;
    const d=node(x.path.slice(0,-1));if(inD.has(i.p)){if(d)dups.push({at:d,n:x.path.at(-1),i,away:1});continue}if(d)delete d[x.path.at(-1)];changed=true;moved++;{const n2=dlUniq(P,x.path.at(-1));P[n2]=x.v;inD.set(i.p,{path:place.concat(n2),v:x.v})}}}
  if(dups.length&&await dlDupFix(dups,P,place,inD,acct))changed=true;
  if(moved)notify('Kept in Downloads','Files larger than 1.5 MB are kept on the disk and stay in Downloads. Open them from there.');
  /* restored from quarantine: back into the folder on the disk */
  for(const[p,x]of [...inD]){if(!p.includes('/.quarantine/'))continue;const i=dlRefInfo(x.v);
-  try{const r=await rdPost('dl/file?name='+encodeURIComponent(dlBase(p))+'&to=release&acct='+acct);const nv=dlMkRef(r.path,i.s,i.av);P[x.path.at(-1)]=nv;inD.delete(p);inD.set(r.path,{path:x.path,v:nv});dlRefsAdd(r.path);changed=true}catch(e){}}
- /* renamed in Downloads: the same name on the disk */
- for(const[p,x]of [...inD]){const cn=x.path.at(-1),dn=dlBase(p);if(cn.toUpperCase()==dn.toUpperCase()||p.includes('/.quarantine/'))continue;const i=dlRefInfo(x.v);
+  try{const r=await rdPost('dl/file?name='+encodeURIComponent(dlBase(p))+'&to=release&acct='+acct);const nv=dlMkRef(r.path,i.s,i.av),dn=node(x.path.slice(0,-1));if(isDir(dn))dn[x.path.at(-1)]=nv;inD.delete(p);inD.set(r.path,{path:x.path,v:nv});dlRefsAdd(r.path);changed=true}catch(e){}}
+ /* renamed in Downloads: the same name on the disk (1.6.1: at Downloads' top only; one in a sub-folder keeps its name on the disk,
+    which Extract here chose to be free in the account's flat folder) */
+ for(const[p,x]of [...inD]){const cn=x.path.at(-1),dn=dlBase(p);if(x.path.length!=place.length+1||cn.toUpperCase()==dn.toUpperCase()||p.includes('/.quarantine/'))continue;const i=dlRefInfo(x.v);
   try{const r=await rdPost('dl/file?name='+encodeURIComponent(dn)+'&from=home&to=rename&as='+encodeURIComponent(cn)+'&acct='+acct);const nv=dlMkRef(r.path,i.s,i.av);P[cn]=nv;inD.delete(p);inD.set(r.path,{path:x.path,v:nv});changed=true}catch(e){}}
  if(changed)fsSave();
  /* every place a reference can still be: Downloads, this account's Trash, the quarantine */
@@ -197,7 +201,9 @@ async function dlDupFix(dups,P,place,inD,acct){let ch=false;const ok=[],stuck=[]
  for(const x of dups){const own=acct!='shared'&&String(x.i.p).startsWith(DLADIR());let r=null;
   if(own)try{r=await rdPost('dl/file?name='+encodeURIComponent(dlBase(x.i.p))+'&from=home&to=copy&as='+encodeURIComponent(x.n)+'&acct='+acct)}catch(e){r=null}
   if(!r){if(!DLDUP.told.has(x.i.p+'|'+x.n)){DLDUP.told.add(x.i.p+'|'+x.n);stuck.push(x.n)}continue}
-  const nv=dlMkRef(r.path,r.size!=null?r.size:x.i.s,x.i.av);dlRefsAdd(r.path);delete x.at[x.n];const n2=x.away?dlUniq(P,x.n):x.n;P[n2]=nv;inD.set(r.path,{path:place.concat(n2),v:nv});ok.push(n2);ch=true}
+  const nv=dlMkRef(r.path,r.size!=null?r.size:x.i.s,x.i.av);dlRefsAdd(r.path);delete x.at[x.n];
+  /* (1.6.1: one in a sub-folder of Downloads stays in its folder) */
+  const n2=x.away?dlUniq(P,x.n):x.n,to=x.away||!x.dp?place:x.dp;(x.away||!x.dp?P:x.at)[n2]=nv;inD.set(r.path,{path:to.concat(n2),v:nv});ok.push(n2);ch=true}
  if(ok.length)notify('Copies kept on the disk',`${ok.slice(0,3).join(', ')}${ok.length>3?' and '+(ok.length-3)+' more':''}: ${ok.length==1?'a copy that opened the same file as the original is':'copies that opened the same file as their original are'} now ${ok.length==1?'a file':'files'} of ${ok.length==1?'its':'their'} own on the disk.`,{quiet:true});
  if(stuck.length)notify('A copy that is not a copy',`${stuck.slice(0,3).join(', ')}${stuck.length>3?' and '+(stuck.length-3)+' more':''} ${stuck.length==1?'opens':'open'} the same file as ${stuck.length==1?'its':'their'} original (copied before Rudolf OS 1.6.1), and could not be made a file of ${stuck.length==1?'its':'their'} own (is the disk full?). ${stuck.length==1?'It is':'They are'} kept: delete ${stuck.length==1?'it':'them'} if not needed; the original stays.`,{kind:'warn'});
  return ch}
@@ -217,6 +223,9 @@ async function dlReconcile(){if(dlRecBusy||!dlReady())return;dlRecBusy=true;
    Linux apps save) is the Linux apps' folder: kept in step with Downloads by Linux apps' sync (linux26.js). */
 const DLADOPT={seen:new Set()};
 async function dlAdopt(known){if(DLN.ing)return false;let j;try{j=await rd('dl/home?acct='+encodeURIComponent(dlAcct()))}catch(e){return false}
+ /* (1.6.1: Extract here is moving files into the folder, which its window refers to itself (dlzip61.js; "unzip" also while that
+    window is another page's, on the native desktop)) */
+ if(j.unzip){DLADOPT.seen=new Set();return false}
  const base=DLADIR(),now=new Set(),take=[];
  for(const it of j.items||[]){if(it.partial)continue;const p=base+it.name;if(known[p])continue;now.add(p);if(DLADOPT.seen.has(p))take.push(it)}
  DLADOPT.seen=now;if(!take.length||DLN.ing)return false;
@@ -246,6 +255,8 @@ async function dlOpen(path){const v=node(path),nm=path.at(-1),e=ext(nm),i=dlRefI
  if(TEXTX.test(e)||/^(TXT|LOG|CSV|JSON|MD|XML|SRT|VTT)$/.test(e)){if(i.s>4*1048576)return dlInfo(path,'This text file is too large to open in Notepad. Open it in a Linux app from the Downloads folder instead.');
   const W=win(nm+' (read only)','🗒️',720,520);W.body.style.cssText='overflow:auto;background:var(--wbg,#fff)';const pre=document.createElement('pre');pre.style.cssText='margin:0;padding:10px;white-space:pre-wrap;font:12px monospace';pre.textContent='Opening…';W.body.appendChild(pre);
   try{pre.textContent=await(await fetch(url)).text()}catch(x){pre.textContent='The file could not be read.'}return W}
+ /* 1.6.1: a ZIP: Archive Manager lists what is inside it, with Extract here (dlzip61.js; a Linux app that opens ZIPs is in Open with) */
+ if(e=='ZIP'&&typeof dlZipWin=='function')return launchWith('archive',path);
  /* 1.4.8: a Linux app that opens this type (Wine for Windows programs), else say how to get one */
  const lx=typeof OPENERS!='undefined'&&OPENERS.find(o=>String(o[0]).startsWith('lx:')&&(()=>{try{return o[3](e,null)}catch(x){return false}})());if(lx)return dlLxOpen(lx,path);
  if(/^(EXE|MSI)$/.test(e)){const deb=typeof DEB!='undefined'&&DEB.st&&DEB.st.installed;
@@ -257,7 +268,7 @@ async function dlOpen(path){const v=node(path),nm=path.at(-1),e=ext(nm),i=dlRefI
  /* 1.5.6: a Debian package (Discord's .deb, say): not installed from a file yet; the App Store has most such apps */
  if(e=='DEB'){const W=dlInfo(path,'This is a package for Debian. Rudolf OS does not install packages from a file yet. Most apps, Discord among them, are in the App Store (Flathub): install them from there.');
   const bt=document.createElement('button');bt.textContent='Open the App Store';bt.style.marginRight='6px';bt.onclick=()=>{W.close();launch('store')};W.body.querySelector('div').prepend(bt);return W}
- return dlInfo(path,e=='ZIP'?'Archive Manager opens archives up to 1.5 MB. Open this one in a Linux app from the Downloads folder.':'Rudolf OS has no app that opens this kind of file from the disk.')}
+  return dlInfo(path,e=='ZIP'?'Archive Manager opens archives up to 1.5 MB. Open this one in a Linux app from the Downloads folder.':'Rudolf OS has no app that opens this kind of file from the disk.')}
 /* (1.4.8) a file kept on the disk, opened by a Linux app: it is already on the disk, so the app gets its own path
    (lxOpenFile would copy the reference itself, as it does for the desktop's own files outside the shared folders) */
 function dlDiskPath(i){const p=String(i&&i.p||'');
