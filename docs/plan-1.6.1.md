@@ -190,6 +190,14 @@ closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracke
 (website passwords) and item 6 (extensions from the Library) are suggested for 2.0 (docs/plan-2.0.md); item 6's
 stage 1 could start here. The owner decides.
 
+**Built (the owner, 2026-11-20): "Goes To:" in the status line.** "Mousing over a hyperlink or an executable
+button/ad/clickable item ... should show the target URL at the bottom left of the screen where 'Done' shows. The displayed
+phrase should be 'Goes To: (insert URL here)'." Standard and Native: iso/shell/shell.js HOVER_JS in every frame (links,
+image-map areas, SVG links, a form's submit button; keyboard focus too; javascript: links not shown) sends tabev `hover`;
+Lite: rudolf-webkit's `mouse-target-changed` (WebKit's own hit test); Oracle's own pages: ORACLE_HOVER_JS posts to the
+window. The status line goes back to what it said, unless something new came meanwhile. Not possible to know before a
+click: where a script-only button (no link, no form) will go. Test orahover61_t.js; workflow oracle-hover-check.yml.
+
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
 
 **Shipped in 1.6.0 (owner, 2026-11-17: "I do want to keep 446 and 447 in 1.6.0"):** rudolf-rootd with the drives' and

@@ -133,6 +133,7 @@ typedef struct tab {
 	int x, y, w, h, z, shown, fs;
 	cairo_region_t *vis;             /* NULL: nothing covers it */
 } tab;
+static GHashTable *HOVER;   /* 1.6.1: a tab's last link address sent (tab* -> char*), so only changes are sent */
 static GHashTable *TABS;           /* tid -> tab */
 static GHashTable *CTX;            /* part -> WebKitWebContext */
 static GHashTable *WEBDIR;         /* (1.6.0 Part 22) part -> the account's encrypted folder for its websites (/persist/oracle/ID) */
@@ -216,6 +217,7 @@ static WebKitWebContext *ctx_for(const char *part)
 static void tab_free(gpointer p)
 {
 	tab *t = p; if (t->vis) cairo_region_destroy(t->vis);
+	if (HOVER) g_hash_table_remove(HOVER, t);   /* (1.6.1) */
 	if (t->box) gtk_widget_destroy(t->box); g_free(t);
 }
 static void tabs_order(void)
@@ -357,6 +359,17 @@ static GtkWidget *on_tab_create(WebKitWebView *v, WebKitNavigationAction *a, gpo
 	g_signal_connect(nt->view, "ready-to-show", G_CALLBACK(on_tab_ready), nt);
 	return nt->view;
 }
+/* 1.6.1 (the owner, 2026-11-20): where the link under the mouse goes, for Oracle's status line ("Goes To: <address>"),
+   from WebKit's own hit test (every frame); "" when it leaves a link. javascript: links are not shown. */
+static void on_tab_hover(WebKitWebView *v, WebKitHitTestResult *h, guint mods, gpointer d)
+{
+	(void)v; (void)mods; tab *t = d; const char *u = h && webkit_hit_test_result_context_is_link(h) ? webkit_hit_test_result_get_link_uri(h) : NULL;
+	if (!u || !g_ascii_strncasecmp(u, "javascript:", 11)) u = "";
+	if (!HOVER) HOVER = g_hash_table_new_full(NULL, NULL, NULL, g_free);
+	const char *was = g_hash_table_lookup(HOVER, t); if (!strcmp(was ? was : "", u)) return;
+	g_hash_table_insert(HOVER, t, g_strdup(u));
+	char cut[2001]; g_strlcpy(cut, u, sizeof cut); GString *x = g_string_new("\"url\":"); json_str(x, cut); tabev(t, "hover", x->str); g_string_free(x, TRUE);
+}
 /* the page's own scripts (an isolated world): shortcuts, Flash content */
 static void on_tab_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d)
 {
@@ -392,6 +405,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	g_signal_connect(t->view, "load-failed", G_CALLBACK(on_tab_load_failed), t);
 	g_signal_connect(t->view, "notify::uri", G_CALLBACK(on_tab_uri), t);
 	g_signal_connect(t->view, "notify::title", G_CALLBACK(on_tab_title), t);
+	g_signal_connect(t->view, "mouse-target-changed", G_CALLBACK(on_tab_hover), t);   /* (1.6.1) */
 	g_signal_connect(t->view, "close", G_CALLBACK(on_tab_close), t);
 	g_signal_connect(t->view, "web-process-terminated", G_CALLBACK(on_tab_gone), t);
 	g_signal_connect(t->view, "focus-in-event", G_CALLBACK(on_tab_focus), t);

@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- New: Oracle's status line (bottom left, where it says "Done") shows where a link goes while the mouse is over it:
+  "Goes To: <address>". It covers links, image-map areas, a form's submit button and links in ads and other frames, on
+  websites and Oracle's own pages; then the status line goes back to what it said. On Standard, Native and Lite.
 - Fixed: Make a Rudolf OS USB stick on an older Rudolf OS stick said "/dev/sdb is in use (mounted at
   /run/rudolf/stkinfo-sdb/i). Unmount it first." Settings' look at what such a stick holds left its image mounted
   when the stick had no third partition. It now always unmounts, never looks while a stick is being made, and Make the

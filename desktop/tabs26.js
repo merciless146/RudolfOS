@@ -193,6 +193,7 @@ addEventListener('message', e => {
       else if (/ERR_UNKNOWN_URL_SCHEME/.test(m.error || '') && typeof lkLinkOk == 'function' && lkLinkOk(m.url)) lkTab(t, m)
       else h.load(!!m.loading, m.error || '') }
     else if (ev == 'title') h.title(String(m.title || ''));
+    else if (ev == 'hover') { if (h.hover) h.hover(String(m.url || '').slice(0, 2000)) }   /* (1.6.1: where a link goes: "Goes To: …") */
     else if (ev == 'focus') h.focus();
     else if (ev == 'close') h.close();
     else if (ev == 'keys') h.keys(String(m.k || ''));
