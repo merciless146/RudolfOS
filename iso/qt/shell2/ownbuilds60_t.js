@@ -18,7 +18,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     window.fetch = (u, o) => { u = String(u); const q = new URL(u, location.href), J = x => Promise.resolve(new Response(JSON.stringify(Object.assign({ok: true}, x)), {headers: {'content-type': 'application/json'}}));
       if (u.includes('/api/')) T.calls.push([q.pathname.slice(5) + q.search, o && o.body || '']);
       if (q.pathname == '/api/sys/status') return J({persistent: true, booted: 'b', state: {good: 'b', prev: 'a'}, slots: {a: {complete: true}, b: {complete: true}, r: {}}, signer: 'official', developer: false, checked: 0, available: null, toStable: false, auto: true, url: 'https://alex.github.io/RudolfOS/stable', current: {serial: 1, version: '1.6.0'}, canUpdate: true, beta: false, recoveryOfficial: true, recoveryVersion: '1.6.0', recoverySerial: 2026112000, recoveryAt: 1795100000});
-      if (q.pathname == '/api/sys/urlcheck') return J(OTHER);
+      if (q.pathname == '/api/sys/urlcheck') return (o && o.method) == 'POST' ? J(OTHER) : J({ok: false, error: 'use POST'});   /* (as rudolfd: urlcheck is past its POST-only line; 1.6.1: the page sent GET, the owner's Make the stick… said "use POST") */
       if (q.pathname == '/api/disks') return J({disks: [{name: 'sdc', removable: true, model: 'SanDisk', bytes: 64e9, partitions: [{name: 'sdc1', fs: 'vfat', bytes: 64e9}]}]});
       if (q.pathname == '/api/info') return J({persistent: true});
       if (u.includes('/api/')) return J({});

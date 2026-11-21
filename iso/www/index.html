@@ -8596,7 +8596,7 @@ ${s.recoveryVersion?`<p class='msg'>Recovery mode (in the start-up menu) starts 
      address is an administrator's (rudolfd checks the name and password) */
   const uAsk=t=>new Promise(res=>{const o=document.createElement('div');o.className='rmodal';o.innerHTML="<div class='rmbox' role='dialog' aria-modal='true' style='max-width:520px'><p class='msg'></p><div class='rmrow'><button class='n'>Cancel</button><button class='pri y'>Save it</button></div></div>";
    o.querySelector('p').textContent=t;const done=v=>{o.remove();res(v)};o.querySelector('.n').onclick=()=>done(false);o.querySelector('.y').onclick=()=>done(true);document.body.appendChild(o);o.querySelector('.n').focus()});
-  const uck=async v=>{const box=q('.uck');box.textContent='Checking '+v+' …';try{const r=await rd('sys/urlcheck?url='+encodeURIComponent(v));
+  const uck=async v=>{const box=q('.uck');box.textContent='Checking '+v+' …';try{const r=await rdPost('sys/urlcheck?url='+encodeURIComponent(v));
     box.textContent='';for(const [lv,t] of r.lines||[]){const d=document.createElement('div');d.className='msg';d.textContent=(lv=='ok'?'✅ ':lv=='warn'?'⚠️ ':'❌ ')+t;box.appendChild(d)}
     if(r.fpr){const d=document.createElement('div');d.className='msg';d.textContent='Key: '+r.fpr+(r.key=='official'?' (the official Rudolf OS key)':r.key=='developer'?' (Developer mode)':' (another build)');box.appendChild(d)}return r}
    catch(e){box.textContent='❌ '+e.message;return null}};
@@ -12455,7 +12455,7 @@ async function stkSection(c){if(!RD)return;const box=document.createElement('div
   const b=r.lastChild;b.disabled=!adm;b.onclick=async()=>{
    /* 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): the update address's release: checked first (as Settings' Check this
       address), and another person's build said so before anything is erased */
-   if(q('.stks').value=='@address'){pre.hidden=false;pre.textContent='Checking '+ust.url+' …';let ck=null;try{ck=await rd('sys/urlcheck?url='+encodeURIComponent(ust.url))}catch(e){pre.textContent=e.message;return}
+   if(q('.stks').value=='@address'){pre.hidden=false;pre.textContent='Checking '+ust.url+' …';let ck=null;try{ck=await rdPost('sys/urlcheck?url='+encodeURIComponent(ust.url))}catch(e){pre.textContent=e.message;return}
     pre.textContent=(ck.lines||[]).map(([lv,t])=>(lv=='ok'?'✅ ':lv=='warn'?'⚠️ ':'❌ ')+t).join('\n');
     if(!ck.good&&ck.key!='other'){notify('Make a stick','The update address is not set up properly (see the lines above), so no stick is made from it.',{kind:'error'});return}
     if((ck.lines||[]).some(([lv,t])=>/no boot image/.test(t))){notify('Make a stick','That release has no boot image, so a stick cannot be made from it.',{kind:'error'});return}

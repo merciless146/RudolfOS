@@ -59,7 +59,7 @@ async function stkSection(c){if(!RD)return;const box=document.createElement('div
   const b=r.lastChild;b.disabled=!adm;b.onclick=async()=>{
    /* 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): the update address's release: checked first (as Settings' Check this
       address), and another person's build said so before anything is erased */
-   if(q('.stks').value=='@address'){pre.hidden=false;pre.textContent='Checking '+ust.url+' …';let ck=null;try{ck=await rd('sys/urlcheck?url='+encodeURIComponent(ust.url))}catch(e){pre.textContent=e.message;return}
+   if(q('.stks').value=='@address'){pre.hidden=false;pre.textContent='Checking '+ust.url+' …';let ck=null;try{ck=await rdPost('sys/urlcheck?url='+encodeURIComponent(ust.url))}catch(e){pre.textContent=e.message;return}
     pre.textContent=(ck.lines||[]).map(([lv,t])=>(lv=='ok'?'✅ ':lv=='warn'?'⚠️ ':'❌ ')+t).join('\n');
     if(!ck.good&&ck.key!='other'){notify('Make a stick','The update address is not set up properly (see the lines above), so no stick is made from it.',{kind:'error'});return}
     if((ck.lines||[]).some(([lv,t])=>/no boot image/.test(t))){notify('Make a stick','That release has no boot image, so a stick cannot be made from it.',{kind:'error'});return}

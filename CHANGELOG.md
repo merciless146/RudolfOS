@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Fixed: Make a Rudolf OS USB stick with "The latest from the update address" stopped at once with "use POST", and so did
+  Settings › System update › Check this address: the page asked rudolfd's address check the wrong way (a GET where it
+  takes only a POST). Its test's stand-in now refuses a GET as rudolfd does.
 - New: the start-up's time from power-on. System health › Last starts › "Where the time went" now begins with the time
   before Linux starts: the computer's firmware, the boot loader and the kernel's unpacking (from the firmware's own
   record, ACPI's FPDT, and the processor's counter), and ends with the whole from power-on to the desktop's answer. The
