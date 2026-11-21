@@ -124,7 +124,7 @@ try:
         ok('3. ...the power settings asked for game=1; no energy preference in QEMU (a clean no-op)', kv(o, 'GAME') == '1' and not kv(o, 'EPP'), o)
         o = run(g, "sleep 10; " + CGS + f"; {GM} status", 60)
         ok('4. not said again for 6 s (the page stopped): everything back by itself, as it was before', kv(o, 'GAME') == '0' and kv(o, 'W') == w0 and kv(o, 'CTL') == ctl0 and '"on":false' in o, o)
-        o = run(g, f"sleep 1000 & P=$!; echo PID=$P; for i in 1 2 3; do {GM} on native linux $P >/dev/null; sleep 2; done; " + CGS + "; kill -9 $P; sleep 4; echo AFTER; " + CGS, 90)
+        o = run(g, f"sleep 1000 & P=$!; echo PID=$P; for i in 1 2 3; do {GM} on native linux $P >/dev/null; sleep 2; done; " + CGS + "; kill -9 $P; sleep 4; echo AFTER; " + CGS + "; cat /run/rudolf/game/src.* /run/rudolf/game/watch/pid 2>&1; ls -d /proc/$P 2>&1; head -3 /proc/$P/status 2>&1; ps | grep -c '[g]amemode watch\\|[w]atch_'; date +%s", 90)
         a, b2 = o.split('AFTER')[0], o.split('AFTER')[-1]
         ok('5. a stand-in game full screen on the native desktop\'s word: on, slowed', kv(a, 'W') == '20' and kv(a, 'GAME') == '1', o)
         ok('6. ...the game crashes (killed): off within seconds, everything as before', kv(b2, 'W') == w0 and kv(b2, 'CTL') == ctl0 and kv(b2, 'GAME') == '0', o)

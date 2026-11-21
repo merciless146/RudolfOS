@@ -24,7 +24,7 @@ w8 'xdotool getmouselocation >/dev/null 2>&1' 40
 (cd $D && HOME=$D RUDOLF_NATIVE_STATE=$D/state exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT > $T/native.log 2>&1) & NP=$!
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 700)"; F=$((F+1)); fi; }
 st() { grep "^$1 " $D/state 2>/dev/null | head -1 | cut -d' ' -f2-; }
-calls() { grep -c "$1" $D/calls 2>/dev/null || echo 0; }
+calls() { n=$(grep -c "$1" $D/calls 2>/dev/null); echo ${n:-0}; }   # (grep -c prints 0 itself when nothing matches)
 w8 '[ "$(st signin)" = 1 ]' 120 || { echo "FAIL the sign-in screen did not come: $(tail $T/native.log)"; exit 1; }
 LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ]' 120; ok "0. signed in" "$([ "$(st user)" = Ann ] && echo 1)" "$(head -5 $D/state)"
