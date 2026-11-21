@@ -162,12 +162,15 @@ async function dlMigrate(){const C=fs['C:'];if(DLMIG||!USER||USER.r=='guest'||!i
 async function dlScope({dir,key,place,acct}){const P=node(place);if(!isDir(P))return false;let changed=false,moved=0;
  const mine=p=>String(p).startsWith(dir)||acct!='shared'&&String(p).includes('/.quarantine/');
  /* references to these files elsewhere in this account's home or on C: outside the homes go back to `place`;
-    copies of the same file are dropped */
- const inD=new Map();Object.keys(P).forEach(n=>{const v=P[n];if(!isDlRef(v))return;const i=dlRefInfo(v);if(!i||!mine(i.p))return;if(inD.has(i.p)){delete P[n];changed=true;moved++}else inD.set(i.p,{path:place.concat(n),v})});
+    copies of the same file (made before 1.6.1) are made files of their own (dlDupFix), never dropped unseen */
+ /* (1.6.1: a copy made before 1.6.1, Copy and Paste of such a file, named the same file: it is made a file of its own on the disk,
+    as Copy does now (dlDupFix); one that cannot be is left as it is and said so, never deleted unseen) */
+ const inD=new Map(),dups=[];Object.keys(P).forEach(n=>{const v=P[n];if(!isDlRef(v))return;const i=dlRefInfo(v);if(!i||!mine(i.p))return;if(inD.has(i.p))dups.push({at:P,n,i});else inD.set(i.p,{path:place.concat(n),v})});
  const C=fs['C:'],looks=[homePath()];Object.keys(C).filter(k=>k!='USERS').forEach(k=>looks.push(['C:',k]));
  for(const L of looks){const n=node(L);if(!n)continue;const all=isDlRef(n)?[{path:L,v:n}]:isDir(n)?dlWalk(n,L,[]):[];
   for(const x of all){if(dlIn(x.path,place))continue;const i=dlRefInfo(x.v);if(!i||!mine(i.p)||!String(i.p).startsWith(dir))continue;
-   const d=node(x.path.slice(0,-1));if(d)delete d[x.path.at(-1)];changed=true;moved++;if(!inD.has(i.p)){const n2=dlUniq(P,x.path.at(-1));P[n2]=x.v;inD.set(i.p,{path:place.concat(n2),v:x.v})}}}
+   const d=node(x.path.slice(0,-1));if(inD.has(i.p)){if(d)dups.push({at:d,n:x.path.at(-1),i,away:1});continue}if(d)delete d[x.path.at(-1)];changed=true;moved++;{const n2=dlUniq(P,x.path.at(-1));P[n2]=x.v;inD.set(i.p,{path:place.concat(n2),v:x.v})}}}
+ if(dups.length&&await dlDupFix(dups,P,place,inD,acct))changed=true;
  if(moved)notify('Kept in Downloads','Files larger than 1.5 MB are kept on the disk and stay in Downloads. Open them from there.');
  /* restored from quarantine: back into the folder on the disk */
  for(const[p,x]of [...inD]){if(!p.includes('/.quarantine/'))continue;const i=dlRefInfo(x.v);
@@ -187,6 +190,17 @@ async function dlScope({dir,key,place,acct}){const P=node(place);if(!isDir(P))re
   if((o.miss||0)<1){nk[p]=Object.assign({},o,{miss:(o.miss||0)+1});continue}/* gone twice in a row: delete it */
   const q=p.includes('/.quarantine/');await rdPost('dl/file?name='+encodeURIComponent(dlBase(p))+'&from='+(q?'quarantine':'home')+(q?'':'&acct='+acct)+'&to=del').catch(()=>{})}
  alive.forEach((o,p)=>nk[p]=Object.assign({miss:0},o));svj(key,nk);return changed?nk:(nk.__same=1,nk)}
+/* the copies that name another entry's file (see dlScope): each copied on the disk into a file of its own (dl/file to=copy, in the
+   account's own folder) and put in Downloads under its name; one that cannot be copied (the disk full) stays as it is */
+const DLDUP={told:new Set()};
+async function dlDupFix(dups,P,place,inD,acct){let ch=false;const ok=[],stuck=[];
+ for(const x of dups){const own=acct!='shared'&&String(x.i.p).startsWith(DLADIR());let r=null;
+  if(own)try{r=await rdPost('dl/file?name='+encodeURIComponent(dlBase(x.i.p))+'&from=home&to=copy&as='+encodeURIComponent(x.n)+'&acct='+acct)}catch(e){r=null}
+  if(!r){if(!DLDUP.told.has(x.i.p+'|'+x.n)){DLDUP.told.add(x.i.p+'|'+x.n);stuck.push(x.n)}continue}
+  const nv=dlMkRef(r.path,r.size!=null?r.size:x.i.s,x.i.av);dlRefsAdd(r.path);delete x.at[x.n];const n2=x.away?dlUniq(P,x.n):x.n;P[n2]=nv;inD.set(r.path,{path:place.concat(n2),v:nv});ok.push(n2);ch=true}
+ if(ok.length)notify('Copies kept on the disk',`${ok.slice(0,3).join(', ')}${ok.length>3?' and '+(ok.length-3)+' more':''}: ${ok.length==1?'a copy that opened the same file as the original is':'copies that opened the same file as their original are'} now ${ok.length==1?'a file':'files'} of ${ok.length==1?'its':'their'} own on the disk.`,{quiet:true});
+ if(stuck.length)notify('A copy that is not a copy',`${stuck.slice(0,3).join(', ')}${stuck.length>3?' and '+(stuck.length-3)+' more':''} ${stuck.length==1?'opens':'open'} the same file as ${stuck.length==1?'its':'their'} original (copied before Rudolf OS 1.6.1), and could not be made a file of ${stuck.length==1?'its':'their'} own (is the disk full?). ${stuck.length==1?'It is':'They are'} kept: delete ${stuck.length==1?'it':'them'} if not needed; the original stays.`,{kind:'warn'});
+ return ch}
 let dlRecBusy=false;
 async function dlReconcile(){if(dlRecBusy||!dlReady())return;dlRecBusy=true;
  try{let changed=false;try{if(await dlMigrate())changed=true}catch(e){console.warn('downloads: moving the old folder',e)}

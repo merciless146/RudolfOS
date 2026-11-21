@@ -27,13 +27,17 @@ if(!ONEAPP)oaLoginUnhide();
    is the page's own, so it goes with the drag as text/x-rudolf-paths and is taken back on the drop (a desktop file dropped on a
    window: oaFs's op=drop) */
 if(ONEAPP){
- const T='text/x-rudolf-paths',ours=e=>e.dataTransfer&&[...e.dataTransfer.types].includes(T);let lent=0;
- document.addEventListener('dragstart',e=>{try{if(typeof FC=='object'&&FC.drag&&FC.drag.length&&e.dataTransfer)e.dataTransfer.setData(T,JSON.stringify(FC.drag))}catch(x){}});
- document.addEventListener('dragenter',e=>{if(!ours(e)||typeof FC!='object')return;if(!lent&&!FC.drag){FC.drag=[];lent=1}else if(lent)lent++},true);
- document.addEventListener('dragover',e=>{if(lent&&ours(e))try{e.dataTransfer.dropEffect=e.ctrlKey?'copy':'move'}catch(x){}},true);   /* (WebKit gives a drag from another page none) */
- document.addEventListener('dragleave',e=>{if(lent&&--lent==0&&FC.drag&&!FC.drag.length)FC.drag=null},true);
- document.addEventListener('drop',e=>{if(lent&&ours(e)){lent=0;try{FC.drag=JSON.parse(e.dataTransfer.getData(T))}catch(x){FC.drag=null}}},true);
- document.addEventListener('dragend',()=>{if(lent){lent=0;if(FC.drag&&!FC.drag.length)FC.drag=null}});
+ /* (1.6.1, docs/plan-1.6.1.md Part 22) and a drive's files (FC.dragR: the place and its items), as text/x-rudolf-remote; a read-only
+    place says so in its types (text/x-rudolf-ro), which the window under the pointer can read before the drop (it copies) */
+ const T='text/x-rudolf-paths',TR='text/x-rudolf-remote',has=(e,t)=>e.dataTransfer&&[...e.dataTransfer.types].includes(t),ours=e=>has(e,T)||has(e,TR);let lent=0;
+ document.addEventListener('dragstart',e=>{try{if(typeof FC=='object'&&FC.drag&&FC.drag.length&&e.dataTransfer)e.dataTransfer.setData(T,JSON.stringify(FC.drag))}catch(x){}
+  try{if(typeof FC=='object'&&FC.dragR&&FC.dragR.items&&FC.dragR.items.length&&e.dataTransfer)e.dataTransfer.setData(TR,JSON.stringify(FC.dragR))}catch(x){}});
+ const empty=()=>(!FC.drag||!FC.drag.length)&&(!FC.dragR||!FC.dragR.items||!FC.dragR.items.length);
+ document.addEventListener('dragenter',e=>{if(!ours(e)||typeof FC!='object')return;if(!lent&&!FC.drag&&!FC.dragR){if(has(e,TR))FC.dragR={r:{ro:has(e,'text/x-rudolf-ro')},items:[]};else FC.drag=[];lent=1}else if(lent)lent++},true);
+ document.addEventListener('dragover',e=>{if(lent&&ours(e))try{e.dataTransfer.dropEffect=e.ctrlKey||(typeof XFK=='object'&&XFK.ctrl)||has(e,'text/x-rudolf-ro')?'copy':'move'}catch(x){}},true);   /* (WebKit gives a drag from another page none) */
+ document.addEventListener('dragleave',e=>{if(lent&&--lent==0&&empty()){FC.drag=null;FC.dragR=null}},true);
+ document.addEventListener('drop',e=>{if(lent&&ours(e)){lent=0;FC.drag=null;FC.dragR=null;try{if(has(e,TR))FC.dragR=JSON.parse(e.dataTransfer.getData(TR));else FC.drag=JSON.parse(e.dataTransfer.getData(T))}catch(x){FC.drag=null;FC.dragR=null}}},true);
+ document.addEventListener('dragend',()=>{if(lent){lent=0;if(empty()){FC.drag=null;FC.dragR=null}}});
  /* a file dropped on this app's window: in a window of its own, as on Standard (the shell asks a page to do it: op=drop) */
  const _dfw=window.__dropFileOnWindow;if(_dfw)window.__dropFileOnWindow=function(W,path){
   if(W&&W===OA.main&&oaNative()&&W.app&&W.app!='explorer'&&W.app!='trash'){if(node(path)==null)return false;oaPost({op:'drop',file:path.join('\\'),in:String(W.app)});return true}

@@ -1,0 +1,48 @@
+# File Explorer: the selection box, files dragged between windows and drives, the progress window (1.6.1, docs/plan-1.6.1.md
+# Part 22). Publishes nothing.
+#   host:   rudolfd's requests for the transfers (fs/copy, fs/move, fs/hash, fs/write in pieces, dl/file to=copy), built from
+#           rudolfd.c (iso/qt/host/fsxfer161_t.sh)
+#   page:   the page in Playwright's Chromium with a stand-in rudolfd (iso/qt/shell2/xdrag161_t.js, and File Explorer's earlier
+#           checks unchanged)
+#   webkit: the same in WebKitGTK (rudolf-webkit, the engine of Lite and Native) with real mouse input (iso/qt/webkit/xdrag61_ci.py)
+name: File Explorer transfers check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['desktop/files25.js', 'desktop/xfer61.js', 'desktop/oneapp59.js', 'desktop/dl27.js', 'desktop/drivecopy60.js', 'iso/sys/rudolfd.c', 'iso/www/index.html',
+      'iso/qt/host/fsxfer161_t.sh', 'iso/qt/host/fixtures/fsxfer.c', 'iso/qt/shell2/xdrag161_t.js', 'iso/qt/webkit/xdrag61_ci.py', '.github/workflows/xfer-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: rudolfd's requests for the transfers
+        run: sudo sh iso/qt/host/fsxfer161_t.sh
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The selection box, dragging between windows and drives, the progress window, Native's pages
+        run: node iso/qt/shell2/xdrag161_t.js
+      - name: File Explorer's earlier checks
+        run: for t in files_t fe56_t drives60_t drivecopy60_t rename56_t deskicons_t; do echo "== $t"; node iso/qt/shell2/$t.js | tail -3 || exit 1; done
+  webkit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 glib-networking xvfb xdotool >/dev/null
+      - name: Build rudolf-webkit
+        run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
+      - name: The selection box and a drag between windows in WebKit, with real mouse input
+        run: |
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 1
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          python3 iso/qt/webkit/xdrag61_ci.py ./rudolf-webkit | tee xdrag-result.txt; r=${PIPESTATUS[0]}
+          echo "::notice title=File Explorer in WebKit::$(tail -1 xdrag-result.txt) — $(grep -E '^FAIL' xdrag-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
