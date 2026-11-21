@@ -149,7 +149,7 @@ its own with its tabs (their addresses); a window's only tab closing closes the 
 - **Left for later (docs/plan-oracle.md item 2's second half):** "Continue where you left off" with sleeping tabs and "Restore your
   tabs?" after a crash. 1.6.0's ☰ › Reopen my tabs next time does the start; it keeps its addresses in the account's settings in the
   page's storage (bd95set:ID), which is not in the encrypted Oracle folder: for the owner to decide before it grows.
-- Tests: iso/qt/shell2/oraclosed61_t.js (25), iso/qt/webkit/closed61_ci.py (4: rudolf-webkit), iso/qt/native/oraclosed61_t.sh (16: the
+- Tests: iso/qt/shell2/oraclosed61_t.js (25), iso/qt/webkit/closed61_ci.py (4: rudolf-webkit), iso/qt/native/oraclosed61_t.sh (14: the
   real shell on Standard and Native: Ctrl+Shift+T typed inside a website; a closed window from another window); oracle58, private59,
   orahover61, oraacct60, tor59, bmadd59 unchanged. Workflow oracle-closed-check.yml.
 - **The owner's checks (Vivobook):** on Standard, Native and Lite: close a tab, Ctrl+Shift+T (in Oracle's toolbar and inside a website);
