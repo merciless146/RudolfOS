@@ -21,7 +21,6 @@ static const char *const CONFINE_PURE[] = {
 	"install/images",
 	"memory",
 	"memory/breakdown",
-	"memory/dropcache",
 	"memory/iam",
 	"memory/settings",
 	"native/run",
@@ -37,6 +36,7 @@ static const char *const CONFINE_PURE[] = {
 static const char *const CONFINE_ROOTD[] = {
 	"eject",
 	"heartbeat",
+	"memory/dropcache",
 	"mount",
 	"rollback",
 	"speedtest",
