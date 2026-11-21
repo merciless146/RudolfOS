@@ -34,7 +34,7 @@ jobs:
               if [ $t = listeners59_t.sh ]; then RUDOLFD_CONFINE=$m timeout 600 sh iso/qt/host/$t > out.$m 2>&1; else sudo timeout -k 10 600 env RUDOLFD_CONFINE=$m sh iso/qt/host/$t > out.$m 2>&1; fi
               echo "rc=$?" >> out.$m
             done
-            grep -E '^(PASS|FAIL|SKIP)|^rc=' out.off | sed 's/ - .*//' > r.off; grep -E '^(PASS|FAIL|SKIP)|^rc=' out.on | sed 's/ - .*//' > r.on
+            for m in off on; do grep -E '^(PASS|FAIL|SKIP)|^rc=' out.$m | sed -e 's/ - .*//' -e 's%/tmp/[A-Za-z0-9._-]*%/tmp/T%g' > r.$m; done
             if cmp -s r.off r.on; then echo "== $t: the same off and on ($(grep -c '^PASS' r.on) passed, $(grep -c '^FAIL' r.on) failed$(grep -q '^FAIL' r.on && echo ': this machine'))"; grep '^FAIL' out.on | head -3
             else D=$((D+1)); echo "::error::$t differs with the confinement on"; diff r.off r.on; fi
           done
