@@ -23,6 +23,8 @@ work." Built after the 1.6.0 beta.
   › Display lists the displays and which workspace each shows.
 - **Tests:** Xvfb with several screens (or Xephyr / RandR's virtual outputs) for both engines, compared with same_t.sh;
   on the Vivobook with an HDMI monitor (owner).
+- **Status (2026-11-21):** the system's part built (rudolf-display arranges the monitors and lists them; screenctl and rudolfd keep the
+  arrangement per set of monitors; iso/qt/host/monitors161_t.sh on Xorg's dummy driver); the desktop's part follows.
 
 ### The phone, split in two (owner, 2026-11-15)
 Decided on 2026-11-15, after asking whether the first real phone would be easier in 2.0 than in 1.6: "Make the sensible

@@ -185,6 +185,10 @@ Summary: In progress.
   Secure Boot like the kernel's own, checked by the kernel). If it cannot be used (a module refused, Xorg not starting, the
   desktop not coming up), the computer goes back to the open driver by itself and says so. Recovery mode always uses the
   open driver.
+- Several monitors, the system's part (plan Part 1): every monitor plugged in, up to three, is lit side by side, the main one
+  at the left, as Settings › Display › Displays arranged them for that set of monitors (kept per set); plugged in or out,
+  they are arranged again within a second. Linux apps and games open on the main monitor. (rudolf-display --arrange and
+  --monitors, screenctl arrange, rudolfd's screen/arrange; the software display still shows one monitor.)
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.
