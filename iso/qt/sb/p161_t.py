@@ -283,13 +283,14 @@ try:
     time.sleep(20)
     def hit(st, k):
         m = re.search(rf'^hit {k} (\d+) (\d+) (\d+) (\d+)$', st, re.M); return (int(m.group(1)) + int(m.group(3)) / 2, int(m.group(2)) + int(m.group(4)) / 2) if m else None
-    def open_app(k, q, wait=60):
-        st = state(); h = hit(st, 'start \\S+')
-        if h: at(*h); time.sleep(1.5); g.q.type(q); time.sleep(1.5); g.q.key('ret')
-        for _ in range(wait):
-            time.sleep(1)
-            if re.search(rf'^client .* app={k} ', state(), re.M): return True
-        return False
+    def open_app(k, q, wait=60, tries=3):
+      for _ in range(tries):   # (the start menu's search is slow without KVM: tried again, Escape first)
+          g.q.key('esc'); time.sleep(1); st = state(); h = hit(st, 'start \\S+')
+          if h: at(*h); time.sleep(1.5); g.q.type(q); time.sleep(1.5); g.q.key('ret')
+          for _ in range(wait):
+              time.sleep(1)
+              if re.search(rf'^client .* app={k} ', state(), re.M): return True
+      return False
     out('open notepad', open_app('notepad', 'notepad')); time.sleep(10)
     n1 = len(os.listdir(SPOOL1))
     tev('notepad', print_js('Native', False)); res = twait('notepad', "window.__pq", 300); out('printed (Native):', res)
