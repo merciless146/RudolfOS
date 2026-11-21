@@ -198,6 +198,32 @@ Lite: rudolf-webkit's `mouse-target-changed` (WebKit's own hit test); Oracle's o
 window. The status line goes back to what it said, unless something new came meanwhile. Not possible to know before a
 click: where a script-only button (no link, no form) will go. Test orahover61_t.js; workflow oracle-hover-check.yml.
 
+**Built (2026-11-21, branch oracle-find): item 1, find in page** (desktop/orafind61.js). As docs/plan-oracle.md item 1 says: Ctrl+F,
+F3 / Shift+F3, Ctrl+G / Ctrl+Shift+G or ☰ › Find in page… opens a bar under the bookmarks bar (the box, "3 of 17", ▲ ▼, Match case,
+✕); Enter / Shift+Enter, round at the ends; Escape closes it and clears the highlights; the selected text fills the box; the bar
+belongs to its tab (switching hides it, switching back shows it with its words and count); a new page in the tab is searched again.
+- Standard, Native and Standard's encrypted Oracle (the shell's real tabs): tab ops `find` {text, mc, back, again, id}, `findstop`,
+  `findsel`, answered by tabev `find` {id, n, i | sel} (iso/shell/shell.js). The Controlled Frame's own `find()` (Chromium's
+  highlighting, every frame) when the Chromium has it; Playwright's Chromium (1.63) has none, so there, and wherever it fails or
+  does not answer within 3 s, FIND_FN in the page's isolated world: the visible text walked (a block's edge or hidden text breaks a
+  match; a match across inline elements is found), CSS highlights (the page's HTML untouched), the current match scrolled into view,
+  at most 1,000. Whether Rudolf's Chromium 158 has the Controlled Frame's find is for the owner's check below (either way it works).
+- Lite: rudolf-webkit's `WebKitFindController` (search, search_next / search_previous, every match highlighted by WebKit); WebKit does
+  not say which match is the current one, so rudolf-webkit counts it (the first, or the last searching back, then on or back, round).
+- Oracle's own pages (about: pages, files on C:): ORACLE_FIND_JS added to each (the same walker, orafind61.js `oraFindFn`, which
+  shell.js's FIND_FN must equal: the test checks). Websites in plain frames (no shell): "Find is not available for this page".
+- The keys: Ctrl+F, F3 and Ctrl+G in a website go to Oracle before the page sees them (the shell's PAGE_JS and rudolf-webkit's page
+  script, a listener of their own); Chromium does not keep them for itself (unlike Ctrl+W, T, N, Q), so rudolf-display and
+  rudolf-native need no change. Found and fixed on the way: the shell's `blur` (Ctrl+L, the find bar) did not move the keyboard out
+  of a tab that had been clicked (its focus() did nothing: the shell still had the desktop as its focused element); now blur() first.
+- Tests: iso/qt/shell2/orafind61_t.js (39: the walker; the bar with a stood-in shell; Oracle's own pages; a plain frame),
+  iso/qt/webkit/find61_ci.py (12: rudolf-webkit), iso/qt/native/orafind61_t.sh (16: the real shell on Standard and Native, keys typed
+  into a website); oracle58, private59, orahover61, tor59, bmadd59, oraacct60, oraclefile60 unchanged. Workflow oracle-find-check.yml.
+- **The owner's checks (Vivobook):** on Standard, Native and Lite: a long Wikipedia article, Ctrl+F, "the", Enter and Shift+Enter
+  (the count and the highlight move), F3, Match case, Escape; Ctrl+F inside Google Docs opens Oracle's bar (as in Chrome); another tab
+  and back (the bar keeps its words); Standard with "Keep my websites encrypted" on (Oracle's own Chromium). Whether the highlight is
+  Chromium's own (orange current match) or Rudolf's (yellow, the current one orange) on Rudolf's Chromium: either is right.
+
 **Built (the owner, 2026-11-20): the Downloads page's progress bar and Remove** (desktop/dlrm61.js). A file arriving: how
 much so far and how fast, and with a size known the percentage and time left (Chromium's own downloads do not tell their
 size: the bar then moves without a percentage); being checked: a bar. Remove beside Open: in Downloads → the Trash;

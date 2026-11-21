@@ -72,6 +72,13 @@ Summary: In progress.
 - New: Oracle's status line (bottom left, where it says "Done") shows where a link goes while the mouse is over it:
   "Goes To: <address>". It covers links, image-map areas, a form's submit button and links in ads and other frames, on
   websites and Oracle's own pages; then the status line goes back to what it said. On Standard, Native and Lite.
+- New: find in page in Oracle. Ctrl+F (or F3, Ctrl+G, or ☰ › Find in page…) opens a bar under the bookmarks bar: type
+  and the matches are highlighted, "3 of 17" says where you are, Enter (or ▼, F3) goes to the next and Shift+Enter (or ▲,
+  Shift+F3) to the previous one, round at the ends; Match case; Escape or ✕ closes it. Ctrl+F inside a website opens
+  Oracle's bar, as in Chrome, even on sites that use Ctrl+F themselves. Text selected on the page fills the box, and the
+  bar belongs to its tab. On websites, Oracle's own pages and files, on Standard, Native and Lite.
+- Fixed: after a click into a website in Oracle, Ctrl+F and Ctrl+L gave the bar or the address box the look of having the
+  keyboard while what was typed still went to the website.
 - New: Oracle's Downloads page shows a progress bar for a file that is arriving (how much so far and how fast, and with
   a known size the percentage and the time left) and one being checked. Each download has Remove beside Open: a file in
   Downloads goes to the Trash with it; otherwise the notification "File removed from list: Not in Downloads. Ask Blitzen
