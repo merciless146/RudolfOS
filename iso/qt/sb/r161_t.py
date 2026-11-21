@@ -165,6 +165,13 @@ try:
     ok('30. logs: the kernel\'s messages (GET log) and the crashes list through the helper', '"log":"[' in o and '"crashes":[' in o, o[-600:])
     o = sh("grep -c 'the procs helper did not start\\|the logs helper did not start' /run/rudolf/rudolfd.log", 20)
     ok('31. the procs and logs helpers ran each time', re.search(r'^0$', o, re.M), o)
+    # the display's settings and sound (1.6.1 Part 11, the screen and sound helpers): the graphics path saved again as
+    # it is (nothing changes), the screen's status, the media and volume (the sound server's, if it runs here)
+    o = api(sh, 'display'); m = re.search(r'"setting":"(\w+)"', o); cur = m.group(1) if m else 'games'
+    o += api(sh, f'display?mode={cur}', True) + sh("cat /etc/rudolf-display /persist/etc/rudolf-display", 20) + api(sh, 'screen') + api(sh, 'media') + api(sh, 'volume')
+    ok('32. screen and sound: the graphics path saved (as it was) through the helper, the screen\'s status, media and the volume answered', 'restart Rudolf OS to use it' in o and o.count(cur) >= 3 and '"playing":' in o and ('"volume":' in o or 'not running' in o), o[-900:])
+    o = sh("grep -c 'the screen helper did not start\\|the sound helper did not start' /run/rudolf/rudolfd.log", 20)
+    ok('33. the screen and sound helpers ran each time', re.search(r'^0$', o, re.M), o)
     o = sh("grep -c 'the network helper did not start' /run/rudolf/rudolfd.log", 20)
     ok('26. the network helper ran each time (rudolfd never did it itself)', re.search(r'^0$', o, re.M), o)
     o = sh("tail -20 /run/rudolf/rudolfd.log | grep -i 'rootd\\|refused' ; cat /persist/var/log/health.log 2>/dev/null | grep 'rootd refused' | tail -3; echo done")

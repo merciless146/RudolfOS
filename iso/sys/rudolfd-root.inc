@@ -102,3 +102,4 @@ static void root_job(const char *name, const char *const argv[])
 #include "rudolfd-rootnet.inc"    /* (the network) */
 #include "rudolfd-rootdev.inc"    /* (Bluetooth and Thunderbolt) */
 #include "rudolfd-rootother.inc"  /* (Task Manager's End process, the kernel's messages) */
+#include "rudolfd-rootscreen.inc" /* (the display's settings, sound) */

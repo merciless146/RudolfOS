@@ -314,10 +314,10 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Packages | sysext/* (`api_sysext`) | rpk sysext (signed system extensions mounted over /usr) | packages |
 | Packages | debian/* (`api_debian`, `spawn_debian`: setup, update, wine, deb, run --root), ai/* python and C++ | rudolf-debian (a container: namespaces, mounts) as root | packages (rudolf-debian is already a program: through the helper) |
 | Packages | games/* (games-import), ai/* (`api_ai`: rudolf-ai, the model's folder), print/* (`api_print`: rudolf-print, usbprint) | folders chowned to 1000; rudolf-ai and rudolf-print as root | packages (most need no root: they run as the desktop's user after the drop) |
-| Display | display (POST: /etc/rudolf-display), screen/* (screenctl), layout, pointer | /etc writes, xrandr through screenctl, setxkbmap through layout.sh | display |
+| Display | display (POST: /etc/rudolf-display), screen/* (screenctl), layout, pointer | /etc writes, xrandr through screenctl, setxkbmap through layout.sh | **screen** (moved: display, shell, screen/*, keyboard); pointer is RUN's (the drop) |
 | Display | screenshot (`grab_x`, `grab_fb`), clipboard (`api_clipboard`: su rudolf) | /dev/fb0; su to the desktop's user | none after the drop (video group; rudolfd is that user) |
 | Display | native/*, web/*, shell (POST shell: /etc/rudolf-shell), restart-browser, desktop/engine | the native desktop, Chromium windows started as the desktop's user (su/setuid), pkill of the kiosk browser, /etc and /persist/etc writes | display |
-| Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | display (devices) |
+| Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | **sound** (moved) |
 | Other | processes, proc/end (`api_proc_end`, `proc_tree_end`) | kill(2) of other users' processes (the accounts' apps), /proc of every process | other: **procs** (moved) |
 | Other | service (restart sound, Wi-Fi, display), selftest, starts, system (`api_system`: dmesg, modules), log, crash_list, health_tick's dmesg | the self-test, dmesg (kernel.dmesg_restrict), /proc/modules | other: **logs** (moved: dmesg read by a helper); the self-test and service next |
 | Other | devlink/* (`dl_start`, `dl_stop`) | rudolf-devlink started with its own user and environment | other |
@@ -555,8 +555,37 @@ rudolfd runs as root today (they keep running as root, from the helper).
   25's comparison: End process, a tree of five, rudolfd itself 403, a process gone 404, the log, the crashes, a job's
   last crash line; the same with and without rudolf-rootd and as rudolfd itself); proctree57_t.sh unchanged;
   r161_t.py 29-31 in QEMU.
-- Next: the modem, Tor and remote access; packages; display and sound; the rest of other (the self-test, the service
-  restarts, devlink, the camera, the portal, the terminals); then the drop (with the accounts' file service of 11.2).
+- **Display and sound (2026-11-21, branch root-helpers-display, after root-helpers-procs):** two helpers
+  (rudolfd-rootscreen.inc). The screen helper (iso/sys/rudolf-screen.c, /usr/lib/rudolf/root/screen; not "display":
+  sys/rudolf-display.c is the window manager): `screen mode soft|games|full` and `screen shell on|off` (/etc's file, and
+  /persist/etc's on an installed Rudolf OS, which the helper reads itself from /run/rudolf/persistent), `screen ctl
+  status|keep|revert`, `ctl set RES FPS` (screenctl), `screen keyboard LAYOUT [VARIANT]` (setxkbmap on :0),
+  `screen restart-display` (System health's restart of rudolf-display) and `screen restart-browser` (the desktop's own
+  browser, either engine: the proxy, the sound card and POST restart-browser). The sound helper
+  (iso/sys/rudolf-sound.c): `sound volume get|up|down|mute|set N|muted 0|1`, `sound playing`, `sound mic
+  users|get|muted 0|1` (hotkey), `sound echo on|off|status`, `sound mics`, `sound mic-default NAME`, `sound default N`,
+  `sound restart` (the sound script; echo, the microphone chosen and the restart still into RUN/sound.log), `sound card
+  N` (/etc/asound.conf, and /persist/etc's on an installed one). Part 20: HELPER_CAPS "screen" (the DAC capabilities,
+  CAP_FOWNER, CAP_KILL) and "sound" (CAP_SETUID and CAP_SETGID for su to the desktop's user, CAP_KILL, the DAC
+  capabilities, CAP_FOWNER, CAP_CHOWN), both with no_new_privs. Not moved: GET display's and the shell's reads (any
+  user's), pointer (RUN/pointer, rudolfd's own: the drop), desktop/engine (/persist/etc's files: the drop), the native
+  desktop's and web windows' starts as the desktop's user (none needed after the drop: rudolfd is that user; Tor
+  windows' cgroup write with Tor). Found and kept as it was: GET audio/mics never answers (a "use POST" for every GET
+  further up api() comes first; Settings' microphone test falls back to the browser's list): for the owner. Tests:
+  roothelpers161_t.sh S1-S2 and check 28 (in check 25's comparison: every display and sound request with and without
+  rudolf-rootd and as rudolfd itself, the files written in /etc and /persist/etc too); r161_t.py 32-33 in QEMU.
+- **Where 11.1 stands (2026-11-21, after the display and sound branch; PRs #561-#564, stacked in that order):** moved:
+  drives, updates (but the EFI boot entries), accounts, power and the clock, network (Wi-Fi, addresses, the firewall,
+  the hotspot, metered), devices (Bluetooth, Thunderbolt), procs, logs, screen, sound. Stay in rudolfd by design:
+  `addpart` (rudolfd --addpart is run by root's own scripts, not a request), every read any user may make (GET net's
+  ip and /sys reads, /proc/asound, the display's and shell's files), and what is rudolfd's own (RUN's files, pointer,
+  /persist/etc's settings such as desktop/engine and vault.json, the health log): those become the rudolf user's at
+  the drop instead. Not moved yet (each still run as root by rudolfd, with no change from 1.6.0): the modem
+  (mobile/*: its PIN and SMS request files), Tor and remote access (long-running services started as their own user
+  or as root), packages (rpk, Flatpak's system parts, system extensions, rudolf-debian, Blitzen's and printing's
+  folders), the EFI variables (bootmenu, secureboot), dl_acct_dir, and the rest of other (the self-test, devlink, the
+  camera, the portal's files, Debian's terminals); then the drop with the accounts' file service of 11.2.
+- Next: the modem, Tor and remote access; packages; the EFI variables; the rest of other; then the drop.
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 **Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
