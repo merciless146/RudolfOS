@@ -80,6 +80,8 @@ static const char *const CONFINE_START[] = {
 	"fs/xcopy",
 	"game/*",
 	"games/*",
+	"gpu/driver",
+	"gpu/driver/*",
 	"home",
 	"home/*",
 	"idbm/*",
