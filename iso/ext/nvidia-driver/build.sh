@@ -28,7 +28,7 @@ L=$X/LICENSE; [ -f "$L" ] || { echo "nvidia: the .run has no LICENSE"; exit 1; }
 tr -s ' \n\t' '   ' < "$L" > "$W/lic1"
 grep -q 'Linux/FreeBSD Exception' "$W/lic1" && grep -q 'may be copied and redistributed, provided that the binary files thereof are not modified in any way' "$W/lic1" ||
 	{ echo "nvidia: the licence of $V no longer has the Linux/FreeBSD redistribution clause (2.1.2) in those words: stop, and read it again"
-	  grep -n -i -B2 -A6 'redistribut\|FreeBSD' "$L" | head -80; exit 1; }
+	  ls "$X" | grep -i 'licen\|copying\|eula' ; wc -c "$L"; grep -n -i -B3 -A8 'distribut\|FreeBSD\|Linux' "$L" | head -150; exit 1; }
 echo "nvidia: $V's licence: 2.1.2 (Linux/FreeBSD Exception) allows redistribution of the unmodified files"
 # ---- the kernel tree (the release's version and configuration), prepared for external modules
 if [ -n "$LINUX_SRC" ]; then K=$LINUX_SRC; else
