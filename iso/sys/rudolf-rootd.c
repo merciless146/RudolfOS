@@ -36,7 +36,7 @@
 #include <sys/time.h>
 
 /* the helpers there are (each its own program in RR_DIR; Part 11's areas as they move) */
-static const char *const HELPERS[] = { "drives", "updates", NULL };
+static const char *const HELPERS[] = { "drives", "updates", "accounts", NULL };
 static char prog_exe[PATH_MAX];
 static pid_t prog_pid;
 
@@ -65,6 +65,9 @@ static int helper_confine(const char *name)
 	for (int i = 0; HELPER_CAPS[i].name; i++) if (!strcmp(HELPER_CAPS[i].name, name)) { keep = HELPER_CAPS[i].keep; known = 1; }
 	if (!known) return confine_m == CF_ON ? -1 : 0;   /* (a helper without its line here is never run unconfined with "on") */
 	if (confine_m == CF_ON && cf_caps(keep)) return -1;
+	/* (1.6.1 Part 11: a helper that keeps no CAP_SYS_ADMIN may put a filter on only with no_new_privs, which it then
+	   gets: it gains nothing by running a set-user-ID program either, as root; su to an account's user still works) */
+	if (!(keep & CB(CAP_SYS_ADMIN)) && prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) && confine_m == CF_ON) return -1;
 	int n = 0; while (CF_HELPER_DENY[n] >= 0) n++;
 	return cf_seccomp(CF_HELPER_DENY, n, NULL, 0, 0, confine_m) && confine_m == CF_ON ? -1 : 0;
 }

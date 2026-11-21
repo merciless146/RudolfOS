@@ -40,10 +40,12 @@ RR_TEST_DIR=$T/root
 RR_TEST_UPDATE=$T/ru
 RR_TEST_PERSIST=$T/persist
 EOF
+# (RH_CONFINE=on: rudolf-rootd puts plan Part 20's confinement on each helper, as /persist/etc/rudolf-confine would)
+[ -n "$RH_CONFINE" ] && { echo "$RH_CONFINE" > $T/confine; echo "RR_TEST_CONFINE_FILE=$T/confine" >> $T/rr.conf; echo "(rudolf-rootd's confinement: $RH_CONFINE)"; }
 CF="-O2 -Wall -Wno-format-truncation -DRR_TEST -DRR_TEST_CONF=\"$T/rr.conf\""
 gcc $CF -o $T/root/drives $SYS/rudolf-drives.c && gcc $CF -o $T/root/updates $SYS/rudolf-updates.c && gcc $CF -o $T/rudolf-rootd $SYS/rudolf-rootd.c || { echo "FAIL build"; exit 1; }
-gcc $CF -w -o $T/drives-home.real $SYS/rudolf-drives-home.c -lz || { echo "FAIL build drives-home"; exit 1; }
-chmod 700 $T/root/drives $T/root/updates $T/drives-home.real
+gcc $CF -w -o $T/drives-home.real $SYS/rudolf-drives-home.c -lz && gcc $CF -w -o $T/root/accounts $SYS/rudolf-accounts.c -lz || { echo "FAIL build drives-home, accounts"; exit 1; }
+chmod 700 $T/root/drives $T/root/updates $T/drives-home.real $T/root/accounts
 # (first a stand-in for drives-home, which says how the drives helper called it: its arguments, what came on its
 # standard input, its environment)
 printf '#!/bin/sh\nk=$(cat | md5sum | cut -c1-8)\necho "dh $*|in=$k|path=$PATH|leak=$LEAKME|uid=$(id -u)" >> %s/calls\necho made\nexit 0\n' $T > $T/root/drives-home; chmod 700 $T/root/drives-home
@@ -116,6 +118,16 @@ b=0; for a in "vault-unlock|$K" "vault-feature|/dev/sda" "vault-prepare|/dev/sda
 ok "...any argument for them (a key, a device, a checksum): refused, nothing run" "$([ $b = 0 ] && [ -z "$(calls)" ] && echo 1)" "$b"
 printf 'uABCdef12 1003 moved\nuOTHER999 1005\n' > $T/aumap
 
+# ---- 1.6.1 accounts: the accounts helper's checks (refusals only here: what it does is checked below with the API, in
+# this namespace's copy of /etc, and by users59_t.sh with US_VIA=helper)
+A=$T/root/accounts; b=0
+for x in '../x' 'guest' 'shared' 'a b' 'u;id' "$(printf 'u%.0s' $(seq 81))" ''; do for op in sync start; do printf '%s\n' "$x" | $A $op >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $op $x)"; }; done; done
+printf 'uABCdef12' | $A sync >/dev/null 2>&1; [ $? = 2 ] || b=1; $A sync extra </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1
+for x in '../../etc' "app:x'; id; '" '/etc/passwd' ''; do $A keyring-forget "$x" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: keyring-forget $x)"; }; done
+$A keyring-list now </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1; $A frob </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1
+ok "A1. accounts: a list with an id that is not one (.., the guest, shared, a space, odd characters, too long, empty, no last newline), extra arguments, a saved password's id that is not one, an unknown action: refused" "$([ $b = 0 ] && echo 1)" "$b"
+ok "...said in the health log (Security)" "$([ "$(logged 'accounts helper refused')" -ge 20 ] && echo 1)" "$(logged 'accounts helper refused')"
+
 # ---- the updates helper's checks
 U=$T/root/updates
 for c in check download rollback stable-info to-stable status speedtest boot-ok; do env -i $U $c >/dev/null 2>&1 || echo "rc $c"; done > $T/u.rc; c=$(calls)
@@ -151,6 +163,7 @@ int main(int argc, char **argv)
 	if (m < 3) { puts("nofd"); return 3; }
 	if (!strcmp(argv[1], "ok")) { const char *a[] = { "drives", "mount", "sdb1", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 3)); }
 	else if (!strcmp(argv[1], "shell")) { const char *a[] = { "sh", "-c", "id > /tmp/rh-pwned", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 3)); }
+	else if (!strcmp(argv[1], "acc")) { const char *a[] = { "accounts", "sync", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 3)); }
 	else if (!strcmp(argv[1], "dh")) { const char *a[] = { "drives-home", "lock", "uABCdef12", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 3)); }
 	else if (!strcmp(argv[1], "dots")) { const char *a[] = { "../drives", "mount", "sdb1", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 3)); }
 	else if (!strcmp(argv[1], "magic")) { const char *a[] = { "drives", "mount", "sdb1", NULL }; n = req(b, a); b[0] = 'X'; printf("%d\n", ask(m, b, n, 3)); }
@@ -178,6 +191,8 @@ rm -f /tmp/rh-pwned; h=$(logged 'rootd refused'); o=$(RD shell)
 ok "13. a helper that is not one of the list (sh -c ...): refused (254), nothing run, said in the health log" "$([ "$(echo "$o" | tail -1)" = 254 ] && [ ! -e /tmp/rh-pwned ] && [ "$(logged 'rootd refused')" -gt $h ] && echo 1)" "$o"
 o1=$(RD dots); o2=$(RD magic); o3=$(RD fds); o4=$(RD long)
 ok "14. a name with \"..\", a malformed request, one without its three descriptors, an argument over 4096 bytes: refused" "$([ "$(echo "$o1" | tail -1)" = 254 ] && [ "$(echo "$o2" | tail -1)" = 254 ] && [ "$(echo "$o3" | tail -1)" = 254 ] && [ "$(echo "$o4" | tail -1)" = 254 ] && [ -z "$(calls)" ] && echo 1)" "$o1 $o2 $o3 $o4"
+o=$(printf 'a b\n' | RD acc)
+ok "14c. rudolf-rootd runs the accounts helper for rudolfd (here a list it refuses: 2)" "$([ "$(echo "$o" | tail -1)" = 2 ] && echo 1)" "$o"
 o=$(RD dh)
 ok "14b. drives-home asked for by its own name (it is the drives helper's only): refused (254), nothing run" "$([ "$(echo "$o" | tail -1)" = 254 ] && [ -z "$(calls)" ] && echo 1)" "$o"
 o=$(RD uid)
@@ -232,7 +247,7 @@ hstate() {
 	cat /run/rudolf/home-session 2>&1; sed 's/^DBUS_SESSION_BUS_ADDRESS=.*/DBUS (a bus)/' /run/rudolf/acct-session.env 2>&1; ls /home/rudolf/Documents; ls -A /run/rudolf/home-keys 2>&1
 }
 hprobe() {
-	hpost 'home/unlock?acct=uABCdef12&session=1' "$K1"; hstate
+	hpost 'home/unlock?acct=uABCdef12&session=1' "$K1"; hstate; api GET keyring/list; grep -h '^acct' /etc/passwd /etc/group /etc/shadow | sort
 	api GET home; hpost 'home/unlock?acct=uOTHER999' "$K2"; hpost 'home/unlock?acct=uOTHER999' "$K1"; hpost 'home/unlock?acct=uLINKed01' "$K1"
 	hpost 'home/unlock?acct=guest' "$K1"; hpost 'home/unlock?acct=uABCdef12&session=1' "$K1"
 	hpost 'home/lock?acct=uABCdef12'; hstate; hpost 'home/lock?acct=uOTHER999'; hpost 'home/lock?acct=uNOTHERE1'; api GET home

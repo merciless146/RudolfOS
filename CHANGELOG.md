@@ -19,6 +19,9 @@ Summary: In progress.
   Settings › Security (and preparing the drive for it) are done by the drives helper as root, no longer
   by rudolfd, which reads every request of the desktop: the key goes to it on a pipe, never as an argument, and the
   account is checked again there (a removed account is refused). Nothing changes on screen.
+- Security: the accounts' own Linux users (made and removed with the accounts, written into the system's user list,
+  their folders given to them) and Settings › Privacy › Saved passwords for apps are handled by a helper of their
+  own, no longer by rudolfd; it is asked only when an account comes or goes. Nothing changes on screen.
 - Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
   rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
   starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own

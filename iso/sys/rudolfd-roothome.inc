@@ -21,12 +21,14 @@
  * put on an older system by hand) and rudolfd is root, it does the work itself as before. */
 static void dl_store_state(void);
 static int root_home_here;   /* 1: this process is drives-home itself (rudolf-drives-home.c sets it) */
-static int root_home_fwd(void)
+/* 1: rudolfd asks the helper NAME (it is there, or rudolfd is not root); 0: it does the work itself as before */
+static int root_have(const char *name)
 {
 	if (root_home_here) return 0;
-	char p[PATH_MAX]; snprintf(p, sizeof p, "%s/drives-home", RD_ROOT_DIR);
+	char p[PATH_MAX]; snprintf(p, sizeof p, "%s/%s", RD_ROOT_DIR, name);
 	return !access(p, F_OK) || geteuid() != 0;
 }
+static int root_home_fwd(void) { return root_have("drives-home"); }
 /* the helper's status (-1: it could not be asked), its one line of answer in out; in: its standard input */
 static int root_home_ask(const char *const argv[], const char *in, size_t inl, char *out, size_t on)
 {
@@ -98,3 +100,21 @@ static int root_vault_prepare(void)
 	return root_home_ask(av, NULL, 0, o, sizeof o) ? 1 : 0;
 }
 static void root_vault_move(void) { const char *av[] = { "drives", "vault-move", NULL }; root_job("vault", av); }
+/* 1.6.1 (Part 11, accounts): the accounts' Linux users (rudolfd-users.inc's au_start and au_sync) through the accounts
+ * helper (rudolf-accounts.c: /usr/lib/rudolf/root/accounts). rudolfd reads the page's accounts (it reads the page's
+ * storage; the helper never does) and hands their ids on, one a line on standard input ("-": the page's list could not
+ * be read); the helper checks each again and does the rest from the account list (/persist/etc/rudolf/account-users):
+ *   accounts sync      the users made and removed as the accounts are (status 1: something changed)
+ *   accounts start     at rudolfd's start: that, then every user into /etc and the move of existing accounts' folders
+ *   accounts keyring-list | keyring-forget ID   Settings › Privacy › Saved passwords for apps, as the account's user
+ * -2: the helper did not start (not there, or refused by its confinement: plan Part 20's list without it) and rudolfd
+ * is root: rudolfd does it itself, as before. */
+static int root_accounts(const char *op, char (*ids)[80], int ni)
+{
+	str in = {0}; sadd(&in, "%s", ni < 0 ? "-\n" : "");
+	for (int i = 0; i < ni; i++) sadd(&in, "%s\n", ids[i]);
+	const char *av[] = { "accounts", op, NULL }; char o[64];
+	int st = root_home_ask(av, in.b, in.n, o, sizeof o); free(in.b);
+	if ((st < 0 || st == RR_NOSTART) && geteuid() == 0) { fprintf(stderr, "rudolfd: the accounts helper did not start: rudolfd does it itself\n"); return -2; }
+	return st == 1 ? 1 : 0;
+}
