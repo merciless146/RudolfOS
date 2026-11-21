@@ -81,7 +81,9 @@ if(XFB)XFB.onmessage=e=>{const m=e.data||{};if(m.t=='changed')try{EXPL.forEach(f
 function xfChanged(){try{EXPL.forEach(f=>f())}catch(e){}if(typeof ONEAPP!='undefined'&&ONEAPP&&XFB)try{XFB.postMessage({t:'changed'})}catch(e){}}
 /* Cut and Copy: one clipboard for every window (the pages of the native desktop share their storage) */
 const xfFcK=()=>'bd95fc:'+(typeof uid=='function'&&USER?uid():'');
-function fcPut(){if(!(typeof ONEAPP!='undefined'&&ONEAPP))return;try{FC.t=Date.now();localStorage.setItem(xfFcK(),JSON.stringify({op:FC.op,items:FC.items||[],r:FC.r||null,t:FC.t}))}catch(e){}}
+function fcPut(){if(!(typeof ONEAPP!='undefined'&&ONEAPP))return;try{FC.t=Date.now();localStorage.setItem(xfFcK(),JSON.stringify({op:FC.op,items:FC.items||[],r:FC.r||null,t:FC.t}))}catch(e){}
+ /* (1.6.1 Part 28) the native shell's desktop shows Paste while there is something to paste */
+ try{if(typeof oaNative=='function'&&oaNative())oaPost({op:'fc',n:String(FC.op?(FC.r&&FC.r.items?FC.r.items.length:(FC.items||[]).length):0)})}catch(e){}}
 function fcTake(){if(!(typeof ONEAPP!='undefined'&&ONEAPP))return;try{const o=JSON.parse(localStorage.getItem(xfFcK())||'null');if(o&&(o.t||0)>(FC.t||0)){FC.op=o.op;FC.items=o.items||[];FC.r=o.r||null;FC.t=o.t}}catch(e){}}
 /* ---------- the transfer ----------
    src: {s:'C', p:[C: path]} or {s:'R', base:'/folder', name, dir, size, mtime}, all from one place (srcR: that place, for R);

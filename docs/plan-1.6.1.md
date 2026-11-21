@@ -1836,6 +1836,46 @@ part keeps to its own functions (desktop/blzbox61.js) and uses a small secret ch
   them; turn it off, Forget: nothing listed; Developer mode: a test-computer command proposed in the chat, shown whole with its
   risks, refused, then allowed.
 
+### 28. File Explorer to the desktop: drag and Paste (added on 2026-11-21)
+The owner, 2026-11-21 (stopping the final beta for it): "Click-dragging items from the file explorer directly to the desktop should
+place the items onto the desktop. When people click-drag select items in the file explorer and use the right-click menu to cut/copy
+them, they should also be able to see the paste option when they right-click on the desktop, with the pasted items being added."
+On Standard, Native and Lite alike (desktop/deskxfer61.js; rudolf-native's desktop).
+- **Dropped on the desktop's empty area:** into the account's Desktop folder, by the rules of a drop on an Explorer window showing
+  it (Part 22): from C: a move (System items are not moved), Ctrl a copy; from a drive, the Games folder or a folder of this
+  computer xfer61.js's checked transfer (a move copies, compares and then removes; a read-only place's files are copied), with the
+  progress window; names that clash as Explorer names them. The icons: the first in the cell under the pointer, the others the
+  nearest free cells (freeCell, as the desktop places icons), kept as any icon's place. On a desktop folder's icon: into that
+  folder (highlighted while over it); on the Trash: C:'s items into the Trash (as Explorer's Trash; a drive's items are not
+  taken there). Explorer's own check before writing (needWrite: "That folder belongs to another account.").
+- **Paste:** the desktop's menu has Paste (greyed while File Explorer's clipboard FC holds nothing), at the cell the menu was
+  opened over; Ctrl+V on the desktop (the icons where new ones go); Cut moves and empties the clipboard, Copy keeps it. A desktop
+  folder's menu: Paste into folder. A desktop file's menu: Cut and Copy (the chosen files; Ctrl+X/C), the same clipboard, so
+  Paste in File Explorer takes them.
+- **Native:** the shell's desktop is the drop target for a drag from one of its own windows (an Explorer window): it says move
+  or copy (Ctrl), highlights a folder or the Trash, and on the drop asks the page the drag came from to do it (__deskDrop: the
+  cell in the shell's grid, the folder or the Trash); the page writes the files and gives the new icons' cell and names with its
+  list (oaCatalog's "place"), which the shell places among its own icons (di_load, as freeCell) and keeps. The pages tell the shell
+  how many items the clipboard holds (op "fc"), so its Paste is greyed as Standard's. Paste, Paste into folder, Cut and Copy in the
+  shell's menus and Ctrl+V, Ctrl+C, Ctrl+X on the desktop are the page's own items, done by the shell's hidden page (as New
+  folder). A click on the desktop now gives it the keyboard (as Standard's page), the window in front still shown in use.
+- **Tests:** iso/qt/shell2/explorer-desk161_t.js (Chromium, xdrag161_t.js's stand-in rudolfd, 42 checks: dragging one, several
+  (Ctrl+click, the selection box) and a folder; moved, Ctrl copied, a USB drive's file moved after it is checked, Ctrl copied, a
+  read-only place's copied; icons at the drop point and next to it; a desktop folder, the Trash; a System item and a place that
+  may not be written refused; Cut, Copy and Paste, Ctrl+V, Paste into folder, names that clash; Cut and Copy on the desktop, Paste in
+  Explorer; the desktop's own drags as before; Native's pages: the shell's drop done by the Explorer page, the places given, the
+  hidden page's Paste, Paste into folder and Cut); iso/qt/webkit/xdrag61_ci.py (Lite in WebKitGTK, real mouse: a drag onto the
+  desktop, Ctrl+drag, Copy and the desktop's Paste); iso/qt/host/xdesk161_t.sh (rudolf-native on Xvfb, real mouse: the drag
+  across windows onto the desktop, a folder, the Trash, Ctrl; the shell's Paste greyed then shown, Paste at the menu's cell,
+  Ctrl+V after Cut, Paste into folder, a desktop file's Copy pasted in Explorer; then Standard's page given the same steps,
+  iso/qt/native/explorer-desk161_std.js: the same folders and the same icon places), run by .github/workflows/xfer-check.yml.
+- **Not done:** on Native, Paste from the shell's menu runs in its hidden page, which draws no progress window (a long Paste from a
+  drive ends with its notification, as on Standard; a drag's progress window shows in the Explorer window, as Part 22's). A desktop
+  icon dropped on an Explorer window still opens nothing and moves no file (as before, on both engines).
+- **Status (2026-11-21, branch explorer-to-desktop):** built, for the owner's checks on the Vivobook (Standard, Native and Lite):
+  drag a file from File Explorer to the desktop, and onto a desktop folder; select several with the selection box, Copy, right-click
+  the desktop, Paste; Cut and Paste (and Ctrl+V); a USB drive's file dragged to the desktop.
+
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
   1.6.0 instead"): docs/plan-1.6.0.md Part 22.
@@ -1873,3 +1913,5 @@ part keeps to its own functions (desktop/blzbox61.js) and uses a small secret ch
 13. Part 27 (Blitzen's code runs, links and actions sandboxed): one PR (blitzen-sandbox), before the next beta (the owner, 2026-11-21),
     then the owner's checks on the Vivobook; Part 26 (Blitzen's secret guards, another session's) beside it.
 14. Part 26 (Blitzen hardened against giving away secrets): one PR, then the owner's checks on the Vivobook.
+15. Part 28 (File Explorer to the desktop: drag and Paste): one PR (explorer-to-desktop), before the final beta (the owner stopped
+    the final beta for it, 2026-11-21), then the owner's checks on the Vivobook.

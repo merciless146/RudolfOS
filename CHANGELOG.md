@@ -5,6 +5,19 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- New: File Explorer to the desktop (docs/plan-1.6.1.md Part 28, the owner, 2026-11-21): items dragged from a File Explorer window
+  (one, or several chosen with the selection box, Ctrl or Shift) and dropped on the desktop go into your Desktop folder, as a drop on
+  a File Explorer window would put them there: from C: moved (copied with Ctrl), from a USB drive, the Games folder or a folder of
+  this computer by File Explorer's checked transfer with its progress window (a read-only place's files copied), names that clash
+  named as File Explorer names them (NAME - COPY.EXT). The icons appear where they were dropped (the first in the cell under the
+  pointer, the others next to it) and keep that place. Dropped on a desktop folder's icon they go into that folder, on the Trash
+  into the Trash. After Cut or Copy in File Explorer (its menu, the toolbar, Ctrl+X/C), the desktop's right-click menu has Paste
+  (greyed while nothing is cut or copied), and Ctrl+V on the desktop pastes too: the icons where the menu was opened; Cut moves
+  and empties the clipboard, Copy copies and keeps it. A desktop folder's menu has Paste into folder, a desktop file's Cut and
+  Copy (one clipboard: Paste in File Explorer takes them). On Standard, Lite and Native alike: on Native the shell takes the
+  drop from the Explorer window, whose page does the transfer, and gives the icons their places; its menus' Paste, Cut, Copy and
+  Paste into folder are the page's. Fixed on Native: a click on the desktop gives it the keyboard, as on Standard (Ctrl+V,
+  Delete and F2 on the desktop went to the window in front before).
 - Security: Blitzen never shows or sends a private key, a token or one of this computer's secrets, whoever asks or
   however (social engineering, a page, file, mail or log that tells it to, a key split up, spelled out, encoded or in a code
   block). rudolfd hides them in what Blitzen is given and in what it writes, before any of it is shown, spoken, kept or
