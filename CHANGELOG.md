@@ -5,6 +5,20 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Native: idle windows give their memory back. Notepad or File Explorer minimized, or hidden behind another window, for a
+  while (Settings › System › Idle windows: on by default on computers with under 6 GB of memory, after 10 minutes) is closed
+  behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size
+  and place. Never with unsaved changes, a dialog, sound or video playing, a call, a download or a transfer; Oracle and Linux,
+  Debian, Flatpak and Wine apps are never touched. Task Manager shows such a window as "Resting (no memory used)".
+- The desktop page is 870 KB smaller: the Quake engine and the Galaxy Map's universe are files of their own, read only when
+  Quake or the Galaxy Map opens (every window of the native desktop, and Standard's page, parsed them before). Each window
+  of the native desktop uses about 5 MB less memory.
+- Native: the shell's hidden pages are one. The desktop's service page, the portal's page (a Linux or Flatpak app's
+  questions, file dialogs and links) and the start-up page (the notice after an update) were three pages each loading the
+  whole desktop; now one page does what each did. The quick settings' switches, Do not disturb and Clear all, pinning,
+  muting from the taskbar, the desktop's menus, renaming, dropping onto the Trash, files dropped from Linux apps and the
+  start menu's search are done by that page at once, instead of a page of the whole desktop loaded for each. Less memory
+  (on the test computer 110 MB instead of 170 MB with no window open, and no 100 MB peak for each switch).
 - Security: signing in and out with your files on the disk (the encrypted folder opened with your key, your Oracle
   folder, Linux apps' folders, your account's own Linux user's session) and opening the encrypted folder of
   Settings › Security (and preparing the drive for it) are done by the drives helper as root, no longer

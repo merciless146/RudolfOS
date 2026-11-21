@@ -1215,6 +1215,78 @@ appear that shows file transfer progress." On Standard, Native and Lite alike.
   Vivobook:** drag a file from Downloads into the Games (Emu library) window and back; box-select several files and drag
   them; right-click Cut and Paste across windows; watch the progress window; Ctrl+drag copies.
 
+### 23. The native desktop's memory (added on 2026-11-21)
+The owner, 2026-11-20, from the Vivobook (Rudolf OS 1.6.0, Native, 3.3 GB, MemAvailable 1.48 GB): six WebKitWebProcess processes,
+one per window (the desktop, the taskbar's pages, Task Manager, the shell's hidden pages do-svc, do-portal, do-start, ...), each
+250-380 MB settled and 400-470 MB at its start, about 1 GB together. Every window loads the whole desktop page (iso/www/index.html,
+about 4 MB, built from base_v24.html and the ~150 modules of build19.py's list) and then shows one app. #530 (WebKit's memory
+pressure limit following MemTotal, the start-up pages one after another) is in; RAM compression (zram, rudolf-memguard.c) exists.
+Three parts, one PR each, in this order:
+- **A. Fewer hidden pages** (the owner: "Add item 2"). **Done (2026-11-21, PR "Native: one hidden page").** The service page
+  (do-svc), the portal's page (do-portal) and the start-up page (do-start) are one page, #app=do-bg (oneapp59.js: oaSvcRun,
+  oaPortalRun, oaStartRun with &start=1 for a signed-in account that is not Guest, oaSrchRun), opened at the sign-in as the
+  start-up page was, or by bg_tick once no other page is starting (page_starting, up to 10 s), again when it ends or does not say
+  both "svc ready" and "portal ready" within 90 s; svc's since= kept. The shell's single actions that had a page of the whole
+  desktop loaded unseen for each (do-qs, do-nc, do-pin, do-mute, do-desk, do-fs's drop onto the Trash, rename and xdrop,
+  do-short) and the start menu's search (do-srch) go to it (rudolf-native.c bg_route: oneapp59.js __oaDo with the same op and
+  address; a page of its own only while it is not ready, or if it does not take the action). Unchanged: do-portalapp (a real
+  window), do-saver, do-run, do-pwr, Open with and a file opened from the search (they show a window), modal pages, PT_SHOWN.
+  Measured on the host (Xvfb, WebKitGTK 2.52.6, --draw=soft, the stand-in rudolfd, 30 s after signing in, no app window):
+  170 MB PSS for the hidden pages before, 110 MB after; the peak while Night light was switched on and off 208 MB before (a
+  page loaded for each switch), 111 MB after. On this host WebKitGTK already puts every page of rudolf-native in one web
+  process (native59_t.sh test 21), so the Vivobook's count of six is checked there (the owner's checks). Tests:
+  iso/qt/host/bgpage161_t.sh (one hidden page, the web processes counted, each action done there, its process killed, signing
+  out and in), svc160_t.sh and nportal160_t.sh with the new name, native59_t.sh, native160_t.sh, xdrop161_t.sh.
+- **B. Each window loads only what it needs** (the owner: "Yes"): the shared core plus the window's app, not every app.
+  **Measured first (2026-11-21, the host: Xvfb, WebKitGTK 2.52.6, --draw=soft, the stand-in rudolfd; each window in a web process
+  of its own, as on the Vivobook, PSS / RSS 25 s after it opened):** the hidden page 90 / 213 MB, Task Manager 87 / 214 MB
+  (shown after 873 ms), Settings 109 / 241 MB (1139 ms), File Explorer 85 / 219 MB (882 ms), Notepad 80 / 213 MB (1123 ms),
+  Oracle's page in WebKit 81 / 216 MB (1133 ms); 506 MB PSS for the six. What a window's process is made of (rudolf-webkit, one
+  process): a plain page 34 / 139 MB (WebKit itself), the desktop page's HTML and styles without its code 39 MB, its code parsed
+  but not run 51 MB, the page's own code before the modules run 67 MB, all of it 91 MB. The page's ~150 modules' code is not the
+  big part: a page built without 45 of them (the emulators, Blitzen, the office and phone apps, Oracle's extras, Task Manager,
+  about 600 KB) gave Notepad 78 MB instead of 80 and Settings 75 instead of 109 (noise of ±10 MB between runs); the JavaScript
+  heap is 6-8 MB in every window (JSC's GC log; Chromium's: 4.4 MB). Most of a window is WebKit's own process (34 MB PSS) and
+  what running the page builds (about 40 MB), so a window costs about 80 MB PSS however little of the page it loads.
+  **Stage 1, done (2026-11-21, PR "Native: the page's big payloads as files"):** the page's last big inline payloads are files
+  beside it (www/a/, named by their contents, read only by their app): the Quake engine (632 KB of WebAssembly as base64:
+  aBytes, synchronous as its checks are) and the Galaxy Map's universe (261 KB: aFetch). The page is 3.39 MB instead of 4.26 MB
+  (Standard's too: the same page). Every window 4-6 MB less (483 MB PSS for the six instead of 506). The files are in iso/www,
+  so in desktop.sfs with its dm-verity tree (systools/verity.py), whose root hash is in the signed release list (make_release.py),
+  as 1.5.9's a/ files are; a page installed by hand from Settings › Update (an .HTML file, not a release) reads them from the
+  release's own www/a/ (rudolfd's fallback), so such a page whose payloads differ says "could not be loaded" for that app.
+  Test: iso/qt/host/chunks161_t.sh (neither payload in the page; Notepad's window never reads them; the Galaxy Map and Quake in
+  native windows read and use theirs; a missing file is said; no error).
+  **Left (each its own PR, for the owner's decision with the numbers above):** stage 2, the modules each app needs found by
+  exercising every app (a page per app built from the core and its modules, loaded by oneapp59.js; Standard keeps the whole page):
+  measured potential 2-5 MB per window, because the modules mostly patch each other (win, termUI, appsPanel, startMenuApps...) and
+  the core is most of the code; stage 3, what the page builds at its start in an app's window (the desktop's icons, the start
+  menu, the widgets: about 16 MB before the modules and 24 MB with them at Lite's sign-in screen) left out where the window does
+  not show it. The bigger saving on the Vivobook is the number of processes (one shared on this host; six there) and Part C.
+- **C. Idle windows give their memory back** (the owner: "if it won't cause any issues with Oracle or other Rudolf/Debian/
+  Flatpak/Wine apps, then add it"). **Done (2026-11-21, PR "Native: idle windows give their memory back").** rudolf-native.c
+  rest_tick (every 2 s): a Rudolf app's window minimized, or covered by one other window (or a full-screen one), for the time
+  set (Settings › System › Idle windows: on by default under 6 GB of memory, after 10 minutes; 5 to 60) asks its page
+  (rest61.js __oaRest) for where it is; when the page says it can rest, its view is closed (its page goes, and its web process
+  if it has one of its own: WebKit keeps no process without a page) and a view never loaded (no process) stands in it, the
+  app's colour over it. Shown again (focused, its taskbar button, no longer covered, its workspace), its page comes back as every
+  window's does (window.open from another window's page, into the same window: on_create's into), its address with &rest=
+  (its state) instead of &file=; the window's size and place never change. The apps that can (REST_APPS, the opt-in list):
+  Notepad (its tabs' files, the current one, the caret and the scroll; only with every tab saved) and File Explorer (its folder
+  on C:, one tab, one pane; nothing cut or copied); every scrolled box of the window comes back too. Never: an app not on the
+  list (Settings, the Terminal, the office apps, the games and emulators: they cannot say yet whether something would be lost),
+  Oracle ("browser", its WebKit window too), a program rudolfd runs (Linux, Debian, Flatpak, Wine, the Library's: X windows of
+  their own, their pages unseen, keys with ":"), the shell's hidden page and every do- page, the desktop and the taskbar (no
+  page); and never while the window is full screen, always on top or in a dialog over the screen (the shell), WebKit says it is
+  playing sound or using the camera, microphone or screen, or its page has unsaved changes, a dialog, a media element playing, an
+  AudioContext running, a live camera or microphone track, a call (RTCPeerConnection), a request still going (a download, an
+  upload), a transfer (xfer61.js xfRun), a job polled in the last 20 s (rudolfd's job: installs, the Debian apps, a stick, a
+  drive's copy; an update being installed). Task Manager shows the window as "Resting (no memory used)"; closing it closes at
+  once. Measured on the host: each window in a process of its own (as on the Vivobook) Notepad and File Explorer 90 + 90 MB PSS
+  (about 210 MB RSS each), their processes ended when resting (260 MB PSS for the three processes before, 98 MB for the one left);
+  with the processes shared (this host's) 258 MB before, 229 MB with two resting. Not on Lite (its windows are tabs of one
+  window: kept as they are). Test: iso/qt/host/rest161_t.sh.
+
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
   1.6.0 instead"): docs/plan-1.6.0.md Part 22.
@@ -1245,3 +1317,6 @@ appear that shows file transfer progress." On Standard, Native and Lite alike.
    Part 21's checks with the owner after each beta.
 10. Part 22 (File Explorer: dragging between windows, the selection box, the progress window): one PR, then the owner's
    checks on the Vivobook.
+11. Part 23 (the native desktop's memory): A (one hidden page), then B (each window only what it needs, in stages), then C
+   (idle windows give their memory back), one PR each, each checked on the Vivobook; B's stages 2 and 3 after the owner has
+   seen B's measurements.

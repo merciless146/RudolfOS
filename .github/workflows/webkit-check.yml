@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/qt/webkit/files61_ci.py', 'iso/sys/rudolf-portal.c', 'desktop/linux26.js', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/qt/host/native59_t.sh', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/qt/webkit/files61_ci.py', 'iso/sys/rudolf-portal.c', 'desktop/linux26.js', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/qt/host/native59_t.sh', 'iso/qt/host/bgpage161_t.sh', 'iso/qt/host/chunks161_t.sh', 'iso/qt/host/rest161_t.sh', 'desktop/rest61.js', 'desktop/build19.py', 'desktop/svc60.js', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -85,6 +85,21 @@ jobs:
           sh iso/qt/host/native59_t.sh | tee native-result.txt; r=$?
           echo "::notice title=Native desktop engine::$(tail -1 native-result.txt) — $(grep -E '^FAIL' native-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
           grep -q ' passed$' native-result.txt && ! grep -q '^FAIL' native-result.txt
+      - name: The native desktop's one hidden page (1.6.1, docs/plan-1.6.1.md Part 23 A)
+        run: |
+          sh iso/qt/host/bgpage161_t.sh | tee bgpage-result.txt
+          echo "::notice title=Native's hidden page::$(tail -1 bgpage-result.txt) — $(grep -E '^NOTE|^FAIL' bgpage-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' bgpage-result.txt && ! grep -q '^FAIL' bgpage-result.txt
+      - name: The page's payloads as files, in native windows (1.6.1, docs/plan-1.6.1.md Part 23 B)
+        run: |
+          sh iso/qt/host/chunks161_t.sh | tee chunks-result.txt
+          echo "::notice title=Native's payload files::$(tail -1 chunks-result.txt) — $(grep -E '^FAIL' chunks-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' chunks-result.txt && ! grep -q '^FAIL' chunks-result.txt
+      - name: Idle windows give their memory back (1.6.1, docs/plan-1.6.1.md Part 23 C)
+        run: |
+          sh iso/qt/host/rest161_t.sh | tee rest-result.txt
+          echo "::notice title=Native's idle windows::$(tail -1 rest-result.txt) — $(grep -E '^FAIL' rest-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' rest-result.txt && ! grep -q '^FAIL' rest-result.txt
       - name: Task Manager's computer check on the native desktop (1.6.0, the owner's Vivobook report of 2026-11-16)
         run: |
           sudo apt-get install -y -qq pulseaudio pulseaudio-utils gstreamer1.0-pulseaudio >/dev/null || true
