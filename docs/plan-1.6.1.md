@@ -219,6 +219,34 @@ workflow dlzip-check.yml. Left: a ZIP in a home folder kept on the disk (1.5.6 a
 whose large downloads home56.js moves into the home) is not listed yet: it keeps the old message; BusyBox's unzip drops ".."
 and a leading "/" from names itself, so with it such entries land inside the folder rather than refusing the ZIP.
 
+**Built (2026-11-21, branch oracle-reader): item 7, reader mode** (desktop/orareader61.js, libs/readability). A 📖 button after the
+address box when the page has an article; it, F9 (in Oracle or inside a website) or ☰ › Reader mode shows the article alone, in the
+tab's own frame, the address unchanged; ✕ Exit reader or F9 gives the page back as it was (a website's tab is only hidden meanwhile:
+nothing is loaded again, what was typed in it is still there); a link clicked opens in the tab and leaves reader mode.
+- **Whether a page has an article:** when it has loaded the tab checks itself (the shell's READABLE_JS, rudolf-webkit's the same:
+  Readability's isProbablyReaderable rewritten small, run in the page's isolated world) and says so (tabev `readable`); an .HTM
+  file on C: is checked by the desktop. The page is read only when the person asks: op `readhtml` gives its HTML as it is now
+  (at most 4 MB), its address and title.
+- **Reading it:** Mozilla's Readability 0.6.0 (libs/readability, unchanged from npm's @mozilla/readability, Apache License 2.0:
+  credited in About Oracle and in libs/readability/README.md) runs in Oracle's page on an inert copy (DOMParser: nothing in it runs
+  or loads); it is a file beside the page (iso/www/a/, by build19.py), loaded the first time reader mode is used, so the page is
+  not larger for windows that never use it. Its HTML goes through safeHtml (sanitize59.js), forms, fields, styles, audio, video and
+  canvases are left out, links and pictures made whole, then safeHtml again (htmlsinks reviewed).
+- **Showing it:** an Oracle page of its own in the tab's frame (srcdoc, sandboxed: scripts only, no origin of its own) with a
+  Content-Security-Policy: only Oracle's own script (a nonce per page) runs, pictures load from the site as the page loaded them,
+  nothing else (no fonts but the one given, no frames, no forms). Styles: A− A+, Narrow / Medium / Wide, Serif / Sans / OpenDyslexic
+  (the desktop's own font, handed in as data), Light / Sepia / Dark (dark when Rudolf's dark theme is on), kept in the account's
+  settings (S.oreader: the look only, never a page). Read aloud: sentence by sentence with ttsSpeak (tts25.js), the sentence
+  highlighted (CSS highlights), Stop. Print: the article alone through print25.js's dialog (Rudolf OS's print service).
+- Private and Tor windows: available; nothing is kept. A website in a plain frame (no shell): no button (its page cannot be read).
+- Tests: iso/qt/shell2/orareader61_t.js (32: the check, the article, nothing of the page runs (a script, onerror, javascript:, a
+  form), the CSP, styles, read aloud, print, a link, exit, F9, dark, About, a file, a plain frame), iso/qt/webkit/reader61_ci.py (6:
+  rudolf-webkit), iso/qt/native/orareader61_t.sh (12: the real shell on Standard and Native: F9 in a website, the article, back as
+  it was); oracle58, private59, orahover61, oraacct60, tor59, bmadd59, oraclefile60 unchanged. Workflow oracle-reader-check.yml.
+- **The owner's checks (Vivobook):** on Standard, Native and Lite: a long news article (the BBC, The Guardian, a Wikipedia article):
+  📖, the article, A+, Sepia and Dark, OpenDyslexic, Read aloud (the highlight follows), Print to a PDF, a link, ✕ Exit reader and
+  F9; a page with no article (a search page): no 📖.
+
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
 
 **Shipped in 1.6.0 (owner, 2026-11-17: "I do want to keep 446 and 447 in 1.6.0"):** rudolf-rootd with the drives' and
