@@ -8,6 +8,9 @@ Summary: In progress.
 - Fixed: Emu's "Open a file…" refused a ZIP or disc over 512 MB ("copy it in Files instead"). A ZIP or a disc image
   (.chd, .cdi, .gdi, .cue, .pbp, N64) chosen there is now added to the game library (a ZIP is unpacked) and the game
   added starts; nothing that large is read into the page. A 7-Zip file is refused with a reason.
+- Changed: the most a "choose a file" window takes into an app at once follows the computer's memory: about a sixth
+  of it (no more than 40% of what is free at that moment, and never over 2 GB) instead of 512 MB for every computer. The
+  Vivobook (3.3 GB) keeps about 512 MB; 8 GB about 1.2 GB; 16 GB and more 2 GB. The message says why a file is too large.
 - New: Oracle's status line (bottom left, where it says "Done") shows where a link goes while the mouse is over it:
   "Goes To: <address>". It covers links, image-map areas, a form's submit button and links in ads and other frames, on
   websites and Oracle's own pages; then the status line goes back to what it said. On Standard, Native and Lite.
