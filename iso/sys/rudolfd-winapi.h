@@ -326,6 +326,7 @@ static const char *const WINAPI_PAGE[] = {   /* the desktop's page: Standard, Li
 	"web/show",
 	"web/status",
 	"web/strut",
+	"webkey",
 	"wifi/adapter",
 	"wifi/band",
 	"wifi/band*",

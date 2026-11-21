@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Security: signing in and out with your files on the disk (the encrypted folder opened with your key, your Oracle
+  folder, Linux apps' folders, your account's own Linux user's session) and opening the encrypted folder of
+  Settings › Security (and preparing the drive for it) are done by the drives helper as root, no longer
+  by rudolfd, which reads every request of the desktop: the key goes to it on a pipe, never as an argument, and the
+  account is checked again there (a removed account is refused). Nothing changes on screen.
 - Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
   rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
   starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own
