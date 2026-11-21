@@ -50,3 +50,20 @@ rudolf-native never reads that copy itself, and never sees a password hash or a 
 | `GET desktop/dropped?path=PATH` | (1.6.1, plan-1.6.1 Part 13) A file dropped from a Linux app onto the native desktop, for the page that keeps it (oneapp59.js `oaXdrop`): the file itself (at most 64 MB), read by the signed-in account's own Linux user, every step of the path opened without following a link. Only the account's own folder (under /home/acctUID, /persist/accounts/ID or Debian's /home/rudolf) and the drives (/media); Flatpak's document portal (/run/user/UID/doc/…, /run/flatpak/doc/… in a sandbox) is mapped to the real file it names (its `user.document-portal.host-path`), which must be one of those. Else `{"ok":false,"error":WHY}`: `nobody` (409; also the guest), `path` (400: not absolute, `.` or `..`, or too long to be whole), `outside`, `link`, `folder`, `unreadable` (403), `gone` (404), `too-large` (413). rudolfd-drop.inc. |
 
 `desktop/engine` and `desktop/priority` are older (1.5.7: Settings' desktop engine; Task Manager's priority).
+
+## ZIP files kept on the disk (1.6.1; rudolfd-dlzip.inc, dlzip.sh)
+A download larger than 1.5 MB stays in the account's folder (/home/rudolf/Downloads/.accounts/ACCT/NAME) and Downloads holds
+a reference to it (dl27.js). For such a ZIP (dlzip61.js): `name` is its name on the disk (no `/`, not hidden, no control
+characters), `acct` the account's folder (`dl_acct_ok`); the file must be a plain file there, its real path the account's
+folder's (no link on the way).
+
+| Request | What it does |
+|---|---|
+| `GET dl/zip?name=&acct=` | What is inside, read with `unzip -l` as the desktop user (never as root): `{"ok","items":[{"name","size","dir"}],"more","total","bytes"}`, at most 20,000 items (`more`: there are others; `total` and `bytes` count them all). Not a ZIP: 422. |
+| `POST dl/unzip?name=&acct=` | Extract here: the job `dl-unzip` (`GET job`), dlzip.sh with the paths in a root-only file. It checks the free space for the unpacked size, unpacks as the desktop user into a hidden folder in the account's folder, refuses entries with `..` or an absolute path, removes links, then moves each file flat into the account's folder under a free name ("name (2).ext"). Its log: `total N BYTES`, `progress I N PATH`, `dir PATH`, `file PATH<tab>NAME<tab>SIZE`, then `done N BYTES`, `stopped N BYTES` or `error MESSAGE`. 409 while another job runs. |
+| `POST dl/unzip?stop=1` | Cancel: the job stops before the next file (what was moved stays, and is in its result). |
+| `GET dl/unzipped` | The last extraction's whole result (the job's log is only its end): `{"ok","running","acct","dirs":[PATH],"files":[{"path","disk","size"}],"end"}`. |
+| `POST dl/unzipped` | The page has saved its references: the result is forgotten. |
+
+While an extraction runs, or its result has not been taken (at most 15 minutes), `GET dl/home?acct=` for that account says
+`"unzip":true`, and the page takes no file of that folder in as a download of its own (dl27.js `dlAdopt`, in every page).
