@@ -9,13 +9,14 @@ L=lambda f:open(os.path.join(here,f)).read()
 pinyin=open(os.path.join(here,'../libs/pinyin.min.json')).read()
 od=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Regular.woff2'),'rb').read()).decode()
 odb=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Bold.woff2'),'rb').read()).decode()
-mods=['core25.js', 'origin60.js', 'clock31.js', 'shell25.js', 'files25.js', 'apps25a.js', 'apps25b.js', 'a11y25.js', 'settings25.js', 'notey25.js', 'wp25.js', 'misc25.js', 'native25.js', 'props25.js', 'oext25.js', 'pkg25.js', 'sysupd25.js', 'tts25.js', 'print25.js', 'mail25.js', 'web25.js', 'linux26.js', 'wifi26.js', 'term26.js', 'emusnes26.js', 'emu26.js', 'blk2lua26.js', 'blitzpacks26.js', 'blitzen26.js', 'picker26.js', 'devices26.js', 'signin26.js', 'display26.js', 'shell26.js', 'tabs26.js', 'tm26.js', 'dl27.js', 'dlzip61.js', 'dlrm61.js', 'sb28.js', 'keep29.js', 'luau30.js', 'apps30.js', 'games30.js', 'boot30.js', 'stick30.js', 'drivecopy60.js', 'xfer61.js', 'hwcheck30.js', 'devlink40.js', 'osd31.js', 'net31.js', 'settings31.js', 'saver31.js', 'power31.js', 'wallpaper31.js', 'office45.js', 'notey45.js', 'web46.js', 'mem47.js', 'fonts47.js', 'weather47.js', 'name48.js', 'sec50.js', 'acct50.js', 'vault50.js', 'remote50.js', 'game51.js', 'bt51.js', 'lib52.js', 'tb54.js', 'desk54.js', 'home56.js', 'install56.js', 'tools56.js', 'storage56.js', 'rename56.js', 'keys56.js', 'accent56.js', 'appprops56.js', 'blitzdiag57.js', 'blitzknow60.js', 'blzdev60.js', 'errors57.js', 'apps57.js', 'net57.js', 'engine57.js', 'mobile58.js', 'apk58.js', 'tablet58.js', 'oracle58.js', 'private59.js', 'bmadd59.js', 'filedlg59.js', 'doctabs59.js','wplinks59.js', 'mictest59.js','keyring60.js', 'sysext60.js', 'startup60.js', 'usbprint60.js', 'gpudrv61.js', 'sanitize59.js', 'sound58.js', 'sndrs60.js', 'games58.js', 'lock58.js', 'aurora58.js', 'statue58.js', 'gamesleep59.js', 'gamemode61.js', 'pkgbox59.js', 'devmode59.js', 'sc60.js', 'qr61.js', 'otp60.js', 'fido61.js', 'oraenc60.js', 'call59.js','inhibit60.js', 'links60.js', 'phonecalls59.js', 'modem59.js', 'mobile60.js', 'messages60.js', 'hotspot59.js', 'devkey59.js', 'setsearch59.js', 'titlebar59.js', 'tbbtn59.js', 'litepoint60.js', 'oneapp59.js', 'panels61.js', 'rest61.js', 'tor59.js', 'oracleart60.js', 'tmtop57.js', 'spreng45.js', 'sprof45.js', 'spro45.js', 'pprof45.js', 'ppro45.js', 'oload60.js']
+mods=['core25.js', 'origin60.js', 'clock31.js', 'shell25.js', 'files25.js', 'apps25a.js', 'apps25b.js', 'a11y25.js', 'settings25.js', 'notey25.js', 'wp25.js', 'misc25.js', 'native25.js', 'props25.js', 'oext25.js', 'pkg25.js', 'sysupd25.js', 'tts25.js', 'print25.js', 'mail25.js', 'web25.js', 'linux26.js', 'wifi26.js', 'term26.js', 'emusnes26.js', 'emu26.js', 'blk2lua26.js', 'blitzpacks26.js', 'blitzen26.js', 'picker26.js', 'devices26.js', 'signin26.js', 'display26.js', 'shell26.js', 'tabs26.js', 'tm26.js', 'dl27.js', 'dlzip61.js', 'dlrm61.js', 'sb28.js', 'keep29.js', 'luau30.js', 'apps30.js', 'games30.js', 'boot30.js', 'stick30.js', 'drivecopy60.js', 'xfer61.js', 'hwcheck30.js', 'devlink40.js', 'osd31.js', 'net31.js', 'settings31.js', 'saver31.js', 'power31.js', 'wallpaper31.js', 'office45.js', 'notey45.js', 'web46.js', 'mem47.js', 'fonts47.js', 'weather47.js', 'name48.js', 'sec50.js', 'acct50.js', 'vault50.js', 'remote50.js', 'game51.js', 'bt51.js', 'lib52.js', 'tb54.js', 'desk54.js', 'home56.js', 'install56.js', 'tools56.js', 'storage56.js', 'rename56.js', 'keys56.js', 'accent56.js', 'appprops56.js', 'blitzdiag57.js', 'blitzknow60.js', 'blzdev60.js', 'errors57.js', 'apps57.js', 'net57.js', 'engine57.js', 'mobile58.js', 'apk58.js', 'tablet58.js', 'oracle58.js', 'private59.js', 'bmadd59.js', 'filedlg59.js', 'doctabs59.js', 'wplinks59.js', 'mictest59.js', 'keyring60.js', 'sysext60.js', 'startup60.js', 'usbprint60.js', 'printq61.js', 'gpudrv61.js', 'sanitize59.js', 'sound58.js', 'sndrs60.js', 'games58.js', 'lock58.js', 'aurora58.js', 'statue58.js', 'gamesleep59.js', 'gamemode61.js', 'pkgbox59.js', 'devmode59.js', 'sc60.js', 'qr61.js', 'otp60.js', 'fido61.js', 'oraenc60.js', 'call59.js', 'inhibit60.js', 'links60.js', 'phonecalls59.js', 'modem59.js', 'mobile60.js', 'messages60.js', 'hotspot59.js', 'devkey59.js', 'setsearch59.js', 'titlebar59.js', 'tbbtn59.js', 'mon61.js', 'litepoint60.js', 'oneapp59.js', 'panels61.js', 'rest61.js', 'lean61.js', 'tor59.js', 'oracleart60.js', 'tmtop57.js', 'spreng45.js', 'sprof45.js', 'spro45.js', 'pprof45.js', 'ppro45.js', 'oload60.js']
 mods.append('oraclosed61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's closed tabs (after oracle58.js: it adds to __oracleMenu)
 if os.path.exists(os.path.join(here,'i18n25.js')):mods.append('i18n25.js')
 mods.append('orafind61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's find in page (after oracle58.js: it adds to __oracleMenu)
 # 1.4.0: a top-level function defined in two modules replaces the earlier one without a word (the development
 # link's dlPoll replaced the downloads' dlPoll, so downloads from real tabs never finished): stop the build instead
 import re as _re
+mods.append('orareader61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's reader mode (after oracle58.js: it adds to __oracleMenu; Readability beside the page, below)
 _seen={}
 for _m in mods:
     for _n in set(_re.findall(r'^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)',L(_m),_re.M)):
@@ -26,6 +27,7 @@ for _m in mods:
 # and a stub of the same name loads the file, then calls the real one (which the file defines anew). A file that
 # cannot load says so, with Try again. lazyApp(group) loads one by hand (WordPro's "Insert a spreadsheet table" and
 # "Make a presentation" need SpreadsheetPro's and PresentPro's code).
+mods.append('orasession61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's session in the account's folder
 LAZY={'sheet':(['spreng45.js','sprof45.js','spro45.js'],'sheetApp','SpreadsheetPro'),'deck':(['pprof45.js','ppro45.js'],'deckApp','PresentPro')}
 LAZY_CODE={};LAZY_REG={}
 for _g,(_fs,_fn,_nm) in LAZY.items():
@@ -47,11 +49,14 @@ function lazyFail(name,g,retry){try{notify(name+' could not be loaded','Its file
 for _g,(_fs,_fn,_nm) in LAZY.items():
     _lz+=f"async function {_fn}(...a){{const me={_fn};try{{await lazyApp('{_g}')}}catch(e){{lazyFail('{_nm}','{_g}',()=>{_fn}(...a));return null}}if({_fn}===me)throw new Error('{_nm}: not loaded');return {_fn}(...a)}}\n"
     _lz+=LAZY_REG[_g]+'\n'
+mods.append('orablock61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's ad and tracker blocking; its list (desktop/orablock61.json, iso/systools/blocklist.py) put in below
 changes=open(os.path.join(here,'../CHANGELOG.md')).read()   # "What's new" and the notice after an update
 # 1.5.9: Search in Settings: the pages' sections and settings (made by iso/qt/shell2/setsearch59_t.js --write)
 _six=os.path.join(here,'settings-index.json');setidx=open(_six).read() if os.path.exists(_six) else '{}'
 code='const SETIDX='+json.dumps(json.loads(setidx),ensure_ascii=False).replace('</','<\\/')+';\nconst PINYIN_JSON='+json.dumps(pinyin)+';\nconst RCHANGES='+json.dumps(changes).replace('</','<\\/')+';\n'+'\n'.join('__svcMod('+json.dumps(m)+');\n'+L(m) for m in mods)
 code=code+'\n'+_lz+"\n__svcMod('base');"
+_n=code.count('const ORA_BLOCK_LIST = null;');assert _n==1,_n
+code=code.replace('const ORA_BLOCK_LIST = null;','const ORA_BLOCK_LIST = '+json.dumps(json.load(open(os.path.join(here,'orablock61.json'))),separators=(',',':')).replace('</','<\\/')+';')
 anchor="(function(){const d=document.createElement('div');d.className='ic tr';"
 rep(anchor,code+'\n'+anchor)
 # 1.6.0 (plan Part 12, item 12): svc60.js before the page's own code (it holds back the timers a native app window's page starts while it
@@ -175,6 +180,11 @@ assert 'QWASM_B64' not in s and 'GM_UNI\'' not in s and 'atob(GM_UNI)' not in s
 _EXT['text/javascript']='js'
 _LZ={_g:_out('data:text/javascript;base64,'+base64.b64encode(_c.encode()).decode()) for _g,_c in LAZY_CODE.items()}
 s=s.replace("const LAZY_DONE={},LAZY_P={};let LAZY={};","const LAZY_DONE={},LAZY_P={};let LAZY="+json.dumps(_LZ)+";",1)
+# 1.6.1 (Part 10): Mozilla's Readability (libs/readability, Apache-2.0) for Oracle's reader mode, a file beside the page read the first time it is used
+_n=s.count("const ORA_RDB_URL = '';");assert _n==1,_n
+s=s.replace("const ORA_RDB_URL = '';","const ORA_RDB_URL = '"+_out('data:text/javascript;base64,'+base64.b64encode(open(os.path.join(here,'../libs/readability/Readability.js'),'rb').read()).decode())+"';")
+# 1.6.1 (docs/plan-1.6.1.md Part 23 B, stage 2): the native desktop's apps' page, without the modules no app of it uses (oapage61.py)
+import oapage61;_EXT['text/html']='html';s,_oah=oapage61.build(s,L,_out)
 for _n in os.listdir(_A):
     if _n not in _keep:os.remove(os.path.join(_A,_n))
 open(O,'w').write(s);print(len(s),len(_keep),'files in a/')

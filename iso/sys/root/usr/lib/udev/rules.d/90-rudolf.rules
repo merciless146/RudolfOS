@@ -42,4 +42,4 @@ SUBSYSTEM=="net", ACTION=="add|remove", RUN+="/usr/lib/rudolf/udev-run /usr/lib/
 # a plain one's /dev/usb/lpN and device ID recorded for rudolf-print (usbprint). By the interface's class (INTERFACE, as
 # the kernel gives it, also when it goes) and by usblp's own devices
 SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_interface", ENV{INTERFACE}=="7/1/*", ACTION=="add|remove|bind", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/usbprint hotplug"
-SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", GROUP="0", MODE="0660", ACTION=="add|remove", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/usbprint hotplug"
+SUBSYSTEM=="usbmisc", KERNEL=="lp[0-9]*", GROUP="lp", MODE="0660", ACTION=="add|remove", RUN+="/usr/lib/rudolf/udev-run /usr/lib/rudolf/usbprint hotplug"

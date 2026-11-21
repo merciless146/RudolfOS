@@ -28,6 +28,35 @@ running() { pgrep -x ipp-usb >/dev/null 2>&1; }
 # ipp-usb's port for a device (its state file, VVVV-PPPP-..., "http-port = N")
 ippport() { for f in "$ST"/$1-$2-*.state "$ST"/$1-$2.state; do [ -f "$f" ] && sed -n 's/^ *http-port *= *\([0-9][0-9]*\).*/\1/p' "$f" | head -1 && return 0; done; return 1; }
 
+# 1.6.1 (docs/plan-1.6.1.md Part 9): ipp-usb's ports kept to 60000-60099 (the extension's settings say up to 65535), and a
+# new connection to them only from root (ipp-usb itself, rudolfd), the print queue's user (print, 952) and the desktop's
+# (rudolf): an account's Linux user prints through the queue, which holds it to its own jobs, not to the printer
+# directly (nftables, a table of its own: it stays when the firewall is switched off). RUDOLF_IPPUSB_CONF and
+# RUDOLF_USBPRINT_NFT (a file to write the rules to instead of loading them) for the host tests.
+CONF=${RUDOLF_IPPUSB_CONF:-/etc/ipp-usb/ipp-usb.conf}
+guard_rules() {
+	cat <<'E'
+table inet rudolfprint
+delete table inet rudolfprint
+table inet rudolfprint {
+	chain output {
+		type filter hook output priority filter; policy accept;
+		oif "lo" tcp dport 60000-60099 meta skuid { 0, 952, 1000 } accept
+		oif "lo" tcp dport 60000-60099 ct state new counter reject with tcp reset
+	}
+}
+E
+}
+ippusb_guard() {
+	[ -f "$CONF" ] && grep -q '^ *http-max-port *= *6[1-9]' "$CONF" && sed -i 's/^\( *http-max-port *= *\).*/\160099/' "$CONF"
+	if [ -n "$RUDOLF_USBPRINT_NFT" ]; then guard_rules > "$RUDOLF_USBPRINT_NFT"; return 0; fi
+	[ -n "$RUDOLF_USBPRINT_SYS" ] && return 0   # (a host test's stand-in sysfs: never the host's own rules)
+	command -v nft >/dev/null 2>&1 || return 0
+	nft list table inet rudolfprint >/dev/null 2>&1 && return 0
+	guard_rules > $R/usbprint.nft && nft -f $R/usbprint.nft || echo "$(date) the rules for ipp-usb's ports could not be loaded" >> $LOG
+	rm -f $R/usbprint.nft
+}
+
 scan() {
 	: > $OUT.new; ipp=0
 	for dv in "$SYS"/bus/usb/devices/*; do
@@ -45,6 +74,7 @@ scan() {
 			for i in $ifs; do [ "$(basename "$(readlink $i/driver 2>/dev/null)")" = usblp ] && { echo "${i##*/}" > "$SYS/bus/usb/drivers/usblp/unbind" 2>/dev/null || echo "$(date) $sn: usblp could not let go of ${i##*/}" >> $LOG; }; done
 			ipp=1; addr=
 			if [ -x "$IPPUSB" ]; then
+				running || ippusb_guard
 				running || { setsid "$IPPUSB" udev </dev/null >>$R/ipp-usb.log 2>&1 9>&- & echo "$(date) ipp-usb started" >> $LOG; }
 				n=0; while [ $n -lt $WAITT ]; do p=$(ippport $vid $pid) && break; sleep 0.1; n=$((n + 1)); done
 				[ -n "$p" ] && addr="ipp://127.0.0.1:$p/ipp/print" || echo "$(date) $sn: ipp-usb gave no address yet" >> $LOG

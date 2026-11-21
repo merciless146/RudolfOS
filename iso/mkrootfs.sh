@@ -127,12 +127,14 @@ gcc -O2 $HARD -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 # 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers it runs for rudolfd (root's only: 0700)
 gcc -O2 $HARD -o usr/bin/rudolf-rootd "$SYS/rudolf-rootd.c"
 mkdir -p usr/lib/rudolf/root && chmod 755 usr/lib/rudolf/root
-for h in drives updates accounts power; do gcc -O2 $HARD -o usr/lib/rudolf/root/$h "$SYS/rudolf-$h.c" -Wl,-Bstatic -lz -Wl,-Bdynamic && chmod 700 usr/lib/rudolf/root/$h; done   # (root's: mklayers.sh makes the layer with -all-root; zlib for the ones built from rudolfd.c)
+for h in drives updates accounts power network devices procs logs screen sound; do gcc -O2 $HARD -o usr/lib/rudolf/root/$h "$SYS/rudolf-$h.c" -Wl,-Bstatic -lz -Wl,-Bdynamic && chmod 700 usr/lib/rudolf/root/$h; done   # (root's: mklayers.sh makes the layer with -all-root; zlib for the ones built from rudolfd.c)
 # (1.6.1 drives part 2: the accounts' folders and sessions, rudolfd's own functions run by the drives helper only)
 gcc -O2 $HARD -o usr/lib/rudolf/root/drives-home "$SYS/rudolf-drives-home.c" -Wl,-Bstatic -lz -Wl,-Bdynamic && chmod 700 usr/lib/rudolf/root/drives-home
 gcc -O2 $HARD -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 $HARD -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
+# 1.6.1 (docs/plan-1.6.1.md Part 9): the print queue, for the desktop and the Linux apps (CUPS's clients)
+gcc -O2 $HARD -o usr/bin/rudolf-printq "$SYS/rudolf-printq.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 gcc -O2 $HARD -o usr/bin/rudolf-devlink "$SYS/rudolf-devlink.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-apps "$SYS/rudolf-apps.c" -lz
 gcc -O2 $HARD -o usr/bin/rudolf-debian "$SYS/rudolf-debian.c" -lcrypto -ldl
@@ -259,6 +261,7 @@ rudolf:x:1000:1000:Rudolf OS:/home/rudolf:/bin/sh
 messagebus:x:100:102::/nonexistent:/bin/false
 ai:x:950:950:Blitzen model engine:/persist/ai/cache:/bin/false
 tor:x:951:951:Tor (Oracle's Tor windows):/run/rudolf/tor:/bin/false
+print:x:952:952:Printing (rudolf-printq):/nonexistent:/bin/false
 nobody:x:65534:65534:nobody:/:/bin/false
 E
 cat > etc/group <<'E'
@@ -268,7 +271,7 @@ audio:x:29:rudolf
 video:x:44:rudolf
 input:x:101:
 disk:x:6:
-lp:x:7:
+lp:x:7:print
 kmem:x:15:
 dialout:x:20:
 cdrom:x:24:
@@ -280,6 +283,7 @@ rudolf:x:1000:
 messagebus:x:102:
 ai:x:950:
 tor:x:951:
+print:x:952:
 nogroup:x:65534:
 E
 echo 'root:*:19000:0:99999:7:::' > etc/shadow; echo 'rudolf:*:19000:0:99999:7:::' >> etc/shadow; chmod 600 etc/shadow

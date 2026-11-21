@@ -8,6 +8,20 @@ Summary: In progress.
 - For the phone build to come (2.0): the groundwork of its home screen's three panels: on a build marked as the mobile
   build, the three workspaces are panels shown full screen, switched with a swipe to the left or right on the desktop or
   a title bar, on Standard and Native alike. Nothing changes on computers.
+- Printing: a print queue for the whole computer. Linux apps print too (LibreOffice, GTK and Qt apps, lp in Debian and
+  Flatpak apps: through the queue, as on any Linux), and Settings › Devices › Print queue shows what is printing, with
+  Cancel for your own documents; another account's are listed without their names and cannot be cancelled by you.
+  Printers that take only pictures of the pages get them from the queue too. USB printers' devices belong to the queue
+  alone, and an IPP over USB printer can be reached only through it.
+- Native: an app's window loads the desktop page without 11 modules no app of its own uses (WordPro's additions, Notey for
+  the office apps, the Wi-Fi panel, the computer check, the SNES core's loader, the weather, Settings' search and a few
+  more); each is read the moment something of it is needed. Settings, Task Manager, Oracle, the App Store, Blitzen and
+  the games and office apps that use them keep the whole page, as Standard and Lite do. Measured: no difference in memory
+  that can be told from the noise (about 1 MB at most).
+- Native: each app's window uses about 10 MB less memory. A window no longer makes the pictures of the start menu, the
+  desktop's icons and the taskbar for itself (the native desktop draws those), nor the taskbar's pinned buttons or the
+  dynamic background's moving parts under the app, and it no longer gives the desktop its list of apps again when it opens
+  if the list is unchanged. On the test computer, five app windows and the hidden page: 483 MB instead of 531 MB.
 - Native: the window's menu of an app that draws its own title bar says whether it can use Rudolf's instead. For apps
   whose own bar holds only the title and the three buttons, "Title bar: Rudolf's" cuts their own bar away and frames them
   as any other window, remembered for each account and app; for others the menu says Rudolf's would hide their menus and
@@ -34,6 +48,11 @@ Summary: In progress.
   behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size
   and place. Never with unsaved changes, a dialog, sound or video playing, a call, a download or a transfer; Oracle and Linux,
   Debian, Flatpak and Wine apps are never touched. Task Manager shows such a window as "Resting (no memory used)".
+- New: Oracle blocks ads and trackers. A shield 🛡 in the address box says how many were blocked on the page; its menu
+  turns blocking off (or on) for that site and can note a broken site in System health. Settings › Privacy › Ads and
+  trackers in Oracle: on (the default) or off, the sites it is off for, and sites of your own to block. Private and Tor
+  windows always block. It uses Rudolf OS's own list of well-known ad and tracking services, checked on this computer:
+  nothing about the pages you visit is sent anywhere. On Standard, Native and Lite.
 - The desktop page is 870 KB smaller: the Quake engine and the Galaxy Map's universe are files of their own, read only when
   Quake or the Galaxy Map opens (every window of the native desktop, and Standard's page, parsed them before). Each window
   of the native desktop uses about 5 MB less memory.
@@ -53,6 +72,17 @@ Summary: In progress.
   own, no longer by rudolfd; it is asked only when an account comes or goes. Nothing changes on screen.
 - Security: restart, shut down, sleep, the power settings, brightness, Task Manager's "Clear cache" and the desktop's
   priority, and setting the clock are done by a power helper of its own, no longer by rudolfd. Nothing changes on screen.
+- Security: Wi-Fi (scan, join, forget, the radios and bands, the country, the adapter), an address by DHCP or a fixed
+  one and the name server, the firewall, the hotspot and metered connections are handled by a network helper of its
+  own, no longer by rudolfd; a network's password reaches it on its standard input only. Nothing changes on screen.
+- Security: Bluetooth (turning it on and off, searching, pairing, connecting, forgetting, the pairing question) and
+  Thunderbolt and USB4 devices (approving, not approving, forgetting) are handled by a devices helper of its own, no
+  longer by rudolfd. Nothing changes on screen.
+- Security: Task Manager's End process and End process tree, and reading the kernel's messages (System health, the
+  crashes list), are handled by two small helpers of their own, no longer by rudolfd. Nothing changes on screen.
+- Security: the display's settings (the graphics path, the desktop's shell, resolution and frame rate, the keyboard's
+  layout, restarting the display or the desktop's browser) and sound (the volume, the microphone, the echo canceller,
+  the sound card) are handled by helpers of their own, no longer by rudolfd. Nothing changes on screen.
 - Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
   rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
   starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own
@@ -68,7 +98,17 @@ Summary: In progress.
 - Changed: files kept on the disk can now be in sub-folders of Downloads, where they stay (before, they were moved back to
   the top of Downloads); only those at the top are renamed on the disk when renamed. Deleting them, the Trash and
   Downloads' own files work as before.
+- New: reader mode in Oracle. On a page with an article (a news story, a blog post, a recipe) a 📖 button shows in the
+  address box; it, F9 (also inside a website) or ☰ › Reader mode shows the article alone: its title, author and text, its
+  pictures and links, in Rudolf's reading style, with A− A+, the width, the font (serif, sans, OpenDyslexic), light, sepia
+  or dark (dark with Rudolf's dark theme), 🔊 Read aloud in Rudolf's own voice (the sentence being read highlighted) and
+  🖨 Print (the article alone). ✕ Exit reader or F9 gives the page back as it was. Nothing of the website runs in reader
+  mode. Also for .HTM files on C:. On Standard, Native and Lite. It uses Mozilla's Readability (Apache License 2.0).
 - Fixed: the release build no longer stops when linux-firmware updates a file: it takes linux-firmware at the commit the firmware list was made from (the list's new "R" line), and a check runs that fetch on every change to the list.
+- Changed: Oracle › ☰ › Reopen my tabs next time now brings back every Oracle window you had, the tabs asleep (💤, loaded
+  when clicked) except the one in front, so Oracle starts quickly. After Oracle or the desktop ended unexpectedly, the next
+  Oracle window offers "Restore your tabs?" once, even with the setting off. Your tabs are kept in your own encrypted home
+  folder (locked when you sign out), no longer in the desktop's settings. Never for private or Tor windows, or Guest.
 - Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
   follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at
   start-up wait until the others have started, so their memory peaks no longer come all at once.
@@ -197,6 +237,13 @@ Summary: In progress.
   at the left, as Settings › Display › Displays arranged them for that set of monitors (kept per set); plugged in or out,
   they are arranged again within a second. Linux apps and games open on the main monitor. (rudolf-display --arrange and
   --monitors, screenctl arrange, rudolfd's screen/arrange; the software display still shows one monitor.)
+- Several monitors on the desktop (plan Part 1), Standard and Native alike: each monitor shows one of the three workspaces,
+  with the wallpaper and a taskbar of its own (the start button, the pinned apps, that workspace's windows, the workspaces
+  and the clock); the main monitor keeps the tray, the desktop's icons and the Start menu. A window moved to another
+  workspace moves to the monitor showing it, one dragged onto another monitor joins its workspace, and a maximised window
+  fills its own monitor. A workspace's button on a monitor's taskbar shows it there. A monitor unplugged: its windows stay
+  in their workspace and none is left off the screen. Settings › Display › Displays lists the displays and which
+  workspace each shows, and makes another the main one. The sign-in and lock screens cover every monitor.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.

@@ -193,6 +193,14 @@ static int dev_wanted(const char *n)
 	for (int i = 0; P[i]; i++) { size_t l = strlen(P[i]); if (!strncmp(n, P[i], l) && isdigit((unsigned char)n[l])) { for (const char *c = n + l; *c; c++) if (!isdigit((unsigned char)*c)) return 0; return 1; } }
 	return 0;
 }
+/* 1.6.1 (docs/plan-1.6.1.md Part 9): Rudolf OS's print queue (rudolf-printq), at the place CUPS's clients look for a CUPS
+   server: Debian's lp, GTK's and Qt's print dialogs and LibreOffice print through it, each job its sender's (the
+   account's own Linux user, as the queue sees it through this user namespace), PDF only */
+static void print_bind(void)
+{
+	if (access("/run/cups/cups.sock", F_OK)) return;
+	mkdirs(ROOT "/run/cups", 0755); bindmnt("/run/cups", ROOT "/run/cups", 1);
+}
 static void keeper_main(void)   /* pid 1 inside: set up the file system, then reap */
 {
 	prctl(PR_SET_NAME, "debian-init");
@@ -231,6 +239,7 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 	/* 1.6.0 (plan Part 20): the smart card service's socket folder (made by the session, so a reader plugged in later is
 	   seen too): Debian's own OpenSC, Firefox or a VPN client can use the card */
 	if (!access("/run/pcscd", F_OK)) { mkdirs(ROOT "/run/pcscd", 0755); bindmnt("/run/pcscd", ROOT "/run/pcscd", 1); }
+	print_bind();   /* 1.6.1 (plan Part 9): the print queue */
 	/* 1.6.0 (plan Part 9): udev's device database, read only, for libudev in Debian's programs (Steam and SDL find
 	   controllers by it, as on any other Linux; with mdev there is none) */
 	if (!access("/run/udev/data", F_OK) && !bindmnt("/run/udev", ROOT "/run/udev", 1))

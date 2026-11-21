@@ -158,6 +158,8 @@ static const char *PAGE_JS =
 	"addEventListener('keydown',e=>{if(!e.isTrusted)return;const c=e.ctrlKey||e.metaKey;let a='';if(c&&!e.shiftKey&&!e.altKey&&e.code=='KeyF')a='cf';else if(!c&&!e.altKey&&e.code=='F3')a=e.shiftKey?'sf3':'f3';else if(c&&!e.altKey&&e.code=='KeyG')a=e.shiftKey?'sf3':'f3';"
 	" if(a){e.preventDefault();e.stopImmediatePropagation();say({k:a})}},true);"
 	"addEventListener('click',e=>{if(!e.isTrusted)return;const a=e.target&&e.target.closest&&e.target.closest('a[href^=\"tel:\" i]');if(!a)return;e.preventDefault();e.stopImmediatePropagation();say({tel:String(a.getAttribute('href')).slice(4,80)})},true);"
+	/* 1.6.1 (Part 10): F9 shows the page's article in Oracle's reader mode (and back), before the page sees it */
+	"addEventListener('keydown',e=>{if(e.isTrusted&&e.key=='F9'&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();e.stopImmediatePropagation();say({k:'f9'})}},true);"
 	"let done=false,mo=null;const go=()=>{if(done)return;done=true;if(mo)mo.disconnect();say({flash:location.href})};"
 	"const watch=()=>{if(document.querySelector(S))return go();mo=new MutationObserver(()=>{if(document.querySelector(S))go()});"
 	" mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','data','type','value']});setTimeout(()=>mo&&mo.disconnect(),60000)};"
@@ -409,6 +411,7 @@ static gboolean on_tab_decide(WebKitWebView *v, WebKitPolicyDecision *dec, WebKi
 	tabev(t, "blocked", x->str); g_string_free(x, TRUE); return TRUE;
 }
 static tab *tab_new(const char *tid, const char *part, WebKitWebView *related);
+static void blk_apply_tab(tab *t);   /* (1.6.1: ad and tracker blocking) */
 static void on_tab_ready(WebKitWebView *v, gpointer d)
 {
 	tab *nt = d; WebKitWindowProperties *wp = webkit_web_view_get_window_properties(v);
@@ -443,6 +446,7 @@ static void on_tab_hover(WebKitWebView *v, WebKitHitTestResult *h, guint mods, g
 static void on_tab_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d)
 {
 	(void)m; tab *t = d; JSCValue *o = webkit_javascript_result_get_js_value(r); if (!jsc_value_is_object(o)) return;
+	if (jsc_value_object_has_property(o, "blk")) { char x[32]; snprintf(x, sizeof x, "\"n\":%d", (int)jnum(o, "blk", 0)); tabev(t, "adblock", x); return; }   /* (1.6.1: ads and trackers blocked) */
 	if (jsc_value_object_has_property(o, "notice")) { char x[32]; snprintf(x, sizeof x, "\"id\":%d", (int)jnum(o, "notice", 0)); tabev(t, "notice", x); return; }   /* 1.5.9 */
 	/* 1.5.9 (plan 7.3): a phone number clicked (tel:): the desktop asks how to call it */
 	{ char *tl = jstr(o, "tel"); if (tl) { GString *x = g_string_new("\"num\":"); if (strlen(tl) > 80) tl[80] = 0; json_str(x, tl); tabev(t, "tel", x->str); g_string_free(x, TRUE); g_free(tl); return; } }
@@ -450,6 +454,49 @@ static void on_tab_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, g
 	if (k) { GString *x = g_string_new("\"k\":"); k[strcspn(k, "\n")] = 0; if (strlen(k) > 8) k[8] = 0; json_str(x, k); tabev(t, "keys", x->str); g_string_free(x, TRUE); }
 	else if (fl && RUFFLE_JS[0]) { webkit_web_view_run_javascript(WEBKIT_WEB_VIEW(t->view), RUFFLE_JS, NULL, NULL, NULL); tabev(t, "flash", NULL); }
 	g_free(k); g_free(fl);
+}
+/* ------------------------------------------------------------------ 1.6.1 (docs/plan-1.6.1.md Part 10): reader mode
+   As the Chromium shell (iso/shell/shell.js READABLE_JS, READHTML_JS): when a page has loaded, whether it holds an article ->
+   tabev readable {on}; op readhtml {id}: the page's HTML as it is now (at most 4 MB), its address and title -> tabev readhtml, which
+   the desktop reads with Readability in an inert copy (desktop/orareader61.js). Run in the page's isolated world ("rudolf"). */
+static const char READABLE_JS[] = "(()=>{try{const U=/-ad-|ai2html|banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|footer|gdpr|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote/i,C=/and|article|body|column|content|main|shadow/i;"
+	"const L=new Set(document.querySelectorAll('p,pre,article'));document.querySelectorAll('div > br').forEach(b=>L.add(b.parentNode));let sc=0;"
+	"for(const n of L){if(n.checkVisibility&&!n.checkVisibility({visibilityProperty:true}))continue;const m=(n.getAttribute('class')||'')+' '+(n.id||'');if(U.test(m)&&!C.test(m))continue;if(n.matches('li p'))continue;"
+	"const l=(n.textContent||'').trim().length;if(l<140)continue;sc+=Math.sqrt(l-140);if(sc>20)return true}}catch(e){}return false})()";
+static const char READHTML_JS[] = "JSON.stringify({u:location.href,t:document.title,h:(document.documentElement?document.documentElement.outerHTML:'').slice(0,4000000)})";
+typedef struct { char tid[64]; int id; } trd;
+static void rd_readable_done(GObject *o, GAsyncResult *res, gpointer p)
+{
+	trd *q = p; GError *e = NULL; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(o), res, &e);
+	tab *t = TABS ? g_hash_table_lookup(TABS, q->tid) : NULL;
+	if (v && t) tabev(t, "readable", jsc_value_is_boolean(v) && jsc_value_to_boolean(v) ? "\"on\":true" : "\"on\":false");
+	if (v) g_object_unref(v); if (e) g_error_free(e); g_free(q);
+}
+static void on_tab_rdload(WebKitWebView *v, WebKitLoadEvent ev, gpointer d)
+{
+	tab *t = d; if (ev != WEBKIT_LOAD_FINISHED || !http_url(webkit_web_view_get_uri(v))) return;
+	trd *q = g_new0(trd, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid);
+	webkit_web_view_evaluate_javascript(v, READABLE_JS, -1, "rudolf", NULL, NULL, rd_readable_done, q);
+}
+static void rd_html_done(GObject *o, GAsyncResult *res, gpointer p)
+{
+	trd *q = p; GError *e = NULL; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(o), res, &e);
+	tab *t = TABS ? g_hash_table_lookup(TABS, q->tid) : NULL;
+	if (t) { GString *x = g_string_new(""); g_string_append_printf(x, "\"id\":%d,", q->id);
+		JSCValue *j = NULL; char *s = v && jsc_value_is_string(v) ? jsc_value_to_string(v) : NULL;
+		if (s) { JSCContext *cx = jsc_value_get_context(v); j = jsc_value_new_from_json(cx, s); }
+		char *h = j ? jstr(j, "h") : NULL, *u = j ? jstr(j, "u") : NULL, *ti = j ? jstr(j, "t") : NULL;
+		if (ti && strlen(ti) > 300) ti[300] = 0;
+		g_string_append(x, "\"html\":"); json_str(x, h ? h : ""); g_string_append(x, ",\"url\":"); json_str(x, u ? u : ""); g_string_append(x, ",\"title\":"); json_str(x, ti ? ti : "");
+		tabev(t, "readhtml", x->str); g_string_free(x, TRUE); g_free(h); g_free(u); g_free(ti); g_free(s); if (j) g_object_unref(j); }
+	if (v) g_object_unref(v); if (e) g_error_free(e); g_free(q);
+}
+static int tab_reader_op(tab *t, const char *op, JSCValue *m)
+{
+	if (strcmp(op, "readhtml")) return 0;
+	trd *q = g_new0(trd, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->id = (int)jnum(m, "id", 0);
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(t->view), READHTML_JS, -1, "rudolf", NULL, NULL, rd_html_done, q);
+	return 1;
 }
 static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 {
@@ -475,6 +522,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	g_signal_connect(t->view, "notify::uri", G_CALLBACK(on_tab_uri), t);
 	g_signal_connect(t->view, "notify::title", G_CALLBACK(on_tab_title), t);
 	g_signal_connect(t->view, "mouse-target-changed", G_CALLBACK(on_tab_hover), t);   /* (1.6.1) */
+	g_signal_connect(t->view, "load-changed", G_CALLBACK(on_tab_rdload), t);   /* (1.6.1: reader mode) */
 	g_signal_connect(t->view, "close", G_CALLBACK(on_tab_close), t);
 	g_signal_connect(t->view, "web-process-terminated", G_CALLBACK(on_tab_gone), t);
 	g_signal_connect(t->view, "focus-in-event", G_CALLBACK(on_tab_focus), t);
@@ -486,6 +534,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	g_signal_connect(t->view, "leave-fullscreen", G_CALLBACK(on_tab_unfs), t);
 	g_signal_connect(t->view, "decide-policy", G_CALLBACK(on_tab_decide), t);
 	g_signal_connect(t->view, "create", G_CALLBACK(on_tab_create), t);
+	blk_apply_tab(t);   /* (1.6.1: ad and tracker blocking) */
 	g_hash_table_insert(TABS, g_strdup(t->tid), t);
 	return t;
 }
@@ -634,10 +683,94 @@ static int tab_find_op(tab *t, const char *op, JSCValue *m)
 	webkit_find_controller_search(fc, q, o, 1000);
 	return 1;
 }
+/* ------------------------------------------------------------------ 1.6.1 (docs/plan-1.6.1.md Part 10): ad and tracker blocking
+   As the Chromium shell (iso/shell/shell.js blockWhy) with WebKit's own content blocker: the desktop's op "block" {cfg: {on, b, tp, ex,
+   off}} (whole domains blocked, blocked from other sites only, never blocked, and the sites it is turned off for) is compiled into a
+   WebKitUserContentFilter (two: a private window's, which always blocks and knows no "off" sites) and given to every tab's content
+   manager; a tab made later gets it at once. WebKit does not say what it blocked, so a script in the page's isolated world counts
+   what the page's elements ask for from those domains (tabev adblock {n}). Nothing leaves this computer. The compiled filters are kept
+   in the user's cache (the lists only: no page, no address). */
+static WebKitUserContentFilterStore *BLK_STORE;
+static WebKitUserContentFilter *BLK_F, *BLK_FP;   /* the filter for an account's tabs; for private ones */
+static WebKitUserScript *BLK_JS, *BLK_JSP;         /* the counting script, each with its lists */
+static int BLK_GEN;
+static void blk_apply_tab(tab *t)
+{
+	WebKitUserContentManager *u = webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(t->view)); if (!u) return;
+	int pv = !strncmp(t->part, "priv-", 5); webkit_user_content_manager_remove_all_filters(u);
+	WebKitUserContentFilter *f = pv ? BLK_FP : BLK_F; if (f) webkit_user_content_manager_add_filter(u, f);
+	WebKitUserScript *s = pv ? BLK_JSP : BLK_JS; if (s) webkit_user_content_manager_add_script(u, s);
+}
+static void blk_apply_all(void) { GHashTableIter i; gpointer k, v; if (!TABS) return; g_hash_table_iter_init(&i, TABS); while (g_hash_table_iter_next(&i, &k, &v)) blk_apply_tab(v); }
+typedef struct { int gen, priv; } blkq;
+static void blk_saved(GObject *o, GAsyncResult *r, gpointer d)
+{
+	blkq *q = d; GError *e = NULL; WebKitUserContentFilter *f = webkit_user_content_filter_store_save_finish(WEBKIT_USER_CONTENT_FILTER_STORE(o), r, &e);
+	if (e) { fprintf(stderr, "rudolf-webkit: the blocking list did not compile: %s\n", e->message); g_error_free(e); }
+	if (q->gen == BLK_GEN && f) { WebKitUserContentFilter **p = q->priv ? &BLK_FP : &BLK_F; if (*p) webkit_user_content_filter_unref(*p); *p = f; f = NULL; blk_apply_all(); }
+	if (f) webkit_user_content_filter_unref(f); g_free(q);
+}
+static void blk_rx(GString *j, const char *d) { g_string_append(j, "^https?://([^/]*\\\\.)?"); for (const char *c = d; *c; c++) { if (*c == '.') g_string_append(j, "\\\\."); else g_string_append_c(j, *c); } g_string_append(j, "[:/]"); }
+static int blk_dom(const char *d) { if (!d || !*d || strlen(d) > 253) return 0; for (const char *c = d; *c; c++) if (!(g_ascii_islower(*c) || g_ascii_isdigit(*c) || *c == '.' || *c == '-')) return 0; return strchr(d, '.') != NULL; }
+/* the content blocker's rules (WebKit's JSON); NULL when nothing would be blocked */
+static GString *blk_rules(char **b, char **tp, char **ex, char **off)
+{
+	GString *j = g_string_new("["); int n = 0;
+	for (int k = 0; k < 2; k++) for (char **l = k ? tp : b; l && *l; l++) { if (!blk_dom(*l)) continue;
+		g_string_append(j, n++ ? ",{\"trigger\":{\"url-filter\":\"" : "{\"trigger\":{\"url-filter\":\""); blk_rx(j, *l);
+		g_string_append(j, k ? "\",\"load-type\":[\"third-party\"]},\"action\":{\"type\":\"block\"}}" : "\"},\"action\":{\"type\":\"block\"}}"); }
+	if (!n) { g_string_free(j, TRUE); return NULL; }
+	for (char **l = ex; l && *l; l++) { if (!blk_dom(*l)) continue; g_string_append(j, ",{\"trigger\":{\"url-filter\":\""); blk_rx(j, *l); g_string_append(j, "\"},\"action\":{\"type\":\"ignore-previous-rules\"}}"); }
+	for (char **l = off; l && *l; l++) { if (!blk_dom(*l)) continue; g_string_append_printf(j, ",{\"trigger\":{\"url-filter\":\".*\",\"if-domain\":[\"*%s\"]},\"action\":{\"type\":\"ignore-previous-rules\"}}", *l); }
+	g_string_append_c(j, ']'); return j;
+}
+static const char BLK_COUNT_JS[] = "(()=>{if(!B.priv&&!B.on){S(0);return}const L=l=>new Set(l),b=L(B.b),tp=L(B.tp),ex=L(B.ex),off=L(B.off);"
+	"const inL=(h,s)=>{for(let x=h;;){if(s.has(x))return true;const i=x.indexOf('.');if(i<0)return false;x=x.slice(i+1)}};"
+	"const D=new Set(['co.uk','org.uk','ac.uk','gov.uk','com.au','net.au','org.au','co.nz','co.jp','ne.jp','or.jp','co.kr','com.br','com.mx','com.ar','com.cn','com.tw','com.tr','co.in','co.za','com.sg','com.hk','co.il']);"
+	"const site=h=>{const p=String(h||'').split('.');if(p.length<=2||/^\\d+$/.test(p[p.length-1]))return h;const l2=p.slice(-2).join('.');return D.has(l2)?p.slice(-3).join('.'):l2};"
+	"const top=location.hostname.toLowerCase();if(!B.priv&&inL(top,off)){S(0);return}"
+	"const blk=u=>{let h;try{const x=new URL(u,location.href);if(!/^(https?|wss?):$/.test(x.protocol))return false;h=x.hostname.toLowerCase()}catch(e){return false}if(inL(h,ex))return false;return inL(h,b)||(inL(h,tp)&&site(h)!==site(top))};"
+	"const seen=new Set();let tm=0;const say=()=>{tm=0;S(seen.size)};S(0);"
+	"const chk=el=>{if(!el.getAttribute)return;const u=el.getAttribute('src')||(el.tagName=='LINK'&&el.getAttribute('href'))||(el.tagName=='OBJECT'&&el.getAttribute('data'));if(u&&!seen.has(u)&&blk(u)){seen.add(u);if(!tm)tm=setTimeout(say,250)}};"
+	"const scan=r=>{if(r.nodeType!=1)return;chk(r);r.querySelectorAll&&r.querySelectorAll('[src],link[href],object[data]').forEach(chk)};"
+	"new MutationObserver(ms=>ms.forEach(m=>{if(m.type=='attributes')chk(m.target);else m.addedNodes.forEach(scan)})).observe(document,{subtree:true,childList:true,attributes:true,attributeFilter:['src','href','data']});"
+	"if(document.documentElement)scan(document.documentElement)})()";
+static WebKitUserScript *blk_script(const char *cfgjson, int priv)
+{
+	GString *j = g_string_new("(()=>{const S=n=>{try{window.webkit.messageHandlers.rudolfTab.postMessage({blk:n})}catch(e){}};const B=");
+	g_string_append(j, cfgjson); g_string_append_printf(j, ";B.priv=%s;", priv ? "true" : "false"); g_string_append(j, BLK_COUNT_JS); g_string_append(j, "})()");
+	WebKitUserScript *s = webkit_user_script_new_for_world(j->str, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, "rudolf", NULL, NULL);
+	g_string_free(j, TRUE); return s;
+}
+static int tab_block_op(const char *op, JSCValue *m)
+{
+	if (strcmp(op, "block")) return 0;
+	JSCValue *c = jsc_value_object_get_property(m, "cfg"); if (!c || !jsc_value_is_object(c)) { if (c) g_object_unref(c); return 1; }
+	int on = jbool(c, "on"); char **b = str_list(c, "b"), **tp = str_list(c, "tp"), **ex = str_list(c, "ex"), **off = str_list(c, "off");
+	char *cj = jsc_value_to_json(c, 0); BLK_GEN++;
+	/* (the counting scripts: the old ones out of every tab, the new ones in) */
+	GHashTableIter i; gpointer k, v;
+	if (TABS) { g_hash_table_iter_init(&i, TABS); while (g_hash_table_iter_next(&i, &k, &v)) { WebKitUserContentManager *u = webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(((tab *)v)->view));
+		if (u && BLK_JS) webkit_user_content_manager_remove_script(u, BLK_JS); if (u && BLK_JSP) webkit_user_content_manager_remove_script(u, BLK_JSP); } }
+	if (BLK_JS) webkit_user_script_unref(BLK_JS); if (BLK_JSP) webkit_user_script_unref(BLK_JSP);
+	BLK_JS = cj ? blk_script(cj, 0) : NULL; BLK_JSP = cj ? blk_script(cj, 1) : NULL;
+	if (BLK_F) { webkit_user_content_filter_unref(BLK_F); BLK_F = NULL; } if (BLK_FP) { webkit_user_content_filter_unref(BLK_FP); BLK_FP = NULL; }
+	if (!BLK_STORE) { char *dir = g_build_filename(g_get_user_cache_dir(), "rudolf-webkit-blocking", NULL); BLK_STORE = webkit_user_content_filter_store_new(dir); g_free(dir); }
+	for (int pv = 0; pv < 2; pv++) {
+		GString *r = (pv || on) ? blk_rules(b, tp, ex, pv ? NULL : off) : NULL; if (!r) continue;
+		blkq *q = g_new0(blkq, 1); q->gen = BLK_GEN; q->priv = pv; GBytes *by = g_bytes_new(r->str, r->len);
+		webkit_user_content_filter_store_save(BLK_STORE, pv ? "rudolf-block-private" : "rudolf-block", by, NULL, blk_saved, q);
+		g_bytes_unref(by); g_string_free(r, TRUE);
+	}
+	blk_apply_all();
+	g_strfreev(b); g_strfreev(tp); g_strfreev(ex); g_strfreev(off); g_free(cj); g_object_unref(c);
+	return 1;
+}
 static void on_tab_op(JSCValue *m)
 {
 	char *op = jstr(m, "op"), *tid = jstr(m, "tid"); if (!op) { g_free(tid); return; }
 	tab *t = tid ? g_hash_table_lookup(TABS, tid) : NULL;
+	if (t && tab_reader_op(t, op, m)) { g_free(op); g_free(tid); return; }   /* (1.6.1: reader mode) */
 	if (!strcmp(op, "fw")) {
 		JSCValue *r = jsc_value_object_get_property(m, "rules");
 		if (r && jsc_value_is_object(r)) { FW.on = jbool(r, "on"); char *md = jstr(r, "mode"); snprintf(FW.mode, sizeof FW.mode, "%s", md ? md : "open"); g_free(md);
@@ -670,6 +803,7 @@ static void on_tab_op(JSCValue *m)
 			g_string_free(j, TRUE); g_strfreev(u); g_free(cfj); if (cf) g_object_unref(cf);
 		}
 		if (c) g_object_unref(c);
+	} else if (tab_block_op(op, m)) {   /* (1.6.1: ad and tracker blocking) */
 	} else if (!strcmp(op, "webdir") || !strcmp(op, "drop")) {
 		/* (1.6.0 Part 22) "webdir" {part, dir}: where that account's websites are kept from its next tab ("" the shared way); only a
 		   folder under /persist/oracle/. "drop" {part}: the account signed out: its tabs closed and its context let go, so its files

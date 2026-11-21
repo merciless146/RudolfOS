@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/qt/webkit/files61_ci.py', 'iso/sys/rudolf-portal.c', 'desktop/linux26.js', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/qt/host/native59_t.sh', 'iso/qt/host/bgpage161_t.sh', 'iso/qt/host/chunks161_t.sh', 'iso/qt/host/rest161_t.sh', 'desktop/rest61.js', 'desktop/build19.py', 'desktop/svc60.js', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'iso/qt/host/csd161_t.sh', 'iso/sys/rudolf-display.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/qt/webkit/files61_ci.py', 'iso/sys/rudolf-portal.c', 'desktop/linux26.js', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/qt/host/native59_t.sh', 'iso/qt/host/bgpage161_t.sh', 'iso/qt/host/chunks161_t.sh', 'iso/qt/host/rest161_t.sh', 'desktop/rest61.js', 'iso/qt/host/lean161_t.sh', 'desktop/lean61.js', 'iso/qt/host/apppage161_t.sh', 'desktop/oapage61.py', 'desktop/build19.py', 'desktop/svc60.js', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'iso/qt/host/csd161_t.sh', 'iso/sys/rudolf-display.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Packages (as the release workflow installs them)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-nice glib-networking xvfb imagemagick >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xdotool libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-nice glib-networking xvfb imagemagick >/dev/null
       - name: Build rudolf-webkit
         run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
       - name: Build rudolf-native (1.5.9, plan Part 12)
@@ -71,6 +71,22 @@ jobs:
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
           python3 iso/qt/webkit/tabsgpu61_ci.py ./rudolf-webkit | tee tabsgpu-result.txt; r=${PIPESTATUS[0]}
           echo "::notice title=Lite tabs' painting::$(tail -1 tabsgpu-result.txt) — $(grep -E '^FAIL' tabsgpu-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
+      - name: Oracle's tabs - a page's full screen, five tabs at once (1.6.1)
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          python3 iso/qt/webkit/tabsfs61_ci.py ./rudolf-webkit | tee tabsfs-result.txt; r=${PIPESTATUS[0]}
+          echo "::notice title=Lite tabs - full screen, five tabs::$(tail -1 tabsfs-result.txt) — $(grep -E '^FAIL|^memory' tabsfs-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
+      - name: The lock and sign-in screens and the shutting-down screen in Lite (1.6.1)
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          python3 iso/qt/webkit/lock61_ci.py ./rudolf-webkit | tee lock-result.txt; r=${PIPESTATUS[0]}
+          echo "::notice title=Lite lock screens::$(tail -1 lock-result.txt) — $(grep -E '^FAIL' lock-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
+      - name: The dynamic backgrounds' moving parts in Lite (1.6.1)
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          for m in soft mixed; do python3 iso/qt/webkit/dynbg61_ci.py ./rudolf-webkit $m > dynbg-$m.txt || r=1
+            echo "::notice title=Lite dynamic backgrounds ($m)::$(tail -1 dynbg-$m.txt) — $(grep -E '^FAIL|^pixels' dynbg-$m.txt | tr '\n' '|' | sed 's/::/: /g')"; done
+          cat dynbg-*.txt; exit ${r:-0}
       - name: An app's own link scheme in Oracle's tabs (1.6.0, the owner's Vivobook report of 2026-11-16)
         run: |
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home3; mkdir -p $HOME
@@ -115,6 +131,16 @@ jobs:
           sh iso/qt/host/rest161_t.sh | tee rest-result.txt
           echo "::notice title=Native's idle windows::$(tail -1 rest-result.txt) — $(grep -E '^FAIL' rest-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
           grep -q ' passed$' rest-result.txt && ! grep -q '^FAIL' rest-result.txt
+      - name: An app's window builds only what it shows (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 3)
+        run: |
+          sh iso/qt/host/lean161_t.sh | tee lean-result.txt
+          echo "::notice title=Native's lean windows::$(tail -1 lean-result.txt) — $(grep -E '^FAIL' lean-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' lean-result.txt && ! grep -q '^FAIL' lean-result.txt
+      - name: The apps' page in native windows (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2)
+        run: |
+          sh iso/qt/host/apppage161_t.sh | tee apppage-result.txt
+          echo "::notice title=Native's apps' page::$(tail -1 apppage-result.txt) — $(grep -E '^FAIL' apppage-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' apppage-result.txt && ! grep -q '^FAIL' apppage-result.txt
       - name: Task Manager's computer check on the native desktop (1.6.0, the owner's Vivobook report of 2026-11-16)
         run: |
           sudo apt-get install -y -qq pulseaudio pulseaudio-utils gstreamer1.0-pulseaudio >/dev/null || true
