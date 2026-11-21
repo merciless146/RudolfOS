@@ -234,6 +234,25 @@ belongs to its tab (switching hides it, switching back shows it with its words a
   and back (the bar keeps its words); Standard with "Keep my websites encrypted" on (Oracle's own Chromium). Whether the highlight is
   Chromium's own (orange current match) or Rudolf's (yellow, the current one orange) on Rudolf's Chromium: either is right.
 
+**Built (2026-11-21, branch oracle-session): item 2's second half, the session** (desktop/orasession61.js). ☰ › Reopen my tabs next time
+(1.6.0 Part 21) becomes "continue where you left off": the first Oracle window after signing in brings back every Oracle window,
+the first one's tabs asleep (the sleeping tabs' own path: 💤, loaded when clicked) except the one that was in front, the others in
+windows of their own (Native: op `untor`; the encrypted Oracle: `orawin/open`). After an unexpected end (no window marked closed or
+ended), the next Oracle window offers "Restore your tabs?" once, whatever the setting.
+- **Where:** the account's own encrypted home folder (rudolfd home/*: `.rudolf/oracle-session/WINDOW.json`, a small file per
+  window, so Native's pages never write over each other), written a second after a change; locked with the folder at sign-out.
+  With files kept that way, 1.6.0's copy in the settings (`S.otabs`, in the page's shared storage) is no longer written and an old
+  one is removed; accounts whose files are not on the disk keep 1.6.0's way unchanged. Never private or Tor windows, never Guest.
+- **Marks:** a window closed by its person is marked closed; signing out (userLogout; Native's `__oaLogout`) marks the open ones
+  ended, written at once. Next sign-in: windows with no mark ended unexpectedly (restored with the setting, offered without it);
+  otherwise the windows open at sign-out; if every window was closed, the last one closed.
+- Tests: iso/qt/shell2/orasession61_t.js (18, rudolfd's home/* stood in); oracle58, private59, orahover61, oraacct60, tor59,
+  orafind61, bmadd59 unchanged. Workflow oracle-session-check.yml. Not covered here: Native's sign-out writing the marks before
+  Oracle's Chromium closes (the stand-in rudolfd of the native tests has no home/*).
+- **The owner's checks (Vivobook):** on Standard, Native and Lite with "Reopen my tabs next time" on: two Oracle windows, sign out
+  and in, open Oracle: both back, tabs asleep; with it off, end the desktop unexpectedly (the power, or ending its Chromium) and
+  open Oracle: "Restore your tabs?" once.
+
 **Built (the owner, 2026-11-20): the Downloads page's progress bar and Remove** (desktop/dlrm61.js). A file arriving: how
 much so far and how fast, and with a size known the percentage and time left (Chromium's own downloads do not tell their
 size: the bar then moves without a percentage); being checked: a bar. Remove beside Open: in Downloads → the Trash;
