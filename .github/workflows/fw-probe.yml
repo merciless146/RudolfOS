@@ -7,8 +7,9 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: |
-          cd /tmp && git clone -q --filter=blob:none --no-checkout --shallow-since=2026-10-01 https://gitlab.com/kernel-firmware/linux-firmware.git lf && cd lf
-          git log --format='%H %cI %s' -8 -- qca/QCC2072
-          git log --format='%H %cI %s' -3
-          for c in $(git log --format=%H -4 -- qca/QCC2072) ; do echo "== $c"; P=$(git rev-parse $c^ 2>/dev/null) || continue; echo "parent $P"; git show $P:qca/QCC2072/nvm_usb_00200101_0022.bin | sha256sum; git show $P:qca/QCC2072/nvm_usb_00200101_0013.bin | sha256sum; done
-          git tag --sort=-creatordate | head -5
+          git clone -q --depth 1 https://gitlab.com/kernel-firmware/linux-firmware.git /tmp/lf
+          git -C /tmp/lf log -1 --format='%H %cI'
+          python3 iso/systools/fwextra.py list /tmp/lf > /tmp/new.txt
+          diff iso/firmware-extra.txt /tmp/new.txt > /tmp/d.txt || true
+          echo "=== diff"; cat /tmp/d.txt
+          echo "=== copy check"; rm -rf /tmp/o; python3 iso/systools/fwextra.py copy /tmp/new.txt /tmp/lf /tmp/o | tail -3
