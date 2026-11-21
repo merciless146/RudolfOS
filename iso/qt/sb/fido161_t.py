@@ -209,7 +209,9 @@ try:
     r = wait_for(js, "!!(USER.fido&&USER.fido.req&&!USER.fk&&!USER.priv)", 120); vm.shot('required')
     js("(()=>{try{saveUser();window.__rudolfLsFlush&&__rudolfLsFlush()}catch(e){}return 1})()"); time.sleep(8)
     o = sh(f"stat -c '%a %U' /persist/etc/fido/{ID}.json /persist/etc/fido", 30)
-    ls = jparse(api(sh, 'lsync?key=bd95user')); acc = {}
+    ls = js("(async()=>JSON.stringify(await fidoReq('lsync?key=bd95user')))()", 60); acc = {}
+    try: ls = json.loads(ls)
+    except Exception: ls = {'raw': ls}
     try: acc = [a for a in json.loads(ls.get('value') or ls.get('v') or '{}').get('accts', []) if a.get('id') == ID][0]
     except Exception: pass
     ok('3. required (a touch): the password\'s copies of the file key and the administrator\'s key gone from the account, as rudolfd keeps it; the record root-only',
@@ -251,7 +253,6 @@ try:
     ok('8. rudolfd\'s native sign-in (desktop/login): the password, then "need":"key"; with the touch, signed in with the same file key',
        '"need":"key"' in str(o1) and '"ok":true' in str(o2) and s2.get('fk') == FK0, (str(o1)[-300:], str(o2)[-300:], {k: (v if k not in ('pk', 'fk') else len(v)) for k, v in s2.items()}))
     # what the guest kept (for the offline part)
-    LSJ = api(sh, 'lsync?key=bd95user')
     sh("sync; sync", 30, False)
 finally:
     if vm:
