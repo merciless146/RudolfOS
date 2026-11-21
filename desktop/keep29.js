@@ -45,4 +45,4 @@ async function kfSection(c){
    const b=document.createElement('button');b.className='pri';b.textContent='Keep my files on this drive…';b.disabled=!isAdmin();b.onclick=()=>kfMake(null,draw);row.appendChild(b);return}
   t.textContent='Your files cannot be kept on this drive: '+(s.reason||'unknown reason')+'.'};
  draw()}
-if(typeof storPanel=='function'){const _kp=storPanel;storPanel=function(c){const r=_kp.apply(this,arguments);try{kfSection(c)}catch(e){}return r}}
+if(typeof storPanel=='function'){storPanel=__after(storPanel,function(c){try{kfSection(c)}catch(e){}},"keep29.js");}

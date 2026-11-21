@@ -15,11 +15,11 @@ if(RD){CALL59.iv=setInterval(call59Poll,5000);setTimeout(call59Poll,3000)}
 /* Settings › Sound › Calls (plan 7.2): the echo canceller for Linux apps without their own (Chromium cancels echo
    itself). Off by default: it costs processor time. A Bluetooth headset's microphone works in calls by itself (the
    headset cancels echo); its call sound is switched to while an app records from it (/usr/lib/rudolf/bluetooth). */
-if(typeof volPanelS=='function'&&RD){const _v=volPanelS;volPanelS=function(c,W){const r=_v.apply(this,arguments);try{
+if(typeof volPanelS=='function'&&RD){volPanelS=__after(volPanelS,function(c,W){try{
  const d=document.createElement('div');d.className='echo59';c.appendChild(d);
  d.innerHTML=`<h4 class='sh4'>Calls</h4><label class='ck'><input type='checkbox' class='ec'> Cancel echo for Linux apps</label><div class='msg ecm'>For calls in Linux apps that have no echo cancelling of their own, with the speakers on. It uses some processor time. Oracle's calls cancel echo themselves; a Bluetooth headset does too.</div>`;
  const cb=d.querySelector('.ec'),m=d.querySelector('.ecm'),base=m.textContent;
  const show=s=>{cb.checked=!!s.on;m.textContent=base+(s.on&&!s.active?' (Not active now: there is no microphone or speaker it can use.)':'')};
  rd('sound/echo').then(show).catch(()=>{cb.disabled=true});
  cb.onchange=()=>{cb.disabled=true;rdPost('sound/echo?on='+(cb.checked?1:0)).then(s=>{show(s);notify('Echo cancelling',s.on?'On':'Off',{quiet:true})}).catch(e=>{cb.checked=!cb.checked;notify('Echo cancelling',e.message,{kind:'error'})}).finally(()=>cb.disabled=false)};
-}catch(e){console.warn(e)}return r}}
+}catch(e){console.warn(e)}},"call59.js");}

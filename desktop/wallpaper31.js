@@ -32,7 +32,7 @@ async function wpFromFiles(){const p=await pickVfsFile('Choose a picture for the
  if(!src)throw new Error('This file is not a picture Rudolf OS can show.');await wpUse(src,p.at(-1));return true}
 function wpFromComputer(){return new Promise((res,rej)=>{const i=document.createElement('input');i.type='file';i.accept='image/*';i.onchange=()=>{const f=i.files[0];if(!f)return res(false);const r=new FileReader();r.onload=()=>wpUse(r.result,f.name).then(()=>res(true),rej);r.onerror=()=>rej(new Error('The file could not be read.'));r.readAsDataURL(f)};i.click()})}
 /* Display Properties: the Picture row, under the background style */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const bs=c.querySelector('#bs');if(!bs)return;
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const bs=c.querySelector('#bs');if(!bs)return;
  const lab=document.createElement('label');lab.textContent='Picture';const d=document.createElement('div');d.className='wp31';
  bs.after(lab,d);
  const draw=()=>{const on=!!S.wpimg&&S.wpimg==WPID;d.innerHTML=`<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'>${on?`<span class='wpth' style='width:64px;height:36px;border-radius:4px;border:1px solid var(--bd,#999);background:url("${WPURL}") center/cover'></span><span class='wpn'></span>`:"<span class='msg' style='margin:0'>None</span>"}
@@ -48,5 +48,5 @@ function wpFromComputer(){return new Promise((res,rej)=>{const i=document.create
  /* a drawn background or other colours: the picture is no longer the background */
  const off=()=>{if(!S.wpimg)return;S.wpimg='';S.wpname='';setTimeout(()=>{applySet();draw()},0)};
  c.addEventListener('click',e=>{if(e.target.closest&&e.target.closest('.dynb'))off()},true);
- c.addEventListener('input',e=>{if(['bs','b1','b2'].includes(e.target.id))off()},true)}})();
+ c.addEventListener('input',e=>{if(['bs','b1','b2'].includes(e.target.id))off()},true)},"wallpaper31.js");})();
 WPREADY=true;if(S.wpimg)wpLoad(S.wpimg);

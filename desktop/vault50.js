@@ -99,5 +99,5 @@ function vSection(c,W){if(!RD)return;const box=document.createElement('div');box
    case'moving':t.textContent='On, unlocked. Moving your data into the encrypted folder has not finished.';parts();btn('Show progress',()=>vMoveDlg(draw));btn('Move again',async()=>{try{await rdPost('vault/move');vMoveDlg(draw)}catch(e){notify('Encryption',e.message,{kind:'error'})}});break;
    default:t.textContent='On, unlocked. Turned off, this computer\'s drive shows only scrambled names and contents for these:';parts()}};
  draw()}
-if(typeof secPanelS=='function'){const _sv50=secPanelS;secPanelS=function(c,W){const r=_sv50.apply(this,arguments);try{vSection(c,W)}catch(e){console.warn('vault50',e)}return r}}
+if(typeof secPanelS=='function'){secPanelS=__after(secPanelS,function(c,W){try{vSection(c,W)}catch(e){console.warn('vault50',e)}},"vault50.js");}
 if(RD)setTimeout(()=>vStatus(),7000);

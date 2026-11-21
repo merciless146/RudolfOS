@@ -54,7 +54,7 @@ async function memPanel57(c){if(!RD)return;const d=document.createElement('div')
   const save=async qs=>{if(!await elevate('Change the memory settings'))return draw();try{await rdPost('memory/settings?'+qs);notify('Memory settings saved',qs.startsWith('zram')?'The new size applies at the next restart.':'',{quiet:!qs.startsWith('zram')})}catch(e){notify('Memory settings',e.message,{kind:'error'})}draw()};
   q('.mzs').onchange=e=>save('zram='+e.target.value);q('.mca').onchange=e=>save('closeApps='+(e.target.checked?1:0));q('.mvl').onchange=e=>save('videoLog='+(e.target.checked?1:0))};
  draw()}
-{const _h=healthPanel;healthPanel=function(c,W){const r=_h.apply(this,arguments);try{memPanel57(c)}catch(e){console.warn(e)}return r}}
+{healthPanel=__after(healthPanel,function(c,W){try{memPanel57(c)}catch(e){console.warn(e)}},"apps57.js");}
 /* 1.5.7: Force quit, on an app's right-click menu below Close (a window's title bar and taskbar button, a Linux or
    Windows program's taskbar button, the Start menu): the app and every process of it, its background ones included
    (Steam's helpers, a tray app, a game's crash handler), ended at once without asking it to quit (rudolf-memguard

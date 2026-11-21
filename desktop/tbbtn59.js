@@ -42,9 +42,9 @@ ${each('html.tbbon.tbb-retro',':active')}{box-shadow:inset 1px 1px 0 var(--tbbsh
 html.tbbon.tbb-retro #bar #tray{box-shadow:inset 1px 1px 0 var(--tbblo),inset -1px -1px 0 var(--tbbhi)!important}
 .tbbrow{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center}.tbbrow select:disabled{opacity:.55}`;
  document.head.appendChild(st)}
-(function(){const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);try{tbbApply()}catch(e){}return r}})();
+(function(){themeApply=__after(themeApply,function(){try{tbbApply()}catch(e){}},"tbbtn59.js");})();
 /* Display Properties › Taskbar: Buttons and Button colours, under the taskbar's Style */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const tg=c.querySelector('.tbgrp');if(!tg||c.querySelector('#dtbbs'))return;
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const tg=c.querySelector('.tbgrp');if(!tg||c.querySelector('#dtbbs'))return;
  const l1=document.createElement('label');l1.htmlFor='dtbbs';l1.textContent='Buttons';
  const s1=document.createElement('select');s1.id='dtbbs';s1.innerHTML=TB_STYLES.map(([k,n])=>optH(k,k=='standard'?'Standard (as the taskbar)':n,S.tbbstyle||'standard')).join('');
  const l2=document.createElement('label');l2.textContent='Button colours';
@@ -52,5 +52,5 @@ html.tbbon.tbb-retro #bar #tray{box-shadow:inset 1px 1px 0 var(--tbblo),inset -1
   <div class='msg'>The start button, pinned apps, open windows, workspaces and the tray. Ticked: the accent colour (Normal, its Negative, or Complementary: the colour opposite it on the colour wheel); unticked: each style's own colours.</div>`;
  tg.append(l1,s1,l2,d2);
  const q=s=>d2.querySelector(s),sync=()=>{q('#dtbbacm').disabled=!q('#dtbbac').checked};
- s1.onchange=e=>liveSet(c,'tbbstyle',e.target.value);q('#dtbbac').onchange=e=>{liveSet(c,'tbbac',e.target.checked);sync()};q('#dtbbacm').onchange=e=>liveSet(c,'tbbacm',e.target.value);sync()}})();
+ s1.onchange=e=>liveSet(c,'tbbstyle',e.target.value);q('#dtbbac').onchange=e=>{liveSet(c,'tbbac',e.target.checked);sync()};q('#dtbbacm').onchange=e=>liveSet(c,'tbbacm',e.target.value);sync()},"tbbtn59.js");})();
 tbbApply();

@@ -136,7 +136,7 @@ async function lxCheckShow(box){box.innerHTML="<div class='msg'>Checking…</div
  const bad=LXCHK.filter(([k])=>lxBad(r[k]));box.innerHTML=`<p class='msg'></p><table class='tmt'><tbody></tbody></table>`;box.firstChild.textContent=bad.length?`${bad.length} problem(s): ${bad.map(([,l])=>l.replace(/^…/,'temporary files ')).join(', ')}. Copy the system report (Task Manager › System) to report it.`:'Everything Linux apps and the terminal need is working.';
  const tb=box.querySelector('tbody');LXCHK.forEach(([k,l])=>{if(r[k]==null||r[k]==='')return;const row=tb.insertRow();row.insertCell().textContent=l;const c=row.insertCell();c.textContent=(lxBad(r[k])?'⚠️ ':'')+r[k]});return r}
 /* ---------- Settings › Apps › Linux (Debian) ---------- */
-{const _ap=appsPanel;appsPanel=function(c,W){_ap(c,W);if(!RD)return;
+{appsPanel=__after(appsPanel,function(c,W){if(!RD)return;
  const d=sp(c,`<h4 class='sh4'>Linux (Debian 13)</h4><div class='dset'><div class='msg'>Checking…</div></div>`);const b=d.querySelector('.dset');
  const draw=async()=>{const st=await debStatus(true);if(!st){b.innerHTML="<div class='msg'>This Rudolf OS cannot run Debian.</div>";return}
   if(!st.installed){b.innerHTML=`<div class='msg'>Debian is not set up. It adds a Linux terminal with APT.</div><div class='rmrow' style='justify-content:flex-start'><button class='dsu'>Set up Debian…</button><button class='dck'>Check</button></div><div class='dckr'></div>`;b.querySelector('.dsu').onclick=()=>terminalApp();b.querySelector('.dck').onclick=()=>lxCheckShow(b.querySelector('.dckr'));return}
@@ -150,7 +150,7 @@ async function lxCheckShow(box){box.innerHTML="<div class='msg'>Checking…</div
   b.querySelector('.dpw').onclick=()=>debPasswd(msg);
   debWineCell(b.querySelector('.dwine'),st,msg,draw);
   b.querySelector('.drm').onclick=async()=>{if(!await elevate('Remove Debian and every program installed in it (your Documents, Pictures and Downloads stay)'))return;try{await lxApi('debian/remove')}catch(e){return msg.textContent=e.message}msg.textContent='Removing…';const j=await lxJobWait();await debStatus();DEB.apps=[];svj(DEB_AK,[]);lxRegister();msg.textContent=j.status==0?'Debian was removed.':'Removing failed.';setTimeout(draw,800)}};
- draw()}}
+ draw()},"term26.js");}
 /* 1.3.0: Change the Linux password: twice, the same rules as at setup; rudolf-debian passwd sets it for root and rudolf */
 async function debPasswd(msg){if(!await elevate('Change the Linux password (the one sudo asks for)'))return;
  const o=document.createElement('div');o.className='rmodal debpw';o.innerHTML=`<div class='rmbox' role='dialog' aria-label='Change the Linux password'><h3>Change the Linux password</h3><p class='msg'>Debian asks for it when you use <code>sudo</code>. Your Rudolf OS password does not change.</p><div class='r2'><label>New Linux password</label><input class='dp1' type='password' autocomplete='new-password'><label>Type it again</label><input class='dp2' type='password' autocomplete='new-password'></div><p class='msg dperr' style='color:#b91c1c'></p><div class='rmrow'><button class='c'>Cancel</button><button class='pri y'>Change</button></div></div>`;

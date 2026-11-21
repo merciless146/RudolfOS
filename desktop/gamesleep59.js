@@ -45,11 +45,11 @@ async function gslTrayOffer(){if(typeof apps57!='function'||typeof GAME_FS=='und
 setInterval(()=>{let on=false;try{on=gameMode()}catch(e){}const was=GSL.on;GSL.on=on;
  if(on&&!was)setTimeout(()=>{try{if(gameMode()){gslSleep(true);if(S.gmsleep)gslTrayOffer()}}catch(e){}},1500)},1000);
 /* Settings › System health › Memory */
-{const _h=healthPanel;healthPanel=function(c,W){const r=_h.apply(this,arguments);try{
+{healthPanel=__after(healthPanel,function(c,W){try{
  const d=document.createElement('div');d.className='gsl59 r2';d.style.marginTop='6px';
  d.innerHTML=`<label>Game mode</label><div>${ckH('gsl59ck',"In game mode, free memory for the game",!!S.gmsleep)}<div class='msg'>Oracle's background tabs sleep (a tab that is not its window's current one closes its page and keeps its address; selecting it loads it again; tabs playing sound or holding typed text stay awake), and Blitzen's model is unloaded unless Blitzen is in front. Recently used files are let go from memory (the file cache), and updates wait until the game ends.</div></div>`;
  const at=c.querySelector(':scope > .hlev');if(at)at.before(d);else c.appendChild(d);
- d.querySelector('#gsl59ck').onchange=e=>{liveSet(c,'gmsleep',e.target.checked)}}catch(e){console.warn(e)}return r}}
+ d.querySelector('#gsl59ck').onchange=e=>{liveSet(c,'gmsleep',e.target.checked)}}catch(e){console.warn(e)}},"gamesleep59.js");}
 /* 9.2b: the memory guard warns before memory is critical ("memory warn PID MB": the largest page). The page is not
    ended for it; the warning comes first so there is time to save or to close something. In game mode the warning is
    shown inside the full-screen page (the shell's "notice", in the page's top layer) and more tabs are put to sleep;
