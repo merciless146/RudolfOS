@@ -1,0 +1,81 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 9): printing through the print queue (rudolf-printq). The host tests (the queue with CUPS's
+# own lp, lpstat and cancel and GTK's printing against CUPS's virtual IPP Everywhere printers, ippeveprinter; two accounts'
+# users; ipp-usb's ports; rudolfd's print requests through it; Settings › Devices › Print queue; the USB printers' test of
+# 1.6.0) and, on the release in QEMU with this tree's files put in place (iso/qt/sb/fix161p.sh), p161_t.py: Standard and
+# Native print a PDF and a page to the host's virtual printers, the queue's users, lp in the guest. Run by a push that
+# changes .github/p161-run.txt (on a branch of its own: a workflow only on a branch cannot be dispatched), whose line
+# serial=SERIAL picks a release (empty: the newest stable). Nothing is published.
+name: Print queue check
+on:
+  push:
+    paths: ['.github/p161-run.txt']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq cups-client cups-ipp-utils avahi-daemon poppler-utils python3-gi python3-gi-cairo gir1.2-gtk-3.0 xvfb nftables zlib1g-dev curl >/dev/null
+          sudo systemctl start avahi-daemon || sudo avahi-daemon -D || true
+      - name: The print queue (lp, GTK, users, ipp-usb's ports)
+        run: sudo sh iso/qt/host/printq161_t.sh
+      - name: rudolfd's printing through the queue
+        run: sudo sh iso/qt/host/printqapi161_t.sh
+      - name: USB printers (1.6.0's test)
+        run: sh iso/qt/host/usbprint60_t.sh || true   # (its check of the kernel's usblp module reads the kernel's build, not this tree's)
+      - name: Settings › Devices › Print queue (Chromium)
+        run: |
+          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..
+          mkdir -p pw && cd pw && npm init -y >/dev/null && npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null && cd ..
+          NODE_PATH=$PWD/pw/node_modules node iso/qt/shell2/printq61_t.js && NODE_PATH=$PWD/pw/node_modules node iso/qt/shell2/usbprint60_t.js
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: echo "N_serial=$(sed -n 's/^serial=//p' .github/p161-run.txt | head -1)" >> $GITHUB_ENV
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography libssl-dev zlib1g-dev bzip2 socat cups-client cups-ipp-utils avahi-daemon poppler-utils >/dev/null
+          sudo systemctl start avahi-daemon || sudo avahi-daemon -D || true
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          for c in stable beta; do if [ "$(git show origin/gh-pages:$c/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:$c/manifest.txt > rel/manifest.txt; git show origin/gh-pages:$c/manifest.sig > rel/manifest.sig; break; fi; done
+          [ -s rel/manifest.txt ] || { git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; }
+          ls -la rel; echo "::notice title=Print queue check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: This tree's printing (as the release builds it), the page, and CUPS's lp for the guest
+        run: |
+          . iso/systools/hardflags.sh; mkdir -p fix/root fix/cups/lib
+          gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/rudolf-rootd iso/sys/rudolf-rootd.c
+          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c -Wl,-Bstatic -lz -Wl,-Bdynamic; done
+          gcc -O2 $HARD -o fix/root/drives-home iso/sys/rudolf-drives-home.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/rudolf-print iso/sys/rudolf-print.c -ldl
+          gcc -O2 $HARD -o fix/rudolf-printq iso/sys/rudolf-printq.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          python3 iso/systools/hardcheck.py fix/rudolfd fix/rudolf-rootd fix/root/* fix/rudolf-print fix/rudolf-printq
+          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..; cp iso/www/index.html fix/; cp iso/sys/root/usr/share/rudolf/listeners fix/
+          for b in lp lpstat cancel; do cp /usr/bin/$b fix/cups/; for l in $(ldd /usr/bin/$b | awk '/=>/{print $3}'); do case "${l##*/}" in libc.so*|libm.so*|ld-linux*) ;; *) cp -L $l fix/cups/lib/;; esac; done; done
+          ls -laR fix | head -60
+      - name: p161
+        run: |
+          mkdir -p run && cd run
+          sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} P161_FIX=$PWD/../fix python3 ../iso/qt/sb/p161_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: p161, retention-days: 7, path: "run/p161.txt\nrun/p161*/qemu.log\nrun/p161*/*.png\nrun/w161p/*.log"}

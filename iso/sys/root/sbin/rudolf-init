@@ -176,6 +176,10 @@ if mountpoint -q /persist; then
 	[ -f $L/rudolfd.log ] && mv -f $L/rudolfd.log $L/rudolfd.log.1
 	: > $L/rudolfd.log && chmod 600 $L/rudolfd.log && ln -sf $L/rudolfd.log $RDLOG && RDLOG=$L/rudolfd.log
 fi
+# 1.6.1 (docs/plan-1.6.1.md Part 9): the print queue (/run/cups/cups.sock: the desktop through rudolfd, and Linux apps
+# through CUPS's clients); it becomes the "print" user once its socket is made; started again should it end
+[ -e /var/run ] || ln -s ../run /var/run 2>/dev/null   # (where Flatpak looks for the cups socket it gives apps)
+[ -x /usr/bin/rudolf-printq ] && ( while :; do rudolf-printq serve >> /run/rudolf/printq.log 2>&1; sleep 5; done ) &
 # 1.6.1 (docs/plan-1.6.1.md Part 11): through rudolf-rootd, which starts rudolfd and runs its root helpers for it (and
 # for nothing else: rudolfd's descriptor to it is the only way in)
 if [ -x /usr/bin/rudolf-rootd ]; then rudolf-rootd /usr/bin/rudolfd > $RDLOG 2>&1 &
