@@ -2997,8 +2997,9 @@ static int dl_acct_dir(const char *acct, char *out, size_t n)
 {
 	if (!acct || !*acct) { snprintf(out, n, "%s", DLHOME); return 1; }
 	if (!dl_acct_ok(acct)) return 0;
-	mkdir(DLACCTS, 0700); if (chown(DLACCTS, 1000, 1000)) {}
-	snprintf(out, n, "%s/%s", DLACCTS, acct); mkdir(out, 0700); if (chown(out, 1000, 1000)) {}
+	/* (1.6.1: lchown: an account's folder that is a link is never followed, its target never given to the desktop user) */
+	mkdir(DLACCTS, 0700); if (lchown(DLACCTS, 1000, 1000)) {}
+	snprintf(out, n, "%s/%s", DLACCTS, acct); mkdir(out, 0700); if (lchown(out, 1000, 1000)) {}
 	return 1;
 }
 /* a file in Downloads itself or in one account's folder: DLHOME/NAME or DLACCTS/ACCT/NAME, nothing hidden, no ".." */
@@ -3036,8 +3037,11 @@ static int dl_old_partials(const char *dir)
 	if (d) closedir(d);
 	return n;
 }
+#include "rudolfd-dlzip.inc"   /* 1.6.1: ZIP files kept on the disk, listed and extracted */
 static void api_dl(struct req *r, const char *what, int post)
 {
+	/* 1.6.1: a ZIP kept on the disk: what is inside it, Extract here (rudolfd-dlzip.inc) */
+	if (!strcmp(what, "zip") || !strcmp(what, "unzip") || !strcmp(what, "unzipped")) { api_dl_zip(r, what, post); return; }
 	/* 1.5.5: home: the files in Downloads itself, so ones that no C:\DOWNLOADS entry points at (saved by a Linux app,
 	   or a download whose entry was lost) can be shown there too */
 	if (!strcmp(what, "incoming") || !strcmp(what, "quarantine") || !strcmp(what, "home")) {
@@ -3056,7 +3060,8 @@ static void api_dl(struct req *r, const char *what, int post)
 			first = 0;
 		}
 		if (d) closedir(d);
-		sadd(&s, "]}"); reply_json(r->fd, &s); return;
+		/* (1.6.1: "unzip": an extraction is moving files into this account's folder, which the page will refer to itself) */
+		sadd(&s, "]%s}", !strcmp(what, "home") && dlzip_pending(qparam(r->query, "acct")) ? ",\"unzip\":true" : ""); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(what, "space")) {
 		struct statvfs v; long long fr = -1, tot = -1;
