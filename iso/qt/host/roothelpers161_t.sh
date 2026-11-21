@@ -60,6 +60,7 @@ gcc $CF -o $T/root/network $SYS/rudolf-network.c || { echo "FAIL build network";
 gcc $CF -o $T/root/devices $SYS/rudolf-devices.c || { echo "FAIL build devices"; exit 1; }; chmod 700 $T/root/devices   # (1.6.1 devices: Bluetooth, Thunderbolt)
 # (1.6.1 other: Task Manager's End process, and the kernel's messages from a stand-in dmesg in $T/bin)
 gcc $CF -o $T/root/procs $SYS/rudolf-procs.c && gcc $CF -o $T/root/logs $SYS/rudolf-logs.c || { echo "FAIL build procs, logs"; exit 1; }; chmod 700 $T/root/procs $T/root/logs
+gcc $CF -o $T/root/screen $SYS/rudolf-screen.c && gcc $CF -o $T/root/sound $SYS/rudolf-sound.c || { echo "FAIL build screen, sound"; exit 1; }; chmod 700 $T/root/screen $T/root/sound   # (1.6.1 display and sound)
 cat > $T/bin/dmesg <<'DM'
 #!/bin/sh
 if [ "$1" = -r ]; then printf '<6>[    1.0] usb 1-1: new device\n<3>[    2.0] i915: a GPU hang\n<4>[    3.0] wlan0: deauthenticated\n'
@@ -89,12 +90,18 @@ case "$n $1" in
 "bluetooth remove") echo "Device has been removed";; "bluetooth "*) ;;
 "thunderbolt json") echo '{"ok":true,"present":true,"dma":false,"devices":[]}';; "thunderbolt allow") [ "$2" = 0-1 ] && echo approved || { echo "no such device"; exit 2; };;
 "thunderbolt deny") echo "not approved";; "thunderbolt forget") echo forgotten;;
+"hotkey brightness") echo 40;; "hotkey volume") [ "$2" = get ] && echo "45 muted";; "hotkey playing") echo 2;;
+"hotkey mic") case "$2" in users) printf 'Calls\nRecorder\n';; get) echo muted;; esac;;
+"sound echo") [ "$2" = status ] && echo '{"on":false,"active":false}' || echo "echo $2";; "sound mics") printf 'alsa_input.x\tBuilt-in\t1\n';;
+"sound mic") echo "chose $2";; "sound default") ;; "sound restart") echo restarted;;
+"screenctl status") echo '{"setting":"auto","actual":"1920x1080"}';; "screenctl set") [ "$2" = auto ] || exit 1;; "screenctl "*) ;;
+"setxkbmap "*) [ "$2" = xx ] && exit 1; [ "$DISPLAY" = :0 ] || exit 3;; "pkill "*) ;;
 "wpa_cli "*) case "$5" in status) printf 'bssid=aa:bb:cc:dd:ee:ff\nssid=Home Net  \nwpa_state=COMPLETED\n';; signal_poll) printf 'RSSI=-55\nLINKSPEED=433\n';; esac;;
 esac
 exit 0
 NS
 sed -i "s|@T@|$T|" $T/netstand; chmod 755 $T/netstand
-for s in wifi.sh firewall hotspot netplug udhcpc.sh bluetooth thunderbolt; do cp $T/netstand $T/lib/$s; done; for c in ip udhcpc wpa_cli; do cp $T/netstand $T/bin/$c; done
+for s in wifi.sh firewall hotspot netplug udhcpc.sh bluetooth thunderbolt hotkey sound screenctl; do cp $T/netstand $T/lib/$s; done; for c in ip udhcpc wpa_cli setxkbmap; do cp $T/netstand $T/bin/$c; done
 mkdir -p $T/sys/class/net/rtest0 $T/etc; printf 'RR_TEST_ETC=%s/etc\n' $T >> $T/rr.conf
 # (first a stand-in for drives-home, which says how the drives helper called it: its arguments, what came on its
 # standard input, its environment)
@@ -258,6 +265,21 @@ kill $PF 2>/dev/null; wait $PF 2>/dev/null
 o=$(env -i $T/root/logs dmesg </dev/null); o2=$($T/root/logs dmesg-raw </dev/null); $T/root/logs dmesg -r </dev/null >/dev/null 2>&1; r=$?; $T/root/logs cat </dev/null >/dev/null 2>&1; r2=$?
 ok "O3. logs: dmesg and dmesg -r, as they are; nothing else (an argument, another action: refused)" "$([ $r$r2 = 22 ] && echo "$o" | grep -q 'segfault at 0' && echo "$o2" | grep -q '^<3>' && [ "$(logged 'logs helper refused')" -ge 2 ] && echo 1)" "$r$r2 $o $o2"
 
+# ---- 1.6.1 display and sound: the screen and sound helpers' checks
+SC=$T/root/screen; SO=$T/root/sound; mkdir -p $T/persist/etc; rm -f $T/run/persistent
+$SC mode full </dev/null; r=$?; $SC shell off </dev/null; m1=$(cat $T/etc/rudolf-display $T/etc/rudolf-shell 2>&1 | tr '\n' ' '); p1=$(ls $T/persist/etc | grep -c rudolf-); touch $T/run/persistent; $SC mode soft </dev/null; $SC shell on </dev/null; m2=$(cat $T/etc/rudolf-display $T/persist/etc/rudolf-display $T/persist/etc/rudolf-shell | tr '\n' ' ')
+o=$($SC ctl status </dev/null); $SC ctl set 999x1 60 </dev/null; r2=$?; $SC keyboard de nodeadkeys </dev/null; r3=$?; $SC restart-display </dev/null; r4=$?; c=$(calls)
+ok "S1. screen: the graphics path and the shell into /etc (and /persist/etc only on an installed one, as the helper itself reads it), screenctl, setxkbmap on :0, rudolf-display's restart" "$([ $r$r2$r3$r4 = 0100 ] && [ "$m1" = 'full off ' ] && [ $p1 = 0 ] && [ "$m2" = 'soft soft on ' ] && echo "$o" | grep -q '"setting":"auto"' && echo "$c" | grep -q '^screenctl set 999x1 60|' && echo "$c" | grep -q '^setxkbmap -layout de -variant nodeadkeys|' && echo "$c" | grep -q '^pkill -x rudolf-display' && echo 1)" "$r$r2$r3$r4 $m1 $p1 $m2 $c"
+o=$($SO volume get </dev/null); o2=$($SO playing </dev/null); o3=$($SO mic users </dev/null | wc -l); $SO echo on </dev/null; $SO mic-default alsa_input.x </dev/null; $SO card 2 </dev/null; c=$(calls)
+ok "...sound: hotkey's and the sound script's answers; echo, the microphone chosen and the restart into sound.log; the card into asound.conf (both, installed)" "$([ "$o" = '45 muted' ] && [ "$o2" = 2 ] && [ "$o3" = 2 ] && grep -q '^echo on$' $T/run/sound.log && grep -q '^chose alsa_input.x$' $T/run/sound.log && [ "$(cat $T/etc/asound.conf)" = "$(printf 'defaults.pcm.card 2\ndefaults.ctl.card 2')" ] && [ -e $T/persist/etc/asound.conf ] && echo "$c" | grep -q "^hotkey volume get|$PE" && echo 1)" "$o $o2 $o3 $c $(cat $T/run/sound.log)"
+rm -f $T/run/persistent $T/run/sound.log
+b=0; for a in "mode|hard" "mode" "mode|full|x" "shell|maybe" "ctl|frob" "ctl|set|a b|60" "ctl|set|auto" "ctl|set|aaaaaaaaaaaaa|60" "ctl|set|auto|60000" "keyboard" "keyboard|d;e" "keyboard|de|a|b" "keyboard|aaaaaaaaaaaaaaaaa" "restart-display|x" "restart-browser|x" "frob"; do
+	IFS='|'; set -- $a; IFS=$OIFS; $SC "$@" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed screen: $a)"; }; done
+for a in "volume" "volume|set|1000" "volume|set|-1" "volume|muted|2" "volume|left" "playing|x" "mic|frob" "mic|muted|x" "echo|maybe" "mics|x" "mic-default|a b" "mic-default|a'b" "default|x" "default|1|2" "restart|now" "card|1x" "card|" "frob"; do
+	IFS='|'; set -- $a; IFS=$OIFS; $SO "$@" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed sound: $a)"; }; done; c=$(calls)
+ok "S2. screen and sound: a setting, layout, volume, card or microphone that is not one, extra arguments, unknown actions: refused, nothing run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
+ok "...said in the health log (Security)" "$([ "$(logged 'screen helper refused')" -ge 15 ] && [ "$(logged 'sound helper refused')" -ge 17 ] && echo 1)" "$(logged 'screen helper refused') $(logged 'sound helper refused')"
+
 # ---- the updates helper's checks
 U=$T/root/updates
 for c in check download rollback stable-info to-stable status speedtest boot-ok; do env -i $U $c >/dev/null 2>&1 || echo "rc $c"; done > $T/u.rc; c=$(calls)
@@ -351,7 +373,7 @@ mkdir -p $T/none; gcc -O2 -w -include $T/noreboot.h -DRD_ROOT_DIR="\"$T/none\"" 
 # (rudolfd looks for the power settings, the desktop's priority and the shutdown script in /usr/lib/rudolf before it
 # asks: stand-ins there, in this namespace; the folder made only if this computer has none, and removed again)
 ULR_MADE=; [ -d /usr/lib/rudolf ] || { mkdir -p /usr/lib/rudolf && ULR_MADE=1; }
-mkdir -p $T/ulr; for s in power desktop-priority shutdown wifi.sh firewall hotspot netplug udhcpc.sh bluetooth thunderbolt; do cp $T/lib/$s $T/ulr/$s; done; mount --bind $T/ulr /usr/lib/rudolf
+mkdir -p $T/ulr; for s in power desktop-priority shutdown wifi.sh firewall hotspot netplug udhcpc.sh bluetooth thunderbolt hotkey sound screenctl; do cp $T/lib/$s $T/ulr/$s; done; mount --bind $T/ulr /usr/lib/rudolf
 cp $T/drives-home.real $T/root/drives-home; chmod 700 $T/root/drives-home
 # (the stand-in home for the helper is the real /home/rudolf here, a tmpfs, as rudolfd's API checks the image's place)
 sed -i "s|^RR_TEST_HOME=.*|RR_TEST_HOME=/home/rudolf|; s|^RR_TEST_PERSIST=.*|RR_TEST_PERSIST=/persist|; s|^RR_TEST_AUMAP=.*|RR_TEST_AUMAP=/persist/etc/rudolf/account-users|; s|^RR_TEST_ETC=.*|RR_TEST_ETC=/etc|" $T/rr.conf
@@ -400,6 +422,14 @@ nprobe() {
 	api POST "proc/end?pid=$Q1"; api POST "proc/end?pid=$Q2&tree=1&force=1"; timeout 1 tail -f /dev/null; for p in $Q1 $Q2; do kill -0 $p 2>/dev/null && echo alive; done; wait $Q1 $Q2 2>/dev/null
 	api POST "proc/end?pid=$(pgrep -f "^$T/rudolfd" | head -1)"; api POST 'proc/end?pid=999999999'
 	api GET log; api GET crashes | sed 's/"at":[0-9]*/"at":N/g'; cat /run/rudolf/job.kmark
+	# (1.6.1 display and sound; the installed mark the helper reads is this test's $T/run/persistent)
+	touch $T/run/persistent; rm -f /etc/rudolf-display /etc/rudolf-shell /etc/asound.conf /persist/etc/rudolf-display /persist/etc/rudolf-shell /persist/etc/asound.conf
+	api POST 'display?mode=full'; cat /etc/rudolf-display /persist/etc/rudolf-display; api POST 'shell?on=0'; cat /etc/rudolf-shell /persist/etc/rudolf-shell
+	api GET screen; api POST 'screen?res=auto&fps=60'; api POST 'screen?res=999x1&fps=60'; api POST screen/keep; api POST screen/revert
+	api POST 'keyboard?layout=de&variant=nodeadkeys'; api POST 'keyboard?layout=xx'; api POST 'service/restart?name=display'; api POST 'service/restart?name=sound'; api POST restart-browser
+	api GET media | sed 's/"heldBy":\[[^]]*\]/"heldBy":H/'; api GET mic; api POST 'mic?muted=1'; api GET sound/echo; api POST 'sound/echo?on=1'
+	api GET volume; api POST 'volume?set=30'; api POST 'volume?step=up'; api POST 'volume?set=abc&muted=1'; api GET audio/mics; api POST 'audio/mic?name=alsa_input.x'
+	api POST 'audio?card=1'; cat /etc/asound.conf /persist/etc/asound.conf; cat /run/rudolf/sound.log $T/run/sound.log 2>/dev/null; rm -f /run/rudolf/sound.log $T/run/sound.log $T/run/persistent
 }
 nnorm() { grep -v '^ntpd \|^hwclock \|^firewall status|' | sed "s|$T/run/|/run/rudolf/|g; s|$T/lib/|/usr/lib/rudolf/|g; s/|path=[^|]*//"; }
 # the accounts' folders: sign-in with the session, the state it leaves (owners, the binds, the session's files), a
@@ -445,5 +475,6 @@ ok "...the scripts and commands asked the same things (the requests' files root'
 ok "...and they are 1.6.0's answers: the status's raw text, the radio and band turned off, the adapter refused, connecting then the job ended 0, forgotten, connected, no DHCP answer 500, applied, the address refused 500 with the name server written, the firewall's count, its refusal's words, sharing, the hotspot off, metered refused" "$(echo "$NA" | grep -q '"raw":"adapter=rtest0' && echo "$NA" | grep -q 'Radio aa:bb:cc:dd:ee:ff turned off' && echo "$NA" | grep -q "5 GHz radio turned off" && echo "$NA" | grep -q 'No such adapter: wlan9' && echo "$NA" | grep -q '"message":"connecting"' && echo "$NA" | grep -q '"message":"Forgotten"' && echo "$NA" | grep -q '"message":"connected"' && echo "$NA" | grep -q 'no DHCP answer' && echo "$NA" | grep -q '"message":"applied"' && echo "$NA" | grep -q 'could not apply the address' && echo "$NA" | grep -q '^nameserver 8.8.4.4$' && echo "$NA" | grep -q '"blocked":7' && echo "$NA" | grep -q 'nft: no such table' && echo "$NA" | grep -q 'Sharing Phone Net' && echo "$NA" | grep -q 'The hotspot is off' && echo "$NA" | grep -q 'no such adapter' && ! grep -q 'network helper did not start' $T/rd.log && echo 1)" "$NA"
 ok "26. Bluetooth and Thunderbolt through the devices helper (in check 25's comparison): 1.6.0's answers: the status, answered, already answered 409, paired, disconnected, removed (the device still there: 409 as before), a lower-case address 400, the devices, approved, not approved, forgotten, no such device 500" "$(echo "$NA" | grep -q '"adapter":"hci0"' && echo "$NA" | grep -q '"message":"answered"' && echo "$NA" | grep -q 'already answered' && echo "$NA" | grep -q '"ok":true,"message":"Pairing successful"' && echo "$NA" | grep -q '"ok":true,"message":"Successful disconnected"' && echo "$NA" | grep -q '"ok":false,"message":"Device has been removed"' && echo "$NA" | grep -q 'bad device' && echo "$NA" | grep -q '"present":true' && echo "$NA" | grep -q '"message":"approved"' && echo "$NA" | grep -q '"message":"not approved"' && echo "$NA" | grep -q '"message":"forgotten"' && echo "$NA" | grep -q '"error":"no such device"' && echo "$NCA" | grep -q '^bluetooth scan 5|' && echo "$NCA" | grep -q '^thunderbolt forget 00ab-cd12|' && ! grep -q 'devices helper did not start' $T/rd.log && echo 1)" "$(echo "$NA" | tail -16)"
 ok "27. Task Manager's End process and End process tree through the procs helper, the kernel's messages through the logs helper (in check 25's comparison): 1.6.0's answers: ended, the tree's five, rudolfd itself 403, one that is gone 404, the log, the crash, a job's last crash line" "$(echo "$NA" | grep -q '"ok":true,"message":"timeout"}' && echo "$NA" | grep -q '"message":"sh","ended":5,"kept":0' && ! echo "$NA" | grep -q '^alive' && echo "$NA" | grep -q 'needs this process' && echo "$NA" | grep -q 'already ended' && echo "$NA" | grep -q '"log":"\[    1.0\] usb' && echo "$NA" | grep -q '"crashes":\[{' && echo "$NA" | grep -q '^\[    2.5\] rudolf-apps\[99\]: segfault' && ! grep -q 'helper did not start' $T/rd.log && echo 1)" "$(echo "$NA" | tail -9)"
+ok "28. the display's settings and sound through the screen and sound helpers (in check 25's comparison): 1.6.0's answers and files: the graphics path and the shell saved (both places), the screen's status, a mode not offered 400, the layout set and an unknown one 500, the restarts, media, the microphone, the echo canceller, the volume (a step, then get), the microphone chosen, the card" "$(echo "$NA" | grep -q 'restart Rudolf OS to use it' && [ "$(echo "$NA" | grep -c '^full$')" = 2 ] && [ "$(echo "$NA" | grep -c '^off$')" = 2 ] && echo "$NA" | grep -q '"actual":"1920x1080"' && echo "$NA" | grep -q 'not offered' && echo "$NA" | grep -q '"message":"layout set"' && echo "$NA" | grep -q 'unknown layout' && echo "$NA" | grep -q '"playing":2,"mic":2' && echo "$NA" | grep -q '"muted":true,"users":\["Calls","Recorder"\]' && echo "$NA" | grep -q '"volume":45,"muted":true' && echo "$NA" | grep -q '"message":"display"' && echo "$NA" | grep -q '"message":"sound"' && [ "$(echo "$NA" | grep -c '^defaults.pcm.card 1$')" = 2 ] && echo "$NA" | grep -q '^chose alsa_input.x$' && echo "$NCA" | grep -q '^pkill -f \[-\]-rudolf-kiosk' && ! grep -q 'helper did not start' $T/rd.log && echo 1)" "$(echo "$NA" | tail -40)"
 ok "21. rudolfd keeps rudolf-rootd's descriptor close-on-exec (nothing it starts has it)" "$(echo "$FDS" | python3 -c 'import sys,re; t=sys.stdin.read(); m=re.search(r"flags:\s*([0-7]+)", t); print(1 if m and int(m.group(1), 8) & 0o2000000 and "socket:" in t else 0)')" "$FDS"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

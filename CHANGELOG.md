@@ -63,6 +63,9 @@ Summary: In progress.
   longer by rudolfd. Nothing changes on screen.
 - Security: Task Manager's End process and End process tree, and reading the kernel's messages (System health, the
   crashes list), are handled by two small helpers of their own, no longer by rudolfd. Nothing changes on screen.
+- Security: the display's settings (the graphics path, the desktop's shell, resolution and frame rate, the keyboard's
+  layout, restarting the display or the desktop's browser) and sound (the volume, the microphone, the echo canceller,
+  the sound card) are handled by helpers of their own, no longer by rudolfd. Nothing changes on screen.
 - Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
   rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
   starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own
@@ -78,6 +81,12 @@ Summary: In progress.
 - Changed: files kept on the disk can now be in sub-folders of Downloads, where they stay (before, they were moved back to
   the top of Downloads); only those at the top are renamed on the disk when renamed. Deleting them, the Trash and
   Downloads' own files work as before.
+- New: reader mode in Oracle. On a page with an article (a news story, a blog post, a recipe) a 📖 button shows in the
+  address box; it, F9 (also inside a website) or ☰ › Reader mode shows the article alone: its title, author and text, its
+  pictures and links, in Rudolf's reading style, with A− A+, the width, the font (serif, sans, OpenDyslexic), light, sepia
+  or dark (dark with Rudolf's dark theme), 🔊 Read aloud in Rudolf's own voice (the sentence being read highlighted) and
+  🖨 Print (the article alone). ✕ Exit reader or F9 gives the page back as it was. Nothing of the website runs in reader
+  mode. Also for .HTM files on C:. On Standard, Native and Lite. It uses Mozilla's Readability (Apache License 2.0).
 - Fixed: the release build no longer stops when linux-firmware updates a file: it takes linux-firmware at the commit the firmware list was made from (the list's new "R" line), and a check runs that fetch on every change to the list.
 - Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
   follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at

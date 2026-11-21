@@ -16,6 +16,7 @@ mods.append('orafind61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's fin
 # 1.4.0: a top-level function defined in two modules replaces the earlier one without a word (the development
 # link's dlPoll replaced the downloads' dlPoll, so downloads from real tabs never finished): stop the build instead
 import re as _re
+mods.append('orareader61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's reader mode (after oracle58.js: it adds to __oracleMenu; Readability beside the page, below)
 _seen={}
 for _m in mods:
     for _n in set(_re.findall(r'^(?:async\s+)?function\s+([A-Za-z_$][\w$]*)',L(_m),_re.M)):
@@ -178,6 +179,9 @@ assert 'QWASM_B64' not in s and 'GM_UNI\'' not in s and 'atob(GM_UNI)' not in s
 _EXT['text/javascript']='js'
 _LZ={_g:_out('data:text/javascript;base64,'+base64.b64encode(_c.encode()).decode()) for _g,_c in LAZY_CODE.items()}
 s=s.replace("const LAZY_DONE={},LAZY_P={};let LAZY={};","const LAZY_DONE={},LAZY_P={};let LAZY="+json.dumps(_LZ)+";",1)
+# 1.6.1 (Part 10): Mozilla's Readability (libs/readability, Apache-2.0) for Oracle's reader mode, a file beside the page read the first time it is used
+_n=s.count("const ORA_RDB_URL = '';");assert _n==1,_n
+s=s.replace("const ORA_RDB_URL = '';","const ORA_RDB_URL = '"+_out('data:text/javascript;base64,'+base64.b64encode(open(os.path.join(here,'../libs/readability/Readability.js'),'rb').read()).decode())+"';")
 for _n in os.listdir(_A):
     if _n not in _keep:os.remove(os.path.join(_A,_n))
 open(O,'w').write(s);print(len(s),len(_keep),'files in a/')
