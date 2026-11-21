@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- For the phone build to come (2.0): the groundwork of its home screen's three panels: on a build marked as the mobile
+  build, the three workspaces are panels shown full screen, switched with a swipe to the left or right on the desktop or
+  a title bar, on Standard and Native alike. Nothing changes on computers.
 - Printing: a print queue for the whole computer. Linux apps print too (LibreOffice, GTK and Qt apps, lp in Debian and
   Flatpak apps: through the queue, as on any Linux), and Settings › Devices › Print queue shows what is printing, with
   Cancel for your own documents; another account's are listed without their names and cannot be cancelled by you.
