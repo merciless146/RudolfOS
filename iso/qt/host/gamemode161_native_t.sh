@@ -29,7 +29,7 @@ w8 '[ "$(st signin)" = 1 ]' 120 || { echo "FAIL the sign-in screen did not come:
 LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ]' 120; ok "0. signed in" "$([ "$(st user)" = Ann ] && echo 1)" "$(head -5 $D/state)"
 timeout 3 tail -f /dev/null
-ok "1. before: no game, nothing said to rudolfd" "$([ "$(calls 'game/')" = 0 ] && echo 1)" "$(grep game/ $D/calls)"
+ok "1. before: no game, no full screen said to rudolfd (the pages only ask: GET game/status)" "$([ "$(calls 'POST game/')" = 0 ] && echo 1)" "$(grep game/ $D/calls | head)"
 $T/fsgame & GP=$!
 w8 "[ \$(calls 'POST game/on?src=native&kind=linux&pid=$GP') -ge 2 ]" 40
 ok "2. the stand-in game full screen: game/on?src=native&kind=linux with its pid, again every 2 s" "$([ "$(calls "POST game/on?src=native&kind=linux&pid=$GP")" -ge 2 ] && echo 1)" "$(grep game/ $D/calls | tail -3)"
