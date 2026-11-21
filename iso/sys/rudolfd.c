@@ -1539,8 +1539,11 @@ static void api_shell(struct req *r, const char *what, int post)
 	if (!*what) {
 		const char *on = qparam(r->query, "on"); if (!on) { reply_err(r->fd, 400, "on?"); return; }
 		const char *v = !strcmp(on, "0") ? "off\n" : "on\n";
+		const char *av[] = { "screen", "shell", !strcmp(on, "0") ? "off" : "on", NULL };   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
+		if (root_ui_run(av, 0, NULL) == -2) {
 		write_str("/etc/rudolf-shell", v);
 		if (!live) { mkdir(PERSIST "/etc", 0755); write_str(PERSIST "/etc/rudolf-shell", v); }
+		}
 		if (!strcmp(on, "1")) unlink(RUN "/shell-failed");
 		reply_ok(r->fd, "saved"); return;
 	}
@@ -2944,10 +2947,10 @@ static void api_service(struct req *r)
 	char *n = qparam(r->query, "name");
 	if (!n) { reply_err(r->fd, 400, "which service?"); return; }
 	int rc = -1;
-	if (!strcmp(n, "sound")) rc = run("/usr/lib/rudolf/sound restart >>" RUN "/sound.log 2>&1");
-	else if (!strcmp(n, "wifi")) { const char *av[] = { "network", "wifi", "reconnect", "", NULL }; rc = root_have("network") ? root_net(av, 1) : -2;   /* (1.6.1 Part 11) */
+	if (!strcmp(n, "sound")) { const char *av[] = { "sound", "restart", NULL }; rc = root_ui_run(av, 0, "/usr/lib/rudolf/sound restart >>" RUN "/sound.log 2>&1"); }   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
+	else if (!strcmp(n, "wifi")) { const char *av[] = { "network", "wifi", "reconnect", NULL }; rc = root_have("network") ? root_net(av, 1) : -2;   /* (1.6.1 Part 11) */
 		if (rc == -2) rc = run("/usr/lib/rudolf/wifi.sh reconnect >/dev/null 2>&1"); }
-	else if (!strcmp(n, "display")) rc = run("pkill -x rudolf-display >/dev/null 2>&1; true");
+	else if (!strcmp(n, "display")) { const char *av[] = { "screen", "restart-display", NULL }; rc = root_ui_run(av, 0, "pkill -x rudolf-display >/dev/null 2>&1; true"); }
 	else { reply_err(r->fd, 404, "unknown service"); return; }
 	if (rc) reply_err(r->fd, 500, "it did not start again"); else reply_ok(r->fd, n);
 }
@@ -3761,7 +3764,7 @@ static void api_secureboot(struct req *r, const char *what, int post)
 }
 
 /* ------------------------------------------------------------- dispatcher */
-static int restart_browser(void) { return run("pkill -f '[-]-rudolf-kiosk' >/dev/null 2>&1"); }   /* (1.5.7: either engine) */
+static int restart_browser(void) { const char *av[] = { "screen", "restart-browser", NULL }; return root_ui_run(av, 0, "pkill -f '[-]-rudolf-kiosk' >/dev/null 2>&1"); }   /* (1.5.7: either engine; 1.6.1 Part 11: the screen helper) */
 
 /* ------------------------------------------------------------- the development link (1.4.0)
  * rudolf-devlink runs commands from a private GitHub repository the owner chose (see rudolf-devlink.c and
@@ -4874,8 +4877,11 @@ static void api(struct req *r)
 			if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 			if (strcmp(m, "soft") && strcmp(m, "games") && strcmp(m, "full")) { reply_err(r->fd, 400, "bad mode"); return; }
 			char b[16]; snprintf(b, sizeof b, "%s\n", m);
+			const char *av[] = { "screen", "mode", m, NULL };   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
+			if (root_ui_run(av, 0, NULL) == -2) {
 			write_str("/etc/rudolf-display", b);
 			if (!live) { mkdir(PERSIST "/etc", 0755); write_str(PERSIST "/etc/rudolf-display", b); }
+			}
 			reply_ok(r->fd, live ? "saved until Rudolf OS restarts (not installed, so it is not kept)" : "saved; restart Rudolf OS to use it"); return;
 		}
 		str s = {0};
@@ -4893,17 +4899,18 @@ static void api(struct req *r)
 	if (!strncmp(p, "screen", 6)) {
 		/* Settings > Display: resolution and frame rate (/usr/lib/rudolf/screenctl) */
 		const char *a = p + 6; char cmd[200];
-		if (!*a && !post) { char *o = run_out("/usr/lib/rudolf/screenctl status 2>/dev/null"); if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the screen settings could not be read"); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
+		if (!*a && !post) { const char *av[] = { "screen", "ctl", "status", NULL }; char *o = root_ui_out(av, 0, "/usr/lib/rudolf/screenctl status 2>/dev/null");   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */ if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the screen settings could not be read"); return; } reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return; }
 		if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 		if (!*a) {
 			const char *res = qparam(r->query, "res"), *fps = qparam(r->query, "fps");
 			if (!safe_word(res, 12) || !safe_word(fps, 4)) { reply_err(r->fd, 400, "resolution and frame rate?"); return; }
 			snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/screenctl set %s %s", res, fps);
-			if (run(cmd)) { reply_err(r->fd, 400, "that resolution or frame rate is not offered"); return; }
+			const char *av[] = { "screen", "ctl", "set", res, fps, NULL };
+			if (root_ui_run(av, 1, cmd)) { reply_err(r->fd, 400, "that resolution or frame rate is not offered"); return; }
 			reply_ok(r->fd, "the display starts again with the new setting"); return;
 		}
-		if (!strcmp(a, "/keep")) { run("/usr/lib/rudolf/screenctl keep"); reply_ok(r->fd, "kept"); return; }
-		if (!strcmp(a, "/revert")) { run("/usr/lib/rudolf/screenctl revert"); reply_ok(r->fd, "the previous setting comes back"); return; }
+		if (!strcmp(a, "/keep")) { const char *av[] = { "screen", "ctl", "keep", NULL }; root_ui_run(av, 1, "/usr/lib/rudolf/screenctl keep"); reply_ok(r->fd, "kept"); return; }
+		if (!strcmp(a, "/revert")) { const char *av[] = { "screen", "ctl", "revert", NULL }; root_ui_run(av, 1, "/usr/lib/rudolf/screenctl revert"); reply_ok(r->fd, "the previous setting comes back"); return; }
 		reply_err(r->fd, 404, "unknown screen action"); return;
 	}
 	if (!strncmp(p, "idbm/", 5)) { api_idbm(r, p + 5, post); return; }
@@ -4921,10 +4928,11 @@ static void api(struct req *r)
 	/* 1.4.4: is sound playing in any app (a video in Oracle's real tabs, a Linux app, a game): the screen saver and
 	   sleep wait, as they do for the desktop's own media */
 	if (!strcmp(p, "media")) {
-		char *o = run_out("/usr/lib/rudolf/hotkey playing 2>/dev/null"); trim(o); int n = o ? atoi(o) : 0; free(o);
+		const char *pav[] = { "sound", "playing", NULL }, *uav[] = { "sound", "mic", "users", NULL };   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
+		char *o = root_ui_out(pav, 0, "/usr/lib/rudolf/hotkey playing 2>/dev/null"); trim(o); int n = o ? atoi(o) : 0; free(o);
 		/* 1.5.9 (plan 7.2): and the apps recording from a microphone (a call): the screen saver, the lock and sleep
 		   wait for those too */
-		char *u = run_out("/usr/lib/rudolf/hotkey mic users 2>/dev/null"); int m = 0; if (u) for (char *c = u; *c; c++) if (*c == '\n') m++;
+		char *u = root_ui_out(uav, 0, "/usr/lib/rudolf/hotkey mic users 2>/dev/null"); int m = 0; if (u) for (char *c = u; *c; c++) if (*c == '\n') m++;
 		/* 1.6.0 (plan Part 11): and what the apps asked to keep on: the screen (idle: no saver, lock or sleep) or the
 		   computer (sleep), through the portal, org.freedesktop.ScreenSaver or PowerManagement */
 		int hi, hs; str ap = {0}; sadd(&ap, "%s", ""); inhibit_scan(&hi, &hs, &ap);
@@ -4934,8 +4942,9 @@ static void api(struct req *r)
 	if (!strcmp(p, "mic")) {
 		char *v = qparam(r->query, "muted");
 		if (post) { if (!v || (strcmp(v, "0") && strcmp(v, "1"))) { reply_err(r->fd, 400, "muted is 0 or 1"); return; }
-			char cmd[100]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey mic muted %s >/dev/null 2>&1", v); run(cmd); }
-		char *u = run_out("/usr/lib/rudolf/hotkey mic users 2>/dev/null"), *g = run_out("/usr/lib/rudolf/hotkey mic get 2>/dev/null"); trim(g);
+			char cmd[100]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey mic muted %s >/dev/null 2>&1", v); const char *av[] = { "sound", "mic", "muted", v, NULL }; root_ui_run(av, 0, cmd); }   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
+		const char *uav[] = { "sound", "mic", "users", NULL }, *gav[] = { "sound", "mic", "get", NULL };
+		char *u = root_ui_out(uav, 0, "/usr/lib/rudolf/hotkey mic users 2>/dev/null"), *g = root_ui_out(gav, 0, "/usr/lib/rudolf/hotkey mic get 2>/dev/null"); trim(g);
 		str js = {0}; sadd(&js, "{\"ok\":true,\"muted\":%s,\"users\":[", g && !strcmp(g, "muted") ? "true" : "false");
 		int first = 1; if (u) for (char *l = strtok(u, "\n"); l; l = strtok(NULL, "\n")) { if (!*l) continue; if (!first) sadd(&js, ","); first = 0; sjson(&js, l); }
 		sadd(&js, "]}"); free(u); free(g); reply_json(r->fd, &js); return;
@@ -4944,8 +4953,9 @@ static void api(struct req *r)
 	if (!strcmp(p, "sound/echo")) {
 		if (post) { char *v = qparam(r->query, "on"); if (!v || (strcmp(v, "0") && strcmp(v, "1"))) { reply_err(r->fd, 400, "on is 0 or 1"); return; }
 			char cmd[100]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/sound echo %s >>" RUN "/sound.log 2>&1", *v == '1' ? "on" : "off");
-			if (run(cmd)) { reply_err(r->fd, 500, "the echo canceller could not be started"); return; } }
-		char *o = run_out("/usr/lib/rudolf/sound echo status 2>/dev/null"); if (o) trim(o);
+			const char *av[] = { "sound", "echo", *v == '1' ? "on" : "off", NULL };   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
+			if (root_ui_run(av, 0, cmd)) { reply_err(r->fd, 500, "the echo canceller could not be started"); return; } }
+		const char *sav[] = { "sound", "echo", "status", NULL }; char *o = root_ui_out(sav, 0, "/usr/lib/rudolf/sound echo status 2>/dev/null"); if (o) trim(o);
 		if (!o || *o != '{') { free(o); reply_err(r->fd, 503, "no sound server"); return; }
 		str js = {0}; sadd(&js, "{\"ok\":true,%s", o + 1); free(o); reply_json(r->fd, &js); return;
 	}
@@ -4962,13 +4972,20 @@ static void api(struct req *r)
 	/* 1.4.4: the system volume (the sound server's default output, through /usr/lib/rudolf/hotkey, as the keys do):
 	   GET volume; POST volume?set=N (0-100), ?muted=0|1 or ?step=up|down|mute */
 	if (!strcmp(p, "volume")) {
-		char cmd[96]; const char *v;
+		char cmd[96]; const char *v, *vk = "get", *va = NULL;   /* (vk, va: the same for the sound helper) */
 		if (!post) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume get 2>/dev/null");
-		else if ((v = qparam(r->query, "set")) && *v && strspn(v, "0123456789") == strlen(v) && strlen(v) <= 3) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume set %s 2>/dev/null", v);
-		else if ((v = qparam(r->query, "muted")) && (!strcmp(v, "0") || !strcmp(v, "1"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume muted %s 2>/dev/null", v);
-		else if ((v = qparam(r->query, "step")) && (!strcmp(v, "up") || !strcmp(v, "down") || !strcmp(v, "mute"))) snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume %s >/dev/null 2>&1; /usr/lib/rudolf/hotkey volume get 2>/dev/null", v);
+		else if ((v = qparam(r->query, "set")) && *v && strspn(v, "0123456789") == strlen(v) && strlen(v) <= 3) { snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume set %s 2>/dev/null", v); vk = "set"; va = v; }
+		else if ((v = qparam(r->query, "muted")) && (!strcmp(v, "0") || !strcmp(v, "1"))) { snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume muted %s 2>/dev/null", v); vk = "muted"; va = v; }
+		else if ((v = qparam(r->query, "step")) && (!strcmp(v, "up") || !strcmp(v, "down") || !strcmp(v, "mute"))) { snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey volume %s >/dev/null 2>&1; /usr/lib/rudolf/hotkey volume get 2>/dev/null", v); vk = "step"; va = v; }
 		else { reply_err(r->fd, 400, "set=0-100, muted=0|1 or step=up|down|mute"); return; }
-		char *o = run_out(cmd); trim(o); int lv = -1; char mu[8] = "";
+		/* (1.6.1 Part 11: the same through the sound helper; a step, then get) */
+		char *o = NULL;
+		if (root_have("sound")) { const char *av[5] = { "sound", "volume", "get", NULL, NULL };
+			if (!strcmp(vk, "set") || !strcmp(vk, "muted")) { av[2] = vk; av[3] = va; }
+			else if (!strcmp(vk, "step")) { const char *st[] = { "sound", "volume", va, NULL }; if (root_ui_run(st, 0, NULL) == -2) av[0] = NULL; }
+			if (av[0]) { int s2; o = root_net_out(av, NULL, 0, 0, &s2); if (s2 == -2) { free(o); o = NULL; } } }
+		if (!o) o = run_out(cmd);
+		trim(o); int lv = -1; char mu[8] = "";
 		if (sscanf(o, "%d %7s", &lv, mu) < 1) { free(o); reply_err(r->fd, 503, "the sound server is not running"); return; }
 		str js = {0}; sadd(&js, "{\"ok\":true,\"volume\":%d,\"muted\":%s}", lv, strcmp(mu, "muted") ? "false" : "true");
 		free(o); reply_json(r->fd, &js); return;
@@ -5294,7 +5311,8 @@ static void api(struct req *r)
 		char *l = qparam(r->query, "layout"), *v = qparam(r->query, "variant");
 		if (!safe_word(l, 16) || (v && *v && !safe_word(v, 24))) { reply_err(r->fd, 400, "bad layout"); return; }
 		char cmd[200]; snprintf(cmd, sizeof cmd, "DISPLAY=:0 setxkbmap -layout %s%s%s", l, v && *v ? " -variant " : "", v && *v ? v : "");
-		if (run(cmd)) reply_err(r->fd, 500, "unknown layout"); else reply_ok(r->fd, "layout set");
+		const char *av[] = { "screen", "keyboard", l, v && *v ? v : NULL, NULL };   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
+		if (root_ui_run(av, 1, cmd)) reply_err(r->fd, 500, "unknown layout"); else reply_ok(r->fd, "layout set");
 		return;
 	}
 	if (!strcmp(p, "pointer")) {
@@ -5309,7 +5327,7 @@ static void api(struct req *r)
 	}
 	/* 2026-11-14: GET audio/mics: the microphones (Settings' list); POST audio/mic?name=SOURCE: the default one */
 	if (!strcmp(p, "audio/mics") && !post) {
-		char *o = run_out("/usr/lib/rudolf/sound mics 2>/dev/null"); str js = {0}; sadd(&js, "{\"ok\":true,\"mics\":["); int first = 1;
+		const char *av[] = { "sound", "mics", NULL }; char *o = root_ui_out(av, 0, "/usr/lib/rudolf/sound mics 2>/dev/null"); str js = {0}; sadd(&js, "{\"ok\":true,\"mics\":["); int first = 1;   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
 		if (o) for (char *l = strtok(o, "\n"); l; l = strtok(NULL, "\n")) { char *t1 = strchr(l, '\t'); if (!t1) continue; *t1++ = 0; char *t2 = strchr(t1, '\t'); if (!t2) continue; *t2++ = 0;
 			sadd(&js, "%s{\"name\":", first ? "" : ","); sjson(&js, l); sadd(&js, ",\"desc\":"); sjson(&js, t1); sadd(&js, ",\"default\":%s}", *t2 == '1' ? "true" : "false"); first = 0; }
 		sadd(&js, "]}"); free(o); reply_json(r->fd, &js); return;
@@ -5318,7 +5336,8 @@ static void api(struct req *r)
 		char *n = qparam(r->query, "name");
 		if (!n || !*n || strlen(n) > 200 || strspn(n, "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-") != strlen(n)) { reply_err(r->fd, 400, "bad microphone"); return; }
 		char cmd[300]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/sound mic '%s' >>" RUN "/sound.log 2>&1", n);
-		if (run(cmd)) { reply_err(r->fd, 409, "that microphone could not be chosen"); return; }
+		const char *av[] = { "sound", "mic-default", n, NULL };   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
+		if (root_ui_run(av, 0, cmd)) { reply_err(r->fd, 409, "that microphone could not be chosen"); return; }
 		reply_ok(r->fd, "microphone chosen"); return;
 	}
 	if (!strcmp(p, "audio")) {
@@ -5326,13 +5345,17 @@ static void api(struct req *r)
 		if (c) {
 			if (strspn(c, "0123456789") != strlen(c) || !*c) { reply_err(r->fd, 400, "bad card"); return; }
 			char b[128]; snprintf(b, sizeof b, "defaults.pcm.card %s\ndefaults.ctl.card %s\n", c, c);
+			const char *cav[] = { "sound", "card", c, NULL };   /* (1.6.1 Part 11: rudolfd-rootscreen.inc) */
+			if (root_ui_run(cav, 0, NULL) == -2) {
 			write_str("/etc/asound.conf", b);
 			mkdir(PERSIST "/etc", 0755);
 			if (!live) write_str(PERSIST "/etc/asound.conf", b);
+			}
 			/* with the sound server running, switch its default output; otherwise the browser
 			   must restart to pick up the new ALSA default */
 			char cmd[96]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/sound default %s >/dev/null 2>&1", c);
-			if (!access("/run/user/1000/pulse/native", F_OK) && !run(cmd)) { reply_ok(r->fd, "sound card selected"); return; }
+			const char *dav[] = { "sound", "default", c, NULL };
+			if (!access("/run/user/1000/pulse/native", F_OK) && !root_ui_run(dav, 0, cmd)) { reply_ok(r->fd, "sound card selected"); return; }
 			restart_browser();
 			reply_ok(r->fd, "sound card selected; Rudolf OS restarts its browser"); return;
 		}
