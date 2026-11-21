@@ -95,7 +95,10 @@ function bzDraftReport(what,answer,logs){if(typeof sysReportDialog!='function')r
  const t=String(answer||'').replace(/```[\s\S]*?```/g,'').trim();
  sysReportDialog({title:String(what||'').replace(/\s+/g,' ').slice(0,80),text:'What happened: '+what+'\n\nWhat I was doing: \n\nBlitzen\'s explanation (from this computer\'s logs):\n'+t,logs:String(logs||'').split('\n').filter(Boolean)})}
 /* a small "⚡ Why?" button for a notification or a log line that tells of a failure (n: {t,b,k}) */
-function bzWhyBtn(host,n,o){try{if(!host||!bzCan()||!bzIsError(n.t+' '+n.b,n.k))return;const b=document.createElement('button');b.className='bzwhy';b.textContent='⚡ Why?';
+function bzWhyBtn(host,n,o){try{if(host&&n&&n.bz&&bzCan()&&typeof dlFindAsk=='function'){   /* (1.6.1: a notification's own Blitzen button: a download removed from Oracle's list, dlrm61.js) */
+  const b=document.createElement('button');b.className='bzwhy';b.textContent='⚡ '+(n.wl||'Ask Blitzen');b.title='Ask Blitzen to help find this file (it reads what is shown first; it changes nothing)';b.style.cssText='margin-left:6px;font-size:11px;padding:0 6px';
+  b.onclick=e=>{e.stopPropagation();const t=host.closest&&host.closest('.ntoast');if(t)t.remove();dlFindAsk(n.bz)};host.appendChild(b);return}
+ if(!host||!bzCan()||!bzIsError(n.t+' '+n.b,n.k))return;const b=document.createElement('button');b.className='bzwhy';b.textContent='⚡ Why?';
  b.title='Ask Blitzen why this happened (it reads the logs you allow; it changes nothing)';b.style.cssText='margin-left:6px;font-size:11px;padding:0 6px';
  b.onclick=e=>{e.stopPropagation();const t=host.closest&&host.closest('.ntoast');if(t)t.remove();bzWhy((n.t+(n.b?' — '+n.b:'')).slice(0,300),Object.assign({detail:n.t+(n.b?'\n'+n.b:'')},o||{}))};host.appendChild(b)}catch(e){}}
 /* 1.5.9: Wi-Fi diagnostics (Settings › Network › Wi-Fi › "Why does the Wi-Fi drop?"): the Wi-Fi's own log, the kernel's
