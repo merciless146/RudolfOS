@@ -451,10 +451,13 @@ rudolfd runs as root today (they keep running as root, from the helper).
   intel or amdgpu one first), `dropcache`, `priority on|off`, `clock-set MS`, `clock-sync` (BusyBox ntpd, pool.ntp.org
   then time.google.com, the hardware clock, RUN/time-sync as before). The commands it runs are looked for in the
   system's folders only, with no environment but PATH. rudolfd keeps each old line beside the call for when the helper
-  does not start (rudolfd-rootpower.inc, -2): restart and shut down always work. Part 20: no "power" line in
-  HELPER_CAPS yet (with confine=on rudolfd does it itself, as with accounts); the line to add: CAP_SYS_BOOT,
-  CAP_SYS_TIME, CAP_SYS_ADMIN (umount -a -r, the backlight and /sys), CAP_DAC_OVERRIDE, CAP_KILL, CAP_WAKE_ALARM, and
-  reboot, settimeofday and clock_settime taken out of its deny list for this helper. Found and kept as they were:
+  does not start (rudolfd-rootpower.inc, -2): restart and shut down always work. Part 20 (merged, #534): the power
+  helper's line in HELPER_CAPS (CAP_SYS_BOOT, CAP_SYS_TIME, CAP_SYS_ADMIN for umount -a -r and /sys, CAP_DAC_OVERRIDE,
+  CAP_KILL, CAP_WAKE_ALARM) and HELPER_ALLOW, the calls of the helpers' deny list it may still make (reboot,
+  settimeofday, clock_settime, clock_adjtime, adjtimex); rudolf-rootd now sets no_new_privs on a helper that keeps no
+  CAP_SYS_ADMIN (the accounts helper), which a seccomp filter needs without it (found by roothelpers161_t.sh with
+  RH_CONFINE=on: the accounts helper did not start, 253); ci_release.sh and the check run that test with the
+  confinement on too. memory/dropcache is narrow only with rudolf-rootd now (confinepure.py). Found and kept as they were:
   POST time takes any epoch rudolfd's atoll reads (garbage set the clock to 1970); through the helper only digits are
   taken, so a malformed epoch is now 500 "could not set the clock" (the page sends Date.now()); POST power/set with
   more than 30 settings, or a setting with an empty part between two "&", now answers 500 instead of the script's 400

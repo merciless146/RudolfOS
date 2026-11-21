@@ -65,8 +65,13 @@ static int helper_confine(const char *name)
 	for (int i = 0; HELPER_CAPS[i].name; i++) if (!strcmp(HELPER_CAPS[i].name, name)) { keep = HELPER_CAPS[i].keep; known = 1; }
 	if (!known) return confine_m == CF_ON ? -1 : 0;   /* (a helper without its line here is never run unconfined with "on") */
 	if (confine_m == CF_ON && cf_caps(keep)) return -1;
-	int n = 0; while (CF_HELPER_DENY[n] >= 0) n++;
-	return cf_seccomp(CF_HELPER_DENY, n, NULL, 0, 0, confine_m) && confine_m == CF_ON ? -1 : 0;
+	/* (1.6.1 Part 11: a helper that keeps no CAP_SYS_ADMIN may put a filter on only with no_new_privs, which it then
+	   gets: it gains nothing by running a set-user-ID program either, as root; su to an account's user still works) */
+	if (!(keep & CB(CAP_SYS_ADMIN)) && prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) && confine_m == CF_ON) return -1;
+	/* (1.6.1 Part 11: what HELPER_ALLOW lets this helper make taken out of the list) */
+	int deny[sizeof CF_HELPER_DENY / sizeof CF_HELPER_DENY[0]], n = 0;
+	for (int i = 0; CF_HELPER_DENY[i] >= 0; i++) { int ok = 0; for (int k = 0; HELPER_ALLOW[k].name; k++) if (HELPER_ALLOW[k].nr == CF_HELPER_DENY[i] && !strcmp(HELPER_ALLOW[k].name, name)) ok = 1; if (!ok) deny[n++] = CF_HELPER_DENY[i]; }
+	return cf_seccomp(deny, n, NULL, 0, 0, confine_m) && confine_m == CF_ON ? -1 : 0;
 }
 static int helper_known(const char *n) { for (int i = 0; HELPERS[i]; i++) if (!strcmp(n, HELPERS[i])) return 1; return 0; }
 static void close_from(int lo)
