@@ -168,10 +168,12 @@ try:
            "L=/usr/lib/x86_64-linux-gnu; for f in /tmp/fx/lib*.so*; do [ -f $f ] && { [ -e $L/$(basename $f) ] || { cp $f $L/ && chmod 644 $L/$(basename $f) && echo lib $(basename $f); }; }; done; "
            # (this tree's rudolfd bound over the release's, so whatever starts it again starts this one; then the old one stopped)
            "if [ -x /tmp/fx/rudolfd ]; then cp /tmp/fx/rudolfd /tmp/rudolfd.fix; chmod 755 /tmp/rudolfd.fix; B=$(command -v rudolfd || echo /usr/bin/rudolfd); mount --bind /tmp/rudolfd.fix $B; "
-           "for t in 1 2 3; do P=$(pgrep -x rudolfd); [ -n \"$P\" ] && kill $P; sleep 2; P=$(pgrep -x rudolfd); [ -n \"$P\" ] && kill -9 $P; sleep 1; "
-           "pgrep -x rudolfd >/dev/null || setsid $B >> /run/rudolf/rudolfd.log 2>&1 < /dev/null & sleep 4; "
+           # (the running one is found by its command line too: its process name is not always rudolfd's)
+           "rp() { { pgrep -x rudolfd; pgrep -f '^/usr/bin/rudolfd'; pgrep -f '^rudolfd'; } | sort -u | tr '\\n' ' '; }; "
+           "for t in 1 2 3; do P=$(rp); [ -n \"$P\" ] && kill $P; sleep 2; P=$(rp); [ -n \"$P\" ] && kill -9 $P; sleep 1; "
+           "echo try $t: $(pgrep -a rudolf | tr '\\n' ';'); [ -n \"$(rp)\" ] || { setsid /tmp/rudolfd.fix >> /tmp/rd.fix.log 2>&1 < /dev/null & }; sleep 4; echo now: $(pgrep -a rudolf | tr '\\n' ';'); tail -3 /tmp/rd.fix.log; "
            f"busybox wget -q -O- --header \"X-Rudolf-Token: {TOK}\" 'http://127.0.0.1:8080/api/desktop/keys?acct=uX' 2>&1 | grep -q '\"lib\"' && {{ echo rudolfd ours $(pgrep -x rudolfd); break; }}; done; "
-           "for p in $(pgrep -x rudolfd); do echo exe $p $(readlink /proc/$p/exe); done; tail -5 /run/rudolf/rudolfd.log; fi; "
+           "for p in $(rp); do ls -l /proc/$p/exe; done; tail -5 /run/rudolf/rudolfd.log; (ss -ltnp 2>/dev/null || netstat -ltnp 2>/dev/null) | grep 8080; fi; "
            "ls -la /dev/uhid /dev/ttyS1; cp /tmp/fx/vfido_uhid /tmp/vfido_uhid; chmod 755 /tmp/vfido_uhid; setsid /tmp/vfido_uhid /dev/ttyS1 > /tmp/vfido.log 2>&1 < /dev/null & sleep 1; echo relay $(pgrep -f vfido_uhid); "
            "pkill -f '[-]-rudolf-kiosk'; echo reloaded", 120)
     MUX.connect(); MUX.send(3, 0); got = MUX.hello.wait(30)   # (its first hello went before the host was there: asked again)
