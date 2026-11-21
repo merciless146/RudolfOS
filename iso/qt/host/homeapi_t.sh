@@ -8,12 +8,22 @@
 [ -z "$HAT_INNER" ] && exec env HAT_INNER=1 unshare -m sh "$0" "$@"
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/homeapi.XXXXXX)
 mount -t tmpfs none /run; mkdir -p /run/rudolf
-gcc -O1 -w -o $T/t $HERE/fixtures/homeapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
+# 1.6.1 (docs/plan-1.6.1.md Part 11, drives part 2): HAT_VIA=helper runs every check with the unlock, the lock and the
+# binds done by the drives helper and drives-home (built with -DRR_TEST, as roothelpers161_t.sh builds the helpers),
+# as rudolfd does on the system: the same answers and the same files, check for check
+RDIR=; [ "$HAT_VIA" = helper ] && { RDIR="-DRD_ROOT_DIR=\"$T/root\""; mkdir -p $T/root; echo "(through the drives helper and drives-home)"; }
+gcc -O1 -w $RDIR -o $T/t $HERE/fixtures/homeapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 truncate -s 96M $T/img; mkfs.ext4 -q -F -O encrypt $T/img; mkdir $T/m; mount -o loop $T/img $T/m || { echo "SKIP: no loop device"; exit 0; }
 R=$T/m/accounts; N=0; F=0
 ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $3"; F=$((F+1)); fi; }
 has() { case "$1" in *"$2"*) echo 1;; *) echo 0;; esac; }
-t() { $T/t $R "$@"; }
+if [ "$HAT_VIA" = helper ]; then
+	CF="-O1 -w -DRR_TEST -DRR_TEST_CONF=\"$T/rr.conf\""
+	gcc $CF -o $T/root/drives $HERE/../../sys/rudolf-drives.c && gcc $CF -o $T/root/drives-home $HERE/../../sys/rudolf-drives-home.c -lz || { echo "FAIL build the helpers"; exit 1; }
+	chmod 700 $T/root/drives $T/root/drives-home
+	# (the helpers get no environment from rudolfd: what BIND says for this request goes into their configuration)
+	t() { printf 'RR_TEST_DIR=%s\nRR_TEST_HOMEROOT=%s\nRR_TEST_NOBIND=%s\nRR_TEST_AUON=0\nRR_TEST_AUMAP=%s\nRR_TEST_HEALTH=%s\n' $T/root $R "$([ -n "$BIND" ] && echo 0 || echo 1)" $T/aumap $T/rrhealth > $T/rr.conf; $T/t $R "$@"; }
+else t() { $T/t $R "$@"; }; fi
 K1=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n'); K2=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n')
 printf %s "$K1" > $T/k1; printf %s "$K2" > $T/k2; printf 'Dear diary' > $T/a; head -c 300000 /dev/urandom > $T/big; printf 'v2' > $T/b
 o=$(t "POST home/unlock?acct=u-boss <$T/k1")
@@ -173,5 +183,12 @@ ok "27i. bad ids, Recovered itself and missing items are refused" "$(echo "$o" |
 o=$(t "POST home/write?acct=u-boss&path=Documents/gone.txt <$T/a" "POST home/delete?acct=u-boss&path=Documents/gone.txt")
 ok "27j. a delete without recover (the person's own) is for good" "$([ ! -e $R/u-boss/Documents/gone.txt ] && ! grep -rqs 'gone.txt' $R/u-boss/.Recovered && echo 1)" "$o"
 o=$(BIND=1 t "POST home/lock?acct=u-boss")
+if [ "$HAT_VIA" = helper ]; then
+	# (1.6.1: the checks above went through the helper: with a drives helper that only fails, the unlock fails)
+	mv $T/root/drives $T/root/drives.real; printf '#!/bin/sh\necho "the stand-in helper"\nexit 200\n' > $T/root/drives; chmod 700 $T/root/drives
+	o=$(t "POST home/unlock?acct=u-boss <$T/k1"); mv $T/root/drives.real $T/root/drives
+	ok "28. (through the helper) a failing drives helper fails the unlock: its answer is the one given" "$(echo "$o" | grep -q ' 500 .*the stand-in helper' && echo 1)" "$o"
+	o=$(t "POST home/unlock?acct=guest <$T/k1"); ok "29. (through the helper) the guest: 400 bad account, as before, not said as an attack" "$(echo "$o" | grep -q ' 400 .*bad account' && ! grep -qs refused $T/rrhealth && echo 1)" "$o $(cat $T/rrhealth 2>&1)"
+fi
 umount /run/rudolf/dl 2>/dev/null; umount -R /home; umount $T/m; rm -rf $T
 echo "$((N-F))/$N passed"; [ $F = 0 ]

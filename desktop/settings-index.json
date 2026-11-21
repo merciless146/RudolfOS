@@ -176,7 +176,10 @@
 ["Share my language with apps","Language"],
 ["Clock from the internet","",1],
 ["Internet time","Clock from the internet"],
-["Desktop engine","",1]],"kbd":
+["Desktop engine","",1],
+["Idle windows","",1],
+["Give an app's memory back when its window has been minimized or covered for a while","Idle windows"],
+["After","Idle windows"]],"kbd":
 [["Layouts","",1],
 ["Add a layout","Layouts"],
 ["Input methods","",1],

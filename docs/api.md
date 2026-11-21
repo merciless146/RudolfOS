@@ -8,6 +8,12 @@ desktop's own processes (its memory group, /sys/fs/cgroup/desktop) and root: any
 and an `"error"` to show, with an HTTP status (400 a bad request, 403 refused, 404 not there, 409 not possible now,
 423 locked, 429 wait, 500 failed).
 
+(1.6.1, docs/plan-1.6.1.md Part 20) With rudolfd's confinement on (/persist/etc/rudolf-confine; off by default), each
+window gets only what its own code asks for: the page (Standard's, Lite's and the native desktop's app windows) the
+paths in iso/sys/rudolfd-winapi.h's page list, the native shell (rudolf-native) its own; anything else is 403 "this
+window does not use that part of the API" and a line in the health log. A request rudolfd could not confine as it
+should is 503. A new request the page or the shell asks for needs `python3 iso/systools/winapi.py --update`.
+
 Plan 1.5.9, 11.4: what new features need keeps its logic and state in rudolfd and the services, so that what draws the
 desktop (the page today; the native desktop engine being prototyped, plan Part 12) only shows state and sends choices.
 Each part's API is written down here with its first use. (Older endpoints are described where they are made, in
@@ -44,6 +50,11 @@ rudolf-native never reads that copy itself, and never sees a password hash or a 
 | `GET desktop/dropped?path=PATH` | (1.6.1, plan-1.6.1 Part 13) A file dropped from a Linux app onto the native desktop, for the page that keeps it (oneapp59.js `oaXdrop`): the file itself (at most 64 MB), read by the signed-in account's own Linux user, every step of the path opened without following a link. Only the account's own folder (under /home/acctUID, /persist/accounts/ID or Debian's /home/rudolf) and the drives (/media); Flatpak's document portal (/run/user/UID/doc/…, /run/flatpak/doc/… in a sandbox) is mapped to the real file it names (its `user.document-portal.host-path`), which must be one of those. Else `{"ok":false,"error":WHY}`: `nobody` (409; also the guest), `path` (400: not absolute, `.` or `..`, or too long to be whole), `outside`, `link`, `folder`, `unreadable` (403), `gone` (404), `too-large` (413). rudolfd-drop.inc. |
 
 `desktop/engine` and `desktop/priority` are older (1.5.7: Settings' desktop engine; Task Manager's priority).
+
+## The website data's key (1.6.1, docs/plan-1.6.1.md Part 20; rudolfd-webkey.inc)
+| Request | What it does |
+|---|---|
+| `GET webkey` | What keeps the shared browser profile's website data at this start (written by the session's webkey_start): `{"state","why","t"}`, state `tpm` (a key sealed in this computer's TPM; `why`: why it is a new one, if it is), `none` (no TPM 2.0: Chromium's built-in key), `failed` (the TPM would not give it at this start; `why`), `off` (not started: an older session, or Lite). Never the key. docs/website-data-key.md. |
 
 ## ZIP files kept on the disk (1.6.1; rudolfd-dlzip.inc, dlzip.sh)
 A download larger than 1.5 MB stays in the account's folder (/home/rudolf/Downloads/.accounts/ACCT/NAME) and Downloads holds
