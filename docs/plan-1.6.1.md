@@ -1035,6 +1035,41 @@ appear that shows file transfer progress." On Standard, Native and Lite alike.
   Vivobook:** drag a file from Downloads into the Games (Emu library) window and back; box-select several files and drag
   them; right-click Cut and Paste across windows; watch the progress window; Ctrl+drag copies.
 
+### 23. The native desktop's memory (added on 2026-11-21)
+The owner, 2026-11-20, from the Vivobook (Rudolf OS 1.6.0, Native, 3.3 GB, MemAvailable 1.48 GB): six WebKitWebProcess processes,
+one per window (the desktop, the taskbar's pages, Task Manager, the shell's hidden pages do-svc, do-portal, do-start, ...), each
+250-380 MB settled and 400-470 MB at its start, about 1 GB together. Every window loads the whole desktop page (iso/www/index.html,
+about 4 MB, built from base_v24.html and the ~150 modules of build19.py's list) and then shows one app. #530 (WebKit's memory
+pressure limit following MemTotal, the start-up pages one after another) is in; RAM compression (zram, rudolf-memguard.c) exists.
+Three parts, one PR each, in this order:
+- **A. Fewer hidden pages** (the owner: "Add item 2"). **Done (2026-11-21, PR "Native: one hidden page").** The service page
+  (do-svc), the portal's page (do-portal) and the start-up page (do-start) are one page, #app=do-bg (oneapp59.js: oaSvcRun,
+  oaPortalRun, oaStartRun with &start=1 for a signed-in account that is not Guest, oaSrchRun), opened at the sign-in as the
+  start-up page was, or by bg_tick once no other page is starting (page_starting, up to 10 s), again when it ends or does not say
+  both "svc ready" and "portal ready" within 90 s; svc's since= kept. The shell's single actions that had a page of the whole
+  desktop loaded unseen for each (do-qs, do-nc, do-pin, do-mute, do-desk, do-fs's drop onto the Trash, rename and xdrop,
+  do-short) and the start menu's search (do-srch) go to it (rudolf-native.c bg_route: oneapp59.js __oaDo with the same op and
+  address; a page of its own only while it is not ready, or if it does not take the action). Unchanged: do-portalapp (a real
+  window), do-saver, do-run, do-pwr, Open with and a file opened from the search (they show a window), modal pages, PT_SHOWN.
+  Measured on the host (Xvfb, WebKitGTK 2.52.6, --draw=soft, the stand-in rudolfd, 30 s after signing in, no app window):
+  170 MB PSS for the hidden pages before, 110 MB after; the peak while Night light was switched on and off 208 MB before (a
+  page loaded for each switch), 111 MB after. On this host WebKitGTK already puts every page of rudolf-native in one web
+  process (native59_t.sh test 21), so the Vivobook's count of six is checked there (the owner's checks). Tests:
+  iso/qt/host/bgpage161_t.sh (one hidden page, the web processes counted, each action done there, its process killed, signing
+  out and in), svc160_t.sh and nportal160_t.sh with the new name, native59_t.sh, native160_t.sh, xdrop161_t.sh.
+- **B. Each window loads only what it needs** (the owner: "Yes"): the shared core plus the window's app, not every app. Planned:
+  measure each window first (the desktop, Task Manager, Settings, File Explorer, Notepad, Oracle's frame, the hidden page), then
+  build19.py making a core and per-app files (named by their contents in www/a/, as 1.5.9's lazy groups), oneapp59.js loading
+  only the core and the window's app (its dependencies found by exercising each app; a missing function fails loudly), the big
+  payloads (the emulators, the office engines, Luau) as files of their own; the page's integrity checks extended to every new
+  file. In stages that each keep main releasable.
+- **C. Idle windows give their memory back** (the owner: "if it won't cause any issues with Oracle or other Rudolf/Debian/
+  Flatpak/Wine apps, then add it"). Planned: a Rudolf app's window minimized or covered for a while (10 minutes; Settings ›
+  System, on by default under 6 GB) has its web process ended and is loaded again where it was when shown; only apps that
+  declare it (oneapp59.js), never Oracle, Linux/Debian/Flatpak/Wine apps, the desktop, the taskbar, the hidden page, or a
+  window that is playing, recording, in a call, transferring, running a game or a job, showing a dialog, full screen or with
+  unsaved changes.
+
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
   1.6.0 instead"): docs/plan-1.6.0.md Part 22.
@@ -1065,3 +1100,5 @@ appear that shows file transfer progress." On Standard, Native and Lite alike.
    Part 21's checks with the owner after each beta.
 10. Part 22 (File Explorer: dragging between windows, the selection box, the progress window): one PR, then the owner's
    checks on the Vivobook.
+11. Part 23 (the native desktop's memory): A (one hidden page), then B (each window only what it needs, in stages), then C
+   (idle windows give their memory back), one PR each, each checked on the Vivobook.

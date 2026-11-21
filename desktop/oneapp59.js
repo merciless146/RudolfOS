@@ -19,7 +19,11 @@ const ONEAPP=(()=>{try{const h=String(location.hash||'').replace(/^#/,'');if(!h)
 const OA={main:null,want:0,opened:0,done:0,login:0};
 let OA_FSIN=0;   /* (the files being read again because another page saved them: oaFsReload) */
 /* (1.6.0 Part 12, item 12) the native desktop's service page (#app=do-svc, svc60.js): the background work of the whole desktop, never shown */
-const OA_SVC=!!(ONEAPP&&ONEAPP.k=='do-svc');
+/* (1.6.1, the owner's Vivobook: six web processes, ~1 GB) the shell's one hidden page (#app=do-bg): what the service page (do-svc), the
+   portal's page (do-portal) and the start-up page (do-start) each did, and the shell's single actions (do-qs, do-nc, do-pin, do-mute,
+   do-desk, do-fs, do-short, do-srch), handed to it one by one (__oaDo) instead of a page loaded for each */
+const OA_BG=!!(ONEAPP&&ONEAPP.k=='do-bg');
+const OA_SVC=!!(ONEAPP&&(ONEAPP.k=='do-svc'||OA_BG));
 /* (the sign-in screen hidden from the first paint in an app's window: shown again, base_v24.html's head) */
 function oaLoginUnhide(){try{document.documentElement.classList.remove('oalg')}catch(e){}}
 if(!ONEAPP)oaLoginUnhide();
@@ -363,52 +367,33 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
     (#app=do-start): the notice after an update (once per account and release, as on Standard). No app window shows it (each one is a
     page signing in, and every window opened showed it again); its "click to see what's new" opens Help's What's new in a window of
     its own; the page closes once its pop-ups are gone */
- if(da0=='start'){try{whatsNew=()=>oaPost({op:'open',app:'help',page:'new'});
-   /* (the release seen is kept: devices26.js sets S.seenRel, but persistS writes the saved settings, SC, which it left out, so every
-      page signing in announced the release again; Standard's one page at a time is left as it is) */
-   if(OA_UPD)OA_UPD().then(()=>{if(SC&&S.seenRel&&SC.seenRel!==S.seenRel){SC.seenRel=S.seenRel;persistS()}}).catch(e=>console.warn(e))}catch(e){console.warn(e)}setTimeout(()=>oaFin({}),14000);return}
+ if(da0=='start'){oaStartRun();setTimeout(()=>oaFin({}),14000);return}
  /* (1.6.0 Part 12, item 12) the desktop's background work, once for the whole native desktop (#app=do-svc, opened by rudolf-native at
     sign-in and kept open, never shown): the timers every page's modules start as it loads, held back in the app windows (svc60.js),
     run here, signed in, as Standard's one page runs them (the Clock's alarms and timers, the Calendar's reminders, the updates...). Its
     notifications and sounds are the shell's, its dialogs over the screen; an app it opens (a reminder's click) is a window of its own,
     and a window it would make in itself (it has none of its own) is that app's own window instead */
- if(da0=='svc'){document.title='Rudolf OS';
-   {const _w=win;win=function(...a){const W=_w.apply(this,a);try{if(W&&W.el&&oaOut()){const k=W.app&&APPS[W.app]?W.app:'';W.el.remove();if(W.tb)W.tb.remove();wins=wins.filter(x=>x!==W);if(k)oaPost({op:'open',app:k})}}catch(e){console.warn(e)}return W}}
-   /* (the Clock's timers made before this sign-in are gone, as they go with Standard's page; the service page loaded again keeps them) */
-   try{const since=+ONEAPP.q.get('since')||0,o=oaTmrRead();if(o&&since){const l=o.l.filter(t=>(+t.c||0)>=since);if(l.length!=o.l.length)oaTmrWrite(l)}}catch(e){}
-   /* (the session's save, every 20 s as Standard's: the apps of the windows open on the whole desktop, asked of the shell as Task Manager
-      asks, written only when they changed (each write goes to rudolfd's copy); kept as it was when the shell did not answer) */
-   window.__sessionSave=async()=>{if(!USER||typeof oaWinsAsk!='function')return;const t=Date.now();try{await oaWinsAsk()}catch(e){}if(!(OA.winsAt>=t))return;
-    const list=[...new Set(oaWins().filter(o=>o.app&&!/^do-/.test(o.app)&&!['settings','trash'].includes(o.app)).map(o=>o.app))].slice(0,8);
-    if(JSON.stringify(ld(sessK(),[]))!==JSON.stringify(list))svj(sessK(),list)};
-   try{__svcRun(1)}catch(e){console.warn('svc',e)}
-   /* (the owner's Vivobook, 2026-11-16) the desktop's New folder and New text document, done here at once: this page is signed in already,
-      where a page opened for it (#app=do-desk) had to load and sign in first, seconds on the Vivobook. As Standard's deskNew: the file, the
-      icon, then its Rename, which the shell draws (op "done" with ask "rename", as oaDesk reports it) */
-   window.__oaDeskNew=dir=>{let asked=null;const _rd=renameDlg;renameDlg=p=>{asked=p};
-    try{deskNew(dir?1:0)}catch(e){console.warn('svc: new',e)}
-    setTimeout(async()=>{renameDlg=_rd;try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}
-     oaPost(Object.assign({op:'done'},asked&&asked.length?{ask:'rename',file:asked.join('\\'),name:String(asked[asked.length-1])}:{}))},80);return 1};
-   /* (and the shell's Rename dialog's answer, as oaFs's rename: renameDlg's checks and messages) */
-   window.__oaRename=(f,to)=>{let r={ok:1};try{const p=resolve(String(f||''),['C:']),nv=String(to||'').trim().toUpperCase(),d=dirOf(p);
-     if(!d||!(p.at(-1) in d))r={err:'The file is not there any more.'};else if(!validName(nv))r={err:'That name is not allowed.'};else if(nv!=p.at(-1)&&nv in d)r={err:'That name is already used.'};
-     else{const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f())}}catch(e){r={err:String(e&&e.message||e)}}
-    (async()=>{try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},r))})();return 1};
-   oaPost({op:'svc',ready:'1'});return}
+ if(da0=='svc'){document.title='Rudolf OS';oaSvcRun();return}
  /* (1.6.0, the owner's Vivobook, 2026-11-16: Sober's sign-in spun for ever on Native) the portal's requests (a Linux or Flatpak app's keyring
     prompts, file dialogs, links, notifications: linux26.js lxPortal, keyring60.js krPrompt), which the native shell collects and hands
     here one by one (#app=do-portal, a page of its own kept unseen while an account is signed in): each done as Standard's desktop does
     it, its dialog above every window (the page's dialogs cover the screen here), its notification the shell's. One that opens an app's
     window (a file, a folder, a mail link) is done by a page of its own that becomes that window (#app=do-portalapp&req=ID) */
- if(da0=='portal'){document.title='Rudolf OS';const opens=r=>r.kind=='openfile'||r.kind=='folder'||(r.kind=='url'&&/^(mailto|file):/i.test(String(r.uri||'')));
-   const one=async id=>{let j;try{j=await lxApi('portal/poll')}catch(e){return}const it=(j.requests||[]).find(x=>x.id==id);if(!it||LX.seen.has(id))return;LX.seen.add(id);const r=it.req||{};
-    if(opens(r)){oaPost({op:'portal',req:id});return}
-    /* (a file dialog its app withdrew, ended or force-quit meanwhile: closed, as the keyring's prompt closes itself) */
-    let wd=0;if(r.kind=='open'||r.kind=='save'){const had=new Set(document.querySelectorAll('body>.rmodal'));setTimeout(()=>{const o=[...document.querySelectorAll('body>.rmodal')].find(x=>!had.has(x));if(!o)return;
-     wd=setInterval(async()=>{if(!o.isConnected)return clearInterval(wd);let k;try{k=await lxApi('portal/poll')}catch(e){return}if(!(k.requests||[]).some(q=>q.id==id)){clearInterval(wd);o.remove()}},1500)},300)}
-    try{await lxPortal(id,r)}catch(e){console.warn('portal',e)}finally{clearInterval(wd)}};
-   window.__oaPortal=ids=>{String(ids||'').split(',').filter(x=>/^[A-Za-z0-9_-]{1,40}$/.test(x)).forEach(id=>{one(id)})};
-   oaAppsReady().then(()=>oaPost({op:'portal',ready:'1'}));return}
+ if(da0=='portal'){document.title='Rudolf OS';oaPortalRun();return}
+ if(da0=='bg'){document.title='Rudolf OS';
+   /* (the shell's single actions, each as its own page did it: K (do-NAME), EX (its address's rest), FILE; 1 when taken, else the shell
+      opens a page for it as before) */
+   window.__oaDo=(k,ex,file)=>{const da=String(k||'').replace(/^do-/,''),q=new URLSearchParams(String(ex||'').replace(/^&/,''));
+    /* (told as oaFin and the page's closing (oaDone) told it: the files and the page's storage written to rudolfd's copy, which the shell
+       reads, the catalogue given; only the page stays) */
+    const fin=m=>{(async()=>{try{if(OA_QST)await OA_QST}catch(e){}try{fsFlush()}catch(e){}
+     try{if(typeof HD!='undefined'&&HD.chain)await Promise.race([HD.chain,new Promise(r=>setTimeout(r,8000))])}catch(e){}
+     try{if(window.__rudolfLsFlush)await window.__rudolfLsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},m||{}))})()};
+    /* (what it took, for the tests: OA.doLog) */
+    const took=()=>{(OA.doLog||(OA.doLog=[])).push(da);return 1};
+    try{if(da=='nc'&&q.get('op')=='why')return 0;if(da=='desk'){oaDesk(q,fin);return took()}if(da=='fs'&&/^(drop|rename|xdrop)$/.test(q.get('op')||'')){oaFs(q,String(file||''),fin);return took()}if(oaAct(da,q,fin,1))return took()}
+    catch(e){console.warn('one-app: '+da,e);fin({err:String(e&&e.message||e)});return 1}return 0};
+   if(ONEAPP.q.get('start')=='1')oaStartRun();oaSrchRun();oaPortalRun();oaSvcRun();return}
  if(da0=='portalapp'){OA.want=1;const id=ONEAPP.q.get('req')||'';(async()=>{await oaAppsReady();let j=null;try{j=await lxApi('portal/poll')}catch(e){}
    const it=j&&(j.requests||[]).find(x=>x.id==id);if(it){LX.seen.add(id);try{await lxPortal(id,it.req||{})}catch(e){console.warn('portal',e)}}
    setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},it?15000:0)})();return}
@@ -435,28 +420,8 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
   /* (2026-11-16, the owner's Vivobook) the start menu's search as Standard's: the page's own startSearch for the native shell, which draws
      what it finds (#app=do-srch, unseen, kept while the menu is used): each row's group, words, picture and place, and what it opens (an
      app, a page of Settings, a file, a sum's value to copy), found by running its action with those four standing in */
-  if(da0=='srch'&&typeof startSearch=='function'){window.__oaSrch=qq=>{let L=[];try{L=startSearch(String(qq||''))}catch(e){}
-    return JSON.stringify({r:L.map(it=>{const o={g:String(it.g||''),t:String(it.t||''),i:String(it.i||''),sub:String(it.sub||'')};
-     if(it.g=='Calculator'){o.a='copy';o.v=String(it.t).split(' = ').pop();return o}
-     const sv=[launch,settings,openPath];try{launch=k=>{o.a='app';o.k=String(k)};settings=k=>{o.a='set';o.k=typeof k=='string'?k:''};openPath=p=>{o.a='file';o.p=Array.isArray(p)?p.join('\\'):String(p)};it.f()}
-     catch(e){}finally{[launch,settings,openPath]=sv}return o})})};
-   oaAppsReady().then(()=>oaPost({op:'srch'}));return}
-  if(da0=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}return oaFin({})}
-  /* (1.6.0 Part 12, item 3) quick settings' switches and the notifications' centre as the native shell draws them: the page's own
-     panels made unseen and the same button pressed (#app=do-qs&item=WORDS; #app=do-nc&op=clear|dnd&on=0|1|dismiss&i=N|why&i=N) */
-  /* (1.6.0) on=0|1: the switch as the shell shows it now, so a page that had not heard of a change yet does not undo it; the screen
-     reader's "Screen reader on" said before the page closes (srSpeak: the voices', or rudolfd's say) */
-  if(da0=='qs'){let sr=0;try{qsToggle();const it=q.get('item'),on=q.get('on'),b=[...document.querySelectorAll('#qsp .qst')].find(x=>(x.querySelector('span')||{}).textContent==it);
-    if(b&&(on==null||(b.classList.contains('on')?'1':'0')!=on)){b.click();sr=it=='Screen reader'&&!!S.sr}
-    /* (2026-11-16) the shell saves the switch itself now, so this page may have it already: the screen reader still says so, as the tile does */
-    else if(b&&it=='Screen reader'){try{window.__srApply&&__srApply()}catch(e){}sr=!!S.sr}qsClose()
-    /* (High contrast and Touch mode are kept as S.cb and S.touch, which the tile's own copy to SC (its keys hc, tm) leaves out: on Standard
-       the one page shows them at once; here the other windows and the shell read what is saved) */
-    if(SC){SC.cb=S.cb;SC.touch=S.touch;persistS()}}catch(e){console.warn(e)}
-   /* (2026-11-16, k160_t.py in QEMU: the shell showed a switch off that every window had on) the change in rudolfd's copy and the shell told
-      before this page closes: the save's own word to the shell (persistS's "set", 120 ms later) went with the page when it closed first */
-   oaQsTold();
-   if(!sr)return oaFin({});const t0=Date.now(),said=()=>{const a=window.__srAudio,ss=window.speechSynthesis;if(Date.now()-t0>8000||(Date.now()-t0>1500&&!(ss&&ss.speaking)&&!(a&&!a.ended&&!a.paused)))return oaFin({});setTimeout(said,250)};setTimeout(said,400);return}
+  if(da0=='srch'&&typeof startSearch=='function'){oaSrchRun();return}
+  if(oaAct(da0,q,oaFin,0))return;
   /* (1.6.0) the native desktop's on-screen keyboard: the page's own (#vkb, its keys for the language chosen) filling a window of its own
      that never takes the keyboard; a key goes to the shell, which gives it to the page of the window in front (__oaVkIn) */
   if(da0=='vk'&&typeof vkDraw=='function'){OA.want=1;OA_VK=1;const H=document.documentElement;H.classList.add('oavk');
@@ -471,19 +436,12 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
    /* (its height for the window; its letters' places for the tests' state) */
    const tell=()=>oaPost({op:'vk',h:String(Math.ceil(vkEl.getBoundingClientRect().height/z)),keys:[...vkEl.querySelectorAll('.vk-k')].slice(0,60).map(b=>{const r=b.getBoundingClientRect();return encodeURIComponent(b.dataset.c||'')+' '+Math.round(r.left+r.width/2)+' '+Math.round(r.top+r.height/2)}).join('|')});
    setTimeout(tell,50);setTimeout(tell,800);return}
-  if(da0=='short'){const s=typeof SHORT=='object'?SHORT.find(x=>x.id==q.get('id')):null;try{s&&s.fn()}catch(e){console.warn(e)}setTimeout(()=>oaFin({}),6000);return}
   /* (1.6.0) the power dialog's "Restart into Windows" (boot30.js): the administrator's password, the firmware asked to start Windows once,
      then the shell restarts the computer */
   if(da0=='pwr'&&q.get('op')=='windows'){OA.want=1;(async()=>{const n=q.get('n')||'',t=q.get('t')||'Windows';
     try{if(await elevate('Restart into Windows: the computer starts '+t+' once.')){await rdPost('bootmenu/windows?n='+encodeURIComponent(n));try{fsFlush()}catch(e){}try{await oaDrained()}catch(e){}oaPost({op:'pwr',a:'reboot'})}}
     catch(e){try{notify('Restart into Windows',e.message,{kind:'error'})}catch(x){}}oaFin({})})();return}
-  if(da0=='nc'){const op=q.get('op')||'';try{NC=ld(NCK(),[]);ncToggle(true);const p=document.getElementById('ncp');
-    if(op=='clear')p.querySelector('.clr').click();
-    else if(op=='dnd'){const c=p.querySelector('.dnd');if(c.checked!=(q.get('on')=='1')){c.checked=q.get('on')=='1';c.dispatchEvent(new Event('change'))}}
-    else if(op=='dismiss'||op=='why'){const it=p.querySelectorAll('.nitem')[+q.get('i')||0],b=it&&it.querySelector(op=='why'?'.bzwhy':'.nx');if(op=='why')OA.want=1;if(b)b.click()}
-    p.remove()}catch(e){console.warn(e)}
-   if(op=='why'){setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}if(op=='dnd')oaQsTold();return oaFin({})}
-  if(da0=='mute'){try{const m=S.snd&&S.snd.master;if(m){m.on=!m.on;trayVol()}}catch(e){}setTimeout(()=>oaFin({}),400);return}}
+  }
  /* (1.6.0 Part 12, item 3) a day double-clicked in the calendar under the native shell's clock: the Calendar at that day */
  {const cd=ONEAPP.q.get('day');if(ONEAPP.k=='calendar'&&cd&&/^\d{4}-\d\d-\d\d$/.test(cd))setTimeout(()=>{try{window.__calGo&&__calGo(cd)}catch(e){}},800)}
  const da=da0,act=da?(typeof A=='object'&&typeof A[da]=='function'?A[da]:da=='blitzen'&&typeof blitzenApp=='function'?blitzenApp:null):null;
@@ -505,45 +463,119 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
     Promise.resolve(r).catch(e=>console.warn(e)).then(()=>setTimeout(()=>{if(!OA.main&&!OA.done)oaDone()},2500));return}}}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */
  setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed(app.name+' did not open a window.');oaPost({op:'close'})}},15000)}
+/* (the start-up page's part: #app=do-start, or the hidden page's with &start=1) */
+function oaStartRun(){try{whatsNew=()=>oaPost({op:'open',app:'help',page:'new'});
+   /* (the release seen is kept: devices26.js sets S.seenRel, but persistS writes the saved settings, SC, which it left out, so every
+      page signing in announced the release again; Standard's one page at a time is left as it is) */
+   if(OA_UPD)OA_UPD().then(()=>{if(SC&&S.seenRel&&SC.seenRel!==S.seenRel){SC.seenRel=S.seenRel;persistS()}}).catch(e=>console.warn(e))}catch(e){console.warn(e)}}
+/* (the service page's part: #app=do-svc, or the hidden page's) */
+function oaSvcRun(){
+   {const _w=win;win=function(...a){const W=_w.apply(this,a);try{if(W&&W.el&&oaOut()){const k=W.app&&APPS[W.app]?W.app:'';W.el.remove();if(W.tb)W.tb.remove();wins=wins.filter(x=>x!==W);if(k)oaPost({op:'open',app:k})}}catch(e){console.warn(e)}return W}}
+   /* (the Clock's timers made before this sign-in are gone, as they go with Standard's page; the service page loaded again keeps them) */
+   try{const since=+ONEAPP.q.get('since')||0,o=oaTmrRead();if(o&&since){const l=o.l.filter(t=>(+t.c||0)>=since);if(l.length!=o.l.length)oaTmrWrite(l)}}catch(e){}
+   /* (the session's save, every 20 s as Standard's: the apps of the windows open on the whole desktop, asked of the shell as Task Manager
+      asks, written only when they changed (each write goes to rudolfd's copy); kept as it was when the shell did not answer) */
+   window.__sessionSave=async()=>{if(!USER||typeof oaWinsAsk!='function')return;const t=Date.now();try{await oaWinsAsk()}catch(e){}if(!(OA.winsAt>=t))return;
+    const list=[...new Set(oaWins().filter(o=>o.app&&!/^do-/.test(o.app)&&!['settings','trash'].includes(o.app)).map(o=>o.app))].slice(0,8);
+    if(JSON.stringify(ld(sessK(),[]))!==JSON.stringify(list))svj(sessK(),list)};
+   try{__svcRun(1)}catch(e){console.warn('svc',e)}
+   /* (the owner's Vivobook, 2026-11-16) the desktop's New folder and New text document, done here at once: this page is signed in already,
+      where a page opened for it (#app=do-desk) had to load and sign in first, seconds on the Vivobook. As Standard's deskNew: the file, the
+      icon, then its Rename, which the shell draws (op "done" with ask "rename", as oaDesk reports it) */
+   window.__oaDeskNew=dir=>{let asked=null;const _rd=renameDlg;renameDlg=p=>{asked=p};
+    try{deskNew(dir?1:0)}catch(e){console.warn('svc: new',e)}
+    setTimeout(async()=>{renameDlg=_rd;try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}
+     oaPost(Object.assign({op:'done'},asked&&asked.length?{ask:'rename',file:asked.join('\\'),name:String(asked[asked.length-1])}:{}))},80);return 1};
+   /* (and the shell's Rename dialog's answer, as oaFs's rename: renameDlg's checks and messages) */
+   window.__oaRename=(f,to)=>{let r={ok:1};try{const p=resolve(String(f||''),['C:']),nv=String(to||'').trim().toUpperCase(),d=dirOf(p);
+     if(!d||!(p.at(-1) in d))r={err:'The file is not there any more.'};else if(!validName(nv))r={err:'That name is not allowed.'};else if(nv!=p.at(-1)&&nv in d)r={err:'That name is already used.'};
+     else{const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f())}}catch(e){r={err:String(e&&e.message||e)}}
+    (async()=>{try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},r))})();return 1};
+   oaPost({op:'svc',ready:'1'});}
+/* (the portal's page's part: #app=do-portal, or the hidden page's) */
+function oaPortalRun(){const opens=r=>r.kind=='openfile'||r.kind=='folder'||(r.kind=='url'&&/^(mailto|file):/i.test(String(r.uri||'')));
+   const one=async id=>{let j;try{j=await lxApi('portal/poll')}catch(e){return}const it=(j.requests||[]).find(x=>x.id==id);if(!it||LX.seen.has(id))return;LX.seen.add(id);const r=it.req||{};
+    if(opens(r)){oaPost({op:'portal',req:id});return}
+    /* (a file dialog its app withdrew, ended or force-quit meanwhile: closed, as the keyring's prompt closes itself) */
+    let wd=0;if(r.kind=='open'||r.kind=='save'){const had=new Set(document.querySelectorAll('body>.rmodal'));setTimeout(()=>{const o=[...document.querySelectorAll('body>.rmodal')].find(x=>!had.has(x));if(!o)return;
+     wd=setInterval(async()=>{if(!o.isConnected)return clearInterval(wd);let k;try{k=await lxApi('portal/poll')}catch(e){return}if(!(k.requests||[]).some(q=>q.id==id)){clearInterval(wd);o.remove()}},1500)},300)}
+    try{await lxPortal(id,r)}catch(e){console.warn('portal',e)}finally{clearInterval(wd)}};
+   window.__oaPortal=ids=>{String(ids||'').split(',').filter(x=>/^[A-Za-z0-9_-]{1,40}$/.test(x)).forEach(id=>{one(id)})};
+   oaAppsReady().then(()=>oaPost({op:'portal',ready:'1'}));}
+/* (the start menu's search: #app=do-srch, or the hidden page's) */
+function oaSrchRun(){if(typeof startSearch!='function')return;window.__oaSrch=qq=>{let L=[];try{L=startSearch(String(qq||''))}catch(e){}
+    return JSON.stringify({r:L.map(it=>{const o={g:String(it.g||''),t:String(it.t||''),i:String(it.i||''),sub:String(it.sub||'')};
+     if(it.g=='Calculator'){o.a='copy';o.v=String(it.t).split(' = ').pop();return o}
+     const sv=[launch,settings,openPath];try{launch=k=>{o.a='app';o.k=String(k)};settings=k=>{o.a='set';o.k=typeof k=='string'?k:''};openPath=p=>{o.a='file';o.p=Array.isArray(p)?p.join('\\'):String(p)};it.f()}
+     catch(e){}finally{[launch,settings,openPath]=sv}return o})})};
+   oaAppsReady().then(()=>oaPost({op:'srch'}));}
+/* the shell's single actions (#app=do-pin, do-qs, do-short, do-nc, do-mute): done with q (the address's or __oaDo's), told with fin (oaFin
+   closes the page; the hidden page's fin does not); true when handled */
+function oaAct(da,q,fin,bg){if(!/^(pin|qs|short|nc|mute)$/.test(da))return false;oaAct1(da,q,fin,bg);return true}
+function oaAct1(da,q,fin,bg){
+  if(da=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}fin({});return true}
+  /* (1.6.0 Part 12, item 3) quick settings' switches and the notifications' centre as the native shell draws them: the page's own
+     panels made unseen and the same button pressed (#app=do-qs&item=WORDS; #app=do-nc&op=clear|dnd&on=0|1|dismiss&i=N|why&i=N) */
+  /* (1.6.0) on=0|1: the switch as the shell shows it now, so a page that had not heard of a change yet does not undo it; the screen
+     reader's "Screen reader on" said before the page closes (srSpeak: the voices', or rudolfd's say) */
+  if(da=='qs'){let sr=0;try{qsToggle();const it=q.get('item'),on=q.get('on'),b=[...document.querySelectorAll('#qsp .qst')].find(x=>(x.querySelector('span')||{}).textContent==it);
+    if(b&&(on==null||(b.classList.contains('on')?'1':'0')!=on)){b.click();sr=it=='Screen reader'&&!!S.sr}
+    /* (2026-11-16) the shell saves the switch itself now, so this page may have it already: the screen reader still says so, as the tile does */
+    else if(b&&it=='Screen reader'){try{window.__srApply&&__srApply()}catch(e){}sr=!!S.sr}qsClose()
+    /* (High contrast and Touch mode are kept as S.cb and S.touch, which the tile's own copy to SC (its keys hc, tm) leaves out: on Standard
+       the one page shows them at once; here the other windows and the shell read what is saved) */
+    if(SC){SC.cb=S.cb;SC.touch=S.touch;persistS()}}catch(e){console.warn(e)}
+   /* (2026-11-16, k160_t.py in QEMU: the shell showed a switch off that every window had on) the change in rudolfd's copy and the shell told
+      before this page closes: the save's own word to the shell (persistS's "set", 120 ms later) went with the page when it closed first */
+   oaQsTold();
+   if(!sr||bg)return fin({});const t0=Date.now(),said=()=>{const a=window.__srAudio,ss=window.speechSynthesis;if(Date.now()-t0>8000||(Date.now()-t0>1500&&!(ss&&ss.speaking)&&!(a&&!a.ended&&!a.paused)))return fin({});setTimeout(said,250)};setTimeout(said,400);return}
+  if(da=='short'){const s=typeof SHORT=='object'?SHORT.find(x=>x.id==q.get('id')):null;try{s&&s.fn()}catch(e){console.warn(e)}setTimeout(()=>fin({}),6000);return}
+  if(da=='nc'){const op=q.get('op')||'';try{NC=ld(NCK(),[]);ncToggle(true);const p=document.getElementById('ncp');
+    if(op=='clear')p.querySelector('.clr').click();
+    else if(op=='dnd'){const c=p.querySelector('.dnd');if(c.checked!=(q.get('on')=='1')){c.checked=q.get('on')=='1';c.dispatchEvent(new Event('change'))}}
+    else if(op=='dismiss'||op=='why'){const it=p.querySelectorAll('.nitem')[+q.get('i')||0],b=it&&it.querySelector(op=='why'?'.bzwhy':'.nx');if(op=='why')OA.want=1;if(b)b.click()}
+    p.remove()}catch(e){console.warn(e)}
+   if(op=='why'){setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}if(op=='dnd')oaQsTold();fin({});return true}
+  if(da=='mute'){try{const m=S.snd&&S.snd.master;if(m){m.on=!m.on;trayVol()}}catch(e){}setTimeout(()=>fin({}),400);return}}
 /* (1.6.0 Part 12, item 1's second part) the native desktop's menus do what the page's do: #app=do-desk&on=ICON&item=WORDS
    gives the page's own menu for that desktop icon (its name, or a file's name; none: the desktop's) and chooses the item
    with those words, as a click would. What opens a window is that window; what has none is done unseen and the page
    closes; the page's own dialogs that the shell draws itself (Rename, Open with) are reported to it instead. */
 function oaFin(m){(async()=>{try{if(OA_QST)await OA_QST}catch(e){}try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},m||{}));oaDone()})()}
-function oaDesk(){const q=ONEAPP.q,on=q.get('on')||'',item=(q.get('item')||'').trim(),D=document.getElementById('desk');
+function oaDesk(q=ONEAPP.q,fin=oaFin){const on=q.get('on')||'',item=(q.get('item')||'').trim(),D=document.getElementById('desk');
  const el=on?[...D.querySelectorAll(':scope > .ic')].find(e=>(e.dataset.fn||((e.querySelector('span')||{}).textContent||'').trim())==on):null;
- if(on&&!el)return oaFin({err:'There is no “'+on+'” on the desktop.'});
+ if(on&&!el)return fin({err:'There is no “'+on+'” on the desktop.'});
  if(el&&el.dataset.fn&&/^open with/i.test(item)){const p=homePath('DESKTOP').concat(el.dataset.fn),L=openersFor(p);
-  return oaFin({ask:'openwith',file:p.join('\\'),ext:ext(p.at(-1))||'',apps:JSON.stringify((L.length?L:OPENERS.slice(0,2)).map(x=>[x[0],x[1],x[2]]))})}
+  return fin({ask:'openwith',file:p.join('\\'),ext:ext(p.at(-1))||'',apps:JSON.stringify((L.length?L:OPENERS.slice(0,2)).map(x=>[x[0],x[1],x[2]]))})}
  (el||D).dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:20,clientY:20}));
  const it=[...document.querySelectorAll('.ctx .cmi')].find(e=>((e.querySelector('span')||e).textContent||'').trim()==item);
- if(!it){document.querySelectorAll('.ctx').forEach(c=>c.remove());return oaFin({err:'There is no “'+item+'” in that menu.'})}
- it.click();
- setTimeout(()=>{if(OA.main)return;const m=document.querySelector('.rmodal');let r={};
+ if(!it){document.querySelectorAll('.ctx').forEach(c=>c.remove());return fin({err:'There is no “'+item+'” in that menu.'})}
+ const had=new Set(document.querySelectorAll('.rmodal'));it.click();
+ setTimeout(()=>{if(OA.main)return;const m=[...document.querySelectorAll('.rmodal')].find(x=>!had.has(x));let r={};
   if(m){const rn=m.querySelector('input.rn');const fn=(deskFiles()&&Object.keys(deskFiles()).find(n=>rn&&n==rn.value))||(rn&&rn.value)||'';
    if(rn)r={ask:'rename',file:homePath('DESKTOP').concat(fn).join('\\'),name:fn};m.remove()}
-  oaFin(r)},500)}
+  fin(r)},500)}
 /* #app=do-fs&op=OP: the native desktop's own dialogs' answers, done by the page as its dialogs do them (rename: renameDlg's
    checks and messages; openwith: Open with's choice, Always included) */
-function oaFs(){const q=ONEAPP.q,op=q.get('op')||'',p=resolve(ONEAPP.file||'',['C:']);
+function oaFs(q=ONEAPP.q,file=ONEAPP.file,fin=oaFin){const op=q.get('op')||'',p=resolve(file||'',['C:']);
  if(op=='rename'){const nv=String(q.get('to')||'').trim().toUpperCase(),d=dirOf(p);
-  if(!d||!(p.at(-1) in d))return oaFin({err:'The file is not there any more.'});
-  if(!validName(nv))return oaFin({err:'That name is not allowed.'});if(nv!=p.at(-1)&&nv in d)return oaFin({err:'That name is already used.'});
-  const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f());return oaFin({ok:1})}
+  if(!d||!(p.at(-1) in d))return fin({err:'The file is not there any more.'});
+  if(!validName(nv))return fin({err:'That name is not allowed.'});if(nv!=p.at(-1)&&nv in d)return fin({err:'That name is already used.'});
+  const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f());return fin({ok:1})}
  /* (2026-11-16) a file found by the start menu's search: opened as the page's search opens it (openPath: its app, its window this page's) */
- if(op=='open'){try{openPath(p)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main)oaFin({})},1500);return}
- if(op=='openwith'){const x=OPENERS.find(o=>o[0]==q.get('key'));if(!x)return oaFin({err:'That app cannot open it.'});
+ if(op=='open'){try{openPath(p)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main)fin({})},1500);return}
+ if(op=='openwith'){const x=OPENERS.find(o=>o[0]==q.get('key'));if(!x)return fin({err:'That app cannot open it.'});
   if(q.get('always')=='1'){const d=ld(defK(),{});d[ext(p.at(-1))]=x[0];svj(defK(),d)}
-  try{x[4]?x[4](p):openPathDefault(p)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main)oaFin({})},1500);return}
+  try{x[4]?x[4](p):openPathDefault(p)}catch(e){console.warn(e)}setTimeout(()=>{if(!OA.main)fin({})},1500);return}
  /* (1.6.0 Part 12, item 1) a desktop file dropped on an app's window: what a11y25.js's __dropFileOnWindow does for that app (this
     page's window, if it makes one, is the file's window) */
  if(op=='drop'){const k=q.get('in')||'';let r=false;try{r=!!__dropFileOnWindow({app:k},p)}catch(e){console.warn(e)}
-  setTimeout(()=>{if(!OA.main)oaFin(r?{}:{err:'nothing'})},1500);return}
+  setTimeout(()=>{if(!OA.main)fin(r?{}:{err:'nothing'})},1500);return}
  /* (1.6.1 Part 13) files dropped from a Linux app onto the native desktop (the shell took the X drop): what shell25.js's DESK drop does with
     Chromium's files on Standard, each file read through rudolfd (desktop/dropped: the account's own files and the drives, read by its
     Linux user) instead of by the browser */
- if(op=='xdrop'){oaXdrop(q).then(r=>oaFin(Object.assign({xd:'1'},r)),e=>{console.warn(e);oaFin({xd:'1',err:String(e&&e.message||e)})});return}
- oaFin({err:'Unknown: '+op})}
+ if(op=='xdrop'){oaXdrop(q).then(r=>fin(Object.assign({xd:'1'},r)),e=>{console.warn(e);fin({xd:'1',err:String(e&&e.message||e)})});return}
+ fin({err:'Unknown: '+op})}
 /* the type Chromium gives a dropped file (its own list of names: net/base/mime_util.cc), which decides, as on Standard, whether the page
    keeps it as text or as a data: URL */
 const OA_XTYPE={html:'text/html',htm:'text/html',shtml:'text/html',shtm:'text/html',ehtml:'text/html',css:'text/css',xml:'text/xml',xsl:'text/xml',xbl:'text/xml',xslt:'text/xml',
@@ -699,7 +731,7 @@ function oaPng(src,n){const ck=n+'|'+src;if(src.length<200000&&OA_PNG.has(ck))re
    settings' "gen" changed: the shell's own pages that sign in at once (#app=do-start, opened first at sign-in, and the service page)
    give it as soon as they are signed in and tell the shell (op "cat"), as Standard's page shows its icons once signed in */
 {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);
- if(ONEAPP&&oaNative()&&/^do-(start|svc)$/.test(ONEAPP.k))setTimeout(()=>oaCatalog().then(()=>{if(!OA.done)oaPost({op:'cat'})}),0);else setTimeout(oaCatalog,2500);if(ONEAPP&&oaNative())oaAppsReady().then(()=>setTimeout(oaCatPush,3000));return r}}
+ if(ONEAPP&&oaNative()&&/^do-(start|svc|bg)$/.test(ONEAPP.k))setTimeout(()=>oaCatalog().then(()=>{if(!OA.done)oaPost({op:'cat'})}),0);else setTimeout(oaCatalog,2500);if(ONEAPP&&oaNative())oaAppsReady().then(()=>setTimeout(oaCatPush,3000));return r}}
 /* (1.6.0 Part 12, item 3) a window's taskbar button's menu is the page's own (winMenu: its rows, the app's jumps, Print, Force
    quit): the shell reads it from the window's page (__oaWinMenu: the rows as JSON) and has a row the shell does not do itself
    done by the page (__oaWinMenuDo: the row with those words clicked) */

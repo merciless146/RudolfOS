@@ -3,7 +3,7 @@
 # Xvfb with the stand-in rudolfd (fixtures/native_rd.py) serving this tree's page, and a script in every page (fixtures/svc160_inject.js)
 # standing in for the person: with no app window open an alarm set a minute ahead rings once, a Calendar reminder shows once, a
 # cellular notice (an incoming call's) and rudolfd's events reach the desktop once; with three app windows open each still once (from
-# the desktop's service page, #app=do-svc, never from the windows); a Clock timer started and its window closed still rings; the
+# the desktop's service page, #app=do-svc, since 1.6.1 the shell's hidden page #app=do-bg, never from the windows); a Clock timer started and its window closed still rings; the
 # service page is not on the taskbar, opens again when it ends or its process stops, ends at sign-out; an app's window runs only the
 # timers it needs (svc60.js). Needs Xvfb, xdotool, ImageMagick, node, python3, gcc and WebKitGTK's headers.   sh svc160_t.sh [RUDOLF-NATIVE]
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/svc160.XXXXXX); PORT=${SVC160_PORT:-8651}; DSP=${SVC160_DSP:-:95}
@@ -40,10 +40,10 @@ list() { grep "test/list?k=$1" $D/calls >/dev/null; }
 w8 '[ "$(st signin)" = 1 ]' 160; LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ]' 120; w8 '[ "$(st svc | cut -d" " -f1)" = ready ]' 240
 ok "1. signed in: the desktop's service page is opened once and signs in (no app window open)" "$([ "$(st svc)" = "ready 1" ] && ! grep -q '^client .* app=' $D/state && echo 1)" "$(st svc) $(grep -E '^(client|app) ' $D/state) $(tail -5 $T/native.log)"
-ok "2. ...not on the taskbar (no window's button) and not a window of the screen" "$(! grep -q '^hit win ' $D/state && ! grep -q 'app=do-svc' $D/state && echo 1)" "$(grep -E '^hit win|do-svc' $D/state)"
+ok "2. ...not on the taskbar (no window's button) and not a window of the screen" "$(! grep -q '^hit win ' $D/state && ! grep -q 'app=do-bg' $D/state && echo 1)" "$(grep -E '^hit win|do-bg' $D/state)"
 # ---- no app window open: an alarm a minute ahead, a reminder, a cellular notice (an incoming call), the microphone, an event
 A1=$(hm 70); seed "{\"id\":\"a1\",\"seed\":{\"bd95alarms:$UID_\":\"[{\\\"t\\\":\\\"$A1\\\",\\\"label\\\":\\\"Wake\\\",\\\"days\\\":[],\\\"on\\\":true}]\",\"bd95cal:$UID_\":\"[{\\\"id\\\":1,\\\"title\\\":\\\"Dentist\\\",\\\"d\\\":\\\"$(ymd 70)\\\",\\\"t\\\":\\\"$A1\\\",\\\"rem\\\":0}]\"}}"
-w8 'grep -q "test/list?k=do-svc" $D/calls' 40
+w8 'grep -q "test/list?k=do-bg" $D/calls' 40
 echo '[{"n":1,"t":"📶 Mobile data","b":"old"},{"n":2,"t":"📞 Incoming call","b":"+15550100"}]' > $D/mobnotes.json
 echo '{"ok":true,"users":["Zoom"],"muted":false}' > $D/mic.json
 printf 'svctest 1\n' > $D/next-events
@@ -51,11 +51,11 @@ w8 '[ "$(tn "📞 Incoming call")" -ge 1 ]' 80; timeout 8 tail -f /dev/null
 ok "3. no window open: an incoming call's notice (rudolfd's cellular notices) shows once" "$([ "$(tn "📞 Incoming call")" = 1 ] && echo 1)" "$(grep '^toasted' $D/state)"
 w8 '[ "$(st mic)" = "1 0" ]' 40
 ok "4. ...a call in an app (the microphone in use): the taskbar's 🎙️, from the shell itself (the service page does not poll it again)" "$([ "$(st mic)" = "1 0" ] && echo 1)" "$(st mic)"
-w8 'grep -q "test/evgot?k=do-svc" $D/calls' 40
-ok "5. ...rudolfd's events that are a page's reach the service page (none waits for a window)" "$([ "$(grep -c 'test/evgot' $D/calls)" = 1 ] && grep -q 'test/evgot?k=do-svc' $D/calls && echo 1)" "$(grep 'test/evgot' $D/calls)"
+w8 'grep -q "test/evgot?k=do-bg" $D/calls' 40
+ok "5. ...rudolfd's events that are a page's reach the service page (none waits for a window)" "$([ "$(grep -c 'test/evgot' $D/calls)" = 1 ] && grep -q 'test/evgot?k=do-bg' $D/calls && echo 1)" "$(grep 'test/evgot' $D/calls)"
 w8 '[ "$(tn "⏰ Wake")" -ge 1 ] && [ "$(tn "📅 Dentist")" -ge 1 ]' 520; timeout 6 tail -f /dev/null
-ok "6. ...an alarm set a minute ahead rings once (the service page's)" "$([ "$(tn "⏰ Wake")" = 1 ] && [ "$(tfrom "⏰ Wake")" = "do-svc " ] && echo 1)" "$A1 $(date +%H:%M:%S) $(grep '^toasted' $D/state)"
-ok "7. ...the Calendar's reminder shows once" "$([ "$(tn "📅 Dentist")" = 1 ] && [ "$(tfrom "📅 Dentist")" = "do-svc " ] && echo 1)" "$(grep '^toasted' $D/state)"
+ok "6. ...an alarm set a minute ahead rings once (the service page's)" "$([ "$(tn "⏰ Wake")" = 1 ] && [ "$(tfrom "⏰ Wake")" = "do-bg " ] && echo 1)" "$A1 $(date +%H:%M:%S) $(grep '^toasted' $D/state)"
+ok "7. ...the Calendar's reminder shows once" "$([ "$(tn "📅 Dentist")" = 1 ] && [ "$(tfrom "📅 Dentist")" = "do-bg " ] && echo 1)" "$(grep '^toasted' $D/state)"
 grep -q 'POST heartbeat' $D/calls; HB0=$(grep -c 'heartbeat' $D/calls)
 # ---- three app windows open
 for a in notepad calc settings; do click $(hit pin $a); w8 "grep -q '^client .* app=$a ' \$D/state" 120; done
@@ -66,25 +66,25 @@ echo '[{"n":1,"t":"📶 Mobile data","b":"old"},{"n":2,"t":"📞 Incoming call",
 printf 'svctest 2\n' > $D/next-events
 w8 '[ "$(tn "📞 Call again")" -ge 1 ]' 80; w8 '[ "$(grep -c test/evgot $D/calls)" -ge 2 ]' 40; timeout 8 tail -f /dev/null
 ok "9. three windows: the incoming call's notice once (it was the shell's and every window's)" "$([ "$(tn "📞 Call again")" = 1 ] && echo 1)" "$(grep '^toasted' $D/state)"
-ok "10. ...rudolfd's event once, in the window in front (as before), not the service page as well" "$([ "$(grep -c 'test/evgot' $D/calls)" = 2 ] && ! grep 'test/evgot' $D/calls | tail -1 | grep -q do-svc && echo 1)" "$(grep 'test/evgot' $D/calls)"
+ok "10. ...rudolfd's event once, in the window in front (as before), not the service page as well" "$([ "$(grep -c 'test/evgot' $D/calls)" = 2 ] && ! grep 'test/evgot' $D/calls | tail -1 | grep -q do-bg && echo 1)" "$(grep 'test/evgot' $D/calls)"
 w8 '[ "$(tn "⏰ Second")" -ge 1 ] && [ "$(tn "📅 Meeting")" -ge 1 ]' 520; timeout 8 tail -f /dev/null
-ok "11. ...the alarm rings ONCE (the service page's, not each window's)" "$([ "$(tn "⏰ Second")" = 1 ] && [ "$(tfrom "⏰ Second")" = "do-svc " ] && echo 1)" "$A2 $(date +%H:%M:%S) $(grep '^toasted' $D/state)"
-ok "12. ...the reminder once" "$([ "$(tn "📅 Meeting")" = 1 ] && [ "$(tfrom "📅 Meeting")" = "do-svc " ] && echo 1)" "$(grep '^toasted' $D/state)"
+ok "11. ...the alarm rings ONCE (the service page's, not each window's)" "$([ "$(tn "⏰ Second")" = 1 ] && [ "$(tfrom "⏰ Second")" = "do-bg " ] && echo 1)" "$A2 $(date +%H:%M:%S) $(grep '^toasted' $D/state)"
+ok "12. ...the reminder once" "$([ "$(tn "📅 Meeting")" = 1 ] && [ "$(tfrom "📅 Meeting")" = "do-bg " ] && echo 1)" "$(grep '^toasted' $D/state)"
 # what each page runs (svc60.js), as the pages said: test/list's body, kept by native_rd.py as DIR/list-K.json
 ok "13. an app's window (Notepad) runs only what it needs: the theme's and the icons' ticks, not the alarms', the heartbeat or the updates'" "$(node -e "
 const l=JSON.parse(require('fs').readFileSync('$D/list-notepad.json','utf8'));const run=m=>l.filter(h=>h.mod==m&&h.run).length;
 const ok=run('a11y25.js')>=2&&run('apps25b.js')==0&&run('core25.js')==0&&run('term26.js')==0&&run('sysupd25.js')==0&&run('shell25.js')==0&&run('linux26.js')==0;
 console.log(ok?1:0)" 2>&1)" "$(cat $D/list-notepad.json 2>/dev/null | head -c 600)"
 ok "14. ...the service page runs them (the alarms', the session's, the updates'), not what the shell does itself (heartbeat, 🎙️, cellular)" "$(node -e "
-const l=JSON.parse(require('fs').readFileSync('$D/list-do-svc.json','utf8'));const run=m=>l.filter(h=>h.mod==m&&h.run).length;
+const l=JSON.parse(require('fs').readFileSync('$D/list-do-bg.json','utf8'));const run=m=>l.filter(h=>h.mod==m&&h.run).length;
 const hb=l.filter(h=>/heartbeat/.test(h.f)&&h.run).length;
-console.log(run('apps25b.js')==2&&run('term26.js')==2&&run('shell25.js')>=2&&run('call59.js')==0&&run('mobile60.js')==0&&hb==0?1:0)" 2>&1)" "$(cat $D/list-do-svc.json 2>/dev/null | head -c 600)"
+console.log(run('apps25b.js')==2&&run('term26.js')==2&&run('shell25.js')>=2&&run('call59.js')==0&&run('mobile60.js')==0&&hb==0?1:0)" 2>&1)" "$(cat $D/list-do-bg.json 2>/dev/null | head -c 600)"
 # ---- a Clock timer started, its window closed: still rings
 seed '{"id":"a2","clock":{"secs":40,"label":"Tea"}}'
 click $(hit pin clock); w8 'grep -q "test/timerset?n=1" $D/calls' 120; w8 '! grep -q "^client .* app=clock " $D/state' 60
 ok "15. a Clock timer started (40 s), then the Clock's window closed" "$(grep -q 'test/timerset?n=1' $D/calls && ! grep -q '^client .* app=clock ' $D/state && echo 1)" "$(grep -E 'timerset|^client' $D/state $D/calls)"
 w8 '[ "$(tn "⏰ Tea")" -ge 1 ]' 280; timeout 6 tail -f /dev/null
-ok "16. ...the timer rings once, its window closed (the service page's)" "$([ "$(tn "⏰ Tea")" = 1 ] && [ "$(tfrom "⏰ Tea")" = "do-svc " ] && echo 1)" "$(grep '^toasted' $D/state)"
+ok "16. ...the timer rings once, its window closed (the service page's)" "$([ "$(tn "⏰ Tea")" = 1 ] && [ "$(tfrom "⏰ Tea")" = "do-bg " ] && echo 1)" "$(grep '^toasted' $D/state)"
 # ---- the service page ends: opened again; its process stops: loaded again
 seed '{"id":"a2","close":"c1"}'
 w8 '[ "$(st svc)" = "ready 2" ]' 160

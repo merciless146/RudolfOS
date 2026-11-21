@@ -5,6 +5,12 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Native: the shell's hidden pages are one. The desktop's service page, the portal's page (a Linux or Flatpak app's
+  questions, file dialogs and links) and the start-up page (the notice after an update) were three pages each loading the
+  whole desktop; now one page does what each did. The quick settings' switches, Do not disturb and Clear all, pinning,
+  muting from the taskbar, the desktop's menus, renaming, dropping onto the Trash, files dropped from Linux apps and the
+  start menu's search are done by that page at once, instead of a page of the whole desktop loaded for each. Less memory
+  (on the test computer 110 MB instead of 170 MB with no window open, and no 100 MB peak for each switch).
 - New: a ZIP larger than 1.5 MB in Downloads (kept on the disk) opens in Archive Manager, which lists what is inside it
   (names, sizes, folders; the first 3,000 shown) without loading it, with Extract here; File Explorer's Open with offers
   Archive Manager for it too. Extract here (there, or in File Explorer) unpacks it next to the ZIP with a progress window
