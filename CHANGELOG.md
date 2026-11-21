@@ -5,6 +5,12 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- New (docs/plan-1.6.1.md Part 19): game mode does more, on Standard and Native alike. While a game is full screen the
+  processor is asked for its full speed (AMD's amd_pstate and Intel's intel_pstate; not with battery saver), and behind a
+  Linux game the desktop's own work waits (its processor time lowered, its animations stopped); notifications are held and
+  one says how many came after, as before. Everything goes back as it was when the game leaves full screen or ends, a crash
+  included. Games that ask for Feral's GameMode (gamemoderun, Steam's launch option, Flatpak games through the portal) get
+  the processor's speed, and nothing else. Settings › System health › Memory › Game mode turns it all off and on.
 - New: a ZIP larger than 1.5 MB in Downloads (kept on the disk) opens in Archive Manager, which lists what is inside it
   (names, sizes, folders; the first 3,000 shown) without loading it, with Extract here; File Explorer's Open with offers
   Archive Manager for it too. Extract here (there, or in File Explorer) unpacks it next to the ZIP with a progress window
