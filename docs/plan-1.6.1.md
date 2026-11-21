@@ -1133,12 +1133,29 @@ Three parts, one PR each, in this order:
   release's own www/a/ (rudolfd's fallback), so such a page whose payloads differ says "could not be loaded" for that app.
   Test: iso/qt/host/chunks161_t.sh (neither payload in the page; Notepad's window never reads them; the Galaxy Map and Quake in
   native windows read and use theirs; a missing file is said; no error).
-  **Left (each its own PR, for the owner's decision with the numbers above):** stage 2, the modules each app needs found by
+  **Stage 3, done (2026-11-21, PR "Native: an app's window builds only what it shows"):** measured first where a window's memory
+  goes (the same host; a window's page stopped at each module in turn, and each part left out in turn): the page's own pictures
+  of the start menu's rows, the desktop's icons and the taskbar's buttons (icons in the SVG style: about 40 SVG images, each a
+  document of its own in WebKit) were 8-11 MB of each app's window; the catalogue each window gave 2.5 s after signing in (every
+  app's picture drawn again as a PNG) 2-4 MB more; the menu's and the desktop's elements themselves nothing measurable, and so the
+  ~16-24 MB of "what the page builds at its start" is mostly the modules' own code run, not what the window hides. lean61.js, in
+  an app's window of the native desktop only (not the shell's do- pages, Standard, Lite, Standard's Tor windows or a page opened by
+  hand): the pictures only in the title bars of the page's own windows (its dialogs), no pinned buttons, no dynamic background's
+  moving parts (the aurora, the statue, the petals and lanterns, drawn under the app's window), and the catalogue given only when
+  this window's differs from the last one given (bd95catsig:ID; after the apps rudolfd knows are in, every picture made first, as
+  before); the hidden page gives it again when it takes another window's saved settings (the icons' style, the accent colour),
+  which the windows opened afterwards gave before. Measured (PSS / RSS 25 s after each opened, read at once): the hidden page 84 /
+  204 MB (unchanged), Task Manager 78 / 200 (85 / 208 before), Settings 98 / 222 (109 / 233), File Explorer 77 / 200 (86 / 209),
+  Notepad 72 / 193 (82 / 204), Oracle's page 75 / 197 (86 / 208): 483 MB PSS for the six instead of 531 (two runs each; times
+  to the page ready unchanged, 1.0-1.5 s). Test: iso/qt/host/lean161_t.sh (the hidden page's catalogue and pictures; Notepad's window
+  without the hidden parts' pictures, buttons, statue and catalogue, working, its dialogs' pictures; every app of the page (48)
+  in a native window of its own: there, lean, no error; Calculator, File Explorer, Settings' icon style (the hidden page gives
+  the catalogue) and an app hidden in Settings (that window gives it); Part C's rest and return).
+  **Left (its own PR, for the owner's decision with the numbers above):** stage 2, the modules each app needs found by
   exercising every app (a page per app built from the core and its modules, loaded by oneapp59.js; Standard keeps the whole page):
   measured potential 2-5 MB per window, because the modules mostly patch each other (win, termUI, appsPanel, startMenuApps...) and
-  the core is most of the code; stage 3, what the page builds at its start in an app's window (the desktop's icons, the start
-  menu, the widgets: about 16 MB before the modules and 24 MB with them at Lite's sign-in screen) left out where the window does
-  not show it. The bigger saving on the Vivobook is the number of processes (one shared on this host; six there) and Part C.
+  the core is most of the code (a Notepad window's page built without 45 app modules, after stage 3: 47 MB of its own instead of
+  52). The bigger saving on the Vivobook is the number of processes (one shared on this host; six there) and Part C.
 - **C. Idle windows give their memory back** (the owner: "if it won't cause any issues with Oracle or other Rudolf/Debian/
   Flatpak/Wine apps, then add it"). **Done (2026-11-21, PR "Native: idle windows give their memory back").** rudolf-native.c
   rest_tick (every 2 s): a Rudolf app's window minimized, or covered by one other window (or a full-screen one), for the time
