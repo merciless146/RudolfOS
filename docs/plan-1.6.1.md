@@ -78,6 +78,14 @@ Desktop engine as a compatibility option, "to be worked on and refined later". L
   soft and gpu as before), lt161_t.py's gpu phase. Owner's check on the Vivobook (Lite, the default graphics setting):
   scrolling a long page, a video and a game in a tab against before; the memory at rest with 3 tabs (Task Manager), as
   gpu drawing took some 400 MB more for the whole desktop in 1.5.8.
+- *Checked without the owner, the real sites left to him:* Oracle's WebKit tabs. A download, a page's own full screen and
+  five tabs at once work as they should, with nothing to change: iso/qt/webkit/tabsfs61_ci.py (full screen from a real
+  click fills the screen, Escape brings the tab back where it was; five tabs, each its own process, about 33 MB each in
+  the Lite engine check) and lt161_t.py's tabs phase on the release in QEMU (the same, the download arriving complete in
+  the desktop's download folder as the desktop's user; the memory on the release, under QEMU: the desktop page 96 MB,
+  four tabs in the background 61 MB each, the one shown 116 MB). Left to the owner on the Vivobook:
+  YouTube (a video, full screen), a Google sign-in with FedCM off and on (WebKitGTK has no FedCM: the menu item says so),
+  a real download from a site, memory with 5 real sites against Chromium's.
 - The others: in the PRs that follow (this list is brought up to date by each).
 
 ### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
