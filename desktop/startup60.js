@@ -9,7 +9,7 @@
      existing EFI system partition one file at a time (each beside the old one, checked, then renamed); the partition
      table and the area in front of your files are never written; the firmware's entry is checked after. Only on mains
      power or with the battery above 50 %. (rudolfd sys/startup-files: espcheck repair, bootfiles.sh files) */
-(function(){if(typeof updPanel!='function')return;const U0=updPanel;updPanel=function(c){U0(c);if(typeof RD=='undefined'||!RD)return;const x=c.querySelector('.updx');if(!x)return;
+(function(){if(typeof updPanel!='function')return;updPanel=__after(updPanel,function(c){if(typeof RD=='undefined'||!RD)return;const x=c.querySelector('.updx');if(!x)return;
  const box=document.createElement('div');box.className='sup60';x.appendChild(box);const adm=isAdmin();
  box.innerHTML=`<h4 class='sh4'>Start-up of this drive</h4><p class='msg'>The files the computer starts Rudolf OS with (in the drive's EFI system partition) and the firmware's entry for the drive. Rudolf OS does not change them by itself.</p>
 <div class='rmrow' style='justify-content:flex-start'><button class='supck'${adm?'':' disabled'}>Check this drive's start-up…</button><button class='supfx'${adm?'':' disabled'}>Put back the official start-up files…</button></div>${adm?'':"<div class='msg'>Only an administrator can do this.</div>"}<pre class='jl suplog' hidden></pre>`;
@@ -24,5 +24,4 @@
   const cr=await elevate('Put back the official start-up files on this drive',{cred:true});if(!cr)return;
   log.hidden=false;log.textContent='';let st=null;
   try{st=await sysuJob('startup-files',l=>{log.textContent+=l+'\n';log.scrollTop=log.scrollHeight},JSON.stringify({n:cr.n,p:cr.p}))}catch(e){log.textContent+=e.message+'\n'}
-  notify(T,st===0?'The official start-up files are back, and the firmware\'s entry for the drive is right.':'Nothing was changed, or the old files were put back: see Settings › Update and recovery.',{kind:st===0?'info':'error'})};
-}})();
+  notify(T,st===0?'The official start-up files are back, and the firmware\'s entry for the drive is right.':'Nothing was changed, or the old files were put back: see Settings › Update and recovery.',{kind:st===0?'info':'error'})};},"startup60.js");})();

@@ -21,7 +21,7 @@ function mtrNet(v){const k=MTR_KIND[v.kind]||['🌐','Network adapter'];
  dispatchEvent(new CustomEvent('rudolf-net',{detail:v}))}
 if(RD){setTimeout(mtrPoll,5000);setInterval(mtrPoll,120000)}
 /* Settings › Network › Metered connection */
-(function(){if(typeof netPanelS!='function')return;const o=netPanelS;netPanelS=function(c,W){o(c,W);if(!RD)return;
+(function(){if(typeof netPanelS!='function')return;netPanelS=__after(netPanelS,function(c,W){if(!RD)return;
  const d=sp(c,`<h4 class='sh4'>Metered connection</h4><div class='mtr58'><div class='msg mtrnow'>Looking…</div><div class='r2' style='margin-top:6px'><label for='mtrsel'>This network</label><select id='mtrsel'><option value='auto'>Automatic</option><option value='on'>Metered</option><option value='off'>Not metered</option></select></div>
   <div class='msg' style='margin-top:6px'>On a metered connection (cellular data with a monthly cap), Rudolf OS downloads nothing large by itself: system updates are found but wait for you, and Linux apps and Debian are not updated in the background. Websites and apps work as usual. Cellular modems and phones' USB tethering are metered automatically, and so are networks that say so (Android hotspots).</div></div>`);
  const q=s=>d.querySelector(s);
@@ -31,7 +31,7 @@ if(RD){setTimeout(mtrPoll,5000);setInterval(mtrPoll,120000)}
   q('.mtrnow').textContent=`${k[0]} ${k[1]}: ${nm} — ${j.metered?'metered ('+mtrWhy(j)+')':'not metered'+(j.manual?' (set by you for this network)':'')}${j.metered?' · '+mtrFmt(j.used)+' used this month':''}`;
   sel.disabled=false;sel.value=j.manual?(j.metered?'on':'off'):'auto';sel.dataset.if=j.if};
  q('#mtrsel').onchange=async e=>{const v=e.target.value,i=e.target.dataset.if;try{await rdPost('net/metered?if='+encodeURIComponent(i)+'&v='+v)}catch(er){notify('Network',er.message,{kind:'error'})}draw()};
- draw();const t=setInterval(()=>{if(!d.isConnected){clearInterval(t);return}draw()},30000)}})();
+ draw();const t=setInterval(()=>{if(!d.isConnected){clearInterval(t);return}draw()},30000)},"mobile58.js");})();
 /* 1.5.8 (plan 7.5): the browser build (no rudolfd) as a web app on a phone or tablet: "Add to home screen" opens it
    full screen, and it opens offline (rudolf-sw.js keeps the page and its files). Never on an installed Rudolf OS. */
 if(!RD&&'serviceWorker' in navigator&&(location.protocol=='https:'||/^(localhost|127\.0\.0\.1)$/.test(location.hostname)))

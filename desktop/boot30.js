@@ -32,7 +32,7 @@ async function bootSection(c){if(!RD)return;const box=document.createElement('di
   else wb.innerHTML="<p class='msg'>No Windows was found in this computer's start-up list.</p>";
   if(!adm)b.insertAdjacentHTML('beforeend',"<p class='msg'>An administrator can change this.</p>")};
  draw()}
-{const _up=updPanel;updPanel=function(c){const r=_up.apply(this,arguments);try{bootSection(c)}catch(e){}return r}}
+{updPanel=__after(updPanel,function(c){try{bootSection(c)}catch(e){}},"boot30.js");}
 /* the power menu: "Restart into Windows" when the firmware has a Windows entry */
 async function bootWindowsList(){if(!RD)return[];try{const m=await rd('bootmenu');return m.uefi&&m.windows||[]}catch(e){return[]}}
 {const _sd=shutdownDlg;shutdownDlg=function(){const r=_sd.apply(this,arguments);const o=[...document.querySelectorAll('.rmodal')].at(-1);

@@ -106,7 +106,7 @@ function stkRestoreDlg(){return new Promise(async res=>{const o=document.createE
    r.lastChild.onclick=async()=>{L.querySelectorAll('button').forEach(x=>x.disabled=true);M.textContent='Checking the backup…';
     try{const blob=await stkReadBackup(b);M.textContent='Restoring…';await restoreAll(blob,true);close(true)}catch(e){M.textContent='This backup cannot be restored: '+e.message;L.querySelectorAll('button').forEach(x=>x.disabled=false)}};L.appendChild(r)})};
  draw()})}
-if(typeof storPanel=='function'){const _sp=storPanel;storPanel=function(c){const r=_sp.apply(this,arguments);try{stkSection(c)}catch(e){}return r}}
+if(typeof storPanel=='function'){storPanel=__after(storPanel,function(c){try{stkSection(c)}catch(e){}},"stick30.js");}
 {const _fr=firstRun;firstRun=function(){const r=_fr.apply(this,arguments);const o=document.getElementById('oobe');if(o&&RD&&!o.querySelector('.oorest')){const b=document.createElement('button');b.className='oorest';b.textContent='Restore from a backup on a USB stick…';
  b.style.cssText='position:absolute;left:50%;bottom:18px;transform:translateX(-50%)';b.onclick=()=>stkRestoreDlg();o.appendChild(b)}return r}}
 /* ===== 1.2.8: new boot files, keeping the drive's files =====

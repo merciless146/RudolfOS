@@ -1558,6 +1558,31 @@ Three parts, one PR each, in this order:
   with the processes shared (this host's) 258 MB before, 229 MB with two resting. Not on Lite (its windows are tabs of one
   window: kept as they are). Test: iso/qt/host/rest161_t.sh.
 
+### 24. Settings' pages built from one list of additions (added on 2026-11-21)
+The owner asked on 2026-11-21 whether Rudolf OS has bloat, dead code or redundancies; the answer named this first ("can
+item 1 be done safely in 1.6.1?" ... "Do it automatically once the other tasks that are currently running are
+finished"). Newer modules added their section to a Settings page by wrapping the function before them
+(`const o=dispPanelS;dispPanelS=function(c,W){o(c,W);...}`): Display Properties went through 15 nested functions,
+applySet through 11, themeApply through 7, and one section that failed stopped every section after it.
+- **The change:** `NAME=__after(NAME,function(...){...},'module')` (desktop/hooks61.js, the first module): the additions to
+  one function are one list, run in the order the modules load, which is the order the wrappers ran in; a step that
+  fails is reported in the console and the next still runs. Nothing else changes: the same code, in the same modules.
+  71 wrappers of the Settings pages (Display, Sound, Network, System, Accessibility, Users, Security, Apps, Storage,
+  Update and recovery, System health) and of applySet and themeApply became steps. 10 stay wrappers, because they run
+  before the earlier one or use what it returns (Users' first one, native25's and sndrs60's applySet, Sound's in
+  sndrs60, Storage's in dl27, System health's in gamemode61, Security's in devmode59, Users' in otp60, fido61 and
+  devkey59); a step added after one of them goes in a new list around it, so the order is still exactly the old one.
+  Every base function returns nothing and ignores `this` (checked), so a list returning what the first one returns is
+  the same.
+- **Merged only if** every Settings page, on Standard and in Native's app window, is the same as the build before the
+  change, and applying the settings with several choices (dark and light, the accent colour, tablet mode, the taskbar's
+  buttons, the aurora, high contrast, the text size) leaves the page the same (its attributes, styles, CSS variables and
+  saved settings): iso/qt/shell2/sethooks61_t.js `--compare` with the build before.
+- **Status (2026-11-21, branch settings-hooks):** done. sethooks61_t.js --compare against main's build at a01c81b: all 12
+  checks passed (22 pages on Standard and on Native, 13 choices applied); the check fails as it should when one heading
+  is changed. Speed: unchanged (the extra calls cost microseconds); the gain is code that is easier to follow and a
+  failing section that no longer hides the rest.
+
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
   1.6.0 instead"): docs/plan-1.6.0.md Part 22.
@@ -1589,3 +1614,4 @@ Three parts, one PR each, in this order:
    (idle windows give their memory back), one PR each, each checked on the Vivobook; B's stages 2 and 3 (the owner, 2026-11-21:
    scheduled with the rest of 1.6.1).
 10. Part 11's remaining groups (after drives, updates, the accounts' folders, accounts and power), one PR per group.
+11. Part 24 (Settings' pages built from one list), after every other 1.6.1 task's PR, before the final beta.

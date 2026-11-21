@@ -40,4 +40,4 @@ async function sbSection(c,W){
   else{t.textContent='Off. With Secure Boot on, the computer starts only signed software, so nothing can be slipped in before Rudolf OS starts. Rudolf OS needs its key enrolled once: prepare it here, then confirm it at the next start. This works on every computer, also where the blue screen\'s “Enroll key from disk” does not accept rudolf.cer.';btn('Prepare Secure Boot…',()=>sbPrepare(W,()=>draw(true)),1)}
   if(!adm&&row.children.length){const n=document.createElement('span');n.className='msg';n.textContent=' An administrator can change this.';row.appendChild(n)}};
  draw()}
-if(typeof secPanelS=='function'){const _sp=secPanelS;secPanelS=function(c,W){const r=_sp.apply(this,arguments);try{sbSection(c,W)}catch(e){}return r}}
+if(typeof secPanelS=='function'){secPanelS=__after(secPanelS,function(c,W){try{sbSection(c,W)}catch(e){}},"sb28.js");}

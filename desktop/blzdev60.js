@@ -121,7 +121,7 @@ function blzDevDraw(el){if(!BLZD||!BLZD.devlink||!BLZD.devlinkToken||!el)return;
 {const _ui=blzChatUI;blzChatUI=function(W){const R=_ui(W);blzdSettings(true).then(S=>{if(!S)return;const bar=W.body.querySelector('.blzbar');if(!bar||bar.querySelector('.bddev'))return;
   const b=document.createElement('button');b.className='bddev';b.title='Your Rudolf OS repository and test computer (Developer mode)';b.textContent='Developer…';b.onclick=()=>blzDevApp();bar.appendChild(b)});return R}}
 /* ---------- Settings › Apps › Blitzen › Developer ---------- */
-{const _ap=appsPanel;appsPanel=function(c,W){_ap(c,W);if(!RD)return;const d=sp(c,`<div class='bdset'></div>`),b=d.querySelector('.bdset');
+{appsPanel=__after(appsPanel,function(c,W){if(!RD)return;const d=sp(c,`<div class='bdset'></div>`),b=d.querySelector('.bdset');
  const draw=async(said)=>{const S=await blzdSettings(true);if(!S){b.innerHTML='';return}
   b.innerHTML=`<h4 class='sh4'>Blitzen › Developer</h4>
    <div class='msg'>Blitzen can work on your own Rudolf OS repository (a fork: docs/custom-builds.md) and drive a test computer through your development link (docs/DEVLINK.md). It reads freely; it changes nothing without your Allow, each time: a new branch and a pull request (never your default branch, never merged), a workflow started, a command sent. Tokens are kept in this account's keyring${S.keyring?'':' (this computer has no account keyring: for the system alone)'}.</div>
@@ -135,4 +135,4 @@ function blzDevDraw(el){if(!BLZD||!BLZD.devlink||!BLZD.devlinkToken||!el)return;
   $q('.bdsave').onclick=async()=>{try{await blzdApi('settings?repo='+encodeURIComponent($q('.bdr').value.trim())+'&base='+encodeURIComponent($q('.bdb').value.trim()||'main')+'&devlink='+encodeURIComponent($q('.bdl').value.trim()));
     for(const[k,cl]of[['github','.bdt'],['devlink','.bdlt']]){const v=$q(cl).value.trim();if(v){await blzdApi('token?key='+k,v);$q(cl).value=''}}draw('Saved.')}catch(e){m.textContent=e.message}};
   for(const[k,cl]of[['github','.bdtx'],['devlink','.bdltx']]){const x=$q(cl);if(x)x.onclick=async()=>{try{await blzdApi('token?key='+k+'&clear=1');draw('Removed.')}catch(e){m.textContent=e.message}}}};
- draw()}}
+ draw()},"blzdev60.js");}

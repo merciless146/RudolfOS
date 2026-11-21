@@ -148,4 +148,4 @@ async function updNotice() {
 }
 
 /* applied after sign-in and whenever settings change */
-(function () { const o = applySet; applySet = function () { const r = o.apply(this, arguments); try { if (USER) { pointerApply(); setTimeout(updNotice, 4000) } } catch (e) {} return r } })();
+(function () { applySet=__after(applySet,function(){try { if (USER) { pointerApply(); setTimeout(updNotice, 4000) } } catch (e) {}},"devices26.js"); })();

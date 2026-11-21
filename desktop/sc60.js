@@ -73,7 +73,7 @@ function scSection(c){if(typeof RD=='undefined'||!RD)return;
  q('.scdr').onclick=async()=>{const cr=await elevate('Remove the DoD\'s certificates from Oracle',{cred:true});if(!cr)return;
   try{await rd('sc/dod/remove',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});notify('DoD certificates','Removed.',{app:'Settings'})}catch(e){notify('DoD certificates',e.message,{kind:'error',app:'Settings'})}dodDraw()};
  draw();dodDraw();const iv=setInterval(()=>{if(!box.isConnected){clearInterval(iv);return}draw()},4000)}
-if(typeof secPanelS=='function'){const _sp=secPanelS;secPanelS=function(c,W){const r=_sp.apply(this,arguments);try{scSection(c,W)}catch(e){}return r}}
+if(typeof secPanelS=='function'){secPanelS=__after(secPanelS,function(c,W){try{scSection(c,W)}catch(e){}},"sc60.js");}
 /* Lock the screen when my card is taken out: a look every 3 seconds while it is on and someone is signed in */
 let SC_LW=0,SC_HAD=false;
 function scLockWatch(){clearInterval(SC_LW);SC_LW=0;SC_HAD=false;if(typeof RD=='undefined'||!RD||!S.sclock||!USER||USER.r=='guest')return;

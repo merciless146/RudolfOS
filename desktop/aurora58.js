@@ -74,17 +74,17 @@ function aurUpdate(){const want=aurWanted();
  /* the overlay stays the first thing on the page, under everything else */
  if(document.body.firstChild!==AUR.el)document.body.insertBefore(AUR.el,document.body.firstChild);
  AUR.el.style.display='';aurFit();AUR.col='';if(!AUR.on||!AUR.timer||AUR.still!==!!(S.rmotion||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)))aurStart();else aurDraw();AUR.on=true}
-(function(){const o=applySet;applySet=function(){const r=o.apply(this,arguments);try{aurUpdate()}catch(e){}return r}})();
-(function(){const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);try{if(AUR.on){AUR.col='';aurDraw()}}catch(e){}return r}})();
+(function(){applySet=__after(applySet,function(){try{aurUpdate()}catch(e){}},"aurora58.js");})();
+(function(){themeApply=__after(themeApply,function(){try{if(AUR.on){AUR.col='';aurDraw()}}catch(e){}},"aurora58.js");})();
 document.addEventListener('visibilitychange',()=>{if(!document.hidden&&AUR.on)aurDraw()});
 /* Display Properties: under the dynamic backgrounds' Appearance */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const m=c.querySelector('#dynm');if(!m)return;
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const m=c.querySelector('#dynm');if(!m)return;
  const d=document.createElement('div');d.className='aurrow';
  d.innerHTML=`<div class='acrow'>${ckH('daur','At night, with Glacier Lake',!!S.aur)} <select id='daurm' aria-label='Northern lights colour'>${ACMODES.map(([k,n])=>optH(k,n,S.aurm||'normal')).join('')}</select></div>
   <div class='msg'>The lights take the accent colour: Normal is the accent colour; Negative is its negative; Complementary is the colour opposite it on the colour wheel.</div>`;
  const lab=document.createElement('label');lab.textContent='Northern lights';m.after(lab);lab.after(d);const q=s=>d.querySelector(s),sync=()=>{q('#daurm').disabled=!q('#daur').checked};
  q('#daur').onchange=e=>{liveSet(c,'aur',e.target.checked);sync();aurUpdate()};
- q('#daurm').onchange=e=>{liveSet(c,'aurm',e.target.value);AUR.col='';aurUpdate()};sync()}})();
+ q('#daurm').onchange=e=>{liveSet(c,'aurm',e.target.value);AUR.col='';aurUpdate()};sync()},"aurora58.js");})();
 {const st=document.createElement('style');st.textContent='.aurrow{margin-top:6px}.aurrow .msg{margin-top:4px}';document.head.appendChild(st)}
 aurUpdate();
 {const st=document.createElement('style');st.textContent='.dynps{display:block;font-weight:400;margin-top:4px}.dynps[hidden]{display:none}';document.head.appendChild(st)}

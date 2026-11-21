@@ -116,4 +116,4 @@ function acResetDlg(o,done){const has=!!(ADMPRIV&&o.ak&&o.ak[USER.id]);const d=d
  d.querySelector('.y').onclick=async()=>{const a=P1.get(),b=P2.get();if(!a){m.textContent='Enter a new password.';return}if(a!=b){m.textContent='The passwords do not match.';return}
   if(!await elevate('Reset the password of '+o.n))return;const kept=await acReset(o,a);d.remove();logEvt('sys',`${USER.n} reset the password of ${o.n}`);hlNote&&hlNote('account','an administrator reset an account\'s password'+(kept?'':' (its files could not be kept)'));
   notify('Password reset',kept?`${o.n} can sign in with the new password; their files are kept.`:`${o.n} can sign in with the new password.`);done&&done()}}
-if(typeof usrPanelS=='function'){const _up50=usrPanelS;usrPanelS=function(c,W){const r=_up50.apply(this,arguments);try{acSection(c,W)}catch(e){console.warn('acct50',e)}return r}}
+if(typeof usrPanelS=='function'){usrPanelS=__after(usrPanelS,function(c,W){try{acSection(c,W)}catch(e){console.warn('acct50',e)}},"acct50.js");}

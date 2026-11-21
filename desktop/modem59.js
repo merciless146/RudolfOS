@@ -13,7 +13,7 @@ async function mdmFcc(m,on,redraw){const what=on?"Turn on this laptop's cellular
  const cr=await elevate(what,{cred:true});if(!cr)return;
  try{const r=await rd('mobile/fcc?id='+encodeURIComponent(m.fccId)+'&on='+(on?1:0),{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});notify('📶 Cellular module',(r&&r.message)||'Done.',{app:'Network'})}
  catch(e){notify('📶 Cellular module',e.message,{kind:'error',app:'Network'})}redraw&&redraw()}
-(function(){if(typeof netPanelS!='function')return;const o=netPanelS;netPanelS=function(c,W){o.apply(this,arguments);if(!RD)return;
+(function(){if(typeof netPanelS!='function')return;netPanelS=__after(netPanelS,function(c,W){if(!RD)return;
  const box=document.createElement('div');box.className='mdm59';c.appendChild(box);
  const draw=async()=>{let s=null;try{s=await rd('mobile/status')}catch(e){}if(!box.isConnected)return;
   const ms=(s&&s.modems)||[],ns=(s&&s.notes)||[];if(!ms.length&&!ns.length){box.innerHTML='';return}
@@ -28,4 +28,4 @@ async function mdmFcc(m,on,redraw){const what=on?"Turn on this laptop's cellular
    L.appendChild(r)});
   const N=box.querySelector('.mdmn');ns.forEach(n=>{const r=document.createElement('div');r.className='acr wfrow';r.innerHTML=`<span style='font-size:22px'>⚠️</span><span style='flex:1'><b></b><div class='msg'></div></span>`;
    r.querySelector('b').textContent=n.name+' ('+n.id+')';r.querySelector('.msg').textContent=n.text;N.appendChild(r)})};
- draw();const iv=setInterval(()=>{if(!box.isConnected)return clearInterval(iv);draw()},10000)}})();
+ draw();const iv=setInterval(()=>{if(!box.isConnected)return clearInterval(iv);draw()},10000)},"modem59.js");})();

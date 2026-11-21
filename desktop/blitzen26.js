@@ -223,7 +223,7 @@ regApp('blitzen',{name:'Blitzen',icon:'⚡',kw:'blitzen assistant ai chat code h
  const before=ul.querySelector('li[data-a=settings]')||ul.querySelector('li[data-a=run]');const li=document.createElement('li');li.className='rapp blzv';li.dataset.v25='blitzen';li.tabIndex=0;li.textContent='⚡ Blitzen';
  li.onclick=e=>{e.stopPropagation();$('#menu').style.display='none';blitzenApp()};li.onkeydown=e=>{if(e.key=='Enter')li.click()};ul.insertBefore(li,before)}}
 addEventListener('keydown',e=>{if(RD&&e.ctrlKey&&e.altKey&&(e.key=='b'||e.key=='B')&&USER){e.preventDefault();blitzenApp()}});
-{const _ap=appsPanel;appsPanel=function(c,W){_ap(c,W);if(!RD)return;
+{appsPanel=__after(appsPanel,function(c,W){if(!RD)return;
  const d=sp(c,`<h4 class='sh4'>Blitzen (assistant)</h4><div class='bset'><div class='msg'>Checking…</div></div>`);const b=d.querySelector('.bset');
  const draw=async()=>{const st=await blzStatus();if(!st){b.innerHTML="<div class='msg'>This Rudolf OS has no Blitzen.</div>";return}
   const off=ld('bd95blzoff',false),keep=ld('bd95blzkeep',true),sp2=ld('bd95blzspeed',null);
@@ -238,4 +238,4 @@ addEventListener('keydown',e=>{if(RD&&e.ctrlKey&&e.altKey&&(e.key=='b'||e.key=='
   b.querySelector('.bop').onclick=()=>blitzenApp();
   const un=b.querySelector('.bun');if(un)un.onclick=async()=>{try{await lxApi('ai/unload')}catch(e){return msg.textContent=e.message}draw()};
   const rm=b.querySelector('.brm');if(rm)rm.onclick=async()=>{if(!await elevate('Remove Blitzen\'s model (your saved chats stay)'))return;try{await lxApi('ai/remove')}catch(e){return msg.textContent=e.message}msg.textContent='Removed.';setTimeout(draw,600)}};
- draw()}}
+ draw()},"blitzen26.js");}

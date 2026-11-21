@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Changed: Settings' pages are built from one list of additions each, in the same order as before, instead of a
+  function wrapped up to 15 times. They look and work as they did; a section that fails no longer stops the sections
+  after it from being shown (the failure is written to the console).
 - For the phone build to come (2.0): the groundwork of its home screen's three panels: on a build marked as the mobile
   build, the three workspaces are panels shown full screen, switched with a swipe to the left or right on the desktop or
   a title bar, on Standard and Native alike. Nothing changes on computers.

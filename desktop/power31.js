@@ -57,7 +57,7 @@ function pwrPanel(c,W){const d=document.createElement('div');d.className='pwr31'
 /* where it is, opened from elsewhere (the battery on the taskbar, User Settings' Sleep) */
 function pwrShow(W){const go=()=>setTimeout(()=>{const g=document.getElementById('pwr31');g&&g.scrollIntoView({block:'start'})},300);if(W&&W.show){W.show('health');go()}else{settings('health');go()}}
 /* User Settings: Sleep is in Power and battery now (a time set there before 1.4.4 is taken over once) */
-(function(){const o=usrPanelS;usrPanelS=function(c,W){o(c,W);const s=c.querySelector('#usp');if(!s)return;const l=s.previousElementSibling;const n=document.createElement('div');n.className='msg';n.innerHTML=`In <a href='#'>System health › Power and battery</a>.`;s.replaceWith(n);n.querySelector('a').onclick=e=>{e.preventDefault();pwrShow(W)}}})();
+(function(){usrPanelS=__after(usrPanelS,function(c,W){const s=c.querySelector('#usp');if(!s)return;const l=s.previousElementSibling;const n=document.createElement('div');n.className='msg';n.innerHTML=`In <a href='#'>System health › Power and battery</a>.`;s.replaceWith(n);n.querySelector('a').onclick=e=>{e.preventDefault();pwrShow(W)}},"power31.js");})();
 async function pwrMigrate(){if(!RD||!SYSC.suspmin||SYSC.suspmig)return;const m=[5,10,15,30,60].reduce((a,v)=>Math.abs(v-SYSC.suspmin)<Math.abs(a-SYSC.suspmin)?v:a,60);
  try{await rdPost(`power/set?sleep_ac=${m}&sleep_bat=${m}`);SYSC.suspmig=1;sysSave()}catch(e){}}
 if(typeof evOn=='function')evOn(pwrEvents);

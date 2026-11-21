@@ -130,14 +130,14 @@ function stUpdate(){let want=false,mode='light';try{want=S.dyn=='oasis'&&!!DYN.o
  if(DYN.oasis.am&&(!PET.mask||PET.maskSrc!==DYN.oasis.am)){PET.maskSrc=DYN.oasis.am;PET.mask=new Image();PET.mask.onload=()=>lanDraw((performance.now()-PET.t0)/1000);PET.mask.src=DYN.oasis.am}
  const still=!!(S.rmotion||(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches));
  if(PET.mode!==mode||(!PET.timer&&!still)||(PET.timer&&still))petStart(mode)}
-(function(){const o=applySet;applySet=function(){const r=o.apply(this,arguments);try{stUpdate()}catch(e){}return r}})();
-(function(){const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);try{stUpdate()}catch(e){}return r}})();
+(function(){applySet=__after(applySet,function(){try{stUpdate()}catch(e){}},"statue58.js");})();
+(function(){themeApply=__after(themeApply,function(){try{stUpdate()}catch(e){}},"statue58.js");})();
 /* Display Properties: which statue stands there now, and the colour rule for its glow */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const m=c.querySelector('.aurrow')||c.querySelector('#dynm');if(!m)return;
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const m=c.querySelector('.aurrow')||c.querySelector('#dynm');if(!m)return;
  const lab=document.createElement('label');lab.textContent='Spirit Falls statue';const d=document.createElement('div');d.className='strow';
  d.innerHTML=`<div class='acrow'><span>Glow</span> <select id='dstm' aria-label='Statue glow colour'>${ACMODES.map(([k,n])=>optH(k,n,S.stm||'normal')).join('')}</select></div><div class='msg stmsg'></div><div class='acrow'><span>Sky lanterns at night</span> <select id='dlnm' aria-label='Sky lanterns colour'>${ACMODES.map(([k,n])=>optH(k,n,S.lnm||'normal')).join('')}</select></div>`;
  const say=()=>{d.querySelector('.stmsg').textContent=`The ${ST_NAMES[stAnimal()]} stands on the right bank. Each accent colour has its own statue: the twelve animals of the Chinese zodiac, a panda, an elephant, a leopard and a deer. Its carvings glow faintly in the accent colour, and at night paper lanterns rise into the sky in it: Normal is the accent colour; Negative is its negative; Complementary is the colour opposite it on the colour wheel.`};
  say();m.after(lab);lab.after(d);d.querySelector('#dstm').onchange=e=>{liveSet(c,'stm',e.target.value);stUpdate()};d.querySelector('#dlnm').onchange=e=>{liveSet(c,'lnm',e.target.value);if(!PET.timer)lanDraw(0)};
- c.addEventListener('click',()=>setTimeout(say,0));c.addEventListener('input',()=>setTimeout(say,0))}})();
+ c.addEventListener('click',()=>setTimeout(say,0));c.addEventListener('input',()=>setTimeout(say,0))},"statue58.js");})();
 {const st=document.createElement('style');st.textContent='.strow{margin-top:6px}.strow .msg{margin-top:4px}';document.head.appendChild(st)}
 stUpdate();

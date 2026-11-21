@@ -25,7 +25,7 @@ function fwSection(c,W){
   try{await rdPost('firewall?on='+(on?1:0));notify('Firewall',on?'The firewall is on.':'The firewall is off.',{kind:on?'info':'error'});logEvt('fw','Firewall (incoming connections) '+(on?'on':'off'))}catch(e){notify('Firewall',e.message||'It could not be changed.',{kind:'error'})}
   draw()};
  draw()}
-if(typeof secPanelS=='function'){const _sp50=secPanelS;secPanelS=function(c,W){const r=_sp50.apply(this,arguments);try{fwSection(c,W)}catch(e){console.warn('fw50',e)}return r}}
+if(typeof secPanelS=='function'){secPanelS=__after(secPanelS,function(c,W){try{fwSection(c,W)}catch(e){console.warn('fw50',e)}},"sec50.js");}
 
 /* ---------- System health ---------- */
 const HL_KIND={start:['🔌','Start-up'],recover:['♻️','Kept in Recovered'],ready:['✅','Ready'],fallback:['↩️','Update fallback'],memory:['🧠','Memory'],crash:['💥','Crash'],browser:['🔄','Desktop restart'],signin:['🔑','Sign-in'],disk:['💾','Storage'],heat:['🌡️','Heat'],firewall:['🛡️','Firewall'],remote:['🖥️','Remote access'],vault:['🔐','Encryption'],update:['⬆️','Update'],account:['👤','Accounts'],bluetooth:['🔵','Bluetooth'],hardware:['🧩','Hardware'],library:['📚','Rudolf OS Library'],security:['🔒','Security'],tor:['🧅','Tor'],modem:['📶','Mobile network'],extension:['🧩','System extensions'],boot:['🥾','Start-up files and firmware']};

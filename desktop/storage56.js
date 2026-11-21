@@ -59,11 +59,11 @@ async function storDisk(box){if(!RD)return;box.innerHTML="<h4 class='sh4'>On thi
   if(!alive||!box.isConnected)return;show(j);if(j.measuring)setTimeout(()=>poll(false),1500)};
  q('.sda').onclick=()=>poll(true);
  let j=null;try{j=await rd('storage')}catch(e){}const old=!j||!j.result||Date.now()/1000-j.result.time>600;show(j);poll(old)}
-{const _s=storPanel;storPanel=function(c){_s.apply(this,arguments);if(!RD)return;
+{storPanel=__after(storPanel,function(c){if(!RD)return;
  const ta=document.createElement('div');ta.className='tra56';
  ta.innerHTML=`<h4 class='sh4'>The Trash</h4><p class='msg tras'></p><label>Delete items in the Trash for good once they are older than <select class='trad'><option value='0'>Never</option><option value='1'>1 day</option><option value='14'>14 days</option><option value='30'>30 days</option><option value='60'>60 days</option></select></label>`;
  ta.querySelector('.tras').textContent=TR.length?`${TR.length} item${TR.length==1?'':'s'} in your Trash, ${fmtB(trTotal())}.`:'Your Trash is empty.';
  const sel=ta.querySelector('.trad');sel.value=String(trAutoDays());sel.disabled=!USER||USER.r=='guest';sel.onchange=()=>{svj(trAutoK(),+sel.value);const n=trAutoEmpty();ta.querySelector('.tras').textContent=(n?n+' old item'+(n==1?' was':'s were')+' deleted. ':'')+(TR.length?`${TR.length} item${TR.length==1?'':'s'} in your Trash, ${fmtB(trTotal())}.`:'Your Trash is empty.')};
  const dk=document.createElement('div');dk.className='sd56';
  const bk=[...c.querySelectorAll('h4.sh4')].find(h=>/Backup/.test(h.textContent));if(bk){c.insertBefore(dk,bk);c.insertBefore(ta,bk)}else{c.appendChild(dk);c.appendChild(ta)}
- storDisk(dk)}}
+ storDisk(dk)},"storage56.js");}

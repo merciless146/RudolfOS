@@ -66,14 +66,14 @@ function lkLoginClock() {
   tick(); clearInterval(window.__lkLoginIv); window.__lkLoginIv = setInterval(tick, 1000);
 }
 /* (1.5.9) and each time the background is set (a reference is right at any moment, also before the picture is read) */
-{ const _as = applySet; applySet = function () { const r = _as.apply(this, arguments); try { lkRemember() } catch (e) {} return r } }
+{ applySet=__after(applySet,function(){try { lkRemember() } catch (e) {}},"lock58.js"); }
 { const _lock = lockScreen; lockScreen = function () { lkRemember(); _lock.apply(this, arguments); lkApply(document.getElementById('lockov'), 'lock') } }
 { const _show = showLogin; showLogin = function () { lkRemember(); const r = _show.apply(this, arguments); lkLoginClock(); lkApply($('#login'), 'login'); return r } }
 setTimeout(() => { try { lkLoginClock(); lkApply($('#login'), 'login') } catch (e) {} }, 0);
 
 /* Display Properties › Lock and sign-in screen (with the background settings) */
 { const st = document.createElement('style'); st.textContent = '.lk58in,.lk58in>.r2{display:contents}.lk58in>.sh4,.lk58in>.msg{grid-column:1/-1}.lk58in>.sh4{margin:14px 0 2px}.lk58in>.msg{margin:0 0 6px}'; document.head.appendChild(st) }
-(function () { const o = dispPanelS; dispPanelS = function (c, W) { o(c, W); const adm = isAdmin(), D = adm ? '' : ' disabled', k = lkConf();
+(function () { dispPanelS=__after(dispPanelS,function(c,W){const adm = isAdmin(), D = adm ? '' : ' disabled', k = lkConf();
   const d = document.createElement('div'); d.className = 'lk58';
   const opt = (v, t, cur) => `<option value='${v}'${v == cur ? ' selected' : ''}>${t}</option>`;
   d.innerHTML = `<h4 class='sh4'>Lock and sign-in screen</h4><div class='r2'>
@@ -110,8 +110,7 @@ setTimeout(() => { try { lkLoginClock(); lkApply($('#login'), 'login') } catch (
     p.innerHTML = `<div class='lkclock'></div><div class='lkdate'></div><div class='lkbox'><div class='lkav'>👤</div><div class='lkn'></div><div class='msg' style='opacity:.8'>Preview: click or press a key to close</div></div>`;
     p.querySelector('.lkn').textContent = USER ? USER.n : ''; const cp = clockParts(); p.querySelector('.lkclock').textContent = cp.time; p.querySelector('.lkdate').textContent = cp.longNoYear;
     document.body.appendChild(p); lkApply(p, 'lock');
-    const end = () => { p.remove(); removeEventListener('keydown', end, true) }; p.onclick = end; setTimeout(() => addEventListener('keydown', end, true), 50) };
-} })();
+    const end = () => { p.remove(); removeEventListener('keydown', end, true) }; p.onclick = end; setTimeout(() => addEventListener('keydown', end, true), 50) };},"lock58.js"); })();
 
 /* ---------- the shutting-down screen ---------- */
 /* how long a sound plays, from its notes ([frequency, start, length, …]); the orchestral voices are about 2.4 s */

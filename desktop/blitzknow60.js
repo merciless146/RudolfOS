@@ -105,7 +105,7 @@ function blzkConfirm(title,text,yes){return new Promise(res=>{const o=document.c
  const end=v=>{o.remove();res(v)};o.querySelector('.ok').onclick=()=>end(true);o.querySelector('.no').onclick=()=>end(false);
  o.addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Escape')end(false)});document.body.appendChild(o);o.querySelector('.no').focus()})}
 /* ---------- Settings › Apps › Blitzen: what it knows */
-{const _ap=appsPanel;appsPanel=function(c,W){_ap(c,W);if(!RD)return;
+{appsPanel=__after(appsPanel,function(c,W){if(!RD)return;
  const d=sp(c,`<h4 class='sh4'>Blitzen: what it knows</h4><div class='bkset'></div>`);const b=d.querySelector('.bkset');
  const draw=async()=>{const on=USER?await blzkLearnOn():false,notes=USER?blzkNotes():[];
   b.innerHTML=`<div class='msg'>Before answering, Blitzen looks in Rudolf OS's own source and documents and the system's logs (with passwords, tokens and keys left out), and in what you ask it to remember. It does not learn by changing its model: what it uses can always be seen and forgotten here. It is a small model: good at “where in the system is …” and “what does this log line mean”, less so at weighing several web pages against each other; an answer that reads the web takes about a minute.</div>
@@ -119,4 +119,4 @@ function blzkConfirm(title,text,yes){return new Promise(res=>{const o=document.c
    catch(e){l.checked=!l.checked;m.textContent=e.message}};
   b.querySelectorAll('.bkmem button').forEach(x=>x.onclick=()=>{const a=blzkNotes();a.splice(+x.dataset.i,1);blzkSetNotes(a);draw()});
   const add=b.querySelector('.bkadd');if(add)add.onclick=()=>{const v=b.querySelector('.bknew').value.trim();if(!v)return;const a=blzkNotes();if(!a.includes(v))a.push(v);blzkSetNotes(a);draw()}};
- draw()}}
+ draw()},"blitzknow60.js");}

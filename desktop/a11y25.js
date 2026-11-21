@@ -27,7 +27,7 @@ function themeApply(){const H=document.documentElement,B=document.body;let dark=
  try{iconsApply()}catch(e){}}
 setInterval(themeApply,60000);
 (function(){const o=a11yApply;a11yApply=function(){o();themeApply();srApply();magApply();window.__mouseExtra&&__mouseExtra()}})();
-(function(){const o=applySet;applySet=function(){o();themeApply()}})();
+(function(){applySet=__after(applySet,function(){themeApply()},"a11y25.js");})();
 /* ---------- live region and speech ---------- */
 const SRLIVE=document.createElement('div');SRLIVE.id='srlive';SRLIVE.setAttribute('aria-live','polite');SRLIVE.className='sr-only';document.body.appendChild(SRLIVE);
 function announce(t){SRLIVE.textContent='';setTimeout(()=>SRLIVE.textContent=t,30);if(S.sr)srSpeak(t)}
@@ -246,7 +246,7 @@ function icWallColour(){return new Promise(res=>{const S0=S,dynMode=window.__dyn
 function icRedraw(){document.documentElement.classList.toggle('ics-bare',['glyph','outline'].includes(S.icstyle));document.documentElement.classList.toggle('icdyn-light',!!(S.icdyn&&ICDYN&&!ICDYN.dark));document.documentElement.classList.toggle('icdyn-dark',!!(S.icdyn&&ICDYN&&ICDYN.dark));
  document.querySelectorAll('img.ico').forEach(i=>{const e=i.dataset.emo||'',k=EMO2IC[e]||EMO2IC[e.replace(/️/g,'')];if(k){const u=icSvg(k);if(i.getAttribute('src')!==u)i.src=u}})}
 let icRT=0;function icRefresh(){clearTimeout(icRT);icRT=setTimeout(()=>{if(!S.icdyn){ICDYN=null;icRedraw();return}icWallColour().then(d=>{ICDYN=d;icRedraw()})},80)}
-(function(){const o=applySet;applySet=function(){const r=o.apply(this,arguments);try{icRefresh()}catch(e){}return r}})();
+(function(){applySet=__after(applySet,function(){try{icRefresh()}catch(e){}},"a11y25.js");})();
 setInterval(()=>{if(S.icdyn&&window.__dyn)icRefresh()},60000);
 function icImg(emo,cls){const k=EMO2IC[emo]||EMO2IC[emo.replace(/️/g,'')];if(!k)return null;const i=document.createElement('img');i.className='ico '+(cls||'');i.src=icSvg(k);i.alt='';i.setAttribute('aria-hidden','true');i.dataset.emo=emo;return i}
 function iconsApply(){const on=S.icons!=='emoji';document.documentElement.classList.toggle('svgicons',on);if(!on){document.querySelectorAll('img.ico').forEach(i=>i.replaceWith(document.createTextNode(i.dataset.emo)));return}
