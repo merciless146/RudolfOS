@@ -60,8 +60,17 @@ jobs:
           sudo mkdir -p /run/rudolf/dl/.incoming && sudo chmod -R 777 /run/rudolf
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home2; mkdir -p $HOME
           python3 iso/qt/webkit/tabs58_ci.py ./rudolf-webkit | tee tabs-result.txt; r=${PIPESTATUS[0]}
-          echo "::notice title=Oracle's tabs in WebKit::$(tail -1 tabs-result.txt) — $(grep -E '^FAIL' tabs-result.txt | tr '\n' '|')"
-          head -c 3000 tabs.txt; exit $r
+          echo "::notice title=Oracle's tabs in WebKit::$(tail -1 tabs-result.txt) — $(grep -E '^FAIL|^pixels' tabs-result.txt | tr '\n' '|')"
+          head -c 3000 tabs.txt
+          # (1.6.1: a covered tab's still picture, in the other two drawing modes as well)
+          for m in soft gpu; do rm -f /run/rudolf/dl/.incoming/file.bin; python3 iso/qt/webkit/tabs58_ci.py ./rudolf-webkit $m > tabs-result-$m.txt || r=1
+            echo "::notice title=Oracle's tabs in WebKit ($m)::$(tail -1 tabs-result-$m.txt) — $(grep -E '^FAIL|^pixels' tabs-result-$m.txt | tr '\n' '|')"; done
+          exit $r
+      - name: Oracle's tabs painted by the graphics card in mixed drawing (1.6.1, stutter in Oracle's tabs)
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          python3 iso/qt/webkit/tabsgpu61_ci.py ./rudolf-webkit | tee tabsgpu-result.txt; r=${PIPESTATUS[0]}
+          echo "::notice title=Lite tabs' painting::$(tail -1 tabsgpu-result.txt) — $(grep -E '^FAIL' tabsgpu-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
       - name: An app's own link scheme in Oracle's tabs (1.6.0, the owner's Vivobook report of 2026-11-16)
         run: |
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home3; mkdir -p $HOME
