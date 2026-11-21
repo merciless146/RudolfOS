@@ -90,6 +90,9 @@ start_gpu() {
 			return 1
 		fi
 		[ $RC = 0 ] || echo "$(date) could not set the screen mode $RES at $FPS Hz"
+		# 1.6.1 (plan Part 1): every monitor plugged in lit, side by side (the main one at the left), as Settings › Display ›
+		# Displays arranged them; rudolf-display --input arranges them again when one is plugged in or out
+		rudolf-display --arrange >>/run/rudolf/monitors.log 2>&1; st "monitors"
 		S=$(rudolf-display --xsize 2>/dev/null); set -- $S; W=$1; H=$2; DISPARGS=--input; MODE=gpu; keys_evdev
 		unset RUDOLF_FPS
 		if [ "$XCONF" != /usr/lib/rudolf/xorg.conf ]; then grep -q 'NVIDIA(0)' /run/rudolf/Xorg.log || REASON="Xorg is running but NVIDIA's driver did not take the card (see Xorg.log)"

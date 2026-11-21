@@ -74,6 +74,7 @@ if mountpoint -q /persist; then
 	[ -f /persist/etc/asound.conf ] && cp /persist/etc/asound.conf /etc/asound.conf
 	[ -f /persist/etc/rudolf-display ] && cp /persist/etc/rudolf-display /etc/rudolf-display
 	[ -f /persist/etc/rudolf-screen ] && cp /persist/etc/rudolf-screen /etc/rudolf-screen
+	[ -f /persist/etc/rudolf-monitors ] && cp /persist/etc/rudolf-monitors /etc/rudolf-monitors   # (1.6.1 Part 1: the monitors' arrangements)
 	[ -f /persist/etc/rudolf-shell ] && cp /persist/etc/rudolf-shell /etc/rudolf-shell
 	# 1.5.7: the desktop engine (System Settings): taken now, so a change applies at the next restart of the computer
 	[ -f /persist/etc/rudolf-desktop-engine ] && cp /persist/etc/rudolf-desktop-engine /run/rudolf/engine-choice

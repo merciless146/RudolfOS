@@ -200,6 +200,14 @@ static int safe_word(const char *s, size_t max)
 	for (; *s; s++) if (!isalnum((unsigned char)*s) && !strchr("-_.:", *s)) return 0;
 	return 1;
 }
+/* 1.6.1 (plan Part 1): the monitors' arrangement, "NAME=WS,NAME=WS[,NAME=WS]" from the left (screenctl arrange checks the rest:
+   each workspace once, the monitors plugged in now) */
+static int monitors_spec_ok(const char *s)
+{
+	if (!s || !*s || strlen(s) > 140) return 0;
+	for (const char *c = s; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("-_.:=,", *c)) return 0;
+	return 1;
+}
 
 /* 1.6.0: a link of a Linux app's own scheme (claude://, discord://, steam://...) that Oracle or another app hands to
    it: launched with it as its one argument (never through a shell). Printable ASCII without spaces, a scheme of two or
@@ -1554,6 +1562,16 @@ static void api_shell(struct req *r, const char *what, int post)
 
 /* the text on the clipboard (the X CLIPBOARD selection, shared with Linux apps): the desktop inside the shell
    cannot read the clipboard itself */
+/* 1.6.1 (plan Part 1): POST screen/arrange?set=NAME=WS,..: Settings › Display › Displays, kept for this set of monitors (screenctl
+   arrange: /etc/rudolf-monitors); rudolf-display arranges the monitors anew and rewrites /run/rudolf/monitors */
+static void api_monitors_arrange(struct req *r)
+{
+	char *v = qparam(r->query, "set"), cmd[220];
+	if (!monitors_spec_ok(v)) { reply_err(r->fd, 400, "which monitor shows which workspace?"); return; }
+	snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/screenctl arrange '%s' 2>/dev/null", v);
+	if (run(cmd)) { reply_err(r->fd, 400, "that arrangement is not for the monitors plugged in now"); return; }
+	reply_ok(r->fd, "the displays are arranged anew");
+}
 static void api_clipboard(struct req *r)
 {
 	char *o = run_out("su -s /bin/sh rudolf -c 'DISPLAY=:0 timeout 3 rudolf-display --clip-get' 2>/dev/null");
@@ -4906,6 +4924,7 @@ static void api(struct req *r)
 		}
 		if (!strcmp(a, "/keep")) { run("/usr/lib/rudolf/screenctl keep"); reply_ok(r->fd, "kept"); return; }
 		if (!strcmp(a, "/revert")) { run("/usr/lib/rudolf/screenctl revert"); reply_ok(r->fd, "the previous setting comes back"); return; }
+		if (!strcmp(a, "/arrange")) { api_monitors_arrange(r); return; }   /* (1.6.1 Part 1: Settings › Display › Displays) */
 		reply_err(r->fd, 404, "unknown screen action"); return;
 	}
 	if (!strncmp(p, "idbm/", 5)) { api_idbm(r, p + 5, post); return; }

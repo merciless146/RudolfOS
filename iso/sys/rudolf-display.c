@@ -20,6 +20,7 @@
  *                                  root's only) for the X server's -auth: without it, X lets every program in
  *   rudolf-display --xallow USER... | --xdeny USER...   give the display to these local users or take it away
  *                                  (X's server-interpreted "localuser" access, checked by the socket's peer)
+ *   rudolf-display --arrange | --monitors | --monitors-plan   (1.6.1 Part 1) several monitors, side by side: see "several monitors"
  *   rudolf-display --mode WxH|auto HZ   set the monitor's mode of that size with the nearest refresh rate (Xorg);
  *                                  exit status 3 when the monitor has no mode of that size (the session then
  *                                  uses the software display, which scales)
@@ -36,6 +37,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <strings.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -80,6 +82,7 @@ static uint8_t *fbmem;
 static size_t fblen;
 static const uint8_t *xpix;          /* Xvfb pixels */
 static int xw, xh, xstride, xbpp;
+static int MAINW, MAINH;   /* (1.6.1 Part 1: the main monitor's size, the apps' windows' screen; 0: the whole X screen) */
 static uint8_t *shadow;              /* what the X image looked like, 32 bpp */
 static Display *dpy;
 static int ttyfd = -1;
@@ -735,7 +738,9 @@ static void handle_event(struct dev *v, struct input_event *e)
 			int rx = v->absx_max - v->absx_min, ry = v->absy_max - v->absy_min;
 			if (rx > 0 && ry > 0) {
 				/* the touch's place on the panel, then on the X screen (the panel may show it scaled, with bars) */
-				long px = (long)(v->ax - v->absx_min) * (pw > 0 ? pw : xw) / rx, py = (long)(v->ay - v->absy_min) * (ph > 0 ? ph : xh) / ry;
+				/* (1.6.1 Part 1: with several monitors, the built-in touchscreen is the main monitor's) */
+				int tw = MAINW > 0 && MAINW <= xw ? MAINW : xw, th = MAINH > 0 && MAINH <= xh ? MAINH : xh;
+				long px = (long)(v->ax - v->absx_min) * (pw > 0 ? pw : tw) / rx, py = (long)(v->ay - v->absy_min) * (ph > 0 ? ph : th) / ry;
 				long X = mw > 0 ? (px - mx0) * xw / mw : px, Y = mh > 0 ? (py - my0) * xh / mh : py;
 				if (X < 0) X = 0; if (X >= xw) X = xw - 1; if (Y < 0) Y = 0; if (Y >= xh) Y = xh - 1;
 				XTestFakeMotionEvent(dpy, -1, (int)X, (int)Y, CurrentTime);
@@ -979,7 +984,9 @@ static void fit_windows(void)
 	if (wm_native()) return;
 	Window root = DefaultRootWindow(dpy), r, p, *kids = NULL, desktop = 0, chromium = 0, tr;
 	unsigned n = 0;
-	int sw = DisplayWidth(dpy, DefaultScreen(dpy)), sh = DisplayHeight(dpy, DefaultScreen(dpy)), ax = 0, ay = 0;
+	int sw = DisplayWidth(dpy, DefaultScreen(dpy)), sh = DisplayHeight(dpy, DefaultScreen(dpy)), ax = 0, ay = 0, dsw = sw, dsh = sh;
+	/* 1.6.1 Part 1: the desktop's window covers every monitor; the apps' windows and games the main one (at 0,0) */
+	if (MAINW > 0 && MAINH > 0 && MAINW <= sw && MAINH <= sh) { sw = MAINW; sh = MAINH; }
 	wm_read(); wm_commands(); wm_atoms();
 	if (!XQueryTree(dpy, root, &r, &p, &kids, &n)) return;
 	Window apps[MAXWIN]; int napps = 0, fresh = -1;
@@ -997,7 +1004,7 @@ static void fit_windows(void)
 		XWindowAttributes wa;
 		if (!XGetWindowAttributes(dpy, kids[i], &wa) || wa.override_redirect || wa.map_state != IsViewable) continue;
 		if (kids[i] == desktop) {
-			if (wa.x != ax || wa.y != ay || wa.width != sw || wa.height != sh) XMoveResizeWindow(dpy, kids[i], ax, ay, sw, sh);
+			if (wa.x != ax || wa.y != ay || wa.width != dsw || wa.height != dsh) XMoveResizeWindow(dpy, kids[i], ax, ay, dsw, dsh);
 			continue;
 		}
 		if (XGetTransientForHint(dpy, kids[i], &tr) && tr) {
@@ -1258,6 +1265,179 @@ static int set_mode(const char *res, double hz)
 	return st == 0 && !mode_errors ? 0 : 1;
 }
 
+/* ------------------------------------------------------------ 1.6.1 Part 1: several monitors (RandR)
+ * Up to three monitors, side by side from the left, top-aligned: the main one (the taskbar's tray, the desktop's icons, the start
+ * menu) at 0,0, the others to its right in the order chosen in Settings › Display › Displays; each shows one of the three
+ * workspaces. The arrangement is kept per set of monitors in /etc/rudolf-monitors (made by screenctl arrange), a line each:
+ *   KEY <tab> NAME=WS,NAME=WS[,NAME=WS]        KEY: the monitors' names, sorted, joined by '+'; the list from the left, the first the main
+ * Without a line for the set: the built-in panel (eDP, LVDS, DSI) first, then the others in the graphics card's order, showing 1, 2, 3.
+ *   rudolf-display --arrange        (Xorg) light every connected monitor (up to three) side by side as above; write the list
+ *   rudolf-display --monitors       the monitors as the X server has them (RandR 1.5's monitors: also those made by xrandr
+ *                                   --setmonitor, as the tests do), JSON: {"key":..,"monitors":[{"name","x","y","w","h","ws","main"},..]}
+ *   rudolf-display --monitors-plan  (the tests) "NAME W H" lines on stdin, the conf's file as RUDOLF_MON_CONF: the plan, JSON
+ * --input (Xorg) does --arrange again when a monitor is plugged in or out, or the arrangement changes, and keeps
+ * /run/rudolf/monitors (that JSON, which screenctl status passes to the desktop) current; the software display has one monitor.
+ * Linux apps' windows and games (this window manager's) go on the main monitor. */
+#define MONMAX 3
+typedef struct { char name[40]; int w, h, x, y, ws, main; RROutput out; RRMode mode; } MonOut;
+static const char *mon_conf(void) { const char *e = getenv("RUDOLF_MON_CONF"); return e && *e ? e : "/etc/rudolf-monitors"; }
+static const char *mon_run(void) { const char *e = getenv("RUDOLF_MON_RUN"); return e && *e ? e : "/run/rudolf/monitors"; }
+static int mon_name_ok(const char *s) { if (!*s || strlen(s) >= 40) return 0; for (; *s; s++) if (!isalnum((unsigned char)*s) && !strchr("-_.:", *s)) return 0; return 1; }
+static int mon_internal(const char *n) { return !strncasecmp(n, "eDP", 3) || !strncasecmp(n, "LVDS", 4) || !strncasecmp(n, "DSI", 3); }
+static int mon_cmp(const void *a, const void *b) { return strcmp(((const MonOut *)a)->name, ((const MonOut *)b)->name); }
+/* the set's key: the names, sorted, joined by '+' */
+static void mon_key(const MonOut *m, int n, char *key, size_t ks)
+{
+	MonOut s[MONMAX]; memcpy(s, m, n * sizeof *m); qsort(s, n, sizeof *s, mon_cmp);
+	key[0] = 0; for (int i = 0; i < n; i++) { size_t l = strlen(key); snprintf(key + l, ks - l, "%s%s", i ? "+" : "", s[i].name); }
+}
+/* the saved arrangement for the key (the line's second field), or "" */
+static void mon_spec(const char *key, char *spec, size_t ss)
+{
+	spec[0] = 0; FILE *f = fopen(mon_conf(), "r"); if (!f) return;
+	char line[512]; size_t kl = strlen(key);
+	while (fgets(line, sizeof line, f)) if (!strncmp(line, key, kl) && line[kl] == '\t') { snprintf(spec, ss, "%s", line + kl + 1); spec[strcspn(spec, "\r\n")] = 0; }
+	fclose(f);
+}
+/* order the monitors and give each its workspace: the saved arrangement when it names every one of them, each a different workspace */
+static void mon_plan(MonOut *m, int n)
+{
+	char key[200], spec[300]; mon_key(m, n, key, sizeof key); mon_spec(key, spec, sizeof spec);
+	MonOut o[MONMAX]; int k = 0, used = 0, ok = spec[0] != 0;
+	for (char *p = spec, *e; ok && *p && k < n; p = *e ? e + 1 : e) {
+		e = p + strcspn(p, ","); char it[64]; snprintf(it, sizeof it, "%.*s", (int)(e - p), p);
+		char *eq = strchr(it, '='); int ws = eq ? atoi(eq + 1) : 0; if (eq) *eq = 0;
+		int at = -1; for (int i = 0; i < n; i++) if (!strcmp(m[i].name, it)) at = i;
+		if (at < 0 || ws < 1 || ws > MONMAX || (used & (1 << ws))) { ok = 0; break; }
+		for (int j = 0; j < k; j++) if (!strcmp(o[j].name, it)) ok = 0;
+		used |= 1 << ws; o[k] = m[at]; o[k++].ws = ws;
+	}
+	if (!ok || k != n) {
+		k = 0; for (int i = 0; i < n; i++) if (mon_internal(m[i].name)) o[k++] = m[i];
+		for (int i = 0; i < n; i++) if (!mon_internal(m[i].name)) o[k++] = m[i];
+		for (int i = 0; i < n; i++) o[i].ws = i + 1;
+	}
+	int x = 0; for (int i = 0; i < n; i++) { o[i].x = x; o[i].y = 0; o[i].main = !i; x += o[i].w; }
+	memcpy(m, o, n * sizeof *m);
+}
+static void mon_json(const MonOut *m, int n, char *b, size_t bs)
+{
+	char key[200]; mon_key(m, n, key, sizeof key); size_t l = snprintf(b, bs, "{\"key\":\"%s\",\"monitors\":[", key);
+	for (int i = 0; i < n && l < bs; i++) l += snprintf(b + l, bs - l, "%s{\"name\":\"%s\",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"ws\":%d,\"main\":%s}", i ? "," : "", m[i].name, m[i].x, m[i].y, m[i].w, m[i].h, m[i].ws, m[i].main ? "true" : "false");
+	if (l < bs) snprintf(b + l, bs - l, "]}\n");
+}
+/* --monitors-plan (the tests): "NAME W H" lines on stdin */
+static int mon_plan_cmd(void)
+{
+	MonOut m[MONMAX]; int n = 0; char line[128];
+	while (n < MONMAX && fgets(line, sizeof line, stdin)) { memset(&m[n], 0, sizeof m[n]); if (sscanf(line, "%39s %d %d", m[n].name, &m[n].w, &m[n].h) == 3 && mon_name_ok(m[n].name)) n++; }
+	if (!n) return 1; mon_plan(m, n); char b[2048]; mon_json(m, n, b, sizeof b); fputs(b, stdout); return 0;
+}
+/* the monitors the X server has now (RandR 1.5), from the left; their workspaces as planned (the saved arrangement, by name) */
+typedef struct { Atom name; Bool primary, automatic; int noutput, x, y, width, height, mwidth, mheight; RROutput *outputs; } MonInfo15;
+static int mon_now(MonOut *m)
+{
+	MonInfo15 *(*getmon)(Display *, Window, Bool, int *) = (MonInfo15 *(*)(Display *, Window, Bool, int *))dlsym(RTLD_DEFAULT, "XRRGetMonitors");
+	void (*freemon)(MonInfo15 *) = (void (*)(MonInfo15 *))dlsym(RTLD_DEFAULT, "XRRFreeMonitors");
+	int n = 0, k = 0; MonInfo15 *mi = getmon ? getmon(dpy, DefaultRootWindow(dpy), True, &n) : NULL;
+	for (int i = 0; mi && i < n && k < MONMAX; i++) {
+		if (mi[i].width <= 0 || mi[i].height <= 0) continue;
+		memset(&m[k], 0, sizeof m[k]); char *an = XGetAtomName(dpy, mi[i].name); snprintf(m[k].name, sizeof m[k].name, "%s", an && mon_name_ok(an) ? an : "monitor");
+		if (an) XFree(an); m[k].x = mi[i].x; m[k].y = mi[i].y; m[k].w = mi[i].width; m[k].h = mi[i].height; k++;
+	}
+	if (mi && freemon) freemon(mi);
+	if (!k) { memset(&m[0], 0, sizeof m[0]); snprintf(m[0].name, sizeof m[0].name, "screen"); m[0].w = DisplayWidth(dpy, DefaultScreen(dpy)); m[0].h = DisplayHeight(dpy, DefaultScreen(dpy)); k = 1; }
+	/* from the left (then the top); workspaces and the main one from the plan, matched by name */
+	for (int i = 1; i < k; i++) for (int j = i; j > 0 && (m[j].x < m[j - 1].x || (m[j].x == m[j - 1].x && m[j].y < m[j - 1].y)); j--) { MonOut t = m[j]; m[j] = m[j - 1]; m[j - 1] = t; }
+	MonOut p[MONMAX]; memcpy(p, m, k * sizeof *m); mon_plan(p, k);
+	for (int i = 0; i < k; i++) { m[i].ws = i + 1; m[i].main = 0; for (int j = 0; j < k; j++) if (!strcmp(p[j].name, m[i].name)) { m[i].ws = p[j].ws; m[i].main = p[j].main; } }
+	{ int any = 0; for (int i = 0; i < k; i++) any |= m[i].main; if (!any) m[0].main = 1; }
+	return k;
+}
+/* /run/rudolf/monitors, when it changed (readable by the desktop user: rudolf-native reads it) */
+static void mon_write(void)
+{
+	MonOut m[MONMAX]; int n = mon_now(m); char b[2048]; mon_json(m, n, b, sizeof b);
+	MAINW = MAINH = 0; for (int i = 0; i < n; i++) if (m[i].main && n > 1) { MAINW = m[i].w; MAINH = m[i].h; }
+	static char last[2048]; if (!strcmp(b, last)) return; snprintf(last, sizeof last, "%s", b);
+	char t[300]; snprintf(t, sizeof t, "%s.t", mon_run()); FILE *f = fopen(t, "w"); if (!f) return;
+	fputs(b, f); fclose(f); chmod(t, 0644); rename(t, mon_run());
+	fprintf(stderr, "rudolf-display: monitors %s", b);
+}
+static int mon_main_mode(RRMode *pick, XRRScreenResources *r, XRROutputInfo *o)
+{
+	/* the main monitor keeps the size Settings › Display › Resolution chose (/run/rudolf/screen-actual, set by --mode) */
+	unsigned W = 0, H = 0; FILE *f = fopen("/run/rudolf/screen-actual", "r"); if (f) { if (fscanf(f, "%u %u", &W, &H) != 2) W = H = 0; fclose(f); }
+	if (o->crtc) { XRRCrtcInfo *c = XRRGetCrtcInfo(dpy, r, o->crtc); if (c) { const XRRModeInfo *mi = mode_info(r, c->mode); if (mi && mi->width == W && mi->height == H) { *pick = c->mode; XRRFreeCrtcInfo(c); return 1; } XRRFreeCrtcInfo(c); } }
+	return 0;
+}
+/* --arrange (Xorg): every connected monitor lit, side by side; 0: done or nothing to change */
+static int mon_arrange(void)
+{
+	Window root = DefaultRootWindow(dpy); XRRScreenResources *r = XRRGetScreenResources(dpy, root); if (!r) return 2;
+	MonOut m[MONMAX]; int n = 0, noff = 0;   /* (noff: outputs lit that will not be: not connected, or beyond three) */
+	for (int i = 0; i < r->noutput; i++) {
+		XRROutputInfo *o = XRRGetOutputInfo(dpy, r, r->outputs[i]); if (!o) continue;
+		const XRRModeInfo *nm = o->connection == RR_Connected && o->nmode > 0 ? rr_native(r, o) : NULL;
+		if (nm && n < MONMAX && mon_name_ok(o->name)) { memset(&m[n], 0, sizeof m[n]); snprintf(m[n].name, sizeof m[n].name, "%s", o->name); m[n].out = r->outputs[i]; m[n].mode = nm->id; m[n].w = nm->width; m[n].h = nm->height; n++; }
+		else if (o->crtc) noff++;
+		XRRFreeOutputInfo(o);
+	}
+	if (!n) { XRRFreeScreenResources(r); return 0; }
+	mon_plan(m, n);
+	{ XRROutputInfo *o = XRRGetOutputInfo(dpy, r, m[0].out); RRMode pm; if (o && mon_main_mode(&pm, r, o)) { const XRRModeInfo *mi = mode_info(r, pm); if (mi) { m[0].mode = pm; m[0].w = mi->width; m[0].h = mi->height; } } if (o) XRRFreeOutputInfo(o); }
+	int x = 0, W = 0, H = 0; for (int i = 0; i < n; i++) { m[i].x = x; x += m[i].w; W = x; if (m[i].h > H) H = m[i].h; }
+	int minw, minh, maxw = 0, maxh = 0; XRRGetScreenSizeRange(dpy, root, &minw, &minh, &maxw, &maxh);
+	while (n > 1 && maxw > 0 && W > maxw) { n--; W = m[n - 1].x + m[n - 1].w; H = 0; for (int i = 0; i < n; i++) if (m[i].h > H) H = m[i].h; }
+	/* nothing to do: each where it should be, nothing else lit, the screen that size */
+	RRCrtc crtc[MONMAX] = {0}; int same = W == DisplayWidth(dpy, DefaultScreen(dpy)) && H == DisplayHeight(dpy, DefaultScreen(dpy)) && !noff;
+	for (int i = 0; i < n; i++) {
+		XRROutputInfo *o = XRRGetOutputInfo(dpy, r, m[i].out); if (!o) continue;
+		if (o->crtc) { XRRCrtcInfo *c = XRRGetCrtcInfo(dpy, r, o->crtc); int taken = 0; for (int j = 0; j < i; j++) if (crtc[j] == o->crtc) taken = 1;
+			if (!taken) crtc[i] = o->crtc; if (!c || c->x != m[i].x || c->y != 0 || c->mode != m[i].mode || c->noutput != 1 || c->rotation != RR_Rotate_0) same = 0; if (c) XRRFreeCrtcInfo(c); } else same = 0;
+		XRRFreeOutputInfo(o);
+	}
+	if (same) { XRRFreeScreenResources(r); return 0; }
+	XSetErrorHandler(mode_error); mode_errors = 0; XGrabServer(dpy);
+	/* every controller off first (a clone of the first monitor, as Xorg starts, or one beyond the new size), then the screen's size, then each on */
+	for (int i = 0; i < r->ncrtc; i++) { XRRCrtcInfo *c = XRRGetCrtcInfo(dpy, r, r->crtcs[i]); if (c && c->mode) XRRSetCrtcConfig(dpy, r, r->crtcs[i], CurrentTime, 0, 0, None, RR_Rotate_0, NULL, 0); if (c) XRRFreeCrtcInfo(c); }
+	XRRSetScreenSize(dpy, root, W, H, W * 254 / 960, H * 254 / 960);
+	for (int i = 0; i < n; i++) {
+		XRROutputInfo *o = XRRGetOutputInfo(dpy, r, m[i].out); if (!o) continue;
+		RRCrtc c = crtc[i]; for (int k = 0; !c && k < o->ncrtc; k++) { int t = 0; for (int j = 0; j < n; j++) if (j != i && crtc[j] == o->crtcs[k]) t = 1; if (!t) c = o->crtcs[k]; }
+		crtc[i] = c; if (c) XRRSetCrtcConfig(dpy, r, c, CurrentTime, m[i].x, 0, m[i].mode, RR_Rotate_0, &m[i].out, 1);
+		else fprintf(stderr, "rudolf-display: no display controller left for %s\n", m[i].name);
+		XRRFreeOutputInfo(o);
+	}
+	XSetWindowBackground(dpy, root, BlackPixel(dpy, DefaultScreen(dpy))); XClearWindow(dpy, root);
+	XUngrabServer(dpy); XSync(dpy, False); XSetErrorHandler(x_error);
+	fprintf(stderr, "rudolf-display: %d monitor(s) arranged, %dx%d%s\n", n, W, H, mode_errors ? " (with errors)" : "");
+	XRRFreeScreenResources(r); return mode_errors ? 1 : 0;
+}
+/* (--input) a monitor plugged in or out, or the arrangement saved anew: arranged again (Xorg only), the list written */
+static int mon_rrev = -1, mon_gpu; static long long mon_due, mon_conf_mt;
+static void mon_watch(int gpu)
+{
+	int er; mon_gpu = gpu; if (!XRRQueryExtension(dpy, &mon_rrev, &er)) { mon_rrev = -1; return; }
+	void (*sel)(Display *, Window, int) = (void (*)(Display *, Window, int))dlsym(RTLD_DEFAULT, "XRRSelectInput");
+	if (sel) sel(dpy, DefaultRootWindow(dpy), 1 /* RRScreenChangeNotifyMask */ | 4 /* RROutputChangeNotifyMask */);
+	if (gpu) mon_arrange(); mon_write();
+}
+static void mon_event(XEvent *e, long long t)
+{
+	if (mon_rrev < 0 || (e->type != mon_rrev && e->type != mon_rrev + 1)) return;
+	void (*upd)(XEvent *) = (void (*)(XEvent *))dlsym(RTLD_DEFAULT, "XRRUpdateConfiguration"); if (upd) upd(e);
+	if (!mon_due) mon_due = t + 700;   /* (several events come together: once, a moment later) */
+}
+static void mon_tick(long long t)
+{
+	if (mon_rrev < 0) return;
+	struct stat st; long long mt = !stat(mon_conf(), &st) ? (long long)st.st_mtime * 1000 + st.st_mtim.tv_nsec / 1000000 : 0;
+	if (mt != mon_conf_mt) { if (mon_conf_mt || mt) mon_due = t; mon_conf_mt = mt; }
+	if (!mon_due || t < mon_due) return;
+	mon_due = 0; if (mon_gpu) mon_arrange(); mon_write(); xw = DisplayWidth(dpy, DefaultScreen(dpy)); xh = DisplayHeight(dpy, DefaultScreen(dpy)); fit_windows();
+}
+
 /* --clip-get: ask the clipboard's owner for its text (UTF8_STRING) and print it */
 static int clip_get(void)
 {
@@ -1337,6 +1517,9 @@ int main(int argc, char **argv)
 		printf("%d %d\n", rx, ry); return 0;
 	}
 	if (argc > 3 && !strcmp(argv[1], "--mode")) return set_mode(argv[2], atof(argv[3]));
+	if (argc > 1 && !strcmp(argv[1], "--monitors-plan")) return mon_plan_cmd();
+	if (argc > 1 && !strcmp(argv[1], "--monitors")) { if (!(dpy = open_display())) return 2; MonOut m[MONMAX]; int n = mon_now(m); char b[2048]; mon_json(m, n, b, sizeof b); fputs(b, stdout); return 0; }
+	if (argc > 1 && !strcmp(argv[1], "--arrange")) { if (!(dpy = open_display())) return 2; int ev, er; if (!XRRQueryExtension(dpy, &ev, &er)) return 2; int rc = mon_arrange(); mon_write(); return rc; }
 	{ const char *e = getenv("RUDOLF_FPS"); int f = e ? atoi(e) : 0; if (f >= 10 && f <= 240) frame_ms = 1000 / f; }
 	if (argc < 2) { fprintf(stderr, "usage: rudolf-display XWD-FILE | --input | --size | --xsize | --shot\n"); return 1; }
 	int input_only = !strcmp(argv[1], "--input"); input_only_g = input_only;
@@ -1373,12 +1556,14 @@ int main(int argc, char **argv)
 	long long last_scan = 0, last_set = 0, last_wmchk = 0, last_change = now_ms();
 	int win_events = 0;
 	XSelectInput(dpy, DefaultRootWindow(dpy), SubstructureNotifyMask);
+	mon_watch(input_only);   /* (1.6.1 Part 1: the monitors; arranged on Xorg) */
 	while (!quit) {
 		long long t = now_ms();
 		if (t - last_scan > 2000) { scan_devices(); last_scan = t; }
 		power_tick(t);
 		if (t - last_set > 1000) { read_settings(); fit_windows(); if (!input_only) gamma_poll(); last_set = t; }
 		else if (t - last_wmchk > 100) { last_wmchk = t; if (wm_changed()) fit_windows(); }
+		mon_tick(t);   /* (1.6.1 Part 1) */
 		struct pollfd pf[MAXDEV + 1];
 		for (int i = 0; i < ndev; i++) pf[i].fd = devs[i].fd, pf[i].events = POLLIN;
 		pf[ndev].fd = ConnectionNumber(dpy); pf[ndev].events = POLLIN;
@@ -1399,6 +1584,7 @@ int main(int argc, char **argv)
 			/* 1.5.2: full screen (and the other states) asked for by a window, as EWMH says */
 			if (xe.type == ClientMessage && xe.xclient.format == 32) { wm_atoms(); if (xe.xclient.message_type == A_NSTATE) { net_state_request(xe.xclient.window, xe.xclient.data.l[0], (Atom)xe.xclient.data.l[1], (Atom)xe.xclient.data.l[2]); win_events = 1; } }
 			if (fev && xe.type == fev + 1) { restore_cursor_area(); fetch_cursor(); draw_cursor(); }
+			mon_event(&xe, t);
 		}
 		if (win_events) { win_events = 0; fit_windows(); }
 		if (input_only) {
