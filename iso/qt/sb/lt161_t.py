@@ -9,10 +9,11 @@
 #          picture of the page, the desktop shows it under the menu, the menu is seen over the tab (not behind its page),
 #          the live page still runs for its scripts and its picture is taken again; uncovered, the live page is back.
 #          In the session's drawing mode and in software drawing (--draw=soft).
+#   gpu:   in mixed drawing the desktop page's own web process paints on the processor, its tab's with the graphics card.
 # QEMU's own processor draws slowly: the screen is read until it shows what it should (up to 90 s), then the page goes on.
 # Tests only.
 #   LT_FIX=DIR python3 lt161_t.py REL-DIR      (root; SB_PARTS, QEMU, QEMU_ACCEL as for t160_t.py; LT_MODES=session,soft;
-#                                               LT_PHASES=cover)
+#                                               LT_PHASES=cover,gpu)
 import os, sys, time, re, subprocess, shutil, struct, json, base64
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -21,7 +22,7 @@ from guest import Guest
 from ser import Ser
 from PIL import Image
 REL = os.path.abspath(sys.argv[1]); PARTS = os.environ.get('SB_PARTS', '/nonexistent'); FIX = os.environ.get('LT_FIX', '')
-MODES = os.environ.get('LT_MODES', 'session,soft').split(','); PHASES = os.environ.get('LT_PHASES', 'cover').split(',')
+MODES = os.environ.get('LT_MODES', 'session,soft').split(','); PHASES = os.environ.get('LT_PHASES', 'cover,gpu').split(',')
 LOG = open('lt161.txt', 'w'); R = []; T0 = time.time()
 def out(*a):
     s = ' '.join(str(x) for x in a); s = f'[{int(time.time() - T0):5d}s] ' + s; print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
@@ -173,6 +174,23 @@ try:
         ok(f'{tag} 6. uncovered: the live page is back', 'LT161 uncover true' in lg and yellow(P3), P3)
         ok(f'{tag} 7. ...the live page ran on while covered, visible to its scripts', bool(vis) and int(vis.group(1)) > 5 and vis.group(2) == '0', lg[-300:])
         out(sh("grep -v 'LT161' /tmp/lt.log | tail -15", 20, False))
+        sh("pkill -f '/run/lt161/rudolf-webkit'", 20, False); time.sleep(3)
+    # 1.6.1 (stutter in Oracle's tabs): in mixed drawing the desktop page's own process paints on the processor, the tabs'
+    # with the graphics card (here QEMU's has none: Mesa's llvmpipe stands in, as WebKit sees it the same way)
+    if 'gpu' in PHASES:
+        sh(f"pkill -f '/run/lt161/rudolf-webkit' ; rm -f /run/lt161/www8600/gate-*; rm -rf /tmp/lth; mkdir -p /tmp/lth; chown rudolf /tmp/lth; : > /tmp/lt.log; chmod 666 /tmp/lt.log; "
+           f"su -s /bin/sh rudolf -c 'cd /tmp/lth; exec env DISPLAY=:0 HOME=/tmp/lth /run/lt161/rudolf-webkit --size={SW}x{SH} --draw=mixed http://127.0.0.1:8600/desk.html' >> /tmp/lt.log 2>&1 &", 30)
+        end = time.time() + 120
+        while time.time() < end and 'LT161 shot open' not in sh("grep -o 'LT161 .*' /tmp/lt.log", 20, False): time.sleep(2)
+        o = sh("P=$(pgrep -f '^/run/lt161/rudolf-webkit' | head -1); echo P=$P; for d in /proc/[0-9]*; do [ \"$(awk '{print $4}' $d/stat 2>/dev/null)\" = \"$P\" ] || continue; "
+               "grep -q WebKitWebProces $d/comm 2>/dev/null || continue; e=$(tr '\\0' '\\n' < $d/environ | grep -c '^WEBKIT_SKIA_ENABLE_CPU_RENDERING=1'); "
+               "t=$(cat $d/task/*/comm 2>/dev/null | grep -c '^SkiaCPU'); echo \"WP $(awk '{print $22}' $d/stat) ${d#/proc/} $e $t\"; done | sort -n -k2", 60)
+        L = sorted([tuple(int(x) for x in m) for m in re.findall(r'^WP (\d+) (\d+) (\d+) (\d+)$', o, re.M)])
+        ok('gpu 1. mixed drawing: the desktop page\'s process and its tab\'s', len(L) == 2, o)
+        ok('gpu 2. ...the desktop\'s paints on the processor, with its painting threads', len(L) >= 1 and L[0][2] == 1 and L[0][3] > 0, L)
+        ok('gpu 3. ...the tab\'s with the graphics card (no processor painting, no painting threads)', len(L) == 2 and L[1][2] == 0 and L[1][3] == 0, L)
+        SEEN.clear(); shot = screen_until('mixed-tab', lambda f: yellow(px(f, 600, 400)), 'open')
+        ok('gpu 4. ...and the tab is drawn on the screen', yellow(px(shot, 600, 400)), [px(shot, 600, 400), SEEN.get('open')])
         sh("pkill -f '/run/lt161/rudolf-webkit'", 20, False); time.sleep(3)
     ok('8. the release\'s own Lite desktop still runs', 'rudolf-webkit' in sh("pgrep -a -f 'rudolf-webkit --rudolf-kiosk'", 20, False))
 finally:
