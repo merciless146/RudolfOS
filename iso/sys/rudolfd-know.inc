@@ -152,7 +152,8 @@ static void know_tick(void)
 	long long in = read_ll(RUN "/input-ms", -1); struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t);
 	if (in < 0 || t.tv_sec * 1000LL + t.tv_nsec / 1000000 - in < 600000) return;
 	if (!know_power_ok()) return;
-	char *m = run_out("/usr/lib/rudolf/netplug state 2>/dev/null"); int metered = m && strstr(m, "\"metered\":true"); free(m); if (metered) return;
+	const char *mav[] = { "network", "metered-state", NULL }; char *m = root_net_try(mav, 0); if (!m) m = run_out("/usr/lib/rudolf/netplug state 2>/dev/null");   /* (1.6.1 Part 11) */
+	int metered = m && strstr(m, "\"metered\":true"); free(m); if (metered) return;
 	pid_t p = fork(); if (p < 0) return;
 	if (!p) { int nul = open("/dev/null", O_RDWR); dup2(nul, 0); dup2(nul, 1); dup2(nul, 2); for (int fd = 3; fd < 256; fd++) close(fd);
 		setsid(); if (nice(19) == -1) {} syscall(SYS_ioprio_set, 1, 0, 3 << 13);   /* (the idle class: it never slows anything else) */

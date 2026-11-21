@@ -39,6 +39,7 @@ static int desk_ready;
      mixed  the processor draws the contents, on several cores, and the graphics card puts the layers together and
             moves them ("Use it for games and Linux apps", the default). On the Vivobook, gpu took some 400 MB more at
             rest (graphics memory lent from RAM, still growing after 15 minutes); software alone stuttered.
+            1.6.1: the desktop page's contents only; Oracle's tabs are drawn by the graphics card (desk_cpu_paint)
      soft   the processor does both, with lighter effects (no shadows or blurs) to keep it smooth (no graphics card) */
 enum { DRAW_GPU, DRAW_MIXED, DRAW_SOFT };
 static int DRAW = DRAW_GPU;
@@ -132,6 +133,7 @@ typedef struct tab {
 	GtkWidget *box, *view;           /* the view, in an event box with its own window (cut to the visible parts) */
 	int x, y, w, h, z, shown, fs;
 	cairo_region_t *vis;             /* NULL: nothing covers it */
+	int still, still_up, still_busy; guint still_timer, still_gen;   /* (1.6.1) covered: a still picture in the desktop (still_step) */
 } tab;
 static GHashTable *HOVER;   /* 1.6.1: a tab's last link address sent (tab* -> char*), so only changes are sent */
 static GHashTable *FINDS;   /* 1.6.1 (Part 10): a tab's find in page (tab* -> tfind*) */
@@ -144,6 +146,8 @@ static char RUFFLE_JS[16384];
 static const char *PAGE_JS =
 	"(()=>{const say=o=>{try{window.webkit.messageHandlers.rudolfTab.postMessage(o)}catch(e){}};"
 	"const SUB={F20:'w',F21:'t',F22:'n',F23:'q'};"
+	/* 1.6.1 (Part 10): Ctrl+Shift+T reopens Oracle's last closed tab */
+	"addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.shiftKey&&!e.altKey&&(e.code=='KeyT'||e.code=='F21')){e.preventDefault();e.stopImmediatePropagation();say({k:'cst'})}},true);"
 	"addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctrlKey?SUB[e.code]:e.key;let a='';"
 	" if(c&&e.shiftKey&&!e.altKey&&e.code=='KeyN')a='cpn';else if(c&&!e.altKey&&!e.shiftKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(c&&k=='q')a='none';else if(k=='F5')a='f5';"
 	" else if(e.altKey&&!c&&(k=='ArrowLeft'||k=='ArrowRight'))a=k=='ArrowLeft'?'back':'fwd';else if(e.altKey&&!c&&(k=='F4'||e.code=='F20'))a='af4';"
@@ -154,6 +158,8 @@ static const char *PAGE_JS =
 	"addEventListener('keydown',e=>{if(!e.isTrusted)return;const c=e.ctrlKey||e.metaKey;let a='';if(c&&!e.shiftKey&&!e.altKey&&e.code=='KeyF')a='cf';else if(!c&&!e.altKey&&e.code=='F3')a=e.shiftKey?'sf3':'f3';else if(c&&!e.altKey&&e.code=='KeyG')a=e.shiftKey?'sf3':'f3';"
 	" if(a){e.preventDefault();e.stopImmediatePropagation();say({k:a})}},true);"
 	"addEventListener('click',e=>{if(!e.isTrusted)return;const a=e.target&&e.target.closest&&e.target.closest('a[href^=\"tel:\" i]');if(!a)return;e.preventDefault();e.stopImmediatePropagation();say({tel:String(a.getAttribute('href')).slice(4,80)})},true);"
+	/* 1.6.1 (Part 10): F9 shows the page's article in Oracle's reader mode (and back), before the page sees it */
+	"addEventListener('keydown',e=>{if(e.isTrusted&&e.key=='F9'&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();e.stopImmediatePropagation();say({k:'f9'})}},true);"
 	"let done=false,mo=null;const go=()=>{if(done)return;done=true;if(mo)mo.disconnect();say({flash:location.href})};"
 	"const watch=()=>{if(document.querySelector(S))return go();mo=new MutationObserver(()=>{if(document.querySelector(S))go()});"
 	" mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','data','type','value']});setTimeout(()=>mo&&mo.disconnect(),60000)};"
@@ -221,6 +227,7 @@ static WebKitWebContext *ctx_for(const char *part)
 static void tab_free(gpointer p)
 {
 	tab *t = p; if (t->vis) cairo_region_destroy(t->vis);
+	if (t->still_timer) g_source_remove(t->still_timer);   /* (1.6.1) */
 	if (HOVER) g_hash_table_remove(HOVER, t);   /* (1.6.1) */
 	if (FINDS) g_hash_table_remove(FINDS, t);   /* (1.6.1: find in page) */
 	if (t->box) gtk_widget_destroy(t->box); g_free(t);
@@ -241,14 +248,73 @@ static void shape(tab *t)
 	gdk_window_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
 	gdk_window_input_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
 }
+/* 1.6.1 (docs/plan-1.6.1.md Part 3, from 1.5.8): the desktop's menus and windows over Oracle's tabs. A WebKit page cannot be cut
+   on the screen in GTK 3 (its window's shape, a clip of its drawing, a native window: the page stayed on top in every drawing
+   mode, the Lite engine check of 2026-11-12, branch litetabs), so menus and windows went behind tab pages. Now, while anything
+   of the desktop covers part of a tab, the desktop shows a still picture of the page in the tab's place ('still' {img}, a JPEG;
+   tabs26.js), under its menus and windows, and the live page is moved out of sight (moved, not hidden: it stays a visible
+   page for WebKit, so its scripts, videos and the next picture go on); the picture is taken again every 2 s while covered.
+   Uncovered ('still' {img: null}), the live page is back where it was. Taken out of sight only once the picture is sent. */
+static void still_send(tab *t, cairo_surface_t *sf)
+{
+	GString *x = g_string_new("\"img\":");
+	GdkPixbuf *pb = sf ? gdk_pixbuf_get_from_surface(sf, 0, 0, cairo_image_surface_get_width(sf), cairo_image_surface_get_height(sf)) : NULL;
+	gchar *buf = NULL; gsize len = 0;
+	if (pb && gdk_pixbuf_save_to_buffer(pb, &buf, &len, "jpeg", NULL, "quality", "80", NULL)) {
+		gchar *b = g_base64_encode((guchar *)buf, len); g_string_append(x, "\"data:image/jpeg;base64,"); g_string_append(x, b); g_string_append_c(x, '"'); g_free(b);
+	} else g_string_append(x, "null");
+	g_free(buf); if (pb) g_object_unref(pb);
+	tabev(t, "still", x->str); g_string_free(x, TRUE);
+}
+static void apply_place(tab *t);
+typedef struct { char tid[64]; guint gen; } still_q;
+static void still_ready(GObject *o, GAsyncResult *res, gpointer d)
+{
+	still_q *q = d; tab *t = g_hash_table_lookup(TABS, q->tid); GError *err = NULL;
+	cairo_surface_t *sf = webkit_web_view_get_snapshot_finish(WEBKIT_WEB_VIEW(o), res, &err); if (err) g_error_free(err);
+	if (t && t->view == GTK_WIDGET(o)) t->still_busy = 0;
+	if (t && t->view == GTK_WIDGET(o) && t->still && t->still_gen == q->gen && sf) {
+		still_send(t, sf);
+		if (!t->still_up) { t->still_up = 1; apply_place(t); }
+	}
+	if (sf) cairo_surface_destroy(sf); g_free(q);
+}
+static void still_take(tab *t)
+{
+	if (t->still_busy) return; t->still_busy = 1;
+	still_q *q = g_new0(still_q, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->gen = t->still_gen;
+	webkit_web_view_get_snapshot(WEBKIT_WEB_VIEW(t->view), WEBKIT_SNAPSHOT_REGION_VISIBLE, WEBKIT_SNAPSHOT_OPTIONS_NONE, NULL, still_ready, q);
+}
+static gboolean still_again(gpointer d) { tab *t = d; if (!t->still) { t->still_timer = 0; return G_SOURCE_REMOVE; } still_take(t); return G_SOURCE_CONTINUE; }
+static void still_end(tab *t)
+{
+	if (!t->still) return;
+	t->still = t->still_up = 0; t->still_gen++;
+	if (t->still_timer) { g_source_remove(t->still_timer); t->still_timer = 0; }
+	tabev(t, "still", "\"img\":null");
+}
+/* after each place: 1 when the tab is covered and its picture is up (the live page is then out of sight) */
+static int still_step(tab *t)
+{
+	if (!t->vis || t->fs || !t->shown) { still_end(t); return 0; }
+	if (!t->still) { t->still = 1; t->still_up = 0; t->still_gen++; still_take(t); if (!t->still_timer) t->still_timer = g_timeout_add(2000, still_again, t); }
+	if (!t->still_up) return 0;
+	int W = gtk_widget_get_allocated_width(overlay);
+	gtk_widget_set_margin_start(t->box, (W > 0 ? W : 4000) + 64); gtk_widget_set_margin_top(t->box, t->y);
+	gtk_widget_set_size_request(t->box, t->w, t->h); gtk_widget_show(t->box);
+	GdkWindow *gw = gtk_widget_get_window(t->box); if (gw && gtk_widget_get_has_window(t->box)) { gdk_window_shape_combine_region(gw, NULL, 0, 0); gdk_window_input_shape_combine_region(gw, NULL, 0, 0); }
+	return 1;
+}
 static void apply_place(tab *t)
 {
 	if (t->fs) {
+		still_end(t);
 		int W = gtk_widget_get_allocated_width(overlay), H = gtk_widget_get_allocated_height(overlay);
 		gtk_widget_set_margin_start(t->box, 0); gtk_widget_set_margin_top(t->box, 0); gtk_widget_set_size_request(t->box, W, H);
 		gtk_widget_show(t->box); shape(t); tabs_order(); return;
 	}
-	if (!t->shown) { gtk_widget_hide(t->box); return; }
+	if (!t->shown) { still_end(t); gtk_widget_hide(t->box); return; }
+	if (still_step(t)) return;
 	gtk_widget_set_margin_start(t->box, t->x); gtk_widget_set_margin_top(t->box, t->y);
 	gtk_widget_set_size_request(t->box, t->w, t->h);
 	gtk_widget_show(t->box); shape(t); tabs_order();
@@ -345,6 +411,7 @@ static gboolean on_tab_decide(WebKitWebView *v, WebKitPolicyDecision *dec, WebKi
 	tabev(t, "blocked", x->str); g_string_free(x, TRUE); return TRUE;
 }
 static tab *tab_new(const char *tid, const char *part, WebKitWebView *related);
+static void blk_apply_tab(tab *t);   /* (1.6.1: ad and tracker blocking) */
 static void on_tab_ready(WebKitWebView *v, gpointer d)
 {
 	tab *nt = d; WebKitWindowProperties *wp = webkit_web_view_get_window_properties(v);
@@ -379,6 +446,7 @@ static void on_tab_hover(WebKitWebView *v, WebKitHitTestResult *h, guint mods, g
 static void on_tab_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d)
 {
 	(void)m; tab *t = d; JSCValue *o = webkit_javascript_result_get_js_value(r); if (!jsc_value_is_object(o)) return;
+	if (jsc_value_object_has_property(o, "blk")) { char x[32]; snprintf(x, sizeof x, "\"n\":%d", (int)jnum(o, "blk", 0)); tabev(t, "adblock", x); return; }   /* (1.6.1: ads and trackers blocked) */
 	if (jsc_value_object_has_property(o, "notice")) { char x[32]; snprintf(x, sizeof x, "\"id\":%d", (int)jnum(o, "notice", 0)); tabev(t, "notice", x); return; }   /* 1.5.9 */
 	/* 1.5.9 (plan 7.3): a phone number clicked (tel:): the desktop asks how to call it */
 	{ char *tl = jstr(o, "tel"); if (tl) { GString *x = g_string_new("\"num\":"); if (strlen(tl) > 80) tl[80] = 0; json_str(x, tl); tabev(t, "tel", x->str); g_string_free(x, TRUE); g_free(tl); return; } }
@@ -386,6 +454,49 @@ static void on_tab_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, g
 	if (k) { GString *x = g_string_new("\"k\":"); k[strcspn(k, "\n")] = 0; if (strlen(k) > 8) k[8] = 0; json_str(x, k); tabev(t, "keys", x->str); g_string_free(x, TRUE); }
 	else if (fl && RUFFLE_JS[0]) { webkit_web_view_run_javascript(WEBKIT_WEB_VIEW(t->view), RUFFLE_JS, NULL, NULL, NULL); tabev(t, "flash", NULL); }
 	g_free(k); g_free(fl);
+}
+/* ------------------------------------------------------------------ 1.6.1 (docs/plan-1.6.1.md Part 10): reader mode
+   As the Chromium shell (iso/shell/shell.js READABLE_JS, READHTML_JS): when a page has loaded, whether it holds an article ->
+   tabev readable {on}; op readhtml {id}: the page's HTML as it is now (at most 4 MB), its address and title -> tabev readhtml, which
+   the desktop reads with Readability in an inert copy (desktop/orareader61.js). Run in the page's isolated world ("rudolf"). */
+static const char READABLE_JS[] = "(()=>{try{const U=/-ad-|ai2html|banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|footer|gdpr|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote/i,C=/and|article|body|column|content|main|shadow/i;"
+	"const L=new Set(document.querySelectorAll('p,pre,article'));document.querySelectorAll('div > br').forEach(b=>L.add(b.parentNode));let sc=0;"
+	"for(const n of L){if(n.checkVisibility&&!n.checkVisibility({visibilityProperty:true}))continue;const m=(n.getAttribute('class')||'')+' '+(n.id||'');if(U.test(m)&&!C.test(m))continue;if(n.matches('li p'))continue;"
+	"const l=(n.textContent||'').trim().length;if(l<140)continue;sc+=Math.sqrt(l-140);if(sc>20)return true}}catch(e){}return false})()";
+static const char READHTML_JS[] = "JSON.stringify({u:location.href,t:document.title,h:(document.documentElement?document.documentElement.outerHTML:'').slice(0,4000000)})";
+typedef struct { char tid[64]; int id; } trd;
+static void rd_readable_done(GObject *o, GAsyncResult *res, gpointer p)
+{
+	trd *q = p; GError *e = NULL; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(o), res, &e);
+	tab *t = TABS ? g_hash_table_lookup(TABS, q->tid) : NULL;
+	if (v && t) tabev(t, "readable", jsc_value_is_boolean(v) && jsc_value_to_boolean(v) ? "\"on\":true" : "\"on\":false");
+	if (v) g_object_unref(v); if (e) g_error_free(e); g_free(q);
+}
+static void on_tab_rdload(WebKitWebView *v, WebKitLoadEvent ev, gpointer d)
+{
+	tab *t = d; if (ev != WEBKIT_LOAD_FINISHED || !http_url(webkit_web_view_get_uri(v))) return;
+	trd *q = g_new0(trd, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid);
+	webkit_web_view_evaluate_javascript(v, READABLE_JS, -1, "rudolf", NULL, NULL, rd_readable_done, q);
+}
+static void rd_html_done(GObject *o, GAsyncResult *res, gpointer p)
+{
+	trd *q = p; GError *e = NULL; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(o), res, &e);
+	tab *t = TABS ? g_hash_table_lookup(TABS, q->tid) : NULL;
+	if (t) { GString *x = g_string_new(""); g_string_append_printf(x, "\"id\":%d,", q->id);
+		JSCValue *j = NULL; char *s = v && jsc_value_is_string(v) ? jsc_value_to_string(v) : NULL;
+		if (s) { JSCContext *cx = jsc_value_get_context(v); j = jsc_value_new_from_json(cx, s); }
+		char *h = j ? jstr(j, "h") : NULL, *u = j ? jstr(j, "u") : NULL, *ti = j ? jstr(j, "t") : NULL;
+		if (ti && strlen(ti) > 300) ti[300] = 0;
+		g_string_append(x, "\"html\":"); json_str(x, h ? h : ""); g_string_append(x, ",\"url\":"); json_str(x, u ? u : ""); g_string_append(x, ",\"title\":"); json_str(x, ti ? ti : "");
+		tabev(t, "readhtml", x->str); g_string_free(x, TRUE); g_free(h); g_free(u); g_free(ti); g_free(s); if (j) g_object_unref(j); }
+	if (v) g_object_unref(v); if (e) g_error_free(e); g_free(q);
+}
+static int tab_reader_op(tab *t, const char *op, JSCValue *m)
+{
+	if (strcmp(op, "readhtml")) return 0;
+	trd *q = g_new0(trd, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->id = (int)jnum(m, "id", 0);
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(t->view), READHTML_JS, -1, "rudolf", NULL, NULL, rd_html_done, q);
+	return 1;
 }
 static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 {
@@ -411,6 +522,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	g_signal_connect(t->view, "notify::uri", G_CALLBACK(on_tab_uri), t);
 	g_signal_connect(t->view, "notify::title", G_CALLBACK(on_tab_title), t);
 	g_signal_connect(t->view, "mouse-target-changed", G_CALLBACK(on_tab_hover), t);   /* (1.6.1) */
+	g_signal_connect(t->view, "load-changed", G_CALLBACK(on_tab_rdload), t);   /* (1.6.1: reader mode) */
 	g_signal_connect(t->view, "close", G_CALLBACK(on_tab_close), t);
 	g_signal_connect(t->view, "web-process-terminated", G_CALLBACK(on_tab_gone), t);
 	g_signal_connect(t->view, "focus-in-event", G_CALLBACK(on_tab_focus), t);
@@ -422,6 +534,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	g_signal_connect(t->view, "leave-fullscreen", G_CALLBACK(on_tab_unfs), t);
 	g_signal_connect(t->view, "decide-policy", G_CALLBACK(on_tab_decide), t);
 	g_signal_connect(t->view, "create", G_CALLBACK(on_tab_create), t);
+	blk_apply_tab(t);   /* (1.6.1: ad and tracker blocking) */
 	g_hash_table_insert(TABS, g_strdup(t->tid), t);
 	return t;
 }
@@ -570,10 +683,94 @@ static int tab_find_op(tab *t, const char *op, JSCValue *m)
 	webkit_find_controller_search(fc, q, o, 1000);
 	return 1;
 }
+/* ------------------------------------------------------------------ 1.6.1 (docs/plan-1.6.1.md Part 10): ad and tracker blocking
+   As the Chromium shell (iso/shell/shell.js blockWhy) with WebKit's own content blocker: the desktop's op "block" {cfg: {on, b, tp, ex,
+   off}} (whole domains blocked, blocked from other sites only, never blocked, and the sites it is turned off for) is compiled into a
+   WebKitUserContentFilter (two: a private window's, which always blocks and knows no "off" sites) and given to every tab's content
+   manager; a tab made later gets it at once. WebKit does not say what it blocked, so a script in the page's isolated world counts
+   what the page's elements ask for from those domains (tabev adblock {n}). Nothing leaves this computer. The compiled filters are kept
+   in the user's cache (the lists only: no page, no address). */
+static WebKitUserContentFilterStore *BLK_STORE;
+static WebKitUserContentFilter *BLK_F, *BLK_FP;   /* the filter for an account's tabs; for private ones */
+static WebKitUserScript *BLK_JS, *BLK_JSP;         /* the counting script, each with its lists */
+static int BLK_GEN;
+static void blk_apply_tab(tab *t)
+{
+	WebKitUserContentManager *u = webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(t->view)); if (!u) return;
+	int pv = !strncmp(t->part, "priv-", 5); webkit_user_content_manager_remove_all_filters(u);
+	WebKitUserContentFilter *f = pv ? BLK_FP : BLK_F; if (f) webkit_user_content_manager_add_filter(u, f);
+	WebKitUserScript *s = pv ? BLK_JSP : BLK_JS; if (s) webkit_user_content_manager_add_script(u, s);
+}
+static void blk_apply_all(void) { GHashTableIter i; gpointer k, v; if (!TABS) return; g_hash_table_iter_init(&i, TABS); while (g_hash_table_iter_next(&i, &k, &v)) blk_apply_tab(v); }
+typedef struct { int gen, priv; } blkq;
+static void blk_saved(GObject *o, GAsyncResult *r, gpointer d)
+{
+	blkq *q = d; GError *e = NULL; WebKitUserContentFilter *f = webkit_user_content_filter_store_save_finish(WEBKIT_USER_CONTENT_FILTER_STORE(o), r, &e);
+	if (e) { fprintf(stderr, "rudolf-webkit: the blocking list did not compile: %s\n", e->message); g_error_free(e); }
+	if (q->gen == BLK_GEN && f) { WebKitUserContentFilter **p = q->priv ? &BLK_FP : &BLK_F; if (*p) webkit_user_content_filter_unref(*p); *p = f; f = NULL; blk_apply_all(); }
+	if (f) webkit_user_content_filter_unref(f); g_free(q);
+}
+static void blk_rx(GString *j, const char *d) { g_string_append(j, "^https?://([^/]*\\\\.)?"); for (const char *c = d; *c; c++) { if (*c == '.') g_string_append(j, "\\\\."); else g_string_append_c(j, *c); } g_string_append(j, "[:/]"); }
+static int blk_dom(const char *d) { if (!d || !*d || strlen(d) > 253) return 0; for (const char *c = d; *c; c++) if (!(g_ascii_islower(*c) || g_ascii_isdigit(*c) || *c == '.' || *c == '-')) return 0; return strchr(d, '.') != NULL; }
+/* the content blocker's rules (WebKit's JSON); NULL when nothing would be blocked */
+static GString *blk_rules(char **b, char **tp, char **ex, char **off)
+{
+	GString *j = g_string_new("["); int n = 0;
+	for (int k = 0; k < 2; k++) for (char **l = k ? tp : b; l && *l; l++) { if (!blk_dom(*l)) continue;
+		g_string_append(j, n++ ? ",{\"trigger\":{\"url-filter\":\"" : "{\"trigger\":{\"url-filter\":\""); blk_rx(j, *l);
+		g_string_append(j, k ? "\",\"load-type\":[\"third-party\"]},\"action\":{\"type\":\"block\"}}" : "\"},\"action\":{\"type\":\"block\"}}"); }
+	if (!n) { g_string_free(j, TRUE); return NULL; }
+	for (char **l = ex; l && *l; l++) { if (!blk_dom(*l)) continue; g_string_append(j, ",{\"trigger\":{\"url-filter\":\""); blk_rx(j, *l); g_string_append(j, "\"},\"action\":{\"type\":\"ignore-previous-rules\"}}"); }
+	for (char **l = off; l && *l; l++) { if (!blk_dom(*l)) continue; g_string_append_printf(j, ",{\"trigger\":{\"url-filter\":\".*\",\"if-domain\":[\"*%s\"]},\"action\":{\"type\":\"ignore-previous-rules\"}}", *l); }
+	g_string_append_c(j, ']'); return j;
+}
+static const char BLK_COUNT_JS[] = "(()=>{if(!B.priv&&!B.on){S(0);return}const L=l=>new Set(l),b=L(B.b),tp=L(B.tp),ex=L(B.ex),off=L(B.off);"
+	"const inL=(h,s)=>{for(let x=h;;){if(s.has(x))return true;const i=x.indexOf('.');if(i<0)return false;x=x.slice(i+1)}};"
+	"const D=new Set(['co.uk','org.uk','ac.uk','gov.uk','com.au','net.au','org.au','co.nz','co.jp','ne.jp','or.jp','co.kr','com.br','com.mx','com.ar','com.cn','com.tw','com.tr','co.in','co.za','com.sg','com.hk','co.il']);"
+	"const site=h=>{const p=String(h||'').split('.');if(p.length<=2||/^\\d+$/.test(p[p.length-1]))return h;const l2=p.slice(-2).join('.');return D.has(l2)?p.slice(-3).join('.'):l2};"
+	"const top=location.hostname.toLowerCase();if(!B.priv&&inL(top,off)){S(0);return}"
+	"const blk=u=>{let h;try{const x=new URL(u,location.href);if(!/^(https?|wss?):$/.test(x.protocol))return false;h=x.hostname.toLowerCase()}catch(e){return false}if(inL(h,ex))return false;return inL(h,b)||(inL(h,tp)&&site(h)!==site(top))};"
+	"const seen=new Set();let tm=0;const say=()=>{tm=0;S(seen.size)};S(0);"
+	"const chk=el=>{if(!el.getAttribute)return;const u=el.getAttribute('src')||(el.tagName=='LINK'&&el.getAttribute('href'))||(el.tagName=='OBJECT'&&el.getAttribute('data'));if(u&&!seen.has(u)&&blk(u)){seen.add(u);if(!tm)tm=setTimeout(say,250)}};"
+	"const scan=r=>{if(r.nodeType!=1)return;chk(r);r.querySelectorAll&&r.querySelectorAll('[src],link[href],object[data]').forEach(chk)};"
+	"new MutationObserver(ms=>ms.forEach(m=>{if(m.type=='attributes')chk(m.target);else m.addedNodes.forEach(scan)})).observe(document,{subtree:true,childList:true,attributes:true,attributeFilter:['src','href','data']});"
+	"if(document.documentElement)scan(document.documentElement)})()";
+static WebKitUserScript *blk_script(const char *cfgjson, int priv)
+{
+	GString *j = g_string_new("(()=>{const S=n=>{try{window.webkit.messageHandlers.rudolfTab.postMessage({blk:n})}catch(e){}};const B=");
+	g_string_append(j, cfgjson); g_string_append_printf(j, ";B.priv=%s;", priv ? "true" : "false"); g_string_append(j, BLK_COUNT_JS); g_string_append(j, "})()");
+	WebKitUserScript *s = webkit_user_script_new_for_world(j->str, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, "rudolf", NULL, NULL);
+	g_string_free(j, TRUE); return s;
+}
+static int tab_block_op(const char *op, JSCValue *m)
+{
+	if (strcmp(op, "block")) return 0;
+	JSCValue *c = jsc_value_object_get_property(m, "cfg"); if (!c || !jsc_value_is_object(c)) { if (c) g_object_unref(c); return 1; }
+	int on = jbool(c, "on"); char **b = str_list(c, "b"), **tp = str_list(c, "tp"), **ex = str_list(c, "ex"), **off = str_list(c, "off");
+	char *cj = jsc_value_to_json(c, 0); BLK_GEN++;
+	/* (the counting scripts: the old ones out of every tab, the new ones in) */
+	GHashTableIter i; gpointer k, v;
+	if (TABS) { g_hash_table_iter_init(&i, TABS); while (g_hash_table_iter_next(&i, &k, &v)) { WebKitUserContentManager *u = webkit_web_view_get_user_content_manager(WEBKIT_WEB_VIEW(((tab *)v)->view));
+		if (u && BLK_JS) webkit_user_content_manager_remove_script(u, BLK_JS); if (u && BLK_JSP) webkit_user_content_manager_remove_script(u, BLK_JSP); } }
+	if (BLK_JS) webkit_user_script_unref(BLK_JS); if (BLK_JSP) webkit_user_script_unref(BLK_JSP);
+	BLK_JS = cj ? blk_script(cj, 0) : NULL; BLK_JSP = cj ? blk_script(cj, 1) : NULL;
+	if (BLK_F) { webkit_user_content_filter_unref(BLK_F); BLK_F = NULL; } if (BLK_FP) { webkit_user_content_filter_unref(BLK_FP); BLK_FP = NULL; }
+	if (!BLK_STORE) { char *dir = g_build_filename(g_get_user_cache_dir(), "rudolf-webkit-blocking", NULL); BLK_STORE = webkit_user_content_filter_store_new(dir); g_free(dir); }
+	for (int pv = 0; pv < 2; pv++) {
+		GString *r = (pv || on) ? blk_rules(b, tp, ex, pv ? NULL : off) : NULL; if (!r) continue;
+		blkq *q = g_new0(blkq, 1); q->gen = BLK_GEN; q->priv = pv; GBytes *by = g_bytes_new(r->str, r->len);
+		webkit_user_content_filter_store_save(BLK_STORE, pv ? "rudolf-block-private" : "rudolf-block", by, NULL, blk_saved, q);
+		g_bytes_unref(by); g_string_free(r, TRUE);
+	}
+	blk_apply_all();
+	g_strfreev(b); g_strfreev(tp); g_strfreev(ex); g_strfreev(off); g_free(cj); g_object_unref(c);
+	return 1;
+}
 static void on_tab_op(JSCValue *m)
 {
 	char *op = jstr(m, "op"), *tid = jstr(m, "tid"); if (!op) { g_free(tid); return; }
 	tab *t = tid ? g_hash_table_lookup(TABS, tid) : NULL;
+	if (t && tab_reader_op(t, op, m)) { g_free(op); g_free(tid); return; }   /* (1.6.1: reader mode) */
 	if (!strcmp(op, "fw")) {
 		JSCValue *r = jsc_value_object_get_property(m, "rules");
 		if (r && jsc_value_is_object(r)) { FW.on = jbool(r, "on"); char *md = jstr(r, "mode"); snprintf(FW.mode, sizeof FW.mode, "%s", md ? md : "open"); g_free(md);
@@ -606,6 +803,7 @@ static void on_tab_op(JSCValue *m)
 			g_string_free(j, TRUE); g_strfreev(u); g_free(cfj); if (cf) g_object_unref(cf);
 		}
 		if (c) g_object_unref(c);
+	} else if (tab_block_op(op, m)) {   /* (1.6.1: ad and tracker blocking) */
 	} else if (!strcmp(op, "webdir") || !strcmp(op, "drop")) {
 		/* (1.6.0 Part 22) "webdir" {part, dir}: where that account's websites are kept from its next tab ("" the shared way); only a
 		   folder under /persist/oracle/. "drop" {part}: the account signed out: its tabs closed and its context let go, so its files
@@ -705,11 +903,23 @@ static gboolean on_decide(WebKitWebView *v, WebKitPolicyDecision *dec, WebKitPol
 	if (u && !local_or_not_web(u)) { fprintf(stderr, "rudolf-webkit: not leaving the desktop for %s\n", u); webkit_policy_decision_ignore(dec); return TRUE; }
 	return FALSE;
 }
+/* 1.6.1 (docs/plan-1.6.1.md Part 3, from 1.5.8: stutter in Oracle's tabs on Lite): in mixed drawing, only the desktop page's
+   own web process paints on the processor (the desktop staying light); Oracle's tabs' processes, started later, are painted
+   by the graphics card, as "Use it for games and the desktop" does. WebKit's processes take Skia's settings from the
+   environment they start with: set for the desktop's, taken away once it runs (its page committed), set again before it is
+   started again after it stopped. */
+static char CPU_THREADS[8];
+static void desk_cpu_paint(int on)
+{
+	if (DRAW != DRAW_MIXED) return;
+	if (on) { g_setenv("WEBKIT_SKIA_ENABLE_CPU_RENDERING", "1", TRUE); g_setenv("WEBKIT_SKIA_CPU_PAINTING_THREADS", CPU_THREADS, TRUE); }
+	else { g_unsetenv("WEBKIT_SKIA_ENABLE_CPU_RENDERING"); g_unsetenv("WEBKIT_SKIA_CPU_PAINTING_THREADS"); }
+}
 static gboolean reload_later(gpointer v) { webkit_web_view_load_uri(WEBKIT_WEB_VIEW(v), url); return G_SOURCE_REMOVE; }
 static void on_terminated(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpointer d)
 {
 	(void)d; fprintf(stderr, "rudolf-webkit: the page stopped (%d), loading it again\n", (int)r);
-	desk_ready = 0; tabs_reset(); g_timeout_add_seconds(1, reload_later, v);
+	desk_ready = 0; tabs_reset(); desk_cpu_paint(1); g_timeout_add_seconds(1, reload_later, v);
 }
 static GtkWidget *on_create(WebKitWebView *v, WebKitNavigationAction *a, gpointer d)
 {
@@ -728,6 +938,7 @@ static void on_desk_load(WebKitWebView *v, WebKitLoadEvent e, gpointer d)
 {
 	(void)v; (void)d;
 	if (e == WEBKIT_LOAD_STARTED || e == WEBKIT_LOAD_COMMITTED) { if (hello_timer) g_source_remove(hello_timer); hello_timer = 0; desk_ready = 0; tabs_reset(); }
+	if (e == WEBKIT_LOAD_COMMITTED) desk_cpu_paint(0);   /* (1.6.1: the desktop's process runs: tabs' are the graphics card's) */
 	if (e == WEBKIT_LOAD_FINISHED) { hello(NULL); hello_timer = g_timeout_add_seconds(1, hello, NULL); }
 }
 static void on_desk_msg(WebKitUserContentManager *u, WebKitJavascriptResult *r, gpointer d)
@@ -753,8 +964,8 @@ int main(int argc, char **argv)
 	}
 	if (DRAW == DRAW_SOFT) HWPOL = WEBKIT_HARDWARE_ACCELERATION_POLICY_NEVER;
 	if (DRAW == DRAW_MIXED) {   /* (WebKitGTK 2.52: read by the web processes, which inherit the environment) */
-		char n[8]; int c = (int)g_get_num_processors() - 1; snprintf(n, sizeof n, "%d", c < 1 ? 1 : c > 8 ? 8 : c);
-		g_setenv("WEBKIT_SKIA_ENABLE_CPU_RENDERING", "1", TRUE); g_setenv("WEBKIT_SKIA_CPU_PAINTING_THREADS", n, TRUE);
+		int c = (int)g_get_num_processors() - 1; snprintf(CPU_THREADS, sizeof CPU_THREADS, "%d", c < 1 ? 1 : c > 8 ? 8 : c);
+		desk_cpu_paint(1);   /* (1.6.1: the desktop's process only: desk_cpu_paint) */
 	}
 	g_set_prgname("RudolfDesktop"); gdk_set_program_class("RudolfDesktop");
 	gtk_init(&argc, &argv);

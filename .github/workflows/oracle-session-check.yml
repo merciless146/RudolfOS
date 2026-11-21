@@ -1,0 +1,20 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 10, docs/plan-oracle.md item 2, its second half): Oracle's session kept in the account's own folder
+# (desktop/orasession61.js: iso/qt/shell2/orasession61_t.js, rudolfd's home/* stood in), and Oracle's tests that share those files.
+# Nothing is published.
+name: Oracle session check
+on:
+  push:
+    paths: ['desktop/orasession61.js', 'desktop/base_v24.html', 'desktop/build19.py', 'desktop/oracle58.js', 'desktop/home56.js', 'iso/qt/shell2/orasession61_t.js', '.github/workflows/oracle-session-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  session:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: The page's side
+        run: |
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          (cd desktop && python3 build19.py ../iso/www/index.html >/dev/null)
+          for t in orasession61_t.js oracle58_t.js private59_t.js oraacct60_t.js tor59_t.js; do echo "== $t"; node iso/qt/shell2/$t || exit 1; done

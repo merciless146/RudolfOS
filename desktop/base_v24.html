@@ -1012,6 +1012,8 @@ function browser(url,bo){bo=bo||{};const PV=!!bo.priv,W=win('Oracle','\u{1F310}\
  W.body.style.background='#fff';W.el.tabIndex=-1;
  W.body.innerHTML=`<div class='otabs'></div><div class='ob'><button class='bk' title='Back (Alt+←)'>◀</button><button class='fw' title='Forward (Alt+→)'>▶</button><button class='rl' title='Reload (F5)'>⟳</button><button class='hm' title='Home'>🏠</button><input class='ad' spellcheck='false' placeholder='Search your files or enter an address'><button class='st' title='Bookmark this page'>☆</button><button class='ex' title='Open in a real browser tab' style='display:none'>↗</button>${PV?`<span class='opv' title='Private: Oracle forgets the pages you visit, and their cookies and site data when you close the last private window'>🕶️ Private</span>`:''}<button class='mn' title='Menu'>☰</button></div><div class='obm'></div><div class='fh' style='flex:1;position:relative;min-height:0;background:#fff'></div><div class='stat'>Ready</div>`;if(bo.tor&&typeof torDress=='function')torDress(W);
  const q=s=>W.body.querySelector(s),ad=q('.ad'),st=q('.stat'),fh=q('.fh');let tabs=[],ci=0,nid=0,src='';
+ const OC=typeof oraClosed=='function'?oraClosed({W,priv:PV,tor:!!bo.tor,tabs:()=>tabs,say:x=>{st.textContent=x},   /* 1.6.1 (docs/plan-1.6.1.md Part 10): closed tabs (oraclosed61.js) */
+  add:(h,i,ti,z,pos)=>{if(tabs.length>=12){st.textContent='Too many tabs open.';return}const t=mkTab(h[i]);t.h=h.slice();t.i=i;t.zoom=z||1;t.title=ti||t.title;tabs.splice(tabs.indexOf(t),1);const k=Math.max(0,Math.min(pos|0,tabs.length));tabs.splice(k,0,t);ci=k;loadTab(t)}}):null;
  /* 1.6.1 (the owner, 2026-11-20): while the mouse is over a link, or a button that goes to another address, the status
     line says where it goes ("Goes To: <address>"), then shows again what it said (unless something new came meanwhile) */
  let stPrev=null,stHv='';const stHover=u=>{u=String(u||'');if(u){if(stPrev==null)stPrev=st.textContent;stHv='Goes To: '+u;st.textContent=stHv}else if(stPrev!=null){if(st.textContent===stHv)st.textContent=stPrev;stPrev=null;stHv=''}};
@@ -1019,10 +1021,12 @@ function browser(url,bo){bo=bo||{};const PV=!!bo.priv,W=win('Oracle','\u{1F310}\
  const OF=typeof oraFind=='function'?oraFind({W,T:()=>T(),tabs:()=>tabs}):null;   /* 1.6.1 (docs/plan-1.6.1.md Part 10): find in page (orafind61.js) */
  const lk=(u,t)=>`<a href='#' data-u='${esc(u)}' style='color:#2563eb;text-decoration:none' onclick='go(this.dataset.u);return false'>${esc(t)}</a>`;
  const doc=(t,b,x)=>({title:t,html:`<!doctype html><meta charset='utf-8'><title>${esc(t)}</title><body style='font:14px Tahoma,Arial,sans-serif;margin:0;color:#111'><div style='background:#2563eb;color:#fff;padding:9px 16px;font-weight:600'>${esc(t)}</div><div style='padding:16px'>${b}</div><script>function go(u){parent.postMessage({go:u},'*')}function act(a,v){parent.postMessage({act:a,v:v},'*')}${x||''}`+'</'+'script></body>'});
+ const OR=typeof oraReader=='function'?oraReader({W,T:()=>T(),tabs:()=>tabs,say:x=>{st.textContent=x},sync:()=>sync(),reload:t=>loadTab(t)}):null;   /* 1.6.1 (docs/plan-1.6.1.md Part 10): reader mode (orareader61.js) */
  const walk=(n,p,cb)=>{for(const k in n){const w=[...p,k];cb(w,n[k]);if(isDir(n[k]))walk(n[k],w,cb)}};
  const norm=v=>{v=v.trim();if(!v)return'about:blank';if(/^(about:|file:|https?:|data:)/i.test(v))return v;if(/^[A-Za-z]:[\\\/]/.test(v)||/^[A-Za-z]:$/.test(v))return'file:///'+v.split(BS).join('/');if(/^[^\s]+\.[a-z]{2,}([\/?#:]|$)/i.test(v))return'https://'+v;return'about:search?q='+encodeURIComponent(v)};
  const MX={video:/\.(mp4|m4v|webm|ogv|mov)$/i,audio:/\.(mp3|wav|ogg|oga|m4a|aac|flac|opus)$/i,image:/\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)$/i};
  const mkind=u=>{let p=u;try{p=new URL(u).pathname}catch(e){}return MX.video.test(p)?'video':MX.audio.test(p)?'audio':MX.image.test(p)?'image':''};
+ const OB=typeof oraBlock=='function'?oraBlock({W,T:()=>T(),tabs:()=>tabs,priv:PV,tor:!!bo.tor}):null;   /* 1.6.1 (docs/plan-1.6.1.md Part 10): ad and tracker blocking's shield (orablock61.js) */
  const mediaDoc=(t,k,s)=>doc(t,`<div style='text-align:center'>`+(k=='video'?`<video src='${esc(s)}' controls autoplay playsinline style='max-width:100%;max-height:72vh;background:#000'></video>`:k=='audio'?`<div style='font-size:64px'>🎵</div><audio src='${esc(s)}' controls autoplay style='width:min(520px,95%)'></audio>`:`<img src='${esc(s)}' style='max-width:100%'>`)+`<p style='color:#6b7280;font-size:12px;word-break:break-all'>${esc(s.startsWith('data:')?t:s)}</p><p id='e' style='color:#b91c1c'></p></div>`,"var m=document.querySelector('video,audio,img');m.onerror=function(){document.getElementById('e').textContent='This media could not be loaded (missing file, unsupported format, or blocked by the site).'}");
  const embedOf=u=>{let x,m;try{x=new URL(u)}catch(e){return null}const h=x.hostname.replace(/^www\.|^m\./,'');let id='';
   if(h=='youtu.be')id=x.pathname.slice(1).split('/')[0];else if(h=='youtube.com'){if(x.pathname=='/watch')id=x.searchParams.get('v')||'';else if((m=x.pathname.match(/^\/(shorts|embed|live)\/([\w-]{6,})/)))id=m[2]}
@@ -1194,9 +1198,12 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   if(/^data:/i.test(u))return{html:'<body>Data URLs are not supported.</body>',title:'Data'};
   return doc('Cannot open page','Oracle cannot open <code>'+esc(u)+'</code>.')}
  function mkTab(u){const fr=document.createElement('iframe');fr.referrerPolicy='strict-origin-when-cross-origin';fr.style.cssText='position:absolute;inset:0;width:100%;height:100%;border:0;background:#fff;display:none';fh.appendChild(fr);const t={id:++nid,h:[u||'about:home'],i:0,fr,title:'New tab',zoom:1,real:false,rt:null,rb:false,rf:false};t.fr.onload=()=>{if(t.pend&&t.i>=0&&cur()==t.h[t.i]&&t===T())st.textContent='Loaded '+t.h[t.i]+' (if the page is blank, the site blocks embedding: use ↗)'};tabs.push(t);return t}
+ const OS=typeof oraSession=='function'?oraSession({W,priv:PV,tor:!!bo.tor,tabs:()=>tabs,cur:()=>{const t=T();return t?(t.ru||t.h[t.i]):''},   /* 1.6.1 (docs/plan-1.6.1.md Part 10): the session kept in the account's folder (orasession61.js) */
+  add:(u,ti,sl)=>{const t=mkTab(u);if(sl&&/^https?:/i.test(u)&&typeof rtOn=='function'&&rtOn()&&!rtStop(u)&&!(typeof rtChromium=='function'&&rtChromium(u))){t.real=true;t.slept=true;t.ru=u;t.title=ti||rtHost(u)||u}else loadTab(t);return t},
+  pick:k=>{if(k>=0&&k<tabs.length){ci=k;sync()}},dropHome:k=>{const t=tabs[0];if(k==1&&tabs.length>1&&t&&t.h.length==1&&/^about:home/.test(t.h[0]))closeTab(0)}}):null;if(OS)OS.opened();
  /* Rudolf OS 1.2: inside the shell a website is a real browser tab (tabs26.js) */
  const rtHost=u=>{try{return new URL(u).hostname}catch(e){return''}};
- const rtWhere=t=>({el:fh,priv:PV,shown:()=>t===T()&&t.real&&!W.min&&W.el.isConnected&&W.el.style.display!='none',z:()=>+W.el.style.zIndex||0,
+ const rtWhere=t=>({el:fh,priv:PV,shown:()=>t===T()&&t.real&&!t.rdr&&!W.min&&W.el.isConnected&&W.el.style.display!='none',z:()=>+W.el.style.zIndex||0,
   /* for Task Manager */W,title:()=>t.title,url:()=>t.h[t.i],show:()=>{W.focus();const k=tabs.indexOf(t);if(k>=0){ci=k;sync()}},end:()=>{const k=tabs.indexOf(t);if(k>=0)closeTab(k)},
   /* 1.5.9 game mode (plan 9.2): a tab other than its window's current one sleeps: its page is closed, its address and
      title kept (💤 on the tab); selecting it loads it again */
@@ -1212,8 +1219,10 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   keys:k=>key(k),
   newwin:(u,nt,popup)=>{if(popup||tabs.length>=12)browser(u,{adopt:nt,priv:PV});else{adoptTab(u,nt);sync()}},
   gone:why=>{if(t===T())st.textContent='This page stopped working'+(why=='unresponsive'?' (not responding)':'')+'. Reload (F5) to start it again.'},
+  readable:on=>{if(OR)OR.readable(t,on)},readhtml:o=>{if(OR)OR.readhtml(t,o)},   /* (1.6.1: reader mode: the page has an article; its HTML) */
   dialog:(k,x,d)=>{if(!W.el.classList.contains('act'))W.focus();return rtDialog(W,k,x,d)},
   perm:(p,u)=>rtPerm(W,p,u),
+  adblock:n=>{if(OB)OB.count(t,n)},   /* (1.6.1: how many ads and trackers the page's tab blocked) */
   blocked:(u,why)=>{t.blk=Date.now();notify('Blocked by the firewall',why+' ('+rtHost(u)+')',{kind:'error'});if(t===T())st.textContent='Blocked by the firewall: '+rtHost(u)},
   fs:()=>{},
   flash:()=>{if(t===T())st.textContent='⚡ Flash content on this page is played by Ruffle'},
@@ -1252,7 +1261,9 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   /* 1.5.9 (plan Part 16): Browse with Tor (tor59.js), at the bar's far right */
   if(typeof oTorBtn=='function')b.appendChild(oTorBtn({W,tor:!!bo.tor,urls:()=>tabs.map(x=>x.h[x.i])}));W.setTitle((!t.title||t.title=='Oracle'?'Oracle':t.title+' - Oracle')+(bo.tor?' (Tor)':PV?' (Private)':''))}
  function nav(u){const t=T();u=norm(u);t.h=t.h.slice(0,t.i+1);t.h.push(u);t.i++;loadTab(t)}
+ if(OB){const s0=sync;sync=function(){s0.apply(this,arguments);OB.sync()}}   /* (1.6.1: the shield follows its tab) */
  function newTab(u){if(tabs.length>=12){st.textContent='Too many tabs open.';return}const t=mkTab(u?norm(u):u);ci=tabs.length-1;loadTab(t);if(!u||u=='about:home')setTimeout(()=>{if(typeof rtBlur=='function')rtBlur();ad.focus()},50)}
+ if(OS){const s0=sync;sync=function(){s0.apply(this,arguments);OS.changed()}}   /* (1.6.1: the session's file follows the window's tabs) */
  function closeTab(k){const t=tabs[k];if(tabs.length<2){W.close();return}t.fr.remove();if(t.rt)rtClose(t.rt);tabs.splice(k,1);ci=Math.min(ci>k?ci-1:ci,tabs.length-1);sync()}
  const go=d=>{const t=T();if(t.real&&t.rt&&(d<0?t.rb:t.rf)){rtCmd(t.rt,d<0?'back':'forward');return}t.i=Math.max(0,Math.min(t.h.length-1,t.i+d));loadTab(t)};
  q('.bk').onclick=()=>go(-1);q('.fw').onclick=()=>go(1);q('.rl').onclick=()=>loadTab(T());q('.hm').onclick=()=>nav('about:home');
@@ -1268,15 +1279,18 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  if(OF){const s0=sync,k0=key;sync=function(){s0.apply(this,arguments);OF.sync()};key=function(a){if(!OF.key(a))k0(a)}}   /* (1.6.1: find in page: the bar follows its tab; Ctrl+F, F3 and Ctrl+G from a tab's page) */
  function siNote(t,u){const fr=t.fr;t.pend=false;fr.removeAttribute('src');fr.setAttribute('sandbox','allow-scripts');t.src='';fr.srcdoc=webNote(u);if(t===T())sync()}
  const tabOfWin=w=>{for(let i=0;i<6&&w;i++){const t=tabs.find(x=>x.fr.contentWindow===w);if(t)return t;let p=null;try{p=w.parent}catch(x){}if(!p||p===w)break;w=p}return null};
+ if(OR){const s0=sync,k0=key,l0=loadTab;sync=function(){s0.apply(this,arguments);OR.sync()};key=function(a){if(!OR.key(a))k0(a)};loadTab=function(t){if(t&&t.rdr)OR.drop(t,false);return l0.apply(this,arguments)};const p0=page;page=function(u){return OR.page(u,p0.apply(this,arguments))}}   /* (1.6.1: reader mode; Readability credited in About Oracle follows its tab; F9 from a page; a new page leaves it) */
  const SIO={cur:t=>t.h[t.i],note:siNote,T:()=>T(),bar:(t,b)=>{fh.appendChild(b);b.style.display=t===T()?'flex':'none'},
   setUrl:(t,u,title)=>{if(t.h[t.i]==u)return;t.h[t.i]=u;let h='';try{h=new URL(u).hostname}catch(x){}t.title=title||h||u;if(t===T()&&document.activeElement!==ad)sync()}};
  const onm=e=>{if(e.data&&typeof e.data.__rudolfSignin=='string'){const t=tabOfWin(e.source);if(t&&typeof siMessage=='function')siMessage(e.data,t,e.source,e.origin,SIO);return}
   const t=tabs.find(x=>x.fr.contentWindow===e.source);if(!t||!e.data)return;if(typeof e.data.go=='string'){const u=norm(e.data.go);if(/^https?:/i.test(u)&&/duckduckgo\.com\/\?q=/.test(u)&&!(typeof rtOn=='function'&&rtOn())){if(window.__sys&&fwCheck(u))return;try{window.open(u,'_blank','noopener')}catch(x){}return}if(t!==T()){ci=tabs.indexOf(t)}nav(u)}
   else if(typeof e.data.hov=='string'){if(t===T())stHover(e.data.hov.slice(0,2000))}   /* (1.6.1: "Goes To: …") */
   else if(e.data.act=='app'){if(e.data.v=='media'||e.data.v=='wordpro'){const w0=wins.find(x=>x.tb.title==(e.data.v=='media'?'Media Player':'WordPro'));w0?w0.focus():A[e.data.v]()}}else if(e.data.act=='ext'){if(/^https?:/i.test(e.data.v)&&typeof rtOn=='function'&&rtOn()){if(t!==T())ci=tabs.indexOf(t);nav(e.data.v);return}if(/^https?:/i.test(e.data.v)){if(window.__sys&&fwCheck(e.data.v))return;try{window.open(e.data.v,'_blank','noopener')}catch(x){}}}else if(e.data.act=='tel'){if(typeof telOpen=='function'&&typeof e.data.v=='string'&&!document.querySelector('.rmodal [aria-label="Call a phone number"]')){if(t!==T())return;telOpen(e.data.v.replace(/^\s*tel:/i,''))}}else if(e.data.act=='wsearch'){netSearch(e.data.v).then(r=>{try{e.source.postMessage({wsres:r},'*')}catch(x){}})}else if(e.data.act=='dlreq'){netDlAsk(W,e.data.v,()=>{nav('about:downloads')})}else if(e.data.act=='rmbm'){bms.splice(+e.data.v,1);store('bd95bm',bms);loadTab(t);sync()}else if(e.data.act=='clrh'){hist=[];store('bd95hist',hist);loadTab(t)}else if(e.data.act=='cldl'){DLS.length=0;saveDl();loadTab(t)}else if(e.data.act=='rmdl'&&Array.isArray(e.data.v)&&typeof dlRemove=='function'){dlRemove(+e.data.v[0],String(e.data.v[1]||''))}else if(e.data.act=='redl'){const d=DLS[+e.data.v];if(d&&/^https?:/i.test(d.u||'')){d.again=0;dlStart(d.u);setTimeout(()=>loadTab(t),100)}}};
- addEventListener('message',onm);window.__dlHook=()=>{const t=T();if(t&&t.h[t.i]=='about:downloads')loadTab(t)};const oraKeep=()=>{if(PV||W.tor||!USER||USER.r=='guest'||!S.oreopen)return;S.otabs=tabs.map(x=>x.h&&x.h[x.i]).filter(u=>/^https?:/i.test(u||'')).slice(0,50).map(u=>String(u).slice(0,2000));persistS()};ORA_W.add(oraKeep);   /* (1.6.0 Part 21: the tabs from last time) */
+ addEventListener('message',onm);window.__dlHook=()=>{const t=T();if(t&&t.h[t.i]=='about:downloads')loadTab(t)};const oraKeep=()=>{if(OS&&oraSsOwnsTabs()){if(!ORA_SS.ending)OS.closed();return}if(PV||W.tor||!USER||USER.r=='guest'||!S.oreopen)return;S.otabs=tabs.map(x=>x.h&&x.h[x.i]).filter(u=>/^https?:/i.test(u||'')).slice(0,50).map(u=>String(u).slice(0,2000));persistS()};ORA_W.add(oraKeep);   /* (1.6.0 Part 21: the tabs from last time) */
  W.onclose=()=>{oraKeep();ORA_W.delete(oraKeep);removeEventListener('message',onm);window.__dlHook=null;tabs.forEach(x=>x.rt&&rtClose(x.rt));if(PV&&typeof privClosed=='function')privClosed(W)};W.oNewTab=u=>newTab(u);if(PV&&typeof privOpened=='function')privOpened(W);
+ if(OC){const c0=closeTab,k0=key,s0=sync,o0=W.onclose;closeTab=function(k){const t=tabs[k];if(t&&tabs.length>1)OC.tabClosed(t,k);return c0.apply(this,arguments)};key=function(a){if(a=='cst')OC.reopen();else k0(a)};sync=function(){s0.apply(this,arguments);OC.sync()};W.onclose=()=>{OC.winClosed(tabs);o0&&o0()};OC.opened()}   /* (1.6.1: closed tabs kept, Ctrl+Shift+T) */
  if(bo.adopt&&typeof rtOpen=='function'){adoptTab(url,bo.adopt);sync()}
+ else if(!url&&!PV&&!bo.tor&&OS&&!wins.some(o=>o!==W&&o.app=='browser')&&OS.restore()){}   /* (1.6.1: the last session's windows, from the account's folder) */
  else if(!url&&!PV&&!bo.tor&&USER&&USER.r!='guest'&&S.oreopen&&Array.isArray(S.otabs)&&S.otabs.length&&!wins.some(o=>o!==W&&o.app=='browser')){S.otabs.slice(0,12).forEach(u=>newTab(u))}   /* (1.6.0 Part 21: the first Oracle window, the tabs from last time) */
  else newTab(url||'about:home')}
 const ORA_W=new Set();window.__oraSave=()=>ORA_W.forEach(f=>{try{f()}catch(e){}});

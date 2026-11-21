@@ -200,17 +200,29 @@ addEventListener('message', e => {
     else if (ev == 'keys') h.keys(String(m.k || ''));
     else if (ev == 'newwin' && typeof m.ntid == 'string') h.newwin(String(m.url || ''), m.ntid, !!m.popup);
     else if (ev == 'gone') h.gone(String(m.why || ''));
+    else if (ev == 'readable') { if (h.readable) h.readable(!!m.on) }   /* (1.6.1: reader mode, orareader61.js) */
+    else if (ev == 'readhtml') { if (h.readhtml) h.readhtml({id: +m.id || 0, html: typeof m.html == 'string' ? m.html.slice(0, 4e6) : '', title: String(m.title || '').slice(0, 300)}) }
     else if (ev == 'notice') { const w = RT_NOTICE.get(+m.id); if (w) { RT_NOTICE.delete(+m.id); w(m.tid) } }   // 1.5.9: a notice's button
     else if (ev == 'tel') { if (typeof telOpen == 'function') telOpen(m.num) }   // 1.5.9 (plan 7.3): a phone number clicked in a tab
     else if (ev == 'busy') { const w = RT_BUSY.get(m.id); if (w) { RT_BUSY.delete(m.id); w({m: !!m.m, f: !!m.f}) } }
     else if (ev == 'fs') h.fs && h.fs(!!m.on);
+    else if (ev == 'adblock') { if (h.adblock) h.adblock(+m.n || 0) }   /* (1.6.1: ads and trackers blocked, orablock61.js) */
     else if (ev == 'blocked') { if (m.main) h.blocked(String(m.url || ''), String(m.why || '')) }
     else if (ev == 'flash') h.flash && h.flash();
+    else if (ev == 'still') rtStill(t, m.img);   /* (1.6.1, Lite: a covered tab's still picture) */
     else if (ev == 'download') h.download && h.download(String(m.url || ''), {name: String(m.name || ''), data: typeof m.data == 'string' && m.data.startsWith('data:') ? m.data : '', big: !!m.big, why: String(m.why || ''), started: !!m.started});
     else if (ev == 'dialog') h.dialog(String(m.kind || 'alert'), String(m.text || ''), String(m.def || '')).then(r => rtSend('dialog', m.tid, {did: m.did, ok: r.ok, text: r.text}));
     else if (ev == 'perm') h.perm(String(m.perm || ''), String(m.url || '')).then(a => rtSend('perm', m.tid, {pid: m.pid, allow: a}));
   } catch (x) { console.warn('real tab event', ev, x) }
 });
+/* 1.6.1 (Lite, docs/plan-1.6.1.md Part 3): while the desktop covers part of a tab (a menu, another window), rudolf-webkit
+   sends a still picture of its page, shown here in the tab's place, under the desktop's menus and windows (a WebKit page
+   cannot be cut on the screen); null: the live page is back. Standard's shell cuts its pages and never sends it. */
+function rtStill(t, img) {
+  const el = t && t.el; if (!el) return;
+  const ok = typeof img == 'string' && img.length < 8e6 && /^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(img);
+  el.style.backgroundImage = ok ? 'url("' + img + '")' : ''; el.style.backgroundSize = ok ? '100% 100%' : ''; el.style.backgroundRepeat = ok ? 'no-repeat' : '';
+}
 /* keyboard focus back to the desktop (Ctrl+L in a real tab goes to Oracle's address bar) */
 function rtBlur() { if (SHELL) shellSend({rudolfShell: 'tab', op: 'blur'}) }
 /* 1.6.0 (plan-1.6.0 Part 21, the owner: everyone starts fresh): once on this computer, the websites every account had

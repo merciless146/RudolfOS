@@ -23,6 +23,33 @@ work." Built after the 1.6.0 beta.
   › Display lists the displays and which workspace each shows.
 - **Tests:** Xvfb with several screens (or Xephyr / RandR's virtual outputs) for both engines, compared with same_t.sh;
   on the Vivobook with an HDMI monitor (owner).
+- **Status (2026-11-21):** built, for the owner's checks on the Vivobook with an HDMI monitor (unattended session, two PRs: the system's
+  part, branch monitors-arrange, then the desktop's, branch monitors-desktop).
+  - *The system:* rudolf-display --arrange lights every connected monitor (up to three) side by side, the main one at 0,0, the
+    others to its right, each at its own preferred mode (the main one keeps Settings › Display › Resolution's); the order, the
+    main one and each one's workspace come from /etc/rudolf-monitors, a line per set of monitors (the connectors' names, so another
+    monitor on the same port shares the arrangement); --input arranges again on a hot plug (RandR's events) and when the file
+    changes, and keeps /run/rudolf/monitors, which screenctl status passes to the page and rudolf-native reads. The desktop's
+    Chromium window covers every monitor; Linux apps' windows, games and the touchscreen stay on the main one.
+  - *The desktop (desktop/mon61.js; rudolf-native's "several monitors"):* as written above. The page's own box is the main
+    monitor's (innerWidth too), so everything that was on the screen stays on the main monitor; the other monitors get the
+    wallpaper (fitted to each), a taskbar from the main one's CSS (its rules copied: the same styles, colours and accent) and the
+    windows of the workspace each shows. The workspace in use is the one of the monitor last clicked or the window in use.
+  - *Tests:* iso/qt/host/monitors161_t.sh (the plan, screenctl arrange, and on Xorg's dummy driver --arrange, --monitors, a
+    monitor plugged in under --input and a new arrangement taken); iso/qt/native/monbeh_t.sh (Xorg's dummy driver, 1920×1080 and
+    1280×800: the same twelve steps on Standard and Native, each step's outcome the same on both, the second taskbar, wallpaper,
+    lock cover and a maximised window compared by picture; Settings › Display › Displays; at 100 % and at 125 % display
+    scaling), run by .github/workflows/monitors-check.yml. wsbeh_t.js and titlebeh_t.js (one monitor) still pass.
+  - *Not done here:* QEMU's second virtio-vga output stays "disconnected" without a display (as docs/native-findings-2026-11-15.md
+    found), so the real release was not run with two heads; the dummy driver's RandR stands in, and the Vivobook is the check.
+    The software display (recovery, safe graphics, Xorg failing) shows one monitor. One display scaling for all monitors. The
+    window transitions (LitePoint) of a window on another monitor were not compared.
+  - *The owner's checks (Vivobook, HDMI monitor), on Standard and on Native:* plug the monitor in with windows open (both lit side
+    by side within a few seconds, the laptop's screen the main one, workspace 2 on the monitor); move a window there by its menu
+    and by dragging it; maximise it there; the monitor's taskbar (its pins, windows, workspaces, clock, Start menu); unplug it
+    with windows on it (they stay in workspace 2, nothing off the laptop's screen) and plug it in again; Settings › Display ›
+    Displays: another workspace, "Make main", and that this is kept after a restart; Super+L (both screens covered); a game or a
+    Linux app full screen (on the laptop's screen).
 
 ### The phone, split in two (owner, 2026-11-15)
 Decided on 2026-11-15, after asking whether the first real phone would be easier in 2.0 than in 1.6: "Make the sensible
@@ -55,6 +82,53 @@ Desktop engine as a compatibility option, "to be worked on and refined later". L
 - the lock and sign-in screen settings and the shutting-down screen;
 - the dynamic backgrounds' moving parts.
 
+**Status (2026-11-21, the unattended session for Part 3; one PR each, in this order):**
+- *Done:* the desktop's menus and windows behind Oracle's tab pages. While the desktop covers part of a tab (a menu,
+  another window), rudolf-webkit sends a still picture of the page (tabev `still`, a JPEG), which tabs26.js shows in the
+  tab's place under the desktop's menus and windows; the live page is moved out of sight (moved, not hidden, so it stays a
+  visible page for WebKit and keeps running), its picture taken again every 2 s; uncovered, the live page is back. Cutting
+  the page on the screen (its window's shape, a clip, a native window) never worked in GTK 3 (branch litetabs, 1.5.8):
+  the Lite engine check showed the page staying on top in all three drawing modes, and it still did on main. Tests:
+  iso/qt/webkit/tabs58_ci.py (what is on the screen, in the three drawing modes), iso/qt/shell2/litestill61_t.js (the
+  desktop's side: the Start menu over a tab), iso/qt/sb/lt161_t.py (the release in QEMU with Lite: the release's own X
+  server, WebKitGTK and session; this tree's rudolf-webkit beside its desktop; workflow lite-qemu-check.yml). Owner's
+  check on the Vivobook (Lite): the Start menu, a taskbar menu and another window over an Oracle tab; a video in a tab
+  half covered by another window (its picture every 2 s; full speed once uncovered).
+- *Built, to be measured by the owner:* stutter in Oracle's tabs. The plan's way (1.5.9: "GPU drawing for the tab views
+  only, the desktop staying light"): in mixed drawing (Settings › Display › Graphics card "Use it for games and Linux
+  apps", the default with a graphics card) only the desktop page's own web process paints on the processor; Oracle's
+  tabs' processes start without Skia's processor painting, so the graphics card paints them (rudolf-webkit's
+  desk_cpu_paint: WebKit's processes take Skia's settings from the environment they start with). Tests:
+  iso/qt/webkit/tabsgpu61_ci.py (each web process's environment and painting threads; the desktop's process restarted;
+  soft and gpu as before), lt161_t.py's gpu phase. Owner's check on the Vivobook (Lite, the default graphics setting):
+  scrolling a long page, a video and a game in a tab against before; the memory at rest with 3 tabs (Task Manager), as
+  gpu drawing took some 400 MB more for the whole desktop in 1.5.8.
+- *Checked without the owner, the real sites left to him:* Oracle's WebKit tabs. A download, a page's own full screen and
+  five tabs at once work as they should, with nothing to change: iso/qt/webkit/tabsfs61_ci.py (full screen from a real
+  click fills the screen, Escape brings the tab back where it was; five tabs, each its own process, about 33 MB each in
+  the Lite engine check) and lt161_t.py's tabs phase on the release in QEMU (the same, the download arriving complete in
+  the desktop's download folder as the desktop's user; the memory on the release, under QEMU: the desktop page 96 MB,
+  four tabs in the background 61 MB each, the one shown 116 MB). Left to the owner on the Vivobook:
+  YouTube (a video, full screen), a Google sign-in with FedCM off and on (WebKitGTK has no FedCM: the menu item says so),
+  a real download from a site, memory with 5 real sites against Chromium's.
+- *Checked without the owner, nothing to change:* the lock and sign-in screen settings and the shutting-down screen in
+  Lite. iso/qt/webkit/lock61_ci.py runs the real desktop page in rudolf-webkit (a stand-in rudolfd, iso/qt/webkit/wkpage.py)
+  through lock58_t.js's steps: Display Properties › Lock and sign-in screen kept for the computer and shown on the lock
+  screen (a colour, a picture of one's own blurred, the desktop's background), the sign-in page's background and clock,
+  the full-screen "Shutting down…" and the power asked for after the tone; and what is on the screen (the colour, the
+  picture, the shutting-down screen) from screenshots. Owner's check on the Vivobook (Lite): the lock screen and sign-in
+  page with a picture of his own, then Shut down (the tone, the screen).
+- *Checked without the owner, nothing to change:* the dynamic backgrounds' moving parts in Lite.
+  iso/qt/webkit/dynbg61_ci.py (the real page in rudolf-webkit, soft and mixed drawing): Glacier Lake's northern lights at
+  night (in the sky, not on the mountains, in the lake; moving; still with Reduce motion), Spirit Falls' 70 cherry petals
+  by day and 28 sky lanterns at night (kept to the sky by the mask, moving), and the screen changing where they move.
+  Owner's check on the Vivobook (Lite): both backgrounds by day and at night, and how smooth they are.
+- *Left for the owner:* Google sign-in for GitHub in Lite (the plan asks for the symptoms to be described first: what
+  GitHub's "Continue with Google" does in an Oracle tab on Lite, and where it stops); GPU drawing for Lite measured
+  against software and mixed (memory and smoothness on the Vivobook: Settings › Display › Graphics card, each choice,
+  then Task Manager and a scrolling page; the Lite engine check gives the processes' memory per mode on GitHub's runner,
+  which has no graphics card).
+
 ### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
 **Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
@@ -86,6 +160,45 @@ docs/plan-oracle.md, asked for by the owner on 2026-11-16. Suggested for 1.6.1: 
 closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracker blocking) here or in 2.0. Item 4
 (website passwords) and item 6 (extensions from the Library) are suggested for 2.0 (docs/plan-2.0.md); item 6's
 stage 1 could start here. The owner decides.
+
+**Built (2026-11-21, branch oracle-block): item 5, ad and tracker blocking: the mechanism, with Rudolf's own starter list**
+(desktop/orablock61.js, iso/systools/blocklist.py, iso/systools/blocklists/rudolf.txt). A shield 🛡 before the bookmark star with the
+page's count; its menu: "Blocking ads and trackers on SITE", the count, Turn off / on for this site (the page loaded again), Report a
+broken site (a note in System health, kind firewall: nothing sent), Settings…. Settings › Privacy › Ads and trackers in Oracle: on
+(the default) / off, the sites it is off for (✕ each), sites of your own to block (added by name or address). Private and Tor windows
+always block. Kept in the account's settings (S.oblock: the switch and site names, no browsing).
+- **The list: format, source and licence.** Adblock Plus filter syntax (EasyList's), compiled by iso/systools/blocklist.py into whole
+  domains: blocked (b), blocked from other sites only (tp, `$third-party`), never blocked (ex, `@@`); rules with other options, path
+  rules and element hiding are left out for now (a left-out rule can only block less). **Shipped: Rudolf OS's own starter list**
+  (iso/systools/blocklists/rudolf.txt, 49 well-known ad-serving and tracking services, written for Rudolf OS and under its own licence,
+  GPL-2.0-or-later: only domains whose one job is ads or tracking, so sites using them keep working). **EasyList and EasyPrivacy**, the
+  plan's source, are dual-licensed by their authors under the GNU GPL version 3 or later and Creative Commons Attribution-ShareAlike
+  3.0 (as their licence page, https://easylist.to/pages/licence.html, says; it could not be opened from this session, so
+  its exact words are for the owner to check there), which allows shipping them with Rudolf OS with their notice; they were not added here because easylist.to could not be reached from this session (its network refused the host), and
+  a copy from elsewhere is not a source to trust for a list that decides what loads. For the owner: download them, then
+  `python3 iso/systools/blocklist.py iso/systools/blocklists/rudolf.txt easylist.txt easyprivacy.txt > desktop/orablock61.json`, and
+  keep their licence notice beside them (a few tens of thousands of domains: the list should then become a file beside the page,
+  as Readability's, rather than inside it). Updates between releases through the Library's signed lists stay for later.
+- **Real tabs** (Standard, Native, the encrypted Oracle): the shell's request interceptor (the firewall's, every request of a tab)
+  asks `blockWhy` before the firewall's answer is acted on: never the page itself; a request to a blocked domain (or its
+  sub-domains), or to a "tp" domain from another site (the site judged by its last two labels, three for co.uk and the like), is
+  cancelled and counted (tabev `adblock` {n}, reset when a new page commits). The desktop sends the lists (op `block`) before the
+  first tab and again after a shell's hello.
+- **Lite:** rudolf-webkit compiles the same lists into WebKit's own content blocker (WebKitUserContentFilterStore, kept in the user's
+  cache: the lists only) for every tab, a private window's apart (always on, no "off" sites); the sites it is off for are
+  `ignore-previous-rules` with `if-domain`. WebKit does not say what it blocked, so its count is a script in the page's isolated
+  world counting what the page's elements asked for from those domains (a fetch or a beacon is blocked but not counted on Lite).
+- **Nothing sent anywhere:** the lists come with Rudolf OS; every check is on this computer; no list is fetched while browsing.
+- Websites in plain frames (no shell): the shield says blocking is not possible there.
+- Tests: iso/qt/shell2/orablock61_t.js (26: the shell's check on its cases, the page's list equal to blocklist.py's compile, the
+  shield, its menu, Turn off / on, Report, a private window, Settings, a new hello, a plain frame), iso/qt/webkit/block61_ci.py (7:
+  rudolf-webkit, by what reaches a test site), iso/qt/native/orablock61_t.sh (14: the real shell on Standard and Native, by what
+  reaches a test site); oracle58, private59, orahover61, oraacct60, tor59 unchanged; setsearch59_t.js --write run (two new
+  Settings labels). Workflow oracle-block-check.yml. Page-load times with and without: for the owner's check (CI's are not the
+  Vivobook's).
+- **The owner's checks (Vivobook):** on Standard, Native and Lite: a news site with ads: the shield's count, ads gone; Turn off for
+  that site; YouTube, a bank's site and Google sign-in still working; a private window; Settings › Privacy › Ads and trackers;
+  whether to add EasyList and EasyPrivacy (above); page loads feel no slower.
 
 **Built (the owner, 2026-11-20): "Goes To:" in the status line.** "Mousing over a hyperlink or an executable
 button/ad/clickable item ... should show the target URL at the bottom left of the screen where 'Done' shows. The displayed
@@ -121,12 +234,59 @@ belongs to its tab (switching hides it, switching back shows it with its words a
   and back (the bar keeps its words); Standard with "Keep my websites encrypted" on (Oracle's own Chromium). Whether the highlight is
   Chromium's own (orange current match) or Rudolf's (yellow, the current one orange) on Rudolf's Chromium: either is right.
 
+**Built (2026-11-21, branch oracle-session): item 2's second half, the session** (desktop/orasession61.js). ☰ › Reopen my tabs next time
+(1.6.0 Part 21) becomes "continue where you left off": the first Oracle window after signing in brings back every Oracle window,
+the first one's tabs asleep (the sleeping tabs' own path: 💤, loaded when clicked) except the one that was in front, the others in
+windows of their own (Native: op `untor`; the encrypted Oracle: `orawin/open`). After an unexpected end (no window marked closed or
+ended), the next Oracle window offers "Restore your tabs?" once, whatever the setting.
+- **Where:** the account's own encrypted home folder (rudolfd home/*: `.rudolf/oracle-session/WINDOW.json`, a small file per
+  window, so Native's pages never write over each other), written a second after a change; locked with the folder at sign-out.
+  With files kept that way, 1.6.0's copy in the settings (`S.otabs`, in the page's shared storage) is no longer written and an old
+  one is removed; accounts whose files are not on the disk keep 1.6.0's way unchanged. Never private or Tor windows, never Guest.
+- **Marks:** a window closed by its person is marked closed; signing out (userLogout; Native's `__oaLogout`) marks the open ones
+  ended, written at once. Next sign-in: windows with no mark ended unexpectedly (restored with the setting, offered without it);
+  otherwise the windows open at sign-out; if every window was closed, the last one closed.
+- Tests: iso/qt/shell2/orasession61_t.js (18, rudolfd's home/* stood in); oracle58, private59, orahover61, oraacct60, tor59,
+  orafind61, bmadd59 unchanged. Workflow oracle-session-check.yml. Not covered here: Native's sign-out writing the marks before
+  Oracle's Chromium closes (the stand-in rudolfd of the native tests has no home/*).
+- **The owner's checks (Vivobook):** on Standard, Native and Lite with "Reopen my tabs next time" on: two Oracle windows, sign out
+  and in, open Oracle: both back, tabs asleep; with it off, end the desktop unexpectedly (the power, or ending its Chromium) and
+  open Oracle: "Restore your tabs?" once.
+
 **Built (the owner, 2026-11-20): the Downloads page's progress bar and Remove** (desktop/dlrm61.js). A file arriving: how
 much so far and how fast, and with a size known the percentage and time left (Chromium's own downloads do not tell their
 size: the bar then moves without a percentage); being checked: a bar. Remove beside Open: in Downloads → the Trash;
 otherwise "File removed from list" with "⚡ Ask Blitzen" (the notification's own Blitzen button, kept in the centre; drawn
 by rudolf-native too). Test dlpage61_t.js; workflow downloads-page-check.yml. Left: the size of Chromium's downloads
 (rudolf-webkit's WebKitDownload knows it: Lite could send it).
+
+**Built (2026-11-21, branch oracle-closed): item 2, reopen a closed tab** (desktop/oraclosed61.js). Ctrl+Shift+T (in Oracle, or inside
+a website) or ☰ › Reopen closed tab: the last closed tab at its place, with Oracle's back and forward list for it (Oracle's own pages'
+whole list; a website's tab its address, title and zoom: Chromium's own back list for a real tab goes with the tab) and the next press
+the one before; ☰ › Recently closed… lists them (the last 25), newest first. A closed window is one entry that comes back as a window of
+its own with its tabs (their addresses); a window's only tab closing closes the window and is kept as a tab.
+- **Where it is kept (the encrypted Oracle folder and sign-out):** in memory only, in the page that has Oracle's windows: never written
+  to the page's storage, rudolfd, the profile or the account's folder (the test checks the storage), so nothing of it can be outside
+  the account's folder or outlive the session. It is forgotten when Oracle's last window closes (as on Native and with "Keep my websites
+  encrypted", where Oracle's Chromium closes with its last window: so all three behave the same), at sign-out (Standard's userLogout;
+  Native's window.__oaLogout, which rudolf-launch calls before Oracle's Chromium closes), and each entry is the account's that closed
+  it. Private and Tor windows keep a list of their own that goes with the window; nothing of theirs enters the shared one.
+- **Native and the encrypted Oracle** (a page per window): a closed tab stays in its window's page; every entry also goes to the other
+  Oracle windows' pages on a BroadcastChannel (in memory, inside Oracle's Chromium; a new window asks the others for theirs), so
+  Ctrl+Shift+T in any window reopens what another closed. A closed window comes back through the native desktop (op `untor`: a normal
+  Oracle window with those tabs, as a Tor window's tabs go back) or, with the encrypted Oracle, rudolfd's `orawin/open`.
+- **The keys:** the shell's PAGE_JS and rudolf-webkit's page script (a listener of their own) send `cst` for Ctrl+Shift+T and for
+  Ctrl+Shift+F21, which is how rudolf-display (Standard) and rudolf-native's grab (Native) hand Ctrl+Shift+T over; in Oracle's own
+  window the page reads it (shell26.js turns Ctrl+Shift+F21 back into Ctrl+Shift+T). No change in rudolf-display or rudolf-native.
+- **Left for later (docs/plan-oracle.md item 2's second half):** "Continue where you left off" with sleeping tabs and "Restore your
+  tabs?" after a crash. 1.6.0's ☰ › Reopen my tabs next time does the start; it keeps its addresses in the account's settings in the
+  page's storage (bd95set:ID), which is not in the encrypted Oracle folder: for the owner to decide before it grows.
+- Tests: iso/qt/shell2/oraclosed61_t.js (25), iso/qt/webkit/closed61_ci.py (4: rudolf-webkit), iso/qt/native/oraclosed61_t.sh (14: the
+  real shell on Standard and Native: Ctrl+Shift+T typed inside a website; a closed window from another window); oracle58, private59,
+  orahover61, oraacct60, tor59, bmadd59 unchanged. Workflow oracle-closed-check.yml.
+- **The owner's checks (Vivobook):** on Standard, Native and Lite: close a tab, Ctrl+Shift+T (in Oracle's toolbar and inside a website);
+  three tabs closed and back in order; ☰ › Recently closed…; two Oracle windows, close one, Ctrl+Shift+T in the other; a private
+  window's tabs not offered in a normal window; sign out and in: nothing offered; Standard with "Keep my websites encrypted" on.
 
 **Built (the owner, 2026-11-20): large ZIPs in Downloads, listed and extracted** (desktop/dlzip61.js, iso/sys/rudolfd-dlzip.inc,
 /usr/lib/rudolf/dlzip.sh). "Archive Manager would list what's inside a large ZIP without loading it into memory, and Extract
@@ -141,6 +301,34 @@ Tests: iso/qt/host/dlzip161_t.sh (Info-ZIP and BusyBox), dlzip161api_t.sh (rudol
 workflow dlzip-check.yml. Left: a ZIP in a home folder kept on the disk (1.5.6 accounts with their files on RUDOLFDATA,
 whose large downloads home56.js moves into the home) is not listed yet: it keeps the old message; BusyBox's unzip drops ".."
 and a leading "/" from names itself, so with it such entries land inside the folder rather than refusing the ZIP.
+
+**Built (2026-11-21, branch oracle-reader): item 7, reader mode** (desktop/orareader61.js, libs/readability). A 📖 button after the
+address box when the page has an article; it, F9 (in Oracle or inside a website) or ☰ › Reader mode shows the article alone, in the
+tab's own frame, the address unchanged; ✕ Exit reader or F9 gives the page back as it was (a website's tab is only hidden meanwhile:
+nothing is loaded again, what was typed in it is still there); a link clicked opens in the tab and leaves reader mode.
+- **Whether a page has an article:** when it has loaded the tab checks itself (the shell's READABLE_JS, rudolf-webkit's the same:
+  Readability's isProbablyReaderable rewritten small, run in the page's isolated world) and says so (tabev `readable`); an .HTM
+  file on C: is checked by the desktop. The page is read only when the person asks: op `readhtml` gives its HTML as it is now
+  (at most 4 MB), its address and title.
+- **Reading it:** Mozilla's Readability 0.6.0 (libs/readability, unchanged from npm's @mozilla/readability, Apache License 2.0:
+  credited in About Oracle and in libs/readability/README.md) runs in Oracle's page on an inert copy (DOMParser: nothing in it runs
+  or loads); it is a file beside the page (iso/www/a/, by build19.py), loaded the first time reader mode is used, so the page is
+  not larger for windows that never use it. Its HTML goes through safeHtml (sanitize59.js), forms, fields, styles, audio, video and
+  canvases are left out, links and pictures made whole, then safeHtml again (htmlsinks reviewed).
+- **Showing it:** an Oracle page of its own in the tab's frame (srcdoc, sandboxed: scripts only, no origin of its own) with a
+  Content-Security-Policy: only Oracle's own script (a nonce per page) runs, pictures load from the site as the page loaded them,
+  nothing else (no fonts but the one given, no frames, no forms). Styles: A− A+, Narrow / Medium / Wide, Serif / Sans / OpenDyslexic
+  (the desktop's own font, handed in as data), Light / Sepia / Dark (dark when Rudolf's dark theme is on), kept in the account's
+  settings (S.oreader: the look only, never a page). Read aloud: sentence by sentence with ttsSpeak (tts25.js), the sentence
+  highlighted (CSS highlights), Stop. Print: the article alone through print25.js's dialog (Rudolf OS's print service).
+- Private and Tor windows: available; nothing is kept. A website in a plain frame (no shell): no button (its page cannot be read).
+- Tests: iso/qt/shell2/orareader61_t.js (32: the check, the article, nothing of the page runs (a script, onerror, javascript:, a
+  form), the CSP, styles, read aloud, print, a link, exit, F9, dark, About, a file, a plain frame), iso/qt/webkit/reader61_ci.py (6:
+  rudolf-webkit), iso/qt/native/orareader61_t.sh (12: the real shell on Standard and Native: F9 in a website, the article, back as
+  it was); oracle58, private59, orahover61, oraacct60, tor59, bmadd59, oraclefile60 unchanged. Workflow oracle-reader-check.yml.
+- **The owner's checks (Vivobook):** on Standard, Native and Lite: a long news article (the BBC, The Guardian, a Wikipedia article):
+  📖, the article, A+, Sepia and Dark, OpenDyslexic, Read aloud (the highlight follows), Print to a PDF, a link, ✕ Exit reader and
+  F9; a page with no article (a search page): no 📖.
 
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
 
@@ -199,25 +387,25 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Power | power/set, `main`'s power apply, brightness (backlight writes through the power script) | /usr/lib/rudolf/power (CPU governor, backlight, USB autosuspend under /sys) | power |
 | Power | memory/dropcache, memory settings (zram) | /proc/sys/vm/drop_caches, /usr/lib/rudolf/memory | power |
 | Power | desktop/priority | /usr/lib/rudolf/desktop-priority (cgroup weights of the desktop) | power |
-| Network | `api_wifi` (wifi/*: scan, connect (job), forget, radios, power) | wifi.sh (wpa_supplicant, wpa_cli, iw, rfkill), the root-only request file | network |
-| Network | net/dhcp, net/static, dns, `api_net`'s wpa_cli status | ip link/addr/route, udhcpc, /etc/resolv.conf | network |
-| Network | firewall (GET/POST), remote access's firewall holes, health_tick's firewall status | /usr/lib/rudolf/firewall (nft) | network |
-| Network | hotspot, netplug, mobile/* (rudolfd-mobile.inc: modem, SMS, airplane mode) | hostapd, dnsmasq, ModemManager through /usr/lib/rudolf/hotspot, netplug, modem | network |
+| Network | `api_wifi` (wifi/*: scan, connect (job), forget, radios, power) | wifi.sh (wpa_supplicant, wpa_cli, iw, rfkill), the root-only request file | **network** (moved) |
+| Network | net/dhcp, net/static, dns, `api_net`'s wpa_cli status | ip link/addr/route, udhcpc, /etc/resolv.conf | **network** (moved) |
+| Network | firewall (GET/POST), remote access's firewall holes, health_tick's firewall status | /usr/lib/rudolf/firewall (nft) | **network** (moved) |
+| Network | hotspot, netplug, mobile/* (rudolfd-mobile.inc: modem, SMS, airplane mode) | hostapd, dnsmasq, ModemManager through /usr/lib/rudolf/hotspot, netplug, modem | **network** (moved: hotspot, netplug); modem next |
 | Network | tor (`tor_start`, `tor_kill`), torwin (`torwin_start`) | Tor started as its own user (setuid in the child), its folder made and chowned; Chromium for Tor windows as the desktop's user with a cgroup write | network |
-| Network | bt/* (bluetooth), tb/* (thunderbolt) | /usr/lib/rudolf/bluetooth, thunderbolt (sysfs authorize) | network (devices) |
+| Network | bt/* (bluetooth), tb/* (thunderbolt) | /usr/lib/rudolf/bluetooth, thunderbolt (sysfs authorize) | **devices** (moved) |
 | Network | remote/* (`remote_start`, `remote_stop`) | rudolf-remote started (as root today), its certificate and settings in /persist/etc | network |
-| Network | time sync (`time_tick`, POST time, time/sync) | settimeofday, ntpd, hwclock -w | power (the clock) |
+| Network | time sync (`time_tick`, POST time, time/sync) | settimeofday, ntpd, hwclock -w | **power** (moved, the clock) |
 | Packages | pkg/* (rpk refresh, update, install, remove, install-file: jobs), pkg/exec (`api_pkg_exec`: setuid to the account's user) | rpk on the system's package folders; a Library program run as the account's user | packages |
 | Packages | apps/* (`api_apps`: Flathub, install, update, remove, appextra), catalog | flatpak --system, /usr/lib/rudolf/appextra, RUN/apps chowned | packages |
 | Packages | sysext/* (`api_sysext`) | rpk sysext (signed system extensions mounted over /usr) | packages |
 | Packages | debian/* (`api_debian`, `spawn_debian`: setup, update, wine, deb, run --root), ai/* python and C++ | rudolf-debian (a container: namespaces, mounts) as root | packages (rudolf-debian is already a program: through the helper) |
 | Packages | games/* (games-import), ai/* (`api_ai`: rudolf-ai, the model's folder), print/* (`api_print`: rudolf-print, usbprint) | folders chowned to 1000; rudolf-ai and rudolf-print as root | packages (most need no root: they run as the desktop's user after the drop) |
-| Display | display (POST: /etc/rudolf-display), screen/* (screenctl), layout, pointer | /etc writes, xrandr through screenctl, setxkbmap through layout.sh | display |
+| Display | display (POST: /etc/rudolf-display), screen/* (screenctl), layout, pointer | /etc writes, xrandr through screenctl, setxkbmap through layout.sh | **screen** (moved: display, shell, screen/*, keyboard); pointer is RUN's (the drop) |
 | Display | screenshot (`grab_x`, `grab_fb`), clipboard (`api_clipboard`: su rudolf) | /dev/fb0; su to the desktop's user | none after the drop (video group; rudolfd is that user) |
 | Display | native/*, web/*, shell (POST shell: /etc/rudolf-shell), restart-browser, desktop/engine | the native desktop, Chromium windows started as the desktop's user (su/setuid), pkill of the kiosk browser, /etc and /persist/etc writes | display |
-| Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | display (devices) |
-| Other | processes, proc/end (`api_proc_end`, `proc_tree_end`) | kill(2) of other users' processes (the accounts' apps), /proc of every process | other: **procs** |
-| Other | service (restart sound, Wi-Fi, display), selftest, starts, system (`api_system`: dmesg, modules), log, crash_list, health_tick's dmesg | the self-test, dmesg (kernel.dmesg_restrict), /proc/modules | other: **logs** (dmesg read by a helper, or dmesg_restrict=0 chosen in Part 12) |
+| Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | **sound** (moved) |
+| Other | processes, proc/end (`api_proc_end`, `proc_tree_end`) | kill(2) of other users' processes (the accounts' apps), /proc of every process | other: **procs** (moved) |
+| Other | service (restart sound, Wi-Fi, display), selftest, starts, system (`api_system`: dmesg, modules), log, crash_list, health_tick's dmesg | the self-test, dmesg (kernel.dmesg_restrict), /proc/modules | other: **logs** (moved: dmesg read by a helper); the self-test and service next |
 | Other | devlink/* (`dl_start`, `dl_stop`) | rudolf-devlink started with its own user and environment | other |
 | Other | camera, portal, term (Debian's terminals) | /usr/lib/rudolf/camera, the portal's files chowned, rudolf-debian's terminals | other |
 | Other | fs/* (`api_fs`: the desktop's file browser outside the accounts' folders) | chown of new files to 1000 under the shared folders, and reading any path it allows | none after the drop (rudolfd is 1000), accounts for the accounts' folders |
@@ -392,7 +580,98 @@ rudolfd runs as root today (they keep running as root, from the helper).
   In QEMU (roothelpers-check.yml, run 44874168648): r161_t.py 22/22 with its new 16-21 (the settings, the desktop's
   priority, the cache, the clock set and back, the helper never skipped, a restart through the API that comes back),
   t160_t.py 31/31, t150_t.py 18/18. Sleep, brightness and shut down: for the owner on the Vivobook.
-- Next: network; packages; display; other; then the drop (with the accounts' file service of 11.2).
+- **Network (2026-11-21, branch root-helpers-network):** the network helper (iso/sys/rudolf-network.c,
+  /usr/lib/rudolf/root/network, a small program of its own; rudolfd-rootnet.inc): every wifi.sh action rudolfd ran
+  (`network wifi status|scan|disconnect|reconnect|radios|bands IF`, `country IF CC`, `adapter IF`, `radio IF BSSID
+  on|off`, `band IF 2.4|5|6 on|off`, and `connect|forget IF` with the request on the helper's standard input, at most
+  600 bytes, which the helper writes to the same root-only file wifi.sh reads and removes; the join is still a job),
+  System health's wifiNow and Settings' service restart (reconnect, with no adapter at all, as before), `wifi-link IF` (GET net's network name and signal:
+  wpa_cli status and signal_poll on wpa_supplicant's sockets, root's), `dhcp IF` (ip link up, udhcpc with udhcpc.sh),
+  `static IF ADDR GW DNS` (flush, add, up, the default route; DNS into /etc/resolv.conf, written even when ip failed,
+  as before), `firewall on|off|status`, `firewall remote on|off` (remote access's port), the health log's hourly count,
+  `hotspot status|stop|start` (its request on standard input, at most 200 bytes) and `metered-state`, `metered IF
+  on|off|auto` (netplug; Blitzen's knowledge download asks it too). The helper checks every argument as rudolfd does
+  (an adapter's name: letters, digits and - _ . :, at most 16; a country two capital letters or 00; a radio's address,
+  a band, on or off), and for dhcp and static, which hand the name to ip and udhcpc, also that the kernel has it
+  (/sys/class/net) and that it does not start with "-" (both answered 500 before as now). Its commands are looked for in
+  the system's folders only, with no environment but PATH. GET net's own reads (ip route, ip addr show, /etc/resolv.conf,
+  /sys/class/net) stay in rudolfd: any user may make them. rudolfd keeps each old line beside the call for when the
+  helper does not start (-2), so the network always works. Part 20: the network helper's line in HELPER_CAPS
+  (CAP_NET_ADMIN, CAP_NET_RAW, CAP_NET_BIND_SERVICE for the hotspot's dnsmasq, CAP_DAC_OVERRIDE and
+  CAP_DAC_READ_SEARCH for wpa_supplicant's sockets and saved networks, CAP_FOWNER, CAP_CHOWN, CAP_KILL, CAP_SETUID and
+  CAP_SETGID for dnsmasq's own user); no CAP_SYS_ADMIN, so it gets no_new_privs. The programs it starts and leaves
+  running (wpa_supplicant, hostapd, dnsmasq, udhcpc's renewals) are now rudolf-rootd's descendants instead of
+  rudolfd's, and with the confinement on they keep the network helper's capabilities and system-call list (enough for
+  what they do; for the owner's check on the Vivobook: Wi-Fi joined, the hotspot shared). confinepure.py: no request
+  became narrow (each keeps its old line for when the helper does not start). Found and kept as they were: POST
+  net/static may still be asked for the loopback adapter (lo); the request files' names (RUN/wifi.req,
+  RUN/hotspot.req) are the same as before, now written by the helper as root. Tests: roothelpers161_t.sh N1-N6 (the
+  arguments, the requests on standard input only, stand-ins for wifi.sh, the firewall, the hotspot, netplug, ip, udhcpc
+  and wpa_cli, so a host test never touches this computer's network) and check 25 (every network request through the
+  helper, with and without rudolf-rootd, and as rudolfd doing it itself: the same answers and the same calls, byte for
+  byte); in QEMU r161_t.py 22-26 (the firewall off and on with nft, a fixed address, DHCP with no server, Wi-Fi without
+  an adapter, the helper never skipped). Not moved yet: the modem (mobile/*), Tor, remote access's own start
+  (rudolf-remote), Bluetooth and Thunderbolt (the devices: next).
+- **Devices (2026-11-21, branch root-helpers-devices, after root-helpers-network):** the devices helper
+  (iso/sys/rudolf-devices.c, /usr/lib/rudolf/root/devices; rudolfd-rootdev.inc, which asks it the network's way):
+  `devices bt status|on|off|visible`, `bt scan SECONDS` (3-60), `bt answer yes|no`, `bt pair|connect|disconnect|remove
+  MAC` (capital hex digits, as rudolfd's bt_mac_ok), `devices tb json`, `tb allow|deny ID`, `tb forget UID` (as
+  tb_arg_ok); the scripts' start-up actions (bluetooth start, stop, agent-run, boot; thunderbolt plug, boot) are refused:
+  only rudolf-init and mdev run them, as root. GET bt, every POST bt/..., GET tb, POST tb/... and System health's
+  Thunderbolt line go through it; each keeps its old command for when the helper does not start. Part 20: its line in
+  HELPER_CAPS (CAP_NET_ADMIN, CAP_NET_RAW, CAP_NET_BIND_SERVICE for bluetoothd and its D-Bus when "on" starts them
+  again, the DAC capabilities, CAP_FOWNER and CAP_CHOWN for the pairings in /persist/bluetooth, CAP_KILL, CAP_SETUID and
+  CAP_SETGID for headphones set up as the desktop's user); no CAP_SYS_ADMIN, so no_new_privs. For the owner (with the
+  confinement on only): whether the kernel asks more than the file's mode for a Thunderbolt device's "authorized" (the
+  test computers have no Thunderbolt). Tests: roothelpers161_t.sh D1-D2 and check 26 (in check 25's comparison: the same
+  answers and calls with and without rudolf-rootd and as rudolfd itself); r161_t.py 27-28 in QEMU (no adapter, no bus).
+- **Other, part 1: Task Manager's End process and the kernel's messages (2026-11-21, branch root-helpers-procs, after
+  root-helpers-devices):** two small helpers (rudolfd-rootother.inc). The procs helper (iso/sys/rudolf-procs.c,
+  /usr/lib/rudolf/root/procs): `procs end term|kill` (one process) and `procs tree term|kill` (End process tree, in
+  rudolfd's order: all stopped, then ended from the last, each let go again), the numbers on standard input (a tree
+  can be longer than an argument list), one result a line (0, or the error's number: the API's 500 said with it as
+  before). rudolfd still lists the processes and decides; the helper checks each again as Task Manager marks what must
+  keep running (pid 1, the kernel's, rudolfd, rudolf-display, X, the session, rudolf-launch, the desktop's own browser,
+  and rudolf-rootd and the helper itself) and refuses the whole list if one is there (Security). The logs helper
+  (iso/sys/rudolf-logs.c): `logs dmesg`, `logs dmesg-raw` (-r), nothing else; rudolfd keeps every one of its pipelines
+  (the crashes, a job's last crash line, Wi-Fi's kernel lines, System health's messages and the graphics' firmware,
+  GET log) with the messages on their standard input instead of dmesg's own. Part 20: HELPER_CAPS has "procs"
+  (CAP_KILL only) and "logs" (CAP_SYSLOG only), both with no_new_privs. Each keeps its old way for when its helper does
+  not start. Tests: roothelpers161_t.sh O1-O3 (the test's own processes only, a stand-in dmesg) and check 27 (in check
+  25's comparison: End process, a tree of five, rudolfd itself 403, a process gone 404, the log, the crashes, a job's
+  last crash line; the same with and without rudolf-rootd and as rudolfd itself); proctree57_t.sh unchanged;
+  r161_t.py 29-31 in QEMU.
+- **Display and sound (2026-11-21, branch root-helpers-display, after root-helpers-procs):** two helpers
+  (rudolfd-rootscreen.inc). The screen helper (iso/sys/rudolf-screen.c, /usr/lib/rudolf/root/screen; not "display":
+  sys/rudolf-display.c is the window manager): `screen mode soft|games|full` and `screen shell on|off` (/etc's file, and
+  /persist/etc's on an installed Rudolf OS, which the helper reads itself from /run/rudolf/persistent), `screen ctl
+  status|keep|revert`, `ctl set RES FPS` (screenctl), `screen keyboard LAYOUT [VARIANT]` (setxkbmap on :0),
+  `screen restart-display` (System health's restart of rudolf-display) and `screen restart-browser` (the desktop's own
+  browser, either engine: the proxy, the sound card and POST restart-browser). The sound helper
+  (iso/sys/rudolf-sound.c): `sound volume get|up|down|mute|set N|muted 0|1`, `sound playing`, `sound mic
+  users|get|muted 0|1` (hotkey), `sound echo on|off|status`, `sound mics`, `sound mic-default NAME`, `sound default N`,
+  `sound restart` (the sound script; echo, the microphone chosen and the restart still into RUN/sound.log), `sound card
+  N` (/etc/asound.conf, and /persist/etc's on an installed one). Part 20: HELPER_CAPS "screen" (the DAC capabilities,
+  CAP_FOWNER, CAP_KILL) and "sound" (CAP_SETUID and CAP_SETGID for su to the desktop's user, CAP_KILL, the DAC
+  capabilities, CAP_FOWNER, CAP_CHOWN), both with no_new_privs. Not moved: GET display's and the shell's reads (any
+  user's), pointer (RUN/pointer, rudolfd's own: the drop), desktop/engine (/persist/etc's files: the drop), the native
+  desktop's and web windows' starts as the desktop's user (none needed after the drop: rudolfd is that user; Tor
+  windows' cgroup write with Tor). Found and kept as it was: GET audio/mics never answers (a "use POST" for every GET
+  further up api() comes first; Settings' microphone test falls back to the browser's list): for the owner. Tests:
+  roothelpers161_t.sh S1-S2 and check 28 (in check 25's comparison: every display and sound request with and without
+  rudolf-rootd and as rudolfd itself, the files written in /etc and /persist/etc too); r161_t.py 32-33 in QEMU.
+- **Where 11.1 stands (2026-11-21, after the display and sound branch; PRs #561-#564, stacked in that order):** moved:
+  drives, updates (but the EFI boot entries), accounts, power and the clock, network (Wi-Fi, addresses, the firewall,
+  the hotspot, metered), devices (Bluetooth, Thunderbolt), procs, logs, screen, sound. Stay in rudolfd by design:
+  `addpart` (rudolfd --addpart is run by root's own scripts, not a request), every read any user may make (GET net's
+  ip and /sys reads, /proc/asound, the display's and shell's files), and what is rudolfd's own (RUN's files, pointer,
+  /persist/etc's settings such as desktop/engine and vault.json, the health log): those become the rudolf user's at
+  the drop instead. Not moved yet (each still run as root by rudolfd, with no change from 1.6.0): the modem
+  (mobile/*: its PIN and SMS request files), Tor and remote access (long-running services started as their own user
+  or as root), packages (rpk, Flatpak's system parts, system extensions, rudolf-debian, Blitzen's and printing's
+  folders), the EFI variables (bootmenu, secureboot), dl_acct_dir, and the rest of other (the self-test, devlink, the
+  camera, the portal's files, Debian's terminals); then the drop with the accounts' file service of 11.2.
+- Next: the modem, Tor and remote access; packages; the EFI variables; the rest of other; then the drop.
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 **Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**

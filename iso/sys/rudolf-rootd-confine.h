@@ -17,6 +17,32 @@ static const struct { const char *name; uint64_t keep; } HELPER_CAPS[] = {
 	/* power and the clock (1.6.1 Part 11): restart and shut down (reboot(2), umount -a -r), the clock (settimeofday,
 	   ntpd's adjtimex, hwclock), the wake alarm, /sys's power files and the backlight, Chromium stopped at the end */
 	{ "power", CB(CAP_SYS_BOOT) | CB(CAP_SYS_TIME) | CB(CAP_SYS_ADMIN) | CB(CAP_DAC_OVERRIDE) | CB(CAP_KILL) | CB(CAP_WAKE_ALARM) },
+	/* the network (1.6.1 Part 11): addresses, routes, the firewall's rules and the hotspot's NAT (ip, udhcpc, nft:
+	   CAP_NET_ADMIN, CAP_NET_RAW for DHCP's raw socket, CAP_NET_BIND_SERVICE for dnsmasq's ports 53 and 67), Wi-Fi's
+	   control sockets and saved networks (wpa_supplicant, root's 0600: CAP_DAC_OVERRIDE), the radios' rfkill and the
+	   drivers' power saving under /sys, the hotspot's and wpa_supplicant's own processes stopped (CAP_KILL), its
+	   dnsmasq run as its own user (CAP_SETUID, CAP_SETGID); no CAP_SYS_ADMIN, so no mount and no_new_privs */
+	{ "network", CB(CAP_NET_ADMIN) | CB(CAP_NET_RAW) | CB(CAP_NET_BIND_SERVICE) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH)
+	  | CB(CAP_FOWNER) | CB(CAP_CHOWN) | CB(CAP_KILL) | CB(CAP_SETUID) | CB(CAP_SETGID) },
+	/* Bluetooth and Thunderbolt (1.6.1 Part 11): BlueZ asked on the system D-Bus (bluetoothctl), bluetoothd, its
+	   system D-Bus and bluealsa started again when they are not running (CAP_NET_ADMIN and CAP_NET_RAW for the
+	   adapter's sockets, CAP_NET_BIND_SERVICE), rfkill under /sys, the pairings in /persist/bluetooth (root's 0700:
+	   CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH, CAP_FOWNER, CAP_CHOWN), the old ones stopped (CAP_KILL), headphones set up in
+	   PulseAudio as the desktop's user and D-Bus's own user (CAP_SETUID, CAP_SETGID); a Thunderbolt device's
+	   "authorized" under /sys (root's file); no CAP_SYS_ADMIN, so no mount and no_new_privs */
+	{ "devices", CB(CAP_NET_ADMIN) | CB(CAP_NET_RAW) | CB(CAP_NET_BIND_SERVICE) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH)
+	  | CB(CAP_FOWNER) | CB(CAP_CHOWN) | CB(CAP_KILL) | CB(CAP_SETUID) | CB(CAP_SETGID) },
+	/* Task Manager's End process and End process tree (1.6.1 Part 11): signals to any user's processes, nothing else */
+	{ "procs", CB(CAP_KILL) },
+	/* the kernel's messages (1.6.1 Part 11): dmesg where kernel.dmesg_restrict is 1, nothing else */
+	{ "logs", CB(CAP_SYSLOG) },
+	/* the display's settings (1.6.1 Part 11): /etc/rudolf-display, /etc/rudolf-shell and their /persist/etc copies,
+	   screenctl (X as root, its settings kept), setxkbmap, rudolf-display and the desktop's browser stopped (CAP_KILL) */
+	{ "screen", CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_KILL) },
+	/* sound (1.6.1 Part 11): hotkey and the sound script reach the desktop user's sound server as that user (su:
+	   CAP_SETUID, CAP_SETGID), PulseAudio stopped and started again (CAP_KILL), /etc/asound.conf and the user's
+	   runtime folder (the DAC capabilities, CAP_FOWNER, CAP_CHOWN) */
+	{ "sound", CB(CAP_SETUID) | CB(CAP_SETGID) | CB(CAP_KILL) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_CHOWN) },
 	{ NULL, 0 }
 };
 /* the system calls of CF_HELPER_DENY a helper may still make, by name: the power helper restarts and sets the clock */
