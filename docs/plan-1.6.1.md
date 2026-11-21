@@ -198,6 +198,13 @@ Lite: rudolf-webkit's `mouse-target-changed` (WebKit's own hit test); Oracle's o
 window. The status line goes back to what it said, unless something new came meanwhile. Not possible to know before a
 click: where a script-only button (no link, no form) will go. Test orahover61_t.js; workflow oracle-hover-check.yml.
 
+**Built (the owner, 2026-11-20): the Downloads page's progress bar and Remove** (desktop/dlrm61.js). A file arriving: how
+much so far and how fast, and with a size known the percentage and time left (Chromium's own downloads do not tell their
+size: the bar then moves without a percentage); being checked: a bar. Remove beside Open: in Downloads → the Trash;
+otherwise "File removed from list" with "⚡ Ask Blitzen" (the notification's own Blitzen button, kept in the centre; drawn
+by rudolf-native too). Test dlpage61_t.js; workflow downloads-page-check.yml. Left: the size of Chromium's downloads
+(rudolf-webkit's WebKitDownload knows it: Lite could send it).
+
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
 
 **Shipped in 1.6.0 (owner, 2026-11-17: "I do want to keep 446 and 447 in 1.6.0"):** rudolf-rootd with the drives' and
@@ -906,7 +913,8 @@ authenticator codes were built there (desktop/otp60.js, rudolfd's `desktop/secon
   stand-in rudolfd: the key asked at once after the password, a wrong key, Enter asking again); `iso/qt/sb/fido161_t.py` (QEMU, the newest beta with this tree's page, rudolfd and libfido2:
   the keys as real HID devices in the guest through uhid, `iso/qt/vfido_uhid.c`, their reports over a serial port to
   vfido.py on the host; the real Settings and sign-in screen, the lock screen, rudolfd's native sign-in, and the drive
-  image read on the host afterwards). **Not covered yet:** Native's and Lite's own screens with a key in QEMU (Native's
+  image read on the host afterwards; 2026-11-21, after #522: everything passes in CI but item 3's read of rudolfd's copy of the
+  page's storage, asked by wget, which rudolfd does not serve: the account is checked in the page now, and rudolfd's copy on the disk image, 9a). **Not covered yet:** Native's and Lite's own screens with a key in QEMU (Native's
   shows the request's message under the password field, not the page's dialog: a difference to fix in Native), a recovery
   code, the elevation prompts (an administrator's password only), "Encrypt my data"'s copy of its key (password only).
 

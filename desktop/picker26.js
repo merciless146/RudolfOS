@@ -70,6 +70,12 @@ function rfPick(input) {
     if (!ok) { done = true; o.remove(); input.dispatchEvent(new Event('cancel', {bubbles: false})); return }
     const paths = [...sel]; if (!paths.length) return;
     await rfMaxNow(); if (done) return;
+    /* 1.6.1: an input that takes some files by their place on the disk (data-rf-real: a pattern of names; Emu's discs and
+       ZIPs, which are too large to read into the page) gets their paths in an "rfreal" event instead, as does any file
+       larger than RF_MAX it chose; nothing is read */
+    if (input.dataset.rfReal) { let re = null; try { re = new RegExp(input.dataset.rfReal, 'i') } catch (e) {}
+      if (re && paths.some(p => re.test(p) || ((items.find(i => cur + '/' + i.name == p) || {}).size > RF_MAX))) {
+        done = true; RF_LAST = cur; o.remove(); input.dispatchEvent(new CustomEvent('rfreal', {detail: {paths}})); return } }
     const big = paths.map(p => items.find(i => cur + '/' + i.name == p)).filter(i => i && i.size > RF_MAX);
     if (big.length) { q('.rfmsg').textContent = big[0].name + ' is larger than ' + rfSize(RF_MAX) + ', the most this computer\'s memory lets an app take in at once; copy it in Files instead.'; return }
     done = true; q('.rfok').disabled = true; q('.rfmsg').textContent = 'Reading…';
