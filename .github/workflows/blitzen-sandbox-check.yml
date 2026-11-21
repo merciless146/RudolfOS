@@ -1,0 +1,48 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 27): Blitzen's code runs, links and actions sandboxed. Run by a push that changes its parts. Nothing is
+# published.
+#   page, Standard and Native: iso/qt/host/blzbox161_t.sh (the desktop page in the newest beta's Chromium, and in rudolf-native's app
+#         window under Xvfb, against the stand-in rudolfd: every exploit tried and failing, ordinary code still running, Run and check
+#         still fixing code, links, Developer mode's Allow), and Blitzen's earlier page tests
+#   host: iso/qt/host/blzlearn161_t.sh ("Learn from what I do" in the account's encrypted folder, on an ext4 drive with the encrypt
+#         feature; the model engine's arguments), iso/qt/host/blzdev161_t.sh (rudolfd's dl-send: no secret, one at a time),
+#         iso/qt/host/aiindex60_t.sh
+name: Blitzen sandbox check
+on:
+  push:
+    paths: ['desktop/blzbox61.js', 'desktop/blitzen26.js', 'desktop/blitzknow60.js', 'desktop/blzdev60.js', 'iso/sys/rudolf-know.c', 'iso/sys/rudolfd-know.inc',
+      'iso/sys/rudolfd-dev.inc', 'iso/sys/rudolf-ai.c', 'iso/qt/host/blzbox161_t.sh', 'iso/qt/host/blzlearn161_t.sh', 'iso/qt/host/blzdev161_t.sh',
+      'iso/qt/host/fixtures/blzbox161_inject.js', 'iso/qt/host/fixtures/blzbox161_std.js', 'iso/qt/host/fixtures/knowapi.c', '.github/workflows/blitzen-sandbox-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libssl-dev libcurl4 python3-cryptography squashfs-tools zlib1g-dev xdotool xvfb libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 glib-networking >/dev/null
+          mkdir -p pw && cd pw && npm init -y >/dev/null && npm install -s playwright-core@1.56.1 >/dev/null && ln -s playwright-core node_modules/playwright
+          sudo npx playwright-core install-deps chromium >/dev/null 2>&1 || true
+      - name: The newest beta's Chromium
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel && gh release download "r$S" -D rel -p 'chromium.sfs'
+          sh iso/qt/host/betachrome.sh rel/chromium.sfs chr
+      - name: Host (as root: an encrypted ext4 drive; rudolf-dev as nobody)
+        run: |
+          sudo sh iso/qt/host/blzlearn161_t.sh | tee host.txt; sudo sh iso/qt/host/blzdev161_t.sh | tee -a host.txt; sh iso/qt/host/aiindex60_t.sh | tee -a host.txt
+          [ "$(grep -c ' passed$' host.txt)" = 3 ] && ! grep -q '^FAIL' host.txt
+      - name: The page, on Standard and on Native's app window (this tree's page)
+        run: |
+          NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules CHROME=/opt/chromium/chrome sh iso/qt/host/blzbox161_t.sh | tee page.txt
+          cd iso/qt/shell2; for t in blz_t.js blitzknow60_t.js blzdev60_t.js blitzdiag57_t.js bzwhy57_t.js; do echo "== $t" | tee -a $GITHUB_WORKSPACE/page.txt
+            NODE_PATH=$GITHUB_WORKSPACE/pw/node_modules node $t /opt/chromium/chrome 2>&1 | tee -a $GITHUB_WORKSPACE/page.txt; done
+          [ "$(grep -c ' passed$' $GITHUB_WORKSPACE/page.txt)" = 6 ] && ! grep -q '^FAIL\|^SKIP' $GITHUB_WORKSPACE/page.txt
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: blitzen-sandbox, retention-days: 7, path: "host.txt\npage.txt"}

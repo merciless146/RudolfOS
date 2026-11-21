@@ -27,6 +27,7 @@ const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); con
     if (u == '/api/ai/know/activity') { if (M.learn) M.activity.push(body); return J({ok: true, message: M.learn ? 'kept' : 'not kept'}) }
     if (u == '/api/ai/know/status') return J({ok: true, source: true, serial: '2026111812', source_bytes: 12e6, logs: true, logs_bytes: 3e5, built: 1795000000, account: true, learn: M.learn});
     if (u == '/api/ai/know/list') return J({ok: true, items: M.list});
+    if (u == '/api/ai/know/notes') { if (Q.get('set') == '1') M.notes = body.split('\n').filter(Boolean); return J({ok: true, items: M.notes || []}) }   // (1.6.1 Part 27: in the account's folder)
     if (u == '/api/ai/know/forget') { M.forget.push(qs); return J({ok: true, message: 'forgotten'}) }
     if (u.startsWith('/api/')) return J({ok: true});
     const f = path.join(WWW, path.normalize(u)); if (!f.startsWith(WWW) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { s.writeHead(404); return s.end() }
@@ -57,6 +58,7 @@ let p; const until = (f, t) => p.waitForFunction(f, null, {timeout: t || 15000})
   // "Remember that ..."
   await ask('Remember that I use the Native desktop', 2); await until("document.querySelectorAll('.blzsrc').length>=2");
   ok('4. "Remember that ...": a note kept for this account', JSON.stringify(await q("blzkNotes()")) == '["I use the Native desktop"]' && /Kept as a note: I use the Native desktop/.test(await q("[...document.querySelectorAll('.blzsrc')].at(-1).textContent")));
+  ok('...1.6.1 (Part 27): kept in the account\'s own folder (rudolfd), not in the page\'s storage', JSON.stringify(M.notes) == '["I use the Native desktop"]' && await q("Object.keys(localStorage).filter(k=>k.startsWith('bd95blzmem')).length") == 0, [M.notes]);
   ok('...and sent with the question', /Notes the person asked you to remember[^\n]*\n- I use the Native desktop/.test(M.asked[1].messages[0].content), M.asked[1].messages[0].content.slice(0, 400));
   // the web, asked for
   await q("(()=>{const w=document.querySelector('.blzweb');w.checked=true;w.onchange();return 1})()");

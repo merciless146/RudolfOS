@@ -76,6 +76,42 @@ static int dev_token(const char *acct, const char *key, char *tok, size_t n)
 	char p[300]; snprintf(p, sizeof p, DEV_DIR "/%s.%s.token", acct, key); char *t = slurp(p, NULL); if (!t) return 0; t[strcspn(t, "\r\n")] = 0; snprintf(tok, n, "%s", t); explicit_bzero(t, strlen(t)); free(t);
 	return *tok != 0;
 }
+/* 1.6.1 (docs/plan-1.6.1.md Part 27 item 5): a command for the test computer that carries a password, a token or a key is never sent
+   (the same rules as the page's blzdSecret, blzbox61.js; Part 26's detector replaces both when it lands), and one command waits at a
+   time: the one sent last, until its result is read or nobody has asked about it for 2 minutes (DEV_WAITF: its id; its time, the
+   last time it was asked about). Each request is a process of its own, so this is a file. */
+#ifndef DEV_WAITF
+#define DEV_WAITF RUN "/dev-waiting"
+#endif
+static int dev_ci_has(const char *s, size_t n, const char *w) { size_t k = strlen(w); for (size_t i = 0; i + k <= n; i++) if (!strncasecmp(s + i, w, k)) return 1; return 0; }
+static const char *dev_secretish(const char *s, size_t n)
+{
+	if (!s) return NULL;
+	if (dev_ci_has(s, n, "-----begin ")) return "a private key or certificate";
+	static const char *const P[] = { "ghp_", "gho_", "ghs_", "ghu_", "ghr_", "github_pat_", "glpat-", "xoxb-", "xoxp-", "xoxa-", NULL };
+	for (size_t i = 0; i < n; i++) {
+		for (int k = 0; P[k]; k++) { size_t L = strlen(P[k]); if (i + L < n && !strncmp(s + i, P[k], L) && (i == 0 || !isalnum((unsigned char)s[i - 1]))) {
+			size_t j = i + L; while (j < n && (isalnum((unsigned char)s[j]) || s[j] == '_' || s[j] == '-')) j++; if (j - i - L >= 20) return "a token"; } }
+		if (i + 20 <= n && !strncmp(s + i, "AKIA", 4)) { size_t j = i + 4; while (j < n && (isupper((unsigned char)s[j]) || isdigit((unsigned char)s[j]))) j++; if (j - i == 20) return "a token"; }
+	}
+	static const char *const K[] = { "password", "passwd", "passphrase", "pwd", "secret", "token", "api_key", "api-key", "apikey", "private_key", "client_secret", NULL };
+	for (size_t i = 0; i < n; i++) for (int k = 0; K[k]; k++) { size_t L = strlen(K[k]); if (i + L >= n || strncasecmp(s + i, K[k], L)) continue;
+		size_t j = i + L; while (j < n && s[j] == ' ') j++; if (j >= n || (s[j] != '=' && s[j] != ':')) continue; j++;
+		while (j < n && (s[j] == ' ' || s[j] == '"' || s[j] == '\'' || s[j] == '\\')) j++; size_t v = j; while (j < n && !isspace((unsigned char)s[j]) && s[j] != '"' && s[j] != '\'' && s[j] != '\\') j++;
+		if (j - v >= 4) return "a password, token or key"; }
+	if (dev_ci_has(s, n, "authorization:") || dev_ci_has(s, n, "bearer ")) return "a password, token or key";
+	for (size_t i = 0; i < n; ) { size_t j = i; int lo = 0, up = 0, dg = 0;
+		while (j < n && (isalnum((unsigned char)s[j]) || s[j] == '+' || s[j] == '/' || s[j] == '=' || s[j] == '_' || s[j] == '-')) { lo |= !!islower((unsigned char)s[j]); up |= !!isupper((unsigned char)s[j]); dg |= !!isdigit((unsigned char)s[j]); j++; }
+		if (j - i >= 32 && lo && up && dg) return "what looks like a key or a token (a long run of letters and digits)";
+		i = j > i ? j : i + 1; }
+	return NULL;
+}
+static int dev_waiting(char *id, size_t n)
+{
+	*id = 0; struct stat st; char *w = slurp(DEV_WAITF, NULL); if (!w) return 0; trim(w);
+	int b = *w && strlen(w) < n && !stat(DEV_WAITF, &st) && time(NULL) - st.st_mtime < 120; if (b) snprintf(id, n, "%s", w); free(w);
+	if (!b) unlink(DEV_WAITF); return b;
+}
 static void dev_reply(struct req *r, char *o, int st, const char *err, int kind)
 {
 	/* kind 0: rudolf-dev's JSON as "data"; 1: text as "text"; 2: bytes as "base64" */
@@ -149,7 +185,11 @@ static void api_ai_dev(struct req *r, const char *what)
 	else if (!strcmp(what, "dispatch") && (q1 = qparam(r->query, "wf"))) { a[3] = q1; a[4] = qparam(r->query, "ref") ? qparam(r->query, "ref") : base; }
 	else if (!strcmp(what, "push") && (q1 = qparam(r->query, "branch")) && qparam(r->query, "message")) { a[3] = base; a[4] = q1; a[5] = qparam(r->query, "message"); secs = 300; }
 	else if (!strcmp(what, "pr") && (q1 = qparam(r->query, "branch")) && qparam(r->query, "title")) { a[3] = q1; a[4] = base; a[5] = qparam(r->query, "title"); }
-	else if (!strcmp(what, "dl-send") && r->body && r->blen && r->blen < 60000) ;
+	else if (!strcmp(what, "dl-send") && r->body && r->blen && r->blen < 60000) {
+		const char *sec = dev_secretish(r->body, r->blen); char w[32];
+		if (sec) { explicit_bzero(in.b, in.n); free(in.b); char m[200]; snprintf(m, sizeof m, "not sent: the command carries %s (Blitzen never sends passwords, tokens or keys)", sec); reply_err(r->fd, 400, m); return; }
+		if (dev_waiting(w, sizeof w)) { explicit_bzero(in.b, in.n); free(in.b); char m[160]; snprintf(m, sizeof m, "one command at a time: %s is still waiting for the test computer", w); reply_err(r->fd, 429, m); return; }
+	}
 	else if (!strcmp(what, "dl-wait") && (q1 = qparam(r->query, "id"))) { a[3] = q1; snprintf(n1, sizeof n1, "%d", qparam(r->query, "secs") && atoi(qparam(r->query, "secs")) > 0 && atoi(qparam(r->query, "secs")) <= 50 ? atoi(qparam(r->query, "secs")) : 25); a[4] = n1; }
 	else if (!strcmp(what, "dl-file") && (q1 = qparam(r->query, "id")) && qparam(r->query, "name")) { a[3] = q1; a[4] = qparam(r->query, "name"); kind = 2; }
 	else { explicit_bzero(in.b, in.n); free(in.b); reply_err(r->fd, 400, "no such request, or something it needs is missing"); return; }
@@ -159,6 +199,8 @@ static void api_ai_dev(struct req *r, const char *what)
 		if (!strcmp(what, "dl-send")) for (size_t i = at; i + 1 < in.n; i++) if (in.b[i] == '\n' || in.b[i] == '\r') in.b[i] = ' ';
 	}
 	char *o = dev_run(a, in.b, in.n, secs, 1, &st, err, sizeof err); explicit_bzero(in.b, in.n); free(in.b);
+	if (st == 0 && o && !strcmp(what, "dl-send")) { char *p = strstr(o, "\"id\":\""); if (p) { p += 6; size_t L = strspn(p, "0123456789"); if (L && L < 20) { char l[32]; snprintf(l, sizeof l, "%.*s\n", (int)L, p); write_str(DEV_WAITF, l); } } }
+	if (st == 0 && o && !strcmp(what, "dl-wait")) { char w[32]; if (dev_waiting(w, sizeof w) && !strcmp(w, a[3])) { if (strstr(o, "\"result\"")) unlink(DEV_WAITF); else { char l[40]; snprintf(l, sizeof l, "%s\n", w); write_str(DEV_WAITF, l); } } }   /* (asked about: still waiting) */
 	if (st == 0 && (!strcmp(what, "push") || !strcmp(what, "pr") || !strcmp(what, "dispatch") || !strcmp(what, "dl-send")))
 		health_add("account", !strcmp(what, "push") ? "Blitzen pushed a new branch to your repository (you allowed it)" : !strcmp(what, "pr") ? "Blitzen opened a pull request on your repository (you allowed it)"
 			: !strcmp(what, "dispatch") ? "Blitzen started a workflow of your repository (you allowed it)" : "Blitzen sent a command to your development link (you allowed it)");

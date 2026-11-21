@@ -27,22 +27,23 @@ ok "3. a question finds its log line (wm_minimise failed: by the parts of a name
 o=$($K search "the the and of"); ok "4. a question of only small words finds nothing" "$([ "$o" = "[]" ] && echo 1)" "$o"
 o=$($K search "saving a page in oracle"); ok "5. the most fitting piece first" "$(printf "%s\n" "$o" | js 'print(d[0]["src"])' | grep -q session.log && echo 1)" "$o"
 
-# ---- an account's activity
-printf 'launch\tOpened Oracle\n' | $K activity --acct uA1; printf 'settings\tChanged the wallpaper to Aurora\n' | $K activity --acct uA1
-printf 'error\tSteam: could not start (exit code 1)\n' | $K activity --acct uA1
-o=$($K list --acct uA1); ok "6. kept, and listed newest first" "$(printf "%s\n" "$o" | js 'print(len(d), d[0]["kind"], d[0]["item"], d[2]["text"])' | grep -q '^3 error 3 Opened Oracle$' && echo 1)" "$o"
-o=$(printf 'settings\tWi-Fi password set to hunter22\n' | $K activity --acct uA1); ok "7. a line with a password is not kept" "$(echo "$o" | grep -q 'not kept' && ! grep -q hunter22 $W/kd/acct/uA1.log && echo 1)" "$o"
-o=$($K search --acct uA1 "why won't steam start"); ok "8. the account's own activity is searched" "$(printf "%s\n" "$o" | js 'print(d[0]["kind"], d[0]["text"])' | grep -q '^activity Steam' && echo 1)" "$o"
-o=$($K search --acct uB2 "why won't steam start"); ok "9. not another account's" "$(! echo "$o" | grep -q Steam && echo 1)" "$o"
+# ---- an account's activity (1.6.1 Part 27: in the account's own folder, given by rudolfd while it is open: --home)
+mkdir -p $W/hA $W/hB $W/hC
+printf 'launch\tOpened Oracle\n' | $K activity --home $W/hA; printf 'settings\tChanged the wallpaper to Aurora\n' | $K activity --home $W/hA
+printf 'error\tSteam: could not start (exit code 1)\n' | $K activity --home $W/hA
+o=$($K list --home $W/hA); ok "6. kept, and listed newest first" "$(printf "%s\n" "$o" | js 'print(len(d), d[0]["kind"], d[0]["item"], d[2]["text"])' | grep -q '^3 error 3 Opened Oracle$' && echo 1)" "$o"
+o=$(printf 'settings\tWi-Fi password set to hunter22\n' | $K activity --home $W/hA); ok "7. a line with a password is not kept" "$(echo "$o" | grep -q 'not kept' && ! grep -q hunter22 $W/hA/.rudolf/blitzen/activity.log && echo 1)" "$o"
+o=$($K search --home $W/hA "why won't steam start"); ok "8. the account's own activity is searched" "$(printf "%s\n" "$o" | js 'print(d[0]["kind"], d[0]["text"])' | grep -q '^activity Steam' && echo 1)" "$o"
+o=$($K search --home $W/hB "why won't steam start"); ok "9. not another account's" "$(! echo "$o" | grep -q Steam && echo 1)" "$o"
 o=$($K search "why won't steam start"); ok "10. nor without an account" "$(! echo "$o" | grep -q Steam && echo 1)" "$o"
-o=$(printf 'x\ty\n' | $K activity --acct ../uA1 2>&1); ok "11. an account name that is a path is refused" "$(echo "$o" | grep -q 'which account' && [ ! -e $W/kd/uA1.log ] && echo 1)" "$o"
-$K forget --acct uA1 --item 2 >/dev/null; o=$($K list --acct uA1); ok "12. forget one thing" "$(printf "%s\n" "$o" | js 'print(len(d), " ".join(x["kind"] for x in d))' | grep -q '^2 error launch$' && echo 1)" "$o"
-$K forget --acct uA1 --day "$(date +%Y-%m-%d)" >/dev/null; o=$($K list --acct uA1); ok "13. forget a day" "$([ "$o" = "[]" ] && echo 1)" "$o"
-printf 'launch\tOpened Notey\n' | $K activity --acct uA1; $K forget --acct uA1 --all >/dev/null; ok "14. forget everything" "$([ ! -e $W/kd/acct/uA1.log ] && echo 1)" ""
-i=0; while [ $i -lt 3000 ]; do echo "$((1700000000 + i))	launch	Opened an app with a long name number $i ............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................"; i=$((i+1)); done > $W/kd/acct/uC3.log
-printf 'launch\tOpened the newest\n' | $K activity --acct uC3; sz=$(wc -c < $W/kd/acct/uC3.log)
-ok "15. at most 2 MB: the oldest dropped, the newest kept" "$([ $sz -lt 2000000 ] && tail -1 $W/kd/acct/uC3.log | grep -q 'Opened the newest' && ! head -1 $W/kd/acct/uC3.log | grep -q 'number 0 ' && echo 1)" "$sz"
-ok "16. kept for root alone (0600 files, 0700 folders)" "$([ "$(stat -c %a $W/kd/acct/uC3.log)" = 600 ] && [ "$(stat -c %a $W/kd)" = 700 ] && echo 1)" "$(stat -c %a $W/kd/acct/uC3.log $W/kd)"
+o=$(printf 'x\ty\n' | $K activity --home hA 2>&1); o2=$(printf 'x\ty\n' | $K activity 2>&1); ok "11. a folder that is not one (relative, none) is refused" "$(echo "$o" | grep -q 'not an account' && echo "$o2" | grep -q "which account's folder" && echo 1)" "$o $o2"
+$K forget --home $W/hA --item 2 >/dev/null; o=$($K list --home $W/hA); ok "12. forget one thing" "$(printf "%s\n" "$o" | js 'print(len(d), " ".join(x["kind"] for x in d))' | grep -q '^2 error launch$' && echo 1)" "$o"
+$K forget --home $W/hA --day "$(date +%Y-%m-%d)" >/dev/null; o=$($K list --home $W/hA); ok "13. forget a day" "$([ "$o" = "[]" ] && echo 1)" "$o"
+printf 'launch\tOpened Notey\n' | $K activity --home $W/hA; $K forget --home $W/hA --all >/dev/null; ok "14. forget everything" "$([ ! -e $W/hA/.rudolf/blitzen/activity.log ] && echo 1)" ""
+i=0; while [ $i -lt 3000 ]; do echo "$((1700000000 + i))	launch	Opened an app with a long name number $i ............................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................................"; i=$((i+1)); done > $W/hC/.rudolf/blitzen/activity.log
+printf 'launch\tOpened the newest\n' | $K activity --home $W/hC; sz=$(wc -c < $W/hC/.rudolf/blitzen/activity.log)
+ok "15. at most 2 MB: the oldest dropped, the newest kept" "$([ $sz -lt 2000000 ] && tail -1 $W/hC/.rudolf/blitzen/activity.log | grep -q 'Opened the newest' && ! head -1 $W/hC/.rudolf/blitzen/activity.log | grep -q 'number 0 ' && echo 1)" "$sz"
+ok "16. kept for the account alone (0600 file, 0700 folder)" "$([ "$(stat -c %a $W/hC/.rudolf/blitzen/activity.log)" = 600 ] && [ "$(stat -c %a $W/hC/.rudolf/blitzen)" = 700 ] && [ "$(stat -c %a $W/kd)" = 700 ] && [ ! -e $W/kd/acct ] && echo 1)" "$(stat -c %a $W/hC/.rudolf/blitzen/activity.log $W/hC/.rudolf/blitzen $W/kd)"
 
 # ---- the source: the release's signed list, its S row, the archive checked and taken apart
 mkdir -p $W/src/rudolf-os-7/iso/sys $W/src/rudolf-os-7/docs $W/src/rudolf-os-7/iso/www $W/sys/a

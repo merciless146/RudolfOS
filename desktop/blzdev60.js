@@ -49,7 +49,8 @@ async function blzdRuns(P,S){if(blzdNeeds(P,S,'repo'))return;P.innerHTML="<div c
   <pre class='blzdpre sunk bdlog' hidden></pre><div class='rmrow bdask' hidden style='justify-content:flex-start'><button class='bdwhy'>Ask Blitzen why it failed</button><button class='bdweb'>Open the run on GitHub</button></div><div class='msg bdm'></div>`;
  const m=P.querySelector('.bdm');P.querySelector('.bdre').onclick=()=>blzdRuns(P,S);
  P.querySelector('.bdgo').onclick=async()=>{const sel=P.querySelector('.bdwf');if(!sel.value)return;
-  if(!await blzdAllow('Start a workflow',[['Repository',S.repo],['Workflow',sel.options[sel.selectedIndex].textContent],['On the branch',S.base]]))return m.textContent='Not started.';
+  let wft=null;try{wft=(await blzdApi('file?path='+encodeURIComponent('.github/workflows/'+sel.value)+'&ref='+encodeURIComponent(S.base))).text}catch(e){}   /* (1.6.1 Part 27: its file shown) */
+  if(!await blzdAllow('Start a workflow',[['Repository',S.repo],['Workflow',sel.options[sel.selectedIndex].textContent],['Its file','.github/workflows/'+sel.value],['On the branch',S.base]],wft==null?'(its file could not be read)':wft,{detailTitle:'What the workflow does (its file):',risks:typeof blzdWfRisks=='function'?blzdWfRisks(wft):[]}))return m.textContent='Not started.';
   try{await blzdApi('dispatch?wf='+encodeURIComponent(sel.value)+'&ref='+encodeURIComponent(S.base));m.textContent='Started. Refresh in a minute to see it.'}catch(e){m.textContent=e.message}};
  P.querySelectorAll('.bdruns button').forEach(b=>b.onclick=async()=>{const run=runs[+b.dataset.i],lg=P.querySelector('.bdlog');lg.hidden=false;lg.textContent='Reading the log…';
   try{const jobs=(await blzdApi('jobs?run='+run.id)).data.jobs||[];const job=jobs.find(j=>j.conclusion=='failure')||jobs[0];if(!job){lg.textContent='This run has no jobs.';return}
@@ -84,7 +85,8 @@ function blzdChange(P,S){if(blzdNeeds(P,S,'repo'))return;
  $q('.bdedit').onclick=()=>{const t=$q('.bdnew');t.hidden=!t.hidden;t.oninput=()=>{neu=t.value;const d=blzdDiff(orig,neu);$q('.bddiff').textContent=d.text}};
  $q('.bdpr').onclick=async()=>{if(!neu)return;const what=$q('.bdwhat').value.trim(),slug=what.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,40)||'change';
   const branch='blitzen/'+slug+'-'+Date.now().toString(36).slice(-4),title='Blitzen: '+what.slice(0,90);
-  if(!await blzdAllow('Push a change and open a pull request',[['Repository',S.repo],['New branch',branch],['From',S.base+' (not changed)'],['File',path],['Pull request',title]],blzdDiff(orig,neu).text))return m.textContent='Nothing was pushed.';
+  const ck=typeof blzdChangeCheck=='function'?blzdChangeCheck(path,orig,neu):{};   /* (1.6.1 Part 27: what is risky said; a secret in it refused) */
+  if(!await blzdAllow('Push a change and open a pull request',[['Repository',S.repo],['New branch',branch],['From',S.base+' (not changed)'],['File',path],['Pull request',title]],blzdDiff(orig,neu).text,{detailTitle:'The whole change (- goes, + comes in):',risks:ck.risks,refuse:ck.refuse}))return m.textContent=ck.refuse?'Nothing was pushed: the change carries '+ck.refuse+'.':'Nothing was pushed.';
   m.textContent='Pushing…';
   try{await blzdApi('push?branch='+encodeURIComponent(branch)+'&message='+encodeURIComponent(title),path+'\t'+blzdB64(neu)+'\n');
    const pr=(await blzdApi('pr?branch='+encodeURIComponent(branch)+'&title='+encodeURIComponent(title),`${what}\n\nWritten by Blitzen in Rudolf OS and allowed by the developer; read it before merging.`)).data;

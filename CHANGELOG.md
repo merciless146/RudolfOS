@@ -5,6 +5,19 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Security: code Blitzen writes can no longer act with the desktop's rights. JavaScript and Lua it writes run in a sandbox
+  with no access to the desktop's page, its storage, rudolfd or the network (before, a program "checked by running it" could read
+  the desktop's page and use the system's API: something Blitzen read, a web page or a file, could have made it write one). Lua
+  runs on a copy of your own files: a check throws the copy away; ▶ Run asks, in the desktop's own dialog, before keeping what it
+  changed, listing each file, and only in your own folder. An HTML answer's preview loads nothing from anywhere.
+- Security: in Blitzen's answers, only the pages its web search read and Rudolf OS's own documents open with a click; any other
+  address is shown whole and opens only after "Open this address?", which shows its site and what it would send.
+- Security: what "Learn from what I do" keeps (what you did, your notes for Blitzen, the setting itself) is kept only in your
+  account's own encrypted folder, only while you are signed in, never for another account; what 1.6.0 kept outside it is moved in.
+  Blitzen's model engine no longer can save a conversation to the disk.
+- Security: Developer mode: every command Blitzen proposes for your test computer is shown whole before it is sent, with what is
+  risky in it said in plain words; one command at a time; one carrying a password, token or key is never sent. A workflow to start
+  shows its file, and a pull request its whole change, before Allow.
 - New: a minimized window's taskbar button shows the work it is doing: the button fills from its left edge to its right, a few
   pixels inside its edge and behind its picture and title, as a progress bar (a download, a page loading in Oracle, a copy or move
   in File Explorer, a drive's copy, Extract here, an installation or update, printing, a text message being sent, and any progress

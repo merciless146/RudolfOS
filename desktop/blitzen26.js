@@ -35,27 +35,16 @@ const BLZ_LNAME={lua:'BlockLua / Lua',luau:'Luau',pilot:'Pilot.lua',js:'JavaScri
 function blzNeedsInput(lang,code){return lang=='luau'||lang=='pilot'?false:lang=='lua'?/io\.read|sys\.input/.test(code):lang=='python'?/\binput\s*\(|sys\.stdin/.test(code):lang=='cpp'?/std::cin|\bcin\s*>>|getline\s*\(\s*(std::)?cin|scanf/.test(code):lang=='js'?/\bprompt\s*\(/.test(code):false}
 
 /* ---------- running code ---------- */
-async function blzRunLua(code){const out=[];const P={cwd:['C:'],write(s){out.push(String(s))},print(s=''){out.push(s+'\n')}};
- if(!window.fengari&&!(await loadFengari()))return{ok:false,error:'The Lua runtime (Fengari) could not be loaded.'};
- if(!KRUN)KRUN=fengari.load(KERNEL,'=kernel')();
- const {lua,lauxlib}=fengari,L=fengari.L,t0=Date.now();let err=null;
- /* a program that runs too long is stopped: a hook every 100,000 instructions checks the clock */
- try{lua.lua_sethook(L,L2=>{if(Date.now()-t0>10000)lauxlib.luaL_error(L2,fengari.to_luastring('time limit: the program ran for more than 10 seconds'))},lua.LUA_MASKCOUNT,100000)}catch(e){}
- try{err=KRUN(String(code),'BLITZEN',{w:s=>P.write(s)},makeSys(P))}catch(e){err=String(e&&e.message||e)}finally{try{lua.lua_sethook(L,null,0,0)}catch(e){}}
- if(P.__dirty){P.__dirty=0;fsSave();EXPL.forEach(f=>f())}
- return{ok:true,code:err?1:0,timeout:/time limit/.test(err||''),out:out.join('')+(err?String(err)+'\n':'')}}
-function blzRunJS(code){return new Promise(res=>{const src=`const __o=[];const __s=v=>typeof v=='string'?v:(()=>{try{return JSON.stringify(v)}catch(e){return String(v)}})();
- console.log=console.info=console.warn=console.error=(...a)=>__o.push(a.map(__s).join(' '));self.fetch=undefined;self.XMLHttpRequest=undefined;self.WebSocket=undefined;self.importScripts=undefined;
- onmessage=async e=>{let err=null;try{await (0,eval)('(async()=>{'+e.data+'\\n})()')}catch(x){err=(x&&x.name?x.name+': ':'')+(x&&x.message||x)}postMessage({out:__o.join('\\n'),err})}`;
- const w=new Worker(URL.createObjectURL(new Blob([src],{type:'text/javascript'})));const tm=setTimeout(()=>{w.terminate();res({ok:true,code:124,timeout:true,out:'time limit: the program ran for more than 10 seconds\n'})},10000);
- w.onmessage=e=>{clearTimeout(tm);w.terminate();const o=e.data.out+(e.data.out?'\n':'');res({ok:true,code:e.data.err?1:0,out:o+(e.data.err?e.data.err+'\n':'')})};
- w.onerror=e=>{clearTimeout(tm);w.terminate();res({ok:true,code:1,out:(e.message||'error')+'\n'})};w.postMessage(code)})}
+/* 1.6.1 (docs/plan-1.6.1.md Part 27): JavaScript and Lua Blitzen writes run in a sandbox with no origin and no network (blzbox61.js);
+   Lua on a copy of the account's own files, kept only after the person's Keep (a run they started) */
+function blzRunLua(code,o){return blzRunLuaBox(code,o||{})}
+function blzRunJS(code){return blzRunJSBox(code)}
 async function blzRunServer(lang,code){const r=await fetch((window.BLZ_API||'/api/')+'ai/run?lang='+lang,{method:'POST',headers:{'X-Rudolf-Token':RD.token},body:code});let j;try{j=await r.json()}catch(e){return{ok:false,error:'HTTP '+r.status}}return j}
-async function blzRun(lang,code){
- if(lang=='lua')return blzRunLua(code);if(lang=='js')return blzRunJS(code);
+async function blzRun(lang,code,o={}){
+ if(lang=='lua')return blzRunLua(code,o);if(lang=='js')return blzRunJS(code);
  if(lang=='luau'||lang=='pilot')return luauBlitzen(code,lang);
  if(lang=='python'||lang=='cpp'){if(!RD)return{ok:false,error:'Python and C++ run on the installed Rudolf OS.'};return blzRunServer(lang,code)}
- if(lang=='html'){rappRunCode('Blitzen preview',code);return{ok:true,code:0,out:'(opened in a preview window)\n',preview:true}}
+ if(lang=='html'){blzBoxPreview(code);return{ok:true,code:0,out:'(opened in a preview window)\n',preview:true}}
  return{ok:false,error:'Blitzen cannot run '+(BLZ_LNAME[lang]||lang)+' here.'}}
 
 /* ---------- saving chats (Documents › Blitzen, plain text) ---------- */
@@ -129,7 +118,7 @@ function blzChatUI(W){
   if(!['lua','luau','pilot','js','python','cpp','html'].includes(lang)){setBadge(c,'nr','not run');return null}
   if(auto&&lang=='html'){setBadge(c,'nr','not run: a page');return null}
   if(auto&&blzNeedsInput(lang,code)){setBadge(c,'nr','not run: it asks for input');return null}
-  setBadge(c,'run','running…');let res;try{res=await blzRun(lang,code)}catch(e){res={ok:false,error:e.message}}
+  setBadge(c,'run','running…');let res;try{res=await blzRun(lang,code,{auto})}catch(e){res={ok:false,error:e.message}}
   showOut(c,res);
   if(!res.ok){setBadge(c,'nr','not run');return null}
   if(res.preview){setBadge(c,'ok','opened');return res}
@@ -149,7 +138,7 @@ function blzChatUI(W){
   catch(e){setBusy(false);if(e.name=='AbortError'){stEl.textContent='Stopped.';const t=el.querySelector('.blzbody').textContent;if(t&&t!='…')chat.msgs.push({role:'assistant',content:el.dataset.text||t});else el.remove();return null}
    el.querySelector('.blzbody').innerHTML=`<div class='msg blzerr'>${lxEsc(e.message)}</div>`;stEl.textContent='';return null}
   setBusy(false);const text=o.blocks?'```lua\n'+res.text.trim()+'\n```':res.text;
-  chat.msgs.push({role:'assistant',content:text});drawAnswer(el,text);if(o.know&&typeof blzKnowDraw=='function')blzKnowDraw(el,o.know);if(typeof blzDevDraw=='function')blzDevDraw(el);blzSaveChat(chat);
+  chat.msgs.push({role:'assistant',content:text});drawAnswer(el,text);if(typeof blzLinkify=='function')blzLinkify(el,o.know);if(o.know&&typeof blzKnowDraw=='function')blzKnowDraw(el,o.know);if(typeof blzDevDraw=='function')blzDevDraw(el);blzSaveChat(chat);
   stEl.textContent=res.tokens?`${res.tokens} tokens in ${(res.ms/1000).toFixed(1)} s · ${res.tps?res.tps.toFixed(1):'–'} tokens per second · first word after ${(res.first/1000).toFixed(1)} s`:'';
   BLZ.lastSpeed=res.tps;svj('bd95blzspeed',{tps:res.tps,at:Date.now()});return el}
  /* check the answer's first runnable block; on failure ask for a fix, at most BLZ.retries times */
@@ -178,7 +167,7 @@ function blzChatUI(W){
  q('.blznew').onclick=()=>{if(busy)return;chat.msgs=[];chat.file=null;empty();stEl.textContent=''};
  q('.blzhist').onclick=()=>{const h=q('.blzhl');if(!h.hidden){h.hidden=true;return}const d=blzChatDir(false);const names=d?Object.keys(d).filter(k=>/^CHAT .*\.TXT$/.test(k)).sort().reverse():[];
   h.innerHTML=names.length?names.slice(0,30).map(n=>`<button data-n='${lxEsc(n)}'>${lxEsc(n.replace(/^CHAT |\.TXT$/g,''))}</button>`).join(''):"<div class='msg'>No saved chats yet. Chats are kept in Documents › Blitzen.</div>";h.hidden=false;
-  h.querySelectorAll('button').forEach(b=>b.onclick=()=>{const c=blzLoadChat(b.dataset.n);if(!c)return;chat.msgs=c.msgs;chat.file=c.file;log.innerHTML='';c.msgs.forEach(m=>{const el=bubble(m.role);if(m.role=='user')el.querySelector('.blzbody').innerHTML=blzMd(m.content);else drawAnswer(el,m.content)});h.hidden=true})};
+  h.querySelectorAll('button').forEach(b=>b.onclick=()=>{const c=blzLoadChat(b.dataset.n);if(!c)return;chat.msgs=c.msgs;chat.file=c.file;log.innerHTML='';c.msgs.forEach(m=>{const el=bubble(m.role);if(m.role=='user')el.querySelector('.blzbody').innerHTML=blzMd(m.content);else{drawAnswer(el,m.content);if(typeof blzLinkify=='function')blzLinkify(el,null)}});h.hidden=true})};
  empty();setTimeout(()=>ta.focus(),50);
  W.blz={ask,chat,busy:()=>busy,stop:()=>W.abort&&W.abort.abort(),log};return W}
 async function blzInstall(what,btn,box){if(!isAdmin()&&!await elevate(what=='python'?'Install Python in Debian':'Install the C++ compiler in Debian'))return;btn.disabled=true;
