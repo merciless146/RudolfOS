@@ -17,7 +17,7 @@ I = ['drives-home']; ci_i = re.search(r'^\s*RINNER="([\w -]*)"', ci, re.M)
 ok('2b. the programs only a helper runs (drives-home) are built by both too, root\'s 0700 beside the helpers, and are not among rudolf-rootd\'s helpers', ci_i and ci_i.group(1).split() == I and not set(I) & set(H)
    and all(re.search(r'^gcc .*-o usr/lib/rudolf/root/' + i + r' .*&& chmod 700 usr/lib/rudolf/root/' + i + '$', mk, re.M) and f'-o "$B/root-{i}"' in ci for i in I), [ci_i and ci_i.group(1), H])
 bs = re.search(r'^BSRC=.*$', ci, re.M).group(0)
-ok('3. the base layer is rebuilt when any of their sources change (BSRC)', all(f'sys/{f}' in bs for f in ['rudolf-rootd.c', 'rudolf-root.h', 'rudolfd-root.inc', 'rudolfd-roothome.inc', 'rudolfd-rootpower.inc'] + [f'rudolf-{h}.c' for h in H + I]), bs[:200])
+ok('3. the base layer is rebuilt when any of their sources change (BSRC)', all(f'sys/{f}' in bs for f in ['rudolf-rootd.c', 'rudolf-root.h', 'rudolfd-root.inc', 'rudolfd-roothome.inc', 'rudolfd-rootpower.inc', 'rudolfd-rootnet.inc'] + [f'rudolf-{h}.c' for h in H + I]), bs[:200])
 hc = re.search(r'^\s*python3 systools/hardcheck.py .*$', ci, re.M).group(0)
 ok('4. their hardening flags are checked (hardcheck.py), and the release checks the modes in the base layer', '"$B/rudolf-rootd"' in hc and '"$B/root-$h"' in hc and '$RHELP $RINNER' in hc and '"0:0 700"' in ci and '-rwx------ root/root' in ci
    and re.search(r'for h in \$RHELP \$RINNER; do\n\s*for l in \$\(ldd "\$B/root-\$h"', ci) and re.search(r'for h in \$RHELP \$RINNER; do unsquashfs -lls', ci), hc[-200:])

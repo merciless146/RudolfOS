@@ -276,14 +276,14 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Power | power/set, `main`'s power apply, brightness (backlight writes through the power script) | /usr/lib/rudolf/power (CPU governor, backlight, USB autosuspend under /sys) | power |
 | Power | memory/dropcache, memory settings (zram) | /proc/sys/vm/drop_caches, /usr/lib/rudolf/memory | power |
 | Power | desktop/priority | /usr/lib/rudolf/desktop-priority (cgroup weights of the desktop) | power |
-| Network | `api_wifi` (wifi/*: scan, connect (job), forget, radios, power) | wifi.sh (wpa_supplicant, wpa_cli, iw, rfkill), the root-only request file | network |
-| Network | net/dhcp, net/static, dns, `api_net`'s wpa_cli status | ip link/addr/route, udhcpc, /etc/resolv.conf | network |
-| Network | firewall (GET/POST), remote access's firewall holes, health_tick's firewall status | /usr/lib/rudolf/firewall (nft) | network |
-| Network | hotspot, netplug, mobile/* (rudolfd-mobile.inc: modem, SMS, airplane mode) | hostapd, dnsmasq, ModemManager through /usr/lib/rudolf/hotspot, netplug, modem | network |
+| Network | `api_wifi` (wifi/*: scan, connect (job), forget, radios, power) | wifi.sh (wpa_supplicant, wpa_cli, iw, rfkill), the root-only request file | **network** (moved) |
+| Network | net/dhcp, net/static, dns, `api_net`'s wpa_cli status | ip link/addr/route, udhcpc, /etc/resolv.conf | **network** (moved) |
+| Network | firewall (GET/POST), remote access's firewall holes, health_tick's firewall status | /usr/lib/rudolf/firewall (nft) | **network** (moved) |
+| Network | hotspot, netplug, mobile/* (rudolfd-mobile.inc: modem, SMS, airplane mode) | hostapd, dnsmasq, ModemManager through /usr/lib/rudolf/hotspot, netplug, modem | **network** (moved: hotspot, netplug); modem next |
 | Network | tor (`tor_start`, `tor_kill`), torwin (`torwin_start`) | Tor started as its own user (setuid in the child), its folder made and chowned; Chromium for Tor windows as the desktop's user with a cgroup write | network |
 | Network | bt/* (bluetooth), tb/* (thunderbolt) | /usr/lib/rudolf/bluetooth, thunderbolt (sysfs authorize) | network (devices) |
 | Network | remote/* (`remote_start`, `remote_stop`) | rudolf-remote started (as root today), its certificate and settings in /persist/etc | network |
-| Network | time sync (`time_tick`, POST time, time/sync) | settimeofday, ntpd, hwclock -w | power (the clock) |
+| Network | time sync (`time_tick`, POST time, time/sync) | settimeofday, ntpd, hwclock -w | **power** (moved, the clock) |
 | Packages | pkg/* (rpk refresh, update, install, remove, install-file: jobs), pkg/exec (`api_pkg_exec`: setuid to the account's user) | rpk on the system's package folders; a Library program run as the account's user | packages |
 | Packages | apps/* (`api_apps`: Flathub, install, update, remove, appextra), catalog | flatpak --system, /usr/lib/rudolf/appextra, RUN/apps chowned | packages |
 | Packages | sysext/* (`api_sysext`) | rpk sysext (signed system extensions mounted over /usr) | packages |
@@ -469,7 +469,40 @@ rudolfd runs as root today (they keep running as root, from the helper).
   In QEMU (roothelpers-check.yml, run 44874168648): r161_t.py 22/22 with its new 16-21 (the settings, the desktop's
   priority, the cache, the clock set and back, the helper never skipped, a restart through the API that comes back),
   t160_t.py 31/31, t150_t.py 18/18. Sleep, brightness and shut down: for the owner on the Vivobook.
-- Next: network; packages; display; other; then the drop (with the accounts' file service of 11.2).
+- **Network (2026-11-21, branch root-helpers-network):** the network helper (iso/sys/rudolf-network.c,
+  /usr/lib/rudolf/root/network, a small program of its own; rudolfd-rootnet.inc): every wifi.sh action rudolfd ran
+  (`network wifi status|scan|disconnect|reconnect|radios|bands IF`, `country IF CC`, `adapter IF`, `radio IF BSSID
+  on|off`, `band IF 2.4|5|6 on|off`, and `connect|forget IF` with the request on the helper's standard input, at most
+  600 bytes, which the helper writes to the same root-only file wifi.sh reads and removes; the join is still a job),
+  System health's wifiNow and Settings' service restart (reconnect), `wifi-link IF` (GET net's network name and signal:
+  wpa_cli status and signal_poll on wpa_supplicant's sockets, root's), `dhcp IF` (ip link up, udhcpc with udhcpc.sh),
+  `static IF ADDR GW DNS` (flush, add, up, the default route; DNS into /etc/resolv.conf, written even when ip failed,
+  as before), `firewall on|off|status`, `firewall remote on|off` (remote access's port), the health log's hourly count,
+  `hotspot status|stop|start` (its request on standard input, at most 200 bytes) and `metered-state`, `metered IF
+  on|off|auto` (netplug; Blitzen's knowledge download asks it too). The helper checks every argument as rudolfd does
+  (an adapter's name: letters, digits and - _ . :, at most 16; a country two capital letters or 00; a radio's address,
+  a band, on or off), and for dhcp and static, which hand the name to ip and udhcpc, also that the kernel has it
+  (/sys/class/net) and that it does not start with "-" (both answered 500 before as now). Its commands are looked for in
+  the system's folders only, with no environment but PATH. GET net's own reads (ip route, ip addr show, /etc/resolv.conf,
+  /sys/class/net) stay in rudolfd: any user may make them. rudolfd keeps each old line beside the call for when the
+  helper does not start (-2), so the network always works. Part 20: the network helper's line in HELPER_CAPS
+  (CAP_NET_ADMIN, CAP_NET_RAW, CAP_NET_BIND_SERVICE for the hotspot's dnsmasq, CAP_DAC_OVERRIDE and
+  CAP_DAC_READ_SEARCH for wpa_supplicant's sockets and saved networks, CAP_FOWNER, CAP_CHOWN, CAP_KILL, CAP_SETUID and
+  CAP_SETGID for dnsmasq's own user); no CAP_SYS_ADMIN, so it gets no_new_privs. The programs it starts and leaves
+  running (wpa_supplicant, hostapd, dnsmasq, udhcpc's renewals) are now rudolf-rootd's descendants instead of
+  rudolfd's, and with the confinement on they keep the network helper's capabilities and system-call list (enough for
+  what they do; for the owner's check on the Vivobook: Wi-Fi joined, the hotspot shared). confinepure.py: no request
+  became narrow (each keeps its old line for when the helper does not start). Found and kept as they were: POST
+  net/static may still be asked for the loopback adapter (lo); the request files' names (RUN/wifi.req,
+  RUN/hotspot.req) are the same as before, now written by the helper as root. Tests: roothelpers161_t.sh N1-N6 (the
+  arguments, the requests on standard input only, stand-ins for wifi.sh, the firewall, the hotspot, netplug, ip, udhcpc
+  and wpa_cli, so a host test never touches this computer's network) and check 25 (every network request through the
+  helper, with and without rudolf-rootd, and as rudolfd doing it itself: the same answers and the same calls, byte for
+  byte); in QEMU r161_t.py 22-26 (the firewall off and on with nft, a fixed address, DHCP with no server, Wi-Fi without
+  an adapter, the helper never skipped). Not moved yet: the modem (mobile/*), Tor, remote access's own start
+  (rudolf-remote), Bluetooth and Thunderbolt (the devices: next).
+- Next: devices (Bluetooth, Thunderbolt); the modem, Tor and remote access; packages; display; other; then the drop
+  (with the accounts' file service of 11.2).
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).

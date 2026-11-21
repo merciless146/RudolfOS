@@ -29,6 +29,9 @@ Summary: In progress.
   own, no longer by rudolfd; it is asked only when an account comes or goes. Nothing changes on screen.
 - Security: restart, shut down, sleep, the power settings, brightness, Task Manager's "Clear cache" and the desktop's
   priority, and setting the clock are done by a power helper of its own, no longer by rudolfd. Nothing changes on screen.
+- Security: Wi-Fi (scan, join, forget, the radios and bands, the country, the adapter), an address by DHCP or a fixed
+  one and the name server, the firewall, the hotspot and metered connections are handled by a network helper of its
+  own, no longer by rudolfd; a network's password reaches it on its standard input only. Nothing changes on screen.
 - Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
   rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
   starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own

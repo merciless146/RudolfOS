@@ -17,6 +17,13 @@ static const struct { const char *name; uint64_t keep; } HELPER_CAPS[] = {
 	/* power and the clock (1.6.1 Part 11): restart and shut down (reboot(2), umount -a -r), the clock (settimeofday,
 	   ntpd's adjtimex, hwclock), the wake alarm, /sys's power files and the backlight, Chromium stopped at the end */
 	{ "power", CB(CAP_SYS_BOOT) | CB(CAP_SYS_TIME) | CB(CAP_SYS_ADMIN) | CB(CAP_DAC_OVERRIDE) | CB(CAP_KILL) | CB(CAP_WAKE_ALARM) },
+	/* the network (1.6.1 Part 11): addresses, routes, the firewall's rules and the hotspot's NAT (ip, udhcpc, nft:
+	   CAP_NET_ADMIN, CAP_NET_RAW for DHCP's raw socket, CAP_NET_BIND_SERVICE for dnsmasq's ports 53 and 67), Wi-Fi's
+	   control sockets and saved networks (wpa_supplicant, root's 0600: CAP_DAC_OVERRIDE), the radios' rfkill and the
+	   drivers' power saving under /sys, the hotspot's and wpa_supplicant's own processes stopped (CAP_KILL), its
+	   dnsmasq run as its own user (CAP_SETUID, CAP_SETGID); no CAP_SYS_ADMIN, so no mount and no_new_privs */
+	{ "network", CB(CAP_NET_ADMIN) | CB(CAP_NET_RAW) | CB(CAP_NET_BIND_SERVICE) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH)
+	  | CB(CAP_FOWNER) | CB(CAP_CHOWN) | CB(CAP_KILL) | CB(CAP_SETUID) | CB(CAP_SETGID) },
 	{ NULL, 0 }
 };
 /* the system calls of CF_HELPER_DENY a helper may still make, by name: the power helper restarts and sets the clock */
