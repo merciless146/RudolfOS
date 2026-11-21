@@ -11,13 +11,25 @@
  *   drives bootfiles-stage IMAGE [--sha=HEX]          bootfiles.sh stage: new boot files for this drive, next start
  *   drives mkstick DISK [IMAGE] [0|1] [--sha=HEX]     mkstick.sh: a Rudolf OS USB stick (erased)
  *   drives keepfiles                                  keepfiles.sh make: RUDOLFDATA on the drive Rudolf OS runs from
+ *   drives home-unlock ACCT 0|1 UID   an account's encrypted folder opened at sign-in (its key on standard input,
+ *                                     never an argument), with 1 its session too: the binds for Linux apps, the
+ *                                     downloads' store, the account's Linux user's session (1.6.1 drives part 2)
+ *   drives home-lock ACCT             signed out: the session ended, the key taken out (the folder and its Oracle
+ *                                     folder unreadable again)
+ *   drives home-bind ACCT UID         rudolfd started again while ACCT is signed in: its binds and session again
+ *   drives home-store                 rudolfd's start with nobody signed in: the downloads' store bound
+ * (the home-* actions: ACCT is checked here, then rudolfd's own functions do the work, built as drives-home:
+ * rudolf-drives-home.c)
  *
  * Everything is checked again here, whatever rudolfd checked: DEV a block device's kernel name (letters and digits,
  * one that the kernel has: /sys/class/block/DEV), DISK a whole disk (/sys/block/DISK); IMAGE a file in the home folder
  * (/home/rudolf/...), made canonical (a link out of the home folder is refused), a plain file of the desktop's user
  * or of the account signed in (another account's file, a hard link to one, is refused); --sha= 64 hex digits. The
  * scripts are run with their arguments as they are (never a command line for a shell). A refusal, and what erases or
- * rewrites a drive, are said in the health log.
+ * rewrites a drive, are said in the health log. ACCT (home-*): an account's id as the desktop makes them (letters,
+ * digits and "-", at most 64), not the guest or the shared folder, and not an account the account list
+ * (/persist/etc/rudolf/account-users) says was removed; UID 1000 (the desktop's user) or that account's own uid from
+ * the list, never another.
  *
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -32,6 +44,7 @@
 #define MEDIA  rr_env("RR_TEST_MEDIA", "/media")
 #define RUNDIR rr_env("RR_TEST_RUN", "/run/rudolf")
 #define AUMAP  rr_env("RR_TEST_AUMAP", "/persist/etc/rudolf/account-users")
+#define ROOTDIR rr_env("RR_TEST_DIR", RR_DIR)
 
 static int refuse(const char *what, const char *arg)
 {
@@ -58,6 +71,42 @@ static unsigned session_uid(void)
 	while (fgets(l, sizeof l, f)) { char a[80]; unsigned v; if (l[0] != '-' && sscanf(l, "%79s %u", a, &v) == 2 && !strcmp(a, id) && v >= 1001 && v <= 59999) u = v; }
 	fclose(f); return u;
 }
+/* the account list's line for ID: its uid (0: none), *retired: it is a removed account's ("-ID UID") */
+static unsigned acct_uid(const char *id, int *retired)
+{
+	FILE *f = fopen(AUMAP, "r"); if (retired) *retired = 0; if (!f) return 0;
+	char l[200]; unsigned u = 0;
+	while (fgets(l, sizeof l, f)) { char a[80]; unsigned v; int ret = l[0] == '-';
+		if (sscanf(l + ret, "%79s %u", a, &v) == 2 && !strcmp(a, id) && v >= 1001 && v <= 59999) { if (ret) { if (retired) *retired = 1; } else u = v; } }
+	fclose(f); return u;
+}
+static int acct_ok(const char *a)
+{
+	size_t n = a ? strlen(a) : 0; if (!n || n > 64 || !strcmp(a, "guest") || !strcmp(a, "shared")) return 0;
+	for (const char *c = a; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || *c == '-')) return 0;
+	return 1;
+}
+/* the home-* actions: checked here, then drives-home (rudolfd's own functions) does them; standard input, output
+   and error go on to it (the key, the answer) */
+static int home_action(const char *op, char **a, int n)
+{
+	const char *sub = !strcmp(op, "home-unlock") ? "unlock" : !strcmp(op, "home-lock") ? "lock" : !strcmp(op, "home-bind") ? "bind" : "store";
+	int want = !strcmp(sub, "unlock") ? 3 : !strcmp(sub, "bind") ? 2 : !strcmp(sub, "lock") ? 1 : 0;
+	if (n != want) return refuse("the wrong arguments for an account's folder", op);
+	if (want) {
+		int ret = 0; if (!strcmp(a[0], "guest") || !strcmp(a[0], "shared")) { printf("bad account\n"); return 100; }   /* (as rudolfd answered: 400, not an attack) */
+		if (!acct_ok(a[0])) return refuse("an account name that is not one", a[0]);
+		unsigned au = acct_uid(a[0], &ret); if (ret && !au) return refuse("a removed account", a[0]);
+		if (!strcmp(sub, "unlock") && strcmp(a[1], "0") && strcmp(a[1], "1")) return refuse("a session choice that is not 0 or 1", a[1]);
+		const char *us = a[want - 1];
+		if (want >= 2) { char *e; long u = strtol(us, &e, 10); if (!*us || *e || (u != 1000 && (!au || u != (long)au))) return refuse("an owner that is neither the desktop's user nor the account's", us); }
+	}
+	char path[PATH_MAX]; snprintf(path, sizeof path, "%s/drives-home", ROOTDIR);
+	char *argv[6] = { "drives-home", (char *)sub, NULL, NULL, NULL, NULL }; for (int i = 0; i < want; i++) argv[2 + i] = a[i];
+	char *env[] = { RR_PATH, NULL };
+	execve(path, argv, env); fprintf(stderr, "drives-home could not be started: %s\n", strerror(errno));
+	printf("the account's folder could not be opened (drives-home did not start)\n"); return 200;   /* (HTTP 500, as drives-home answers) */
+}
 static int image_ok(const char *img, char *out, size_t on)
 {
 	unsigned own[3] = { RR_DESK_UID, session_uid(), 0 };
@@ -77,7 +126,7 @@ static int run_script(const char *script, char *const args[], const char *sha)
 
 int main(int argc, char **argv)
 {
-	if (argc < 2) { fprintf(stderr, "usage: drives mount|umount|eject|info|install|bootfiles-write|bootfiles-stage|mkstick|keepfiles ...\n"); return 2; }
+	if (argc < 2) { fprintf(stderr, "usage: drives mount|umount|eject|info|install|bootfiles-write|bootfiles-stage|mkstick|keepfiles|home-unlock|home-lock|home-bind|home-store ...\n"); return 2; }
 	const char *op = argv[1];
 	/* --sha=HEX, wherever it is; the other arguments in order */
 	const char *sha = NULL; char *a[8]; int n = 0;
@@ -100,6 +149,7 @@ int main(int argc, char **argv)
 		}
 		char *s[] = { (char *)op, a[0], NULL }; return run_script("devplug", s, NULL);
 	}
+	if (!strncmp(op, "home-", 5) && (!strcmp(op, "home-unlock") || !strcmp(op, "home-lock") || !strcmp(op, "home-bind") || !strcmp(op, "home-store"))) { if (sha) return refuse("a checksum for an account's folder", op); return home_action(op, a, n); }
 	if (!strcmp(op, "info")) {
 		if (n != 1 || !rr_dev_ok(a[0], 16)) return refuse("a disk name that is not one", n ? a[0] : "");
 		if (!is_disk(a[0])) return gone("a disk the kernel does not have");

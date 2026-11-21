@@ -2953,6 +2953,7 @@ static void dl_store_dirs(void)
    folder. If the bind fails, RUN/dl is a link to it and Downloads stays out of the account's binds. */
 static void dl_store_bind(void)
 {
+	if (root_home_fwd()) { root_home_store(); return; }   /* (1.6.1 Part 11: rudolfd-roothome.inc) */
 	/* Downloads in the encrypted folder while it is locked: its name cannot be found yet. RUN/dl is a link to Downloads
 	   meanwhile (Chromium's policy points into it; nothing is downloaded before a sign-in), and the bind is made when
 	   the folder is unlocked (vault/unlock calls dl_home_boot) */
