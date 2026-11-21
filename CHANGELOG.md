@@ -184,6 +184,13 @@ Summary: In progress.
   at the left, as Settings › Display › Displays arranged them for that set of monitors (kept per set); plugged in or out,
   they are arranged again within a second. Linux apps and games open on the main monitor. (rudolf-display --arrange and
   --monitors, screenctl arrange, rudolfd's screen/arrange; the software display still shows one monitor.)
+- Several monitors on the desktop (plan Part 1), Standard and Native alike: each monitor shows one of the three workspaces,
+  with the wallpaper and a taskbar of its own (the start button, the pinned apps, that workspace's windows, the workspaces
+  and the clock); the main monitor keeps the tray, the desktop's icons and the Start menu. A window moved to another
+  workspace moves to the monitor showing it, one dragged onto another monitor joins its workspace, and a maximised window
+  fills its own monitor. A workspace's button on a monitor's taskbar shows it there. A monitor unplugged: its windows stay
+  in their workspace and none is left off the screen. Settings › Display › Displays lists the displays and which
+  workspace each shows, and makes another the main one. The sign-in and lock screens cover every monitor.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.
