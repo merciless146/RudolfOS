@@ -948,7 +948,7 @@ behind a full-screen game. (The newest-kernel track and Wayland, for HDR and var
 - **Measured:** the same games' frame rates and frame times on the open and NVIDIA drivers and with game mode on and
   off, on the owner's Asus desktop (live from a stick, as Part 12) and the Vivobook.
   **The checklist is written (2026-11-21, branch game-checklist): below; the numbers are the owner's.** It follows the
-  NVIDIA driver PR (branch nvidia-driver) and the game mode PR (branch game-mode): run it once both are in a beta.
+  NVIDIA driver PR (#544, branch nvidia-driver) and the game mode PR (#546, branch game-mode): run it once both are in a beta.
 
 #### The owner's checklist: games measured (the Asus desktop live from a stick, as Part 12, and the Vivobook)
 What is measured: the same games' frame rates and frame times on the open driver (NVK) and on NVIDIA's driver, each with
