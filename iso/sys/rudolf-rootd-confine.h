@@ -14,7 +14,15 @@ static const struct { const char *name; uint64_t keep; } HELPER_CAPS[] = {
 	   (lchown), a removed account's programs stopped, the keyring asked as the account's user (su) */
 	{ "accounts", CB(CAP_CHOWN) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_KILL) | CB(CAP_SETUID)
 	  | CB(CAP_SETGID) },
+	/* power and the clock (1.6.1 Part 11): restart and shut down (reboot(2), umount -a -r), the clock (settimeofday,
+	   ntpd's adjtimex, hwclock), the wake alarm, /sys's power files and the backlight, Chromium stopped at the end */
+	{ "power", CB(CAP_SYS_BOOT) | CB(CAP_SYS_TIME) | CB(CAP_SYS_ADMIN) | CB(CAP_DAC_OVERRIDE) | CB(CAP_KILL) | CB(CAP_WAKE_ALARM) },
 	{ NULL, 0 }
+};
+/* the system calls of CF_HELPER_DENY a helper may still make, by name: the power helper restarts and sets the clock */
+static const struct { const char *name; int nr; } HELPER_ALLOW[] = {
+	{ "power", SYS_reboot }, { "power", SYS_settimeofday }, { "power", SYS_clock_settime }, { "power", SYS_clock_adjtime }, { "power", SYS_adjtimex },
+	{ NULL, -1 }
 };
 static const int CF_HELPER_DENY[] = {
 #define D(n) SYS_##n,
