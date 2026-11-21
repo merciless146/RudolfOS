@@ -2945,7 +2945,7 @@ static void api_service(struct req *r)
 	if (!n) { reply_err(r->fd, 400, "which service?"); return; }
 	int rc = -1;
 	if (!strcmp(n, "sound")) rc = run("/usr/lib/rudolf/sound restart >>" RUN "/sound.log 2>&1");
-	else if (!strcmp(n, "wifi")) { const char *av[] = { "network", "wifi", "reconnect", "", NULL }; rc = root_have("network") ? root_net(av, 1) : -2;   /* (1.6.1 Part 11) */
+	else if (!strcmp(n, "wifi")) { const char *av[] = { "network", "wifi", "reconnect", NULL }; rc = root_have("network") ? root_net(av, 1) : -2;   /* (1.6.1 Part 11) */
 		if (rc == -2) rc = run("/usr/lib/rudolf/wifi.sh reconnect >/dev/null 2>&1"); }
 	else if (!strcmp(n, "display")) rc = run("pkill -x rudolf-display >/dev/null 2>&1; true");
 	else { reply_err(r->fd, 404, "unknown service"); return; }
