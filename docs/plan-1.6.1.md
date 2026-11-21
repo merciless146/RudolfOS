@@ -432,8 +432,10 @@ rudolfd runs as root today (they keep running as root, from the helper).
   made), not at every save. The keyring's account is the one signed in (RUN/home-session and the list), never one the
   caller names; ID checked as rudolfd checks it. Part 20 (merged, #534): the accounts helper's line in
   rudolf-rootd-confine.h's HELPER_CAPS: CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH, CAP_FOWNER, CAP_KILL,
-  CAP_SETUID, CAP_SETGID, and the helpers' deny list. Should it ever not start (253), rudolfd does the work itself as
-  before (said in its log), so nothing breaks. Found and kept as they were: which accounts exist
+  CAP_SETUID, CAP_SETGID, and the helpers' deny list; rudolf-rootd sets no_new_privs on a helper that keeps no
+  CAP_SYS_ADMIN, which a seccomp filter needs without it (found by roothelpers161_t.sh with RH_CONFINE=on, now run by
+  ci_release.sh and the check: the accounts helper did not start, 253). Should it ever not start, rudolfd does the work
+  itself as before (said in its log), so nothing breaks. Found and kept as they were: which accounts exist
   is still rudolfd's word (the page's storage is the only list of them), so a rudolfd that is not what it should be
   could have an account's user removed and its Oracle folder deleted (its home folder stays, encrypted): for the
   owner, with the drop (a signed list from the page, or the removal asked with the account's key). Tests:
