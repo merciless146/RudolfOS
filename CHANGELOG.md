@@ -16,6 +16,12 @@ Summary: In progress.
   and Size from their window menu, and a right-click on a GTK header bar (the window's menu) all work, with the same limits
   and transitions as Rudolf's own title bar. GTK's invisible shadow margins are cut away. Every other window keeps Rudolf's
   title bar as before.
+- New (docs/plan-1.6.1.md Part 19): game mode does more, on Standard and Native alike. While a game is full screen the
+  processor is asked for its full speed (AMD's amd_pstate and Intel's intel_pstate; not with battery saver), and behind a
+  Linux game the desktop's own work waits (its processor time lowered, its animations stopped); notifications are held and
+  one says how many came after, as before. Everything goes back as it was when the game leaves full screen or ends, a crash
+  included. Games that ask for Feral's GameMode (gamemoderun, Steam's launch option, Flatpak games through the portal) get
+  the processor's speed, and nothing else. Settings › System health › Memory › Game mode turns it all off and on.
 - Apps that can use the system's title bar are asked to, once: the first time Rudolf OS starts Chromium, Brave, Edge, Vivaldi,
   Chrome or ungoogled Chromium from Flathub, Debian's Chromium, VS Code or VSCodium, it turns on their "use the system title
   bar" setting, so they get Rudolf's title bar with nothing lost. Only when you have not chosen otherwise in the app; your
