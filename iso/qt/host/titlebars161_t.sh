@@ -53,5 +53,5 @@ ok "14. a bad ID or home is refused" "$($T/ra titlebar ../x $H 2>/dev/null; a=$?
 H=$T/h6; mkdir -p $H $T/ex/applications; printf '[Desktop Entry]\nName=Chromium\nExec=/bin/true %%U\n' > $T/ex/applications/org.chromium.Chromium.desktop
 HOME=$H RA_EXPORTS=$T/ex PATH=/nonexistent:$PATH $T/ra launch org.chromium.Chromium 2>>$T/log
 ok "15. rudolf-apps launch: asked before the app starts (then the launcher's command runs)" "$([ "$(jget $H/.var/app/org.chromium.Chromium/config/chromium/Default/Preferences 'd["browser"]["custom_chrome_frame"]')" = false ] && grep -q 'starting org.chromium.Chromium' $T/log && echo 1)" "$(tail -3 $T/log)"
-ok "16. the list's entries are well formed (ID, how, a relative path)" "$(awk -F'\t' '!/^#/ && (NF!=3 || ($2!="chromium" && $2!="vscode") || $3 ~ /^\// || $3 ~ /\.\./) {bad=1} END{print bad?0:1}' $RA_TITLEBARS)"
+ok "16. the list's entries are well formed (ID, how, a relative path)" "$(awk -F'\t' '!/^#/ && (NF!=3 || ($2!="chromium" && $2!="vscode" && $2!="cut") || ($2=="cut" && $3 !~ /^[0-9]+$/) || $3 ~ /^\// || $3 ~ /\.\./) {bad=1} END{print bad?0:1}' $RA_TITLEBARS)"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

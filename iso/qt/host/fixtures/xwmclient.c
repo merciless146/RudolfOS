@@ -9,7 +9,8 @@
  *   csd W H [L R T B]   no decorations asked for (_MOTIF_WM_HINTS 0), GTK's margins L R T B (_GTK_FRAME_EXTENTS) if given;
  *                       its own bar (the top 30 px, drawn dark) asks _NET_WM_MOVERESIZE when pressed, as GTK does (the pointer
  *                       let go first), direction 8 (move) or the number in the file $XWM_DIR (0-7 the edges, 9 10 the keyboard's);
- *                       it logs "geom", "press X Y", "delete" as "app" does, and "state ATOMS" when _NET_WM_STATE changes
+ *                       it logs "geom", "press X Y", "delete" as "app" does, and "state ATOMS" when _NET_WM_STATE changes;
+ *                       its class CsdApp, or $XWM_CLASS
  *   max ID 0|1|2        _NET_WM_STATE_MAXIMIZED_VERT and _HORZ off, on, toggled (its maximize button)
  *   iconify ID          WM_CHANGE_STATE IconicState (its minimize button)   |   menu ID X Y   _GTK_SHOW_WINDOW_MENU
  *   props ID            "extents L R T B" (_NET_FRAME_EXTENTS) and "state ATOMS"   |   supported   _NET_SUPPORTED's names
@@ -51,7 +52,7 @@ static int csd_app(Display *d, int argc, char **argv)
 {
 	Window root = DefaultRootWindow(d); int W = atoi(argv[2]), H = atoi(argv[3]);
 	Window w = XCreateSimpleWindow(d, root, 0, 0, W, H, 0, 0, 0xe5e7eb);
-	XClassHint ch = {"csdapp", "CsdApp"}; XSetClassHint(d, w, &ch); XStoreName(d, w, "Own title bar stand-in");
+	char *cls = getenv("XWM_CLASS") ? getenv("XWM_CLASS") : "CsdApp"; XClassHint ch = {cls, cls}; XSetClassHint(d, w, &ch); XStoreName(d, w, "Own title bar stand-in");
 	Atom p[2] = {XInternAtom(d, "WM_DELETE_WINDOW", False), XInternAtom(d, "WM_TAKE_FOCUS", False)}; XSetWMProtocols(d, w, p, 2);
 	XWMHints wh = {0}; wh.flags = InputHint; wh.input = True; XSetWMHints(d, w, &wh);
 	motif(d, w, 0); if (argc > 7) gtkext(d, w, atol(argv[4]), atol(argv[5]), atol(argv[6]), atol(argv[7]));

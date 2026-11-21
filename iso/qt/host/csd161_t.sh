@@ -7,7 +7,9 @@
 # GTK's margins cut away, the shadow beneath, a window switching between the two; Rudolf's own title bar on the other windows
 # as before. Then Standard (rudolf-display, its window manager) given the same app: there too it has its own bar alone.
 # Then real apps when the host has them: GTK 3 (gtk3-widget-factory), GTK 4 (gtk4-widget-factory) and Chromium as an
-# Electron-style app (Playwright's, its own tab strip as its title bar). Needs root (a private /run, in a mount namespace),
+# Electron-style app (Playwright's, its own tab strip as its title bar). (Item 3, 44-50:) the window's menu offers Rudolf's
+# title bar for an app on the list (a stand-in entry), which cuts the app's own bar away; kept per account and app; not offered
+# for others. Needs root (a private /run, in a mount namespace),
 # Xvfb, xdotool, ImageMagick, node, python3, gcc and WebKitGTK's headers.   sh csd161_t.sh [RUDOLF-NATIVE]
 [ "$(id -u)" = 0 ] || { echo "SKIP: needs root"; exit 0; }
 [ -z "$CSD_INNER" ] && exec env CSD_INNER=1 unshare -m sh "$0" "$@"
@@ -26,10 +28,12 @@ printf '%s\n' '{"s":{"bs":"solid","b1":"#112233","b2":"#000080","tb":"bottom","a
 python3 $HERE/fixtures/native_rd.py $PORT $D > $T/rd.log 2>&1 & RDP=$!
 Xvfb $DSP -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 export DISPLAY=$DSP LIBGL_ALWAYS_SOFTWARE=1 XWM_DIR=$T/dir
-trap 'kill $NP $RDP $XV $A1 $A2 $A3 $A4 $G3 $G4 $CR $RDS 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T' EXIT
+trap 'kill $NP $RDP $XV $A1 $A2 $A3 $A4 $A5 $A6 $G3 $G4 $CR $RDS 2>/dev/null; pkill -f "$T/" 2>/dev/null; rm -rf $T' EXIT
 w8() { i=0; while [ $i -lt ${2:-80} ]; do eval "$1" && return 0; timeout 0.25 tail -f /dev/null; i=$((i+1)); done; return 1; }
 w8 'xdotool getmouselocation >/dev/null 2>&1' 40
-(cd $D && HOME=$D RUDOLF_NATIVE_STATE=$D/state exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT > $T/native.log 2>&1) & NP=$!
+# (item 3: the list's cut entries, a stand-in's: CsdApp's bar 30 px)
+printf '# test\ncsdapp\tcut\t30\n' > $T/titlebars
+(cd $D && HOME=$D RUDOLF_TITLEBARS=$T/titlebars RUDOLF_NATIVE_STATE=$D/state exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT > $T/native.log 2>&1) & NP=$!
 N=0; F=0
 ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 900)"; F=$((F+1)); fi; }
 st() { grep "^$1 " $D/state 2>/dev/null | head -1 | cut -d' ' -f2-; }
@@ -41,7 +45,8 @@ cl() { grep "^client $1 " $D/state | head -1; }          # client ID FRAME X Y W
 cv() { cl $1 | awk -v f=$2 '{print $f}'; }               # 4 x, 5 y, 6 w, 7 h
 geo() { echo "$(cv $1 4) $(cv $1 5) $(cv $1 6) $(cv $1 7)"; }
 flag() { cl $1 | grep -o "$2=[0-9]" | cut -d= -f2; }
-csd() { grep "^clientcsd $1 " $D/state | head -1 | cut -d' ' -f3-; }   # csd il it ir ib
+csd() { grep "^clientcsd $1 " $D/state | head -1 | cut -d' ' -f3-7; }   # csd il it ir ib
+cut_() { grep "^clientcsd $1 " $D/state | head -1 | cut -d' ' -f8; }   # (item 3) the app's own bar cut away, its height
 ext() { $XC props 0x$1 | sed -n 's/^extents //p'; }
 nst() { $XC props 0x$1 | sed -n 's/^state //p'; }
 lastgeom() { grep '^geom' $1 | tail -1 | cut -d' ' -f2-; }
@@ -150,6 +155,25 @@ kill $A4; w8 '[ -z "$(cl $ID4)" ]' 20
 # ---- Rudolf's own title bar on the other windows, as before
 X=$(cv $ID1 4); Y=$(cv $ID1 5); shot
 ok "38. the framed window keeps Rudolf's title bar (35 px), dragged by it as before" "$(pdrag $((X+60)) $((Y+15)) 40 30 8; [ "$(cv $ID1 4) $(cv $ID1 5)" = "$((X+40)) $((Y+30))" ] && [ -z "$(csd $ID1)" ] && echo 1)" "$(cl $ID1)"
+# ---- (item 3) Rudolf's title bar instead, by choice, for an app on the list (its bar cut away as Oracle's is)
+cmi() { grep "^cmitem .*|$1$" $D/state | head -1; }
+cmxy() { cmi "$1" | awk '{print $2, $3}'; }
+H0=$(lastgeom $T/a2.log | cut -d' ' -f4); xdotool mousemove $(hit win $ID) click 3; w8 '[ -n "$(cmi "Title bar: Rudolf.s")" ]' 20
+ok "44. (item 3) its window menu (taskbar button): Title bar: the app's own (chosen) and Rudolf's" "$(cmi "Title bar: the app.s own" | grep -q '✓\|wn:tbown' && [ -n "$(cmi "Title bar: Rudolf.s")" ] && echo 1)" "$(grep '^cmitem' $D/state | tail -4)"
+xdotool mousemove $(cmxy "Title bar: Rudolf.s") click 1; w8 '[ "$(cut_ $ID)" = 30 ]' 20; xdotool windowactivate 0x$ID 2>/dev/null; w8 '[ "$(flag $ID focus)" = 1 ]' 20; timeout 0.6 tail -f /dev/null; shot; X=$(cv $ID 4); Y=$(cv $ID 5); [ -n "$CSD_DEBUG" ] && { cp $T/s.png $CSD_DEBUG/s45.png; xwininfo -tree -root > $CSD_DEBUG/tree45.txt; cp $D/state $CSD_DEBUG/state45; }
+ok "45. Rudolf's chosen: Rudolf's title bar (35 px, accent), the app's own bar cut away (30 px), its window the same height" "$([ "$(csd $ID)" = "0 0 30 0 0" ] && [ "$(ext $ID)" = "1 1 35 1" ] && close "$(px $((X+60)) $((Y+4)))" "37 99 235" 3 && close "$(px $((X+100)) $((Y+38)))" "229 231 235" 3 && [ "$(lastgeom $T/a2.log)" = "$((X+1)) $((Y+35-30)) $(cv $ID 6) $H0" ] && echo 1)" "$(cl $ID) $(csd $ID) $(ext $ID) $(px $((X+60)) $((Y+4))) $(px $((X+100)) $((Y+38))) $(lastgeom $T/a2.log)"
+ok "46. ...kept for the account and app (bd95titlebar:ID in its settings, the pages' storage)" "$(python3 -c "import json;d=json.load(open('$D/lsfile.json'))['data'];print([json.loads(v) for k,v in d.items() if k.startswith('bd95titlebar:u')])" | grep -q "'csdapp': 'rudolf'" && echo 1)" "$(cat $D/lsfile.json 2>/dev/null | head -c 300)"
+pdrag $((X+120)) $((Y+15)) 50 40 8
+ok "47. ...moved by Rudolf's title bar" "$([ "$(cv $ID 4) $(cv $ID 5)" = "$((X+50)) $((Y+40))" ] && echo 1)" "$(cl $ID)"
+$XC csd 400 300 > $T/a5.log & A5=$!; ID5=$(idof $T/a5.log); w8 '[ -n "$(cl $ID5)" ]' 40; timeout 0.8 tail -f /dev/null
+ok "48. ...another window of the same app opens with Rudolf's title bar" "$([ "$(csd $ID5)" = "0 0 30 0 0" ] && [ "$(ext $ID5)" = "1 1 35 1" ] && echo 1)" "$(cl $ID5) $(csd $ID5)"
+kill $A5; w8 '[ -z "$(cl $ID5)" ]' 20
+xdotool mousemove $(hit win $ID) click 3; w8 '[ -n "$(cmi "Title bar: the app.s own")" ]' 20; xdotool mousemove $(cmxy "Title bar: the app.s own") click 1; w8 '[ "$(cut_ $ID)" = 0 ]' 20; timeout 0.5 tail -f /dev/null
+ok "49. back to the app's own: no title bar of Rudolf's, nothing cut, its window the same height" "$([ "$(csd $ID)" = "1 0 0 0 0" ] && [ "$(ext $ID)" = "1 1 1 1" ] && [ "$(lastgeom $T/a2.log | cut -d' ' -f4)" = $H0 ] && echo 1)" "$(cl $ID) $(csd $ID) $(lastgeom $T/a2.log)"
+XWM_CLASS=OtherApp $XC csd 400 300 > $T/a6.log & A6=$!; ID6=$(idof $T/a6.log); w8 '[ -n "$(cl $ID6)" ]' 40; timeout 0.8 tail -f /dev/null
+xdotool mousemove $(hit win $ID6) click 3; w8 '[ -n "$(grep "^cmitem .*wn:tbno|" $D/state)" ]' 20
+ok "50. an app not on the list: not offered; the menu says what Rudolf's would lose (a row that cannot be chosen)" "$(grep -q '^cmitem [0-9]* [0-9]* 1 wn:tbno|Title bar: the app.s own (Rudolf.s would hide its menus and buttons)$' $D/state && [ -z "$(cmi "Title bar: Rudolf.s")" ] && echo 1)" "$(grep '^cmitem' $D/state | tail -3)"
+xdotool key Escape; kill $A6; w8 '[ -z "$(cl $ID6)" ]' 20
 kill $A1 $A2; w8 '[ -z "$(cl $ID)" ]' 20
 # ---- real apps, when the host has them: GTK 3, GTK 4 (their header bars) and Chromium (an Electron-style app: its own tab strip)
 real() {   # NAME LOGFILE COMMAND...: the new client's window (the newest client line), "" when none came

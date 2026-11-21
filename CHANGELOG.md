@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Native: the window's menu of an app that draws its own title bar says whether it can use Rudolf's instead. For apps
+  whose own bar holds only the title and the three buttons, "Title bar: Rudolf's" cuts their own bar away and frames them
+  as any other window, remembered for each account and app; for others the menu says Rudolf's would hide their menus and
+  buttons.
 - Native: one title bar for apps that draw their own. Discord, Steam, Claude, VS Code and other Electron and Chromium apps,
   and GTK 3 and 4 apps with a header bar, no longer get Rudolf's title bar above their own: their window keeps Rudolf's edge,
   round corners and resize edges, and their own bar does the rest, as on Standard. Moving them by their bar, resizing them

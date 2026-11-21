@@ -804,10 +804,10 @@ static double tw_tbh(void);   /* (the title bar's height in the page's pixels: t
 static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast; the title bar's height, TH, follows the display scaling, the font size and the touch mode: tw_th) */
 typedef struct Client { Window w, frame, rz[4]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
 	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; char ptitle[256]; int wait; Window cover; int lpclip; LPRect lpcr;
-	int csd, gl, gr, gt, gb; } Client;   /* (1.6.1 Part 15: csd, the app draws its own title bar (_MOTIF_WM_HINTS, no decorations): Rudolf's frame keeps only its edge; gl..gb, GTK's
+	int csd, gl, gr, gt, gb, nodeco, tbcut; } Client;   /* (1.6.1 Part 15: csd, the app draws its own title bar (_MOTIF_WM_HINTS, no decorations): Rudolf's frame keeps only its edge; gl..gb, GTK's
 	   invisible margins around it (_GTK_FRAME_EXTENTS), cut away by the clip window as Oracle's own bar is) */   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static void wopen_start(Client *c);
-static void csd_extents(Client *c); static void csd_read(Client *c, XWindowAttributes *wa); static void net_state_sync(Client *c); static void csd_max_first(Client *c); static void csd_frame_draw(Client *c);   /* (1.6.1 Part 15, below) */
+static void csd_extents(Client *c); static void csd_read(Client *c, XWindowAttributes *wa); static void tb_cut_apply(Client *c); static void csd_update(Client *c); static void net_state_sync(Client *c); static void csd_max_first(Client *c); static void csd_frame_draw(Client *c);   /* (1.6.1 Part 15, below) */
 static int lp_min(Client *c); static void lp_unmin(Client *c); static int lp_maxi(Client *c, int on); static void lp_gone(Client *c);   /* (1.6.0 Part 17) */
 static void lp_menu_open(GtkWidget *pw, int wx, int wy, int kind, double x, double y, double w, double h, double bx, double by, int corner);
 static void lp_menu_closed(GtkWidget *pw, double x, double y, double w, double h); static void lp_tbb(Client *c); static int lp_dir(void); static void lp_draw_clip(cairo_t *cr, GtkWidget *pw, int wx, int wy); static int lp_hit_mid(const char *kind, const char *arg, double *x, double *y, LPRect *r);   /* (Part 17b) */
@@ -1406,7 +1406,7 @@ static void wm_manage(Window w, AppWin *own)
 	XSelectInput(DPY, w, PropertyChangeMask | (own ? wa.your_event_mask : StructureNotifyMask));
 	XAddToSaveSet(DPY, w); XSetWindowBorderWidth(DPY, w, 0);
 	if (wa.map_state != IsUnmapped) c->ignore_unmap++;   /* (reparenting a shown window unmaps it once) */
-	if ((c->ak[0] && c->it) || c->csd) {   /* (an app drawing its own title bar too: GTK's margins, and Part 15's cut, as Oracle's) */
+	if ((c->ak[0] && c->it) || c->nodeco) {   /* (an app drawing its own title bar too: GTK's margins, and Part 15's cut, as Oracle's) */
 		XSetWindowAttributes ca = {0}; ca.event_mask = SubstructureNotifyMask | SubstructureRedirectMask; ca.background_pixel = WhitePixel(DPY, DefaultScreen(DPY));
 		c->clip = XCreateWindow(DPY, c->frame, BW, TH, c->cw, c->ch, 0, CopyFromParent, InputOutput, CopyFromParent, CWEventMask | CWBackPixel, &ca); XMapWindow(DPY, c->clip);
 		XReparentWindow(DPY, w, c->clip, -c->il, -c->it); XResizeWindow(DPY, w, c->cw + c->il + c->ir, c->ch + c->it + c->ib); }
@@ -1520,8 +1520,9 @@ static void csd_gtk(Window w, int *l, int *r, int *t, int *b)
 /* (wm_manage, before the frame is made) another program's window that draws its own title bar */
 static void csd_read(Client *c, XWindowAttributes *wa)
 {
-	c->csd = !c->app && !c->ak[0] && csd_nodeco(c->w); if (!c->csd) return;
+	c->nodeco = c->csd = !c->app && !c->ak[0] && csd_nodeco(c->w); if (!c->csd) return;
 	csd_gtk(c->w, &c->gl, &c->gr, &c->gt, &c->gb); c->il = c->gl; c->ir = c->gr; c->it = c->gt; c->ib = c->gb;
+	tb_cut_apply(c);   /* (item 3: Rudolf's title bar chosen for it) */
 	c->cw = MAX(1, wa->width - c->il - c->ir); c->ch = MAX(1, wa->height - c->it - c->ib);
 }
 /* (a window already framed whose hints change: Chromium's "Use system title bar and borders" turned on or off; GTK's margins
@@ -1539,8 +1540,11 @@ static void csd_update(Client *c)
 {
 	if (c->app || c->ak[0] || !c->frame) return;
 	int now = csd_nodeco(c->w), l = 0, r = 0, t = 0, b = 0; if (now) csd_gtk(c->w, &l, &r, &t, &b);
-	if (now == c->csd && l == c->gl && r == c->gr && t == c->gt && b == c->gb) return;
-	c->csd = now; c->gl = l; c->gr = r; c->gt = t; c->gb = b; c->il = l; c->ir = r; c->it = t; c->ib = b;
+	if (now == c->nodeco && l == c->gl && r == c->gr && t == c->gt && b == c->gb) return;
+	int ocut = c->tbcut;
+	c->nodeco = c->csd = now; c->gl = l; c->gr = r; c->gt = t; c->gb = b; c->il = l; c->ir = r; c->it = t; c->ib = b;
+	tb_cut_apply(c);   /* (item 3) */
+	if (!c->max && !c->full) c->ch = MAX(1, c->ch + ocut - c->tbcut);   /* (item 3: the app's window keeps its height; what is cut is taken from what shows) */
 	if (now || l || r || t || b) csd_clip(c);
 	if (c->max) max_geom(c);
 	place(c); frame_draw(c); state_write();
@@ -1630,6 +1634,65 @@ static int csd_message(XClientMessageEvent *m)
 		return 0;   /* (full screen and minimize: wm_filter's own) */
 	}
 	return 0;
+}
+/* ---- (1.6.1, docs/plan-1.6.1.md Part 15, item 3) Rudolf's title bar instead, by choice, per app. The window's menu (its taskbar
+   button's, Rudolf's title bar's, a GTK header bar's right-click) on a window that draws its own bar has "Title bar: the app's own" and
+   "Title bar: Rudolf's". With Rudolf's, the app's own bar is cut away as Oracle's Chromium bar is (the clip window and its top inset), at
+   its height from the list (/usr/share/rudolf/titlebars, "ID<TAB>cut<TAB>N": N the bar's height in the app's pixels at 100 %, scaled
+   as the desktop is; ID the window's class, WM_CLASS), offered only for apps on it (their bar holds only the title and the three
+   buttons); for any other the menu says what would be lost instead. Kept per account and app: bd95titlebar:ID in its settings
+   (rudolfd's copy of the pages' storage), {"CLASS":"rudolf"}, read by the shell. */
+typedef struct { char id[64]; int h; } TbCut;
+static TbCut TBCUT[32]; static int NTBCUT = -1;
+static char TBCH[2048], TBCH_FOR[80];   /* (the account's choices, as kept; whose) */
+static void tbcut_load(void)
+{
+	if (NTBCUT >= 0) return; NTBCUT = 0;
+	const char *f = getenv("RUDOLF_TITLEBARS") ? getenv("RUDOLF_TITLEBARS") : "/usr/share/rudolf/titlebars"; gchar *t = NULL;
+	if (!g_file_get_contents(f, &t, NULL, NULL)) return;
+	for (char *l = strtok(t, "\n"); l && NTBCUT < 32; l = strtok(NULL, "\n")) { char id[64], how[16]; int h = 0;
+		if (l[0] != '#' && sscanf(l, "%63[^\t]\t%15[^\t]\t%d", id, how, &h) == 3 && !strcmp(how, "cut") && h > 0 && h <= 200) { snprintf(TBCUT[NTBCUT].id, sizeof TBCUT[0].id, "%s", id); TBCUT[NTBCUT++].h = h; } }
+	g_free(t);
+}
+/* the window's app, as the list and the choices name it: its class (WM_CLASS), lower case; 0 when it has none fit for a key */
+static int tb_key(Client *c, char *k, size_t n)
+{
+	XClassHint ch = {0}; k[0] = 0; if (!XGetClassHint(DPY, c->w, &ch)) return 0;
+	snprintf(k, n, "%s", ch.res_class ? ch.res_class : ch.res_name ? ch.res_name : ""); if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class);
+	for (char *p = k; *p; p++) *p = g_ascii_tolower(*p);
+	return k[0] && strlen(k) < 60 && strspn(k, "abcdefghijklmnopqrstuvwxyz0123456789._-") == strlen(k);
+}
+static int tbcut_of(Client *c) { char k[64]; tbcut_load(); if (!tb_key(c, k, sizeof k)) return 0; for (int i = 0; i < NTBCUT; i++) if (!g_ascii_strcasecmp(TBCUT[i].id, k)) return TBCUT[i].h; return 0; }
+static void tbch_load(void)
+{
+	if (!USER_ID[0] || !id_ok(USER_ID)) { TBCH[0] = TBCH_FOR[0] = 0; return; }
+	if (!strcmp(TBCH_FOR, USER_ID)) return;
+	char p[160]; snprintf(p, sizeof p, "/api/lsync?key=bd95titlebar%%3A%s", USER_ID); JV *r = jget(p); JV *v = jprop(r, "v");
+	snprintf(TBCH, sizeof TBCH, "%s", v && v->t == 3 && v->s[0] == '{' ? v->s : "{}"); snprintf(TBCH_FOR, sizeof TBCH_FOR, "%s", USER_ID); jfree(r);
+}
+static int tb_rudolf(Client *c)
+{
+	char k[64]; if (!tb_key(c, k, sizeof k)) return 0; tbch_load(); JV *o = jparse(TBCH), *v = jprop(o, k);
+	int r = v && v->t == 3 && !strcmp(v->s, "rudolf"); jfree(o); return r;
+}
+/* (csd_read, csd_update) the cut, when Rudolf's title bar is chosen for an app on the list: the window framed as any other */
+static void tb_cut_apply(Client *c)
+{
+	int h = c->nodeco ? tbcut_of(c) : 0; c->tbcut = h && tb_rudolf(c) ? (int)lround(h * Z) : 0;
+	if (c->tbcut) { c->csd = 0; c->it = c->gt + c->tbcut; }
+}
+static void tb_choose(Client *c, int rudolf)
+{
+	char k[64]; if (!tb_key(c, k, sizeof k) || !USER_ID[0] || !id_ok(USER_ID) || (rudolf && !tbcut_of(c))) return;
+	tbch_load(); JV *o = jparse(TBCH); GString *js = g_string_new("{"); int n = 0;
+	for (int i = 0; o && o->t == 5 && i < o->len; i++) { if (!strcmp(o->k[i], k) || o->v[i]->t != 3) continue; if (n++) g_string_append_c(js, ','); json_esc(js, o->k[i]); g_string_append_c(js, ':'); json_esc(js, o->v[i]->s); }
+	if (rudolf) { if (n++) g_string_append_c(js, ','); json_esc(js, k); g_string_append(js, ":\"rudolf\""); }
+	g_string_append_c(js, '}'); jfree(o);
+	GString *b = g_string_new("{\"gen\":0,\"part\":1,\"set\":{"); char key[100]; snprintf(key, sizeof key, "bd95titlebar:%s", USER_ID); json_esc(b, key); g_string_append_c(b, ':'); json_esc(b, js->str); g_string_append(b, "},\"del\":[]}");
+	if (http("POST", "/api/lsync", b->str, b->len, NULL) == 200) snprintf(TBCH, sizeof TBCH, "%s", js->str);
+	g_string_free(js, TRUE); g_string_free(b, TRUE);
+	/* every window of that app, now */
+	for (GList *l = CLIENTS; l; l = l->next) { Client *o2 = l->data; char k2[64]; if (o2->nodeco && tb_key(o2, k2, sizeof k2) && !strcmp(k2, k)) { o2->gt = -1; csd_update(o2); } }
 }
 static void frame_press(Client *c, XButtonEvent *e)
 {
@@ -5110,6 +5173,7 @@ static void on_tb_act(const char *a)
 		else if (!strcmp(a, "wn:top")) { c->ontop = !c->ontop; wm_focus(c); }
 		else if (!strcmp(a, "wn:center")) { if (c->max) wm_maximise(c, 0); wm_focus(c); c->x = desk_left() + MAX(0, (desk_w() - fw_of(c)) / 2); c->y = work_top() + MAX(0, (work_h() - fh_of(c)) / 2); place(c); state_write(); }
 		else if (!strcmp(a, "wn:close")) { if (c->app) appwin_ask_close(c->app); else wm_close(c); }
+		else if (!strcmp(a, "wn:tbown") || !strcmp(a, "wn:tbrudolf")) tb_choose(c, a[5] == 'r');   /* (1.6.1 Part 15, item 3) */
 		else if (!strcmp(a, "wn:fq")) { if (c->app) { char k[KN]; snprintf(k, sizeof k, "%s", c->app->k); GList *L = g_list_copy(WINS);   /* (the page's: every window of the app, without asking) */
 				for (GList *l = L; l; l = l->next) { AppWin *w = l->data; if (g_list_find(WINS, w) && !w->hidden && !strcmp(w->k, k)) appwin_close_now(w); } g_list_free(L); } else XKillClient(DPY, c->w); }
 		else if (!strncmp(a, "wp:", 3) && c->app && c->app->view) { GString *js = g_string_new("window.__oaWinMenuDo&&__oaWinMenuDo("); json_esc(js, a + 3); g_string_append_c(js, ')');
@@ -5150,6 +5214,17 @@ static void ctx_msg(AppWin *a, JSCValue *v)
 	char rg[4] = ""; jsstr(v, "ring", rg, sizeof rg);   /* (the menu's focus ring as Chromium shows it after that click: the page says) */
 	CTX_A = a; CTX_GEN = atoi(gs); CM_RING = rg[0] == '1'; cm_open(cx + atof(xs), cy + atof(ys), title, m, n, ctx_chosen);
 }
+/* (win_menu_build) its rows, after the others: a window drawing its own title bar */
+static int tb_menu_rows(Client *c, CMI *m, int n, int max)
+{
+	if (c->app || c->ak[0] || !c->nodeco || n + 3 > max) return n;
+	memset(&m[n], 0, sizeof m[n]); m[n++].sep = 1;
+	if (tbcut_of(c)) {
+		CMI *a = &m[n++]; memset(a, 0, sizeof *a); snprintf(a->label, sizeof a->label, "Title bar: the app's own"); snprintf(a->act, sizeof a->act, "wn:tbown"); snprintf(a->icon, sizeof a->icon, "%s", c->tbcut ? "" : "✓");
+		CMI *b = &m[n++]; memset(b, 0, sizeof *b); snprintf(b->label, sizeof b->label, "Title bar: Rudolf's"); snprintf(b->act, sizeof b->act, "wn:tbrudolf"); snprintf(b->icon, sizeof b->icon, "%s", c->tbcut ? "✓" : "");
+	} else { CMI *a = &m[n++]; memset(a, 0, sizeof *a); a->dis = 1; snprintf(a->label, sizeof a->label, "Title bar: the app's own (Rudolf's would hide its menus and buttons)"); snprintf(a->act, sizeof a->act, "wn:tbno"); }
+	return n;
+}
 static void win_menu_build(Client *c, JV *pm)
 {
 	CMI m[24]; int n = 0; memset(m, 0, sizeof m); char title[256] = ""; jstr(pm, "title", title, sizeof title); if (!title[0]) snprintf(title, sizeof title, "%s", c->title);
@@ -5176,6 +5251,7 @@ static void win_menu_build(Client *c, JV *pm)
 		else if (c->app && jump_of(c->app->k, L) >= 0) snprintf(x->act, sizeof x->act, "jump:%.38s|%.50s", c->app->k, L);
 		else snprintf(x->act, sizeof x->act, "wp:%.90s", L); }
 	for (int i = 0; i < n; i++) if (!strcmp(m[i].label, "Print / Save as PDF…")) CM_LATE = 1;
+	n = tb_menu_rows(c, m, n, 24);   /* (1.6.1 Part 15, item 3) */
 	tb_menu_show(title, m, n, 0, "win");
 }
 static void win_menu_got(GObject *src, GAsyncResult *res, gpointer d)
@@ -7376,7 +7452,7 @@ static void state_write(void)
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
 		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);
-		if (c->csd || c->clip) g_string_append_printf(s, "clientcsd %lx %d %d %d %d %d\n", (unsigned long)c->w, c->csd, c->il, c->it, c->ir, c->ib);   /* (1.6.1 Part 15: its own title bar, its cut) */   /* (item 4: its workspace, shown or not) */
+		if (c->csd || c->clip) g_string_append_printf(s, "clientcsd %lx %d %d %d %d %d %d\n", (unsigned long)c->w, c->csd, c->il, c->it, c->ir, c->ib, c->tbcut);   /* (1.6.1 Part 15: its own title bar, its cut) */   /* (item 4: its workspace, shown or not) */
 		if (c->ontop) g_string_append_printf(s, "clienttop %lx\n", (unsigned long)c->w);   /* (Always on top: the title bars' test) */
 		if (c->hidden) g_string_append_printf(s, "clienthidden %lx\n", (unsigned long)c->w);   /* (1.6.0: out of sight, as the portal's page between its dialogs) */
 		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
