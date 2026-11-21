@@ -167,7 +167,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
 # (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-root.inc sys/rudolfd-roothome.inc sys/rudolfd-boottime.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-drives-home.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-root.inc sys/rudolfd-roothome.inc sys/rudolfd-boottime.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-drives-home.c sys/rudolf-accounts.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -177,13 +177,14 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolfd" sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
 	gcc -O2 $HARD -o "$B/rudolf-update" sys/rudolf-update.c -lcrypto -ldl
 	# 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers (installed below: root's only, 0700)
-	RHELP="drives updates"
+	RHELP="drives updates accounts"
 	RINNER="drives-home"   # (run by a helper only, not by rudolf-rootd: the drives helper's drives-home, drives part 2)
 	gcc -O2 $HARD -o "$B/rudolf-rootd" sys/rudolf-rootd.c
 	# (each named: the check below wants every sys/*.c in a gcc line of its own)
 	gcc -O2 $HARD -o "$B/root-drives" sys/rudolf-drives.c
 	gcc -O2 $HARD -o "$B/root-updates" sys/rudolf-updates.c
 	gcc -O2 $HARD -o "$B/root-drives-home" sys/rudolf-drives-home.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+	gcc -O2 $HARD -o "$B/root-accounts" sys/rudolf-accounts.c -Wl,-Bstatic -lz -Wl,-Bdynamic   # (1.6.1 Part 11: the accounts' Linux users)
 	gcc -O2 $HARD -o "$B/rudolf-launch" sys/rudolf-launch.c
 	gcc -O2 $HARD -o "$B/rudolf-memguard" sys/rudolf-memguard.c   # 1.4.7: the memory guard
 	gcc -O2 $HARD -o "$B/rudolf-shellfix" sys/rudolf-shellfix.c   # 1.5.8: the shell put into the profile when it changed

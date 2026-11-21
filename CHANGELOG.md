@@ -10,6 +10,9 @@ Summary: In progress.
   Settings › Security (and preparing the drive for it) are done by the drives helper as root, no longer
   by rudolfd, which reads every request of the desktop: the key goes to it on a pipe, never as an argument, and the
   account is checked again there (a removed account is refused). Nothing changes on screen.
+- Security: the accounts' own Linux users (made and removed with the accounts, written into the system's user list,
+  their folders given to them) and Settings › Privacy › Saved passwords for apps are handled by a helper of their
+  own, no longer by rudolfd; it is asked only when an account comes or goes. Nothing changes on screen.
 - Fixed: the release build no longer stops when linux-firmware updates a file: it takes linux-firmware at the commit the firmware list was made from (the list's new "R" line), and a check runs that fetch on every change to the list.
 - Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
   follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at

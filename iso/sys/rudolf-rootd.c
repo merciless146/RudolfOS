@@ -35,7 +35,7 @@
 #include <sys/time.h>
 
 /* the helpers there are (each its own program in RR_DIR; Part 11's areas as they move) */
-static const char *const HELPERS[] = { "drives", "updates", NULL };
+static const char *const HELPERS[] = { "drives", "updates", "accounts", NULL };
 static char prog_exe[PATH_MAX];
 static pid_t prog_pid;
 

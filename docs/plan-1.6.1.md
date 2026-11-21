@@ -253,9 +253,9 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Updates | sys/rollback, sys/set, sys/beta, sys/developer, sys/stable, sys/status, speedtest, boot-ok (at the desktop's first heartbeat) | rudolf-update's state in /persist/os, its settings in /persist/etc | **updates** (moved) |
 | Updates | the desktop's page update (POST update, POST rollback: /persist/os/new, current, previous) | files of root's on RUDOLFDATA | **updates** (moved) |
 | Updates | bootmenu, secureboot (`efivar_write`, `unimmutable`, `boot_entry_ensure`), MokNew/MokAuth | EFI variables (/sys/firmware/efi/efivars: chattr -i, writes) | updates (the boot entries, next) |
-| Accounts | `au_start`, `au_install`, `au_sync`, `au_migrate`, `au_mv_one` | /etc/passwd, group, shadow written (the per-account Linux users of 1.5.9 15.3 / 1.6.0 Part 10), lchown of the moved folders | accounts |
-| Accounts | `au_session_start`, `au_session_stop`, `au_kill_user`, `au_xaccess` | /home/acctUID bind mount, /run/user/UID made and chowned, the session D-Bus and portal started as the account's user (setuid), its processes killed, X's localuser access | **drives** (moved with the sign-in's chain, part 2); au_kill_user for a removed account (au_sync): accounts |
-| Accounts | `api_keyring` (keyring/*) | /usr/lib/rudolf/keyring as root for the account's key files | accounts |
+| Accounts | `au_start`, `au_install`, `au_sync`, `au_migrate`, `au_mv_one` | /etc/passwd, group, shadow written (the per-account Linux users of 1.5.9 15.3 / 1.6.0 Part 10), lchown of the moved folders | **accounts** (moved) |
+| Accounts | `au_session_start`, `au_session_stop`, `au_kill_user`, `au_xaccess` | /home/acctUID bind mount, /run/user/UID made and chowned, the session D-Bus and portal started as the account's user (setuid), its processes killed, X's localuser access | **drives** (moved with the sign-in's chain, part 2); au_kill_user for a removed account (au_sync): **accounts** (moved) |
+| Accounts | `api_keyring` (keyring/*) | /usr/lib/rudolf/keyring as root for the account's key files | **accounts** (moved: keyring/list and keyring/forget's su) |
 | Accounts | home/* (the files API: tree, list, read, write, rename, copy, delete, recovered) | reads and writes inside /persist/accounts/ID, which is the account's user's, 0700 (root's DAC override) | accounts: a file service run as the account's own user (not root), 11.2 |
 | Accounts | desk_* (desktop.inc: the page's storage, dwp_ensure, dput) | chown of the desktop's folders to desk_uid | none needed after the drop (rudolfd is that user) |
 | Power | power (POST power: poweroff, reboot), `sleep_now`, `api_sleep` | reboot(2), /usr/lib/rudolf/shutdown, pkill of Chromium, umount -a -r, /sys/power/state, /sys/class/rtc/rtc0/wakealarm | power |
@@ -404,9 +404,31 @@ rudolfd runs as root today (they keep running as root, from the helper).
   RUN/vault.err as before; now said in the health log, Disk), `vault-move` (the job); vaultnative60_t.sh with
   VN_VIA=helper. Not moved yet: vault/setup's and vault/store's vault.json in /persist/etc (rudolfd's own files: the
   drop's step), dl_acct_dir's chown of the downloads' folders.
-- Next: accounts (au_start, au_sync, au_install: /etc, au_move_folder, au_kill_user of a removed
-  account; the keyring's su; the administrator's check, if the owner wants it in the helpers, with the password on
-  standard input); power; network; packages; display; other; then the drop.
+- **Accounts (2026-11-21, branch root-helpers-accounts, after root-helpers-home):** the accounts helper
+  (iso/sys/rudolf-accounts.c, /usr/lib/rudolf/root/accounts, in rudolf-rootd's list): `accounts sync` (after each save
+  of the page's storage: a Linux user made for a new account, the user of one that is gone stopped and removed, its
+  uid never given again, its Oracle folder deleted), `accounts start` (rudolfd's start: that, every user into /etc, the
+  move of existing accounts' folders), `accounts keyring-list`, `keyring-forget ID` (Settings › Privacy › Saved
+  passwords for apps, as the signed-in account's user). Like drives-home, rudolfd's own functions built as a program
+  of their own (au_sync's work split out as au_sync_ids, au_start's as au_start_users: the same lines). rudolfd reads
+  the page's accounts from the page's storage, as before (the helper never parses it) and hands their ids on standard
+  input, one a line; the helper checks each again (as au_sync did: letters, digits and "-", not the guest, not
+  "shared"; at most 256, no line over 80) and takes the uids and who is removed from the account list. rudolfd asks it
+  only when an account came or went (au_sync_needed reads the account list, which anyone may: the same test au_sync
+  made), not at every save. The keyring's account is the one signed in (RUN/home-session and the list), never one the
+  caller names; ID checked as rudolfd checks it. Part 20: the accounts helper has no line in rudolf-rootd-confine.h's
+  HELPER_CAPS (branch rudolfd-confine); with confine=on rudolf-rootd would not start it (253), and rudolfd then does
+  the work itself as before (said in its log), so nothing breaks; the line to add there: CAP_CHOWN, CAP_DAC_OVERRIDE,
+  CAP_DAC_READ_SEARCH, CAP_FOWNER, CAP_KILL, CAP_SETUID, CAP_SETGID. Found and kept as they were: which accounts exist
+  is still rudolfd's word (the page's storage is the only list of them), so a rudolfd that is not what it should be
+  could have an account's user removed and its Oracle folder deleted (its home folder stays, encrypted): for the
+  owner, with the drop (a signed list from the page, or the removal asked with the account's key). Tests:
+  users59_t.sh with US_VIA=helper (its 29 checks through the helper, and 2 more); roothelpers161_t.sh A1, 14c and its
+  API check 22 (the users written at start, the keyring's answer, the same through the helper as without).
+  Not moved: the administrator's check (left as it is: the page asks the password for Developer mode and Return to
+  official; moving it into the helpers would change who asks, for the owner to decide); the home/* files API (the file
+  service run as the account's user: needed only for the drop).
+- Next: power; network; packages; display; other; then the drop (with the accounts' file service of 11.2).
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).
