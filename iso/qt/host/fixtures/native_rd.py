@@ -93,6 +93,8 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send(404, 'not found', 'text/plain')
     def api(self, m, w, q, b):
         s = ST
+        # (1.6.1 Part 19, gamemode161_native_t.sh) game mode: on unless DIR/gamemode-off
+        if w.startswith('game/'): return self.j({'ok': True, 'enabled': rd('gamemode-off') is None, 'on': w != 'game/off', 'sources': [], 'games': []})
         if w == 'events/wait':
             import time
             for _ in range(6):

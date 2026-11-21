@@ -1,0 +1,34 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 10, docs/plan-oracle.md item 1): Oracle's find in page on the three engines it runs on. The
+# page's side (desktop/orafind61.js, the shell's walker: iso/qt/shell2/orafind61_t.js, and Oracle's tests that share those files);
+# Lite (rudolf-webkit's WebKitFindController: iso/qt/webkit/find61_ci.py); the real shell in a Chromium with Isolated Web Apps on
+# Standard and on Native (rudolf-native, Oracle in Rudolf's Chromium: iso/qt/native/orafind61_t.sh). Nothing is published.
+name: Oracle find check
+on:
+  push:
+    paths: ['desktop/orafind61.js', 'desktop/tabs26.js', 'desktop/base_v24.html', 'desktop/build19.py', 'iso/shell/shell.js', 'iso/sys/rudolf-webkit.c', 'iso/qt/shell2/orafind61_t.js', 'iso/qt/webkit/find61_ci.py', 'iso/qt/native/orafind61_t.sh', 'iso/qt/host/fixtures/dispkeys.c', '.github/workflows/oracle-find-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  find:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 glib-networking xvfb xdotool imagemagick iproute2 libxtst-dev libxrandr-dev libxfixes-dev fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && PLAYWRIGHT_BROWSERS_PATH=$PWD/pw npx playwright install --with-deps chromium >/dev/null
+          echo "CHROME_BIN=$(ls -d $PWD/pw/chromium-*/chrome-linux*/chrome | tail -1)" >> $GITHUB_ENV
+      - name: The page's side
+        run: |
+          (cd desktop && python3 build19.py ../iso/www/index.html >/dev/null)
+          for t in orafind61_t.js oracle58_t.js private59_t.js orahover61_t.js tor59_t.js; do echo "== $t"; node iso/qt/shell2/$t $CHROME_BIN || exit 1; done
+      - name: Lite (rudolf-webkit)
+        run: |
+          gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 1
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home; mkdir -p $HOME
+          python3 iso/qt/webkit/find61_ci.py ./rudolf-webkit
+      - name: Standard and Native, the real shell
+        run: sudo -E env CHROME=$CHROME_BIN sh iso/qt/native/orafind61_t.sh
