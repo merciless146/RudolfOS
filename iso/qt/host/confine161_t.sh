@@ -40,7 +40,7 @@ gcc -O2 -w -DRU_BIN="\"$T/ru\"" -o $T/rudolfd $SYS/rudolfd.c -lz && gcc $CF -o $
 mkdir -p $T/rh; chmod 755 $T/rh
 printf '#!/bin/sh\ngrep -E "^(Cap|Seccomp|NoNewPrivs)" /proc/self/status > %s/helper.status\necho "{\\"ok\\":true,\\"slot\\":\\"a\\"}"\n' $T > $T/rh/updates; chmod 700 $T/rh/updates
 mkdir -p $T/cg; : > $T/cg/cgroup.procs
-start() { : > $T/rd.log; rm -f /persist/var/log/health.log /run/rudolf/health.log /run/rudolf/winapi-refused; env $1 RUDOLFD_DESKTOP_CG=$T/cg RUDOLFD_DESKTOP_UID=65534 RR_TEST_DIR=$T/rh $2 > $T/rd.log 2>&1 & RDP=$!
+start() { : > $T/rd.log; rm -f /persist/var/log/health.log /run/rudolf/health.log /run/rudolf/winapi-refused /persist/var/log/confine.log /run/rudolf/confine.log; env $1 RUDOLFD_DESKTOP_CG=$T/cg RUDOLFD_DESKTOP_UID=65534 RR_TEST_DIR=$T/rh $2 > $T/rd.log 2>&1 & RDP=$!
 	w8 'curl -s http://127.0.0.1:8080/favicon.png -o /dev/null' 60; TOK=$(curl -s http://127.0.0.1:8080/ | sed -n 's/.*RUDOLFD={token:"\([0-9a-f]*\)".*/\1/p' | head -1); }
 stop() { kill $RDP 2>/dev/null; wait $RDP 2>/dev/null; RDP=; w8 '! curl -s -o /dev/null http://127.0.0.1:8080/favicon.png' 40; }
 health() { cat /persist/var/log/health.log /run/rudolf/health.log 2>/dev/null; }
@@ -89,6 +89,7 @@ ok "13. a narrow request writing where it may (fs/write in the shared Documents)
 o=$(win python3 /api/stats); o2=$(win python3 /api/desktop/accounts); o3=$(win python3 /api/ping); o4=$(win python3 /)
 ok "14. the page (a window's process in the desktop's group) gets what it asks for, narrow or not (stats; ping and the page itself, whose peer check is made before the narrow confinement), and is refused what only the native shell asks for (desktop/accounts): 403" "$([ "$(echo "$o" | head -1)" = 200 ] && [ "$(echo "$o3" | head -1)" = 200 ] && [ "$(echo "$o4" | head -1)" = 200 ] && echo "$o2" | grep -q '^403 .*does not use' && echo 1)" "$o / $o2 / $o3 / $o4"
 ok "...said in the health log" "$(health | grep -q "the desktop's page asked for desktop/accounts, which it never asks for: refused" && echo 1)" "$(health | tail -3)"
+ok "...and in the confinement's own log (never trimmed), with rudolfd's start" "$(grep -q 'the page asked for desktop/accounts: refused' /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null && grep -q 'confinement on, Landlock ABI' /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null && echo 1)" "$(cat /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null | tail -3)"
 o=$(win $T/rudolf-native /api/desktop/accounts); o2=$(win $T/rudolf-native /api/fs/list)
 ok "15. the native shell (rudolf-native) gets its own (desktop/accounts) and is refused the rest (fs/list)" "$([ "$(echo "$o" | head -1)" = 200 ] && echo "$o2" | grep -q '^403' && echo 1)" "$o / $o2"
 c=$(api desktop/accounts)

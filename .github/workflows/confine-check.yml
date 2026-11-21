@@ -14,7 +14,7 @@ permissions: {contents: read}
 jobs:
   host:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v5
       - name: Host tests
@@ -60,6 +60,8 @@ jobs:
       matrix:
         r:
           - {id: t160-off, test: t160, confine: 'off', kernel: release}
+          - {id: t160-off-ll, test: t160, confine: 'off', kernel: built}
+          - {id: r161-off-ll, test: r161, confine: 'off', kernel: built}
           - {id: t160-on, test: t160, confine: 'on', kernel: release}
           - {id: t160-on-ll, test: t160, confine: 'on', kernel: built}
           - {id: t160-log-ll, test: t160, confine: log, kernel: built}
@@ -113,8 +115,9 @@ jobs:
           cd run; for img in int160.img r161.img; do [ -f "$img" ] || continue
             L=$(sudo losetup -f --show -o 1048576 "$img") || continue
             sudo debugfs -R 'cat /var/log/health.log' "$L" 2>/dev/null | grep -iE 'confinement|never asks for|could not confine' | tee -a confine-health.txt
+            echo "-- confine.log ($img)"; sudo debugfs -R 'cat /var/log/confine.log' "$L" 2>/dev/null | tee -a confine-log.txt
             sudo losetup -d "$L"; done
-          echo "::notice title=${{ matrix.r.id }}::$(grep -c . confine-health.txt 2>/dev/null || echo 0) confinement lines in the health log"
+          echo "::notice title=${{ matrix.r.id }}::$(grep -c . confine-health.txt 2>/dev/null || echo 0) confinement lines in the health log; confine.log: $(grep -c 'refused\|logged' confine-log.txt 2>/dev/null || echo 0) calls or requests refused or logged, $(grep -c 'confinement ' confine-log.txt 2>/dev/null || echo 0) starts"
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: '${{ matrix.r.id }}', retention-days: 7, path: "run/${{ matrix.r.test }}.txt\nrun/confine-health.txt\nrun/${{ matrix.r.test }}*/qemu.log\nrun/${{ matrix.r.test }}*/*.png"}
+        with: {name: '${{ matrix.r.id }}', retention-days: 7, path: "run/${{ matrix.r.test }}.txt\nrun/confine-health.txt\nrun/confine-log.txt\nrun/${{ matrix.r.test }}*/qemu.log\nrun/${{ matrix.r.test }}*/*.png"}

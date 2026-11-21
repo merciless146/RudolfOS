@@ -57,6 +57,7 @@
 #endif
 static int cf_mode = CF_OFF, cf_ll_abi = 0;
 static int cf_narrow_on = 0;   /* (this connection's process is in the narrow confinement) */
+static void confine_note(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 #include "rudolfd-confine-tables.h"   /* what each layer allows: the lists */
 #include "rudolfd-confine-narrow.h"   /* CONFINE_NARROW: the narrow layer's system calls (traced; the list and where each was seen) */
@@ -78,6 +79,7 @@ static void confine_boot(void)
 	}
 	if (cf_seccomp(CONFINE_TREE_DENY, nd, CONFINE_TREE_DENY32, nd32, 0, cf_mode)) scw = " (the system-call filter could not be set)";
 	fprintf(stderr, "rudolfd: confinement %s (Landlock ABI %d)%s%s\n", cf_mode_name(cf_mode), cf_ll_abi, capw, scw);
+	confine_note("rudolfd %d: confinement %s, Landlock ABI %d%s%s", (int)getpid(), cf_mode_name(cf_mode), cf_ll_abi, capw, scw);
 	health_add("security", "rudolfd's confinement is %s: %s%s%s; the requests that start nothing %s%s", cf_mode_name(cf_mode),
 		cf_mode == CF_ON ? "system calls nothing needs refused, unused capabilities dropped" : "system calls nothing needs only logged",
 		capw, scw, cf_mode == CF_ON ? "narrowly confined" : "logged against the narrow list",
@@ -149,11 +151,25 @@ static int confine_window(struct req *r)
 		safe[i] = 0;
 		health_add("security", "%s asked for %s, which it never asks for: %s", k == 2 ? "the native shell" : "the desktop's page", safe, cf_mode == CF_ON ? "refused" : "answered (confinement: log)");
 	}
+	{ char safe[80]; size_t i = 0; for (; p[i] && i < sizeof safe - 1; i++) safe[i] = isalnum((unsigned char)p[i]) || strchr("/_.-", p[i]) ? p[i] : '?'; safe[i] = 0;
+	  confine_note("%s asked for %s: %s", k == 2 ? "the native shell" : "the page", safe, cf_mode == CF_ON ? "refused" : "answered (log)"); }
 	if (cf_mode == CF_LOG) return 1;
 	reply_err(r->fd, 403, "this window does not use that part of the API");
 	return 0;
 }
 
+/* every line also in a log of its own, never trimmed (the health log keeps only its newest): PERSIST/var/log/confine.log
+   (RUN/confine.log in a live start), up to 256 KB: what a beta's "log" run found, for the owner and the QEMU check */
+static void confine_note(const char *fmt, ...)
+{
+	char p[200]; snprintf(p, sizeof p, "%s", access(RUN "/persistent", F_OK) ? RUN "/confine.log" : PERSIST "/var/log/confine.log");
+	struct stat st; if (!stat(p, &st) && st.st_size > (256 << 10)) return;
+	int f = open(p, O_WRONLY | O_CREAT | O_APPEND | O_CLOEXEC | O_NOFOLLOW, 0600); if (f < 0) return;
+	char b[600]; time_t t = time(NULL); struct tm tm; gmtime_r(&t, &tm); size_t n = strftime(b, sizeof b, "%Y-%m-%dT%H:%M:%SZ ", &tm);
+	va_list a; va_start(a, fmt); int k = vsnprintf(b + n, sizeof b - n - 1, fmt, a); va_end(a);
+	if (k > 0) { n += (size_t)k < sizeof b - n - 1 ? (size_t)k : sizeof b - n - 2; b[n++] = '\n'; if (write(f, b, n) < 0) {} }
+	close(f);
+}
 /* the kernel's audit lines for the system calls refused or logged (type=1326) of rudolfd and the programs it starts,
    into the health log: each program and call once per start (up to 40; then a count), so a beta's first run in "log"
    mode lists what "on" would refuse */
@@ -178,6 +194,7 @@ static void confine_tick(void)
 		if (k < said) continue;
 		if (said < 40) {
 			snprintf(seen[said++], sizeof seen[0], "%s", key);
+			confine_note("%s system call %d%s of %s (%s)", cf_mode == CF_ON ? "refused" : "logged", nr, arch == 0x40000003u ? " (32-bit)" : "", comm, b);
 			health_add("security", "the confinement %s system call %d%s of %s", cf_mode == CF_ON ? "refused" : "logged (it would refuse)", nr, arch == 0x40000003u ? " (32-bit)" : "", comm);
 		} else if (!more++) health_add("security", "the confinement %s more system calls than it lists (see the kernel's log)", cf_mode == CF_ON ? "refused" : "logged");
 	}
