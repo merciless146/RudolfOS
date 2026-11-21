@@ -8,7 +8,7 @@
 window.__gpudrv61=1;
 async function gdStatus(){try{return await rd('gpu/driver')}catch(e){return null}}
 function gdNow(s){return s.inUse=='nvidia'?`NVIDIA's driver${s.version?' '+s.version:''}`:'the open driver (NVK)'}
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);if(!RD)return;
+(function(){dispPanelS=__after(dispPanelS,function(c,W){if(!RD)return;
  gdStatus().then(s=>{if(!s||!s.card||!c.isConnected)return;   /* (no NVIDIA card: nothing to choose) */
   const d=sp(c,`<h4 class='sh4'>Graphics driver</h4><div class='r2'><label for='gdsel'>NVIDIA card</label><div><select id='gdsel'>
    <option value='open'>Open (NVK): nouveau and Mesa (recommended)</option><option value='nvidia'>NVIDIA's driver</option></select>
@@ -25,7 +25,7 @@ function gdNow(s){return s.inUse=='nvidia'?`NVIDIA's driver${s.version?' '+s.ver
    if(!cr){show(s);return}
    try{s=await rd('gpu/driver/set?to='+to,{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});show(s);
     notify('Graphics driver',`${to=='nvidia'?"NVIDIA's driver":'The open driver'} is used from the next start.`,{action:()=>{try{fsFlush()}catch(e){}rdPost('power?action=reboot').catch(()=>{})}})}
-   catch(e){notify('Graphics driver',e.message,{kind:'error'});show(s)}}})}})();
+   catch(e){notify('Graphics driver',e.message,{kind:'error'});show(s)}}})},"gpudrv61.js");})();
 /* after a start that switched back by itself: one notification once someone is signed in (rudolfd forgets the note once
    it was shown); by the desktop page on Standard, by the service page on Native (not by every app window) */
 const gdMine=()=>!(typeof ONEAPP!='undefined'&&ONEAPP)||(typeof OA_SVC!='undefined'&&OA_SVC);

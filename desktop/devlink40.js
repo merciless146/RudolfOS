@@ -115,4 +115,4 @@ async function devlSection(c,W){
   btn('Log…',devlLog);
   if(!adm||!dev){const n=document.createElement('span');n.className='msg';n.textContent=!dev?' Allow the development link on this computer first (above).':' An administrator can switch it on.';row.appendChild(n)}};
  draw()}
-if(typeof secPanelS=='function'){const _sp2=secPanelS;secPanelS=function(c,W){const r=_sp2.apply(this,arguments);try{devlSection(c,W)}catch(e){}return r}}
+if(typeof secPanelS=='function'){secPanelS=__after(secPanelS,function(c,W){try{devlSection(c,W)}catch(e){}},"devlink40.js");}

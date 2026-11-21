@@ -40,9 +40,9 @@ html.tws-retro .win>.body{border-radius:0!important}
 /* Display Properties' small preview of the title bar */
 .twprev{display:flex;flex-direction:column;gap:4px;margin-top:6px;max-width:320px}.twprev .win{position:static!important;box-shadow:none!important;width:auto!important;height:auto!important;min-height:0!important;pointer-events:none}
 .twprev .win>.tb{font-size:12px}.twprev .win>.body{height:6px;min-height:0}`;document.head.appendChild(st)}
-(function(){const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);try{twApply()}catch(e){}return r}})();
+(function(){themeApply=__after(themeApply,function(){try{twApply()}catch(e){}},"titlebar59.js");})();
 /* Display Properties › Title bars, after the Taskbar group */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const tg=c.querySelector('.tbgrp');if(!tg||c.querySelector('.twgrp'))return;
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const tg=c.querySelector('.tbgrp');if(!tg||c.querySelector('.twgrp'))return;
  const d=document.createElement('div');
  d.innerHTML=`<h4 class='sh4'>Title bars</h4><div class='r2 twgrp'><label for='dtws'>Style</label><select id='dtws'>${TB_STYLES.map(([k,n])=>optH(k,n,S.twstyle||'standard')).join('')}</select>
   <label for='dtwm'>Colour</label><div><select id='dtwm' aria-label='Which colour'>${ACMODES.map(([k,n])=>optH(k,n,S.twacm||'normal')).join('')}</select>
@@ -50,5 +50,5 @@ html.tws-retro .win>.body{border-radius:0!important}
   <div class='twprev' aria-hidden='true'><div class='win act'><div class='tb'><span>⚙️</span><span class='t'>Active window</span><button class='mn' tabindex='-1'>_</button><button class='mx' tabindex='-1'>□</button><button class='cl' tabindex='-1'>✕</button></div><div class='body'></div></div>
   <div class='win'><div class='tb'><span>📝</span><span class='t'>Another window</span><button class='mn' tabindex='-1'>_</button><button class='mx' tabindex='-1'>□</button><button class='cl' tabindex='-1'>✕</button></div><div class='body'></div></div></div></div></div>`;
  tg.after(...d.children);
- c.querySelector('#dtws').onchange=e=>liveSet(c,'twstyle',e.target.value);c.querySelector('#dtwm').onchange=e=>liveSet(c,'twacm',e.target.value)}})();
+ c.querySelector('#dtws').onchange=e=>liveSet(c,'twstyle',e.target.value);c.querySelector('#dtwm').onchange=e=>liveSet(c,'twacm',e.target.value)},"titlebar59.js");})();
 twApply();

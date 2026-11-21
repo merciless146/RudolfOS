@@ -50,5 +50,5 @@ function micTestBox(host){
   if(!browserIds){try{await rdPost('audio/mic?name='+encodeURIComponent(sel.value))}catch(e){st.textContent=e.message||'That microphone could not be chosen.';return}}
   st.textContent='Chosen: '+sel.options[sel.selectedIndex].textContent+(browserIds?'':' (for every app)')+'.';if(was)start()};
  fill();return box}
-if(typeof volPanelS=='function'){const _vp=volPanelS;volPanelS=function(c,W){const r=_vp.apply(this,arguments);try{micTestStop();const h=c.querySelector('.mics');
- if(h)micTestBox(h);else{const d=document.createElement('div');d.innerHTML="<h4 class='sh4'>Microphone</h4>";c.appendChild(d);micTestBox(d)}}catch(e){console.warn('mictest59',e)}return r}}
+if(typeof volPanelS=='function'){volPanelS=__after(volPanelS,function(c,W){try{micTestStop();const h=c.querySelector('.mics');
+ if(h)micTestBox(h);else{const d=document.createElement('div');d.innerHTML="<h4 class='sh4'>Microphone</h4>";c.appendChild(d);micTestBox(d)}}catch(e){console.warn('mictest59',e)}},"mictest59.js");}

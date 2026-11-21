@@ -29,7 +29,7 @@ async function engineOffer60(){if(!RD||!USER||!isAdmin())return;let e;try{e=awai
  try{await rdPost('desktop/engine?offered=1')}catch(x){return}
  notify("Rudolf OS's new desktop","Rudolf OS's new desktop uses less memory and starts faster. Choose Native in Settings › System health › Desktop engine to try it; you can go back to Standard there.",{action:()=>settings('sys')})}
 (function(){const o=window.__afterLogin;window.__afterLogin=()=>{o&&o();setTimeout(()=>{engineOffer60().catch(()=>{})},5000)}})();
-{const _s=sysPanelS;sysPanelS=function(c,W){const r=_s.apply(this,arguments);try{enginePanel57(c)}catch(e){console.warn(e)}return r}}
+{sysPanelS=__after(sysPanelS,function(c,W){try{enginePanel57(c)}catch(e){console.warn(e)}},"engine57.js");}
 /* 1.5.8: Settings on the Lite desktop (WebKit): the pages scrolled sideways and on past their end (empty space under
    Apply / Revert), from the sticky footer's negative offsets; WebKit gets a plain sticky footer */
 if(document.documentElement.classList.contains('webkit')){const st=document.createElement('style');st.textContent='html.webkit .sc{overflow-x:hidden}html.webkit .sfoot{bottom:0;margin:14px -18px 0}';document.head.appendChild(st)}

@@ -56,7 +56,7 @@ const otpRequired=a=>{const m=(typeof SYSC=='object'&&SYSC.mfa)||'off';return a&
 function otpPolicy(c){const box=document.createElement('div');box.className='otppol';box.innerHTML="<h4 class='sh4'>Two-step sign-in</h4><div class='r2'><label>Required</label><select class='otpq'><option value='off'>Not required</option><option value='admin'>Required for administrators</option><option value='all'>Required for every account</option></select></div><div class='msg'>An account without it is asked to set up an authenticator app before its desktop opens. The Guest account cannot use it, so it is turned off while every account must.</div>";
  c.appendChild(box);const s=box.querySelector('.otpq');s.value=SYSC.mfa||'off';s.disabled=!isAdmin();
  s.onchange=async()=>{const v=s.value;if(!await elevate('Change who must use two-step sign-in')){s.value=SYSC.mfa||'off';return}SYSC.mfa=v;if(v=='all')SYSC.guest=false;sysSave();try{logEvt('sys',`${USER.n} set two-step sign-in: ${v}`)}catch(e){}}}
-if(typeof secPanelS=='function'){const _sp=secPanelS;secPanelS=function(c,W){const r=_sp.apply(this,arguments);try{otpPolicy(c)}catch(e){}return r}}
+if(typeof secPanelS=='function'){secPanelS=__after(secPanelS,function(c,W){try{otpPolicy(c)}catch(e){}},"otp60.js");}
 if(typeof usrPanelS=='function'){const _up=usrPanelS;usrPanelS=function(c,W){const r=_up.apply(this,arguments);try{if(USER&&USER.r!='guest'){const d=c.querySelector('.pka')&&c.querySelector('.pka').closest('.r2');if(d)otpRow(d.parentElement);else otpRow(c)}}catch(e){}return r}}
 /* after signing in: the second step required and not set up: set up first */
 (function(){const o=window.__afterLogin;window.__afterLogin=()=>{o&&o();try{if(USER&&otpRequired(USER)&&!USER.otp&&!USER.pk)otpSetup(USER,true)}catch(e){}}})();

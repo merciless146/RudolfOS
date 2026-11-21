@@ -96,7 +96,7 @@ function monShow(k,n){if(!MON_ON||!MONS[k])return wsGo(n);n=Math.max(1,Math.min(
  document.addEventListener('pointerup',e=>{if(!MON_ON)return;const el=e.target.closest&&e.target.closest('.win');if(!el||!e.target.closest('.tb'))return;const W=wins.find(o=>o.el===el);if(W)setTimeout(()=>monDrop(W),0)},true);
  /* the start button on another monitor: the menu there; the main one's: back on the main monitor */
  document.addEventListener('pointerdown',e=>{if(!MON_ON)return;const s=e.target.closest&&e.target.closest('#start');if(s)monPop(0)},true);
- const ap=applySet;applySet=function(){ap();if(MON_ON){monWall();monRules()}};
+ applySet=__after(applySet,function(){if(MON_ON){monWall();monRules()}},"mon61.js");
  new MutationObserver(ms=>{if(!MON_ON)return;const mine=n=>n===MON_RULES||n===MON_CSS||n===MON_MAXC||(n&&n.parentNode&&(n.parentNode===MON_RULES||n.parentNode===MON_CSS||n.parentNode===MON_MAXC));
   if(ms.some(m=>!mine(m.target)&&!(m.type=='childList'&&[...m.addedNodes,...m.removedNodes].every(mine))))monRules()}).observe(document.head,{childList:true,subtree:true,characterData:true});
  /* the monitor in use: the one clicked on (its wallpaper, its taskbar; a window's focus says so itself) */
@@ -153,7 +153,7 @@ setInterval(()=>{if(!MON_ON)return;const C0=$('#tray');
 /* ---- the monitors from rudolfd (screenctl status's "monitors", from rudolf-display), when the page starts and when its size changes */
 async function monFetch(){if(MON_OA||typeof RD=='undefined'||!RD)return;try{const st=await rd('screen');const m=st&&st.monitors;if(m&&Array.isArray(m.monitors)){m.monitors.forEach(x=>x.ws0=x.ws);monSet(m.monitors,m.key);MONS.forEach(x=>{const f=m.monitors.find(y=>y.name==x.name);x.ws0=f?f.ws:x.ws})}}catch(e){}}
 /* ---- Settings › Display › Displays */
-(function(){if(typeof dispPanelS!='function')return;const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const d=sp(c,`<h4 class='sh4'>Displays</h4><div id='dmons'></div>`);monUi(d.querySelector('#dmons'))}})();
+(function(){if(typeof dispPanelS!='function')return;dispPanelS=__after(dispPanelS,function(c,W){const d=sp(c,`<h4 class='sh4'>Displays</h4><div id='dmons'></div>`);monUi(d.querySelector('#dmons'))},"mon61.js");})();
 function monUi(box){if(!box)return;let L=MONS.map(m=>({...m}));const draw=()=>{if(!box.isConnected)return;
  if(L.length<2){box.innerHTML=`<div class='msg'>One display${L[0]?' ('+(+L[0].w)+'×'+(+L[0].h)+')':''}. Plug in another monitor (up to three) and each shows one of the three workspaces, with its own wallpaper and taskbar.</div>`;return}
  box.innerHTML=`<div class='msg'>${L.length} displays, side by side from the left. The main display has the tray, the desktop’s icons and the Start menu; each display shows one of the three workspaces. Kept for this set of displays.</div>`+

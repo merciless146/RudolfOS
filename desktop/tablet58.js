@@ -16,7 +16,7 @@ function tabletApply(){const H=document.documentElement,on=tabletOn();const was=
  if(on!=was)dispatchEvent(new CustomEvent('rudolf-tablet',{detail:{on}}))}
 addEventListener('resize',()=>tabletApply());
 ['(pointer:coarse)','(any-pointer:fine)'].forEach(m=>{try{matchMedia(m).addEventListener('change',()=>tabletApply())}catch(e){}});
-(function(){if(typeof themeApply!='function')return;const o=themeApply;themeApply=function(){const r=o.apply(this,arguments);tabletApply();return r}})();
+(function(){if(typeof themeApply!='function')return;themeApply=__after(themeApply,function(){tabletApply();},"tablet58.js");})();
 tabletApply();
 /* the dock: each taskbar button shows its app's icon (its picture, or the first character of its text) */
 const tabIc=t=>{t=String(t||'').trim();try{const g=new Intl.Segmenter(undefined,{granularity:'grapheme'}).segment(t)[Symbol.iterator]().next().value;return g?g.segment:''}catch(e){return [...t][0]||''}};
@@ -31,8 +31,7 @@ function tabletDock(){const T=document.getElementById('tasks');if(!T)return;T.qu
   else if(st.r&&!st.b&&st.x-e.clientX>FAR){st=null;if(!document.getElementById('ncp')&&typeof ncToggle=='function')ncToggle()}},{capture:true,passive:true});
  addEventListener('pointerup',()=>{st=null},{capture:true,passive:true});addEventListener('pointercancel',()=>{st=null},{capture:true,passive:true})})();
 /* Settings › Display › Tablet mode */
-(function(){if(typeof dispPanelS!='function')return;const o=dispPanelS;dispPanelS=function(c,W){o(c,W);
- const d=sp(c,`<h4 class='sh4'>Tablet mode</h4><div class='r2'><label for='dtab'>Tablet mode</label><select id='dtab'>${optH('auto','Automatic (on when there is a touchscreen and no mouse or touchpad)',S.tablet||'auto')}${optH('on','On',S.tablet)}${optH('off','Off',S.tablet)}</select></div>
+(function(){if(typeof dispPanelS!='function')return;dispPanelS=__after(dispPanelS,function(c,W){const d=sp(c,`<h4 class='sh4'>Tablet mode</h4><div class='r2'><label for='dtab'>Tablet mode</label><select id='dtab'>${optH('auto','Automatic (on when there is a touchscreen and no mouse or touchpad)',S.tablet||'auto')}${optH('on','On',S.tablet)}${optH('off','Off',S.tablet)}</select></div>
   <div class='msg dtabm'></div>`);
  const msg=()=>{d.querySelector('.dtabm').textContent=tabletOn()?'Tablet mode is on: each window fills the screen, the taskbar is a dock, swipe up from the bottom for Start and in from the right for notifications.':'Tablet mode is off.'};
- d.querySelector('#dtab').onchange=e=>{S.tablet=e.target.value;if(SC)SC.tablet=S.tablet;persistS();tabletApply();msg()};msg()}})();
+ d.querySelector('#dtab').onchange=e=>{S.tablet=e.target.value;if(SC)SC.tablet=S.tablet;persistS();tabletApply();msg()};msg()},"tablet58.js");})();

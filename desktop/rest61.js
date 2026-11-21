@@ -82,4 +82,4 @@ async function restPanel61(c){if(typeof RD=='undefined'||!RD)return;const nat=RD
  const ck=d.querySelector('#ir61'),sel=d.querySelector('#im61');ck.checked=on;sel.value=String(min);sel.disabled=!on;
  const save=()=>{S.idlerest=ck.checked;S.idlemin=+sel.value;if(typeof SC=='object'&&SC){SC.idlerest=S.idlerest;SC.idlemin=S.idlemin}sel.disabled=!ck.checked;try{persistS()}catch(e){console.warn(e)}};
  ck.onchange=save;sel.onchange=save}
-{const _s=sysPanelS;sysPanelS=function(c,W){const r=_s.apply(this,arguments);try{restPanel61(c)}catch(e){console.warn(e)}return r}}
+{sysPanelS=__after(sysPanelS,function(c,W){try{restPanel61(c)}catch(e){console.warn(e)}},"rest61.js");}

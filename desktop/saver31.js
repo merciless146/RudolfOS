@@ -65,7 +65,7 @@ function ssRun(opt){opt=opt||{};const c=document.createElement('canvas');c.id='s
 (function(){const o=lockScreen;lockScreen=function(){const was=LOCKED,r=o.apply(this,arguments);if(RD&&!was&&LOCKED)ssFront().then(m=>{if(m!='desktop')window.__lkBack=m});return r}})();
 window.__lockDone=()=>{const m=window.__lkBack;window.__lkBack=null;ssBack(m)};
 /* Display Properties › Screen saver */
-(function(){const o=dispPanelS;dispPanelS=function(c,W){o(c,W);const adm=isAdmin();const D=adm?'':' disabled';
+(function(){dispPanelS=__after(dispPanelS,function(c,W){const adm=isAdmin();const D=adm?'':' disabled';
  const d=document.createElement('div');d.className='ss31';
  d.innerHTML=`<h4 class='sh4'>Screen saver</h4><div class='r2'><label>Screen saver</label><div>${ckH('sson','On',SYSC.sson)}</div>
   <label for='ssmin'>Start after</label><select id='ssmin'${D}>${SS_MINS.map(m=>optH(m,m+(m==1?' minute':' minutes')+' without input',SYSC.ssmin)).join('')}</select>
@@ -78,8 +78,8 @@ window.__lockDone=()=>{const m=window.__lkBack;window.__lkBack=null;ssBack(m)};
  const kill=()=>{if(!d.isConnected){pv&&pv.stop();clearInterval(kt)}};const kt=setInterval(kill,1000);
  const save=()=>{SYSC.sson=q('#sson').checked;SYSC.ssmin=+q('#ssmin').value;SYSC.ssstyle=q('#ssst').value;SYSC.sstime=q('#sstime').checked;SYSC.lockss=q('#sslock').checked;sysSave()};
  ['#sson','#ssmin','#ssst','#sstime','#sslock'].forEach(s=>q(s).addEventListener('change',e=>{e.stopPropagation();if(adm)save();prev()}));
- q('.ssprev').onclick=e=>{e.preventDefault();if(SAVER)return;SAVER=ssRun({preview:true,style:q('#ssst').value})}}})();
+ q('.ssprev').onclick=e=>{e.preventDefault();if(SAVER)return;SAVER=ssRun({preview:true,style:q('#ssst').value})}},"saver31.js");})();
 /* User Settings › Sign-in options keeps Lock; the screen saver's settings are in Display Properties now */
-(function(){const o=usrPanelS;usrPanelS=function(c,W){o(c,W);const s=c.querySelector('#uss');if(!s)return;const l=s.previousElementSibling;
+(function(){usrPanelS=__after(usrPanelS,function(c,W){const s=c.querySelector('#uss');if(!s)return;const l=s.previousElementSibling;
  const n=document.createElement('div');n.className='msg';n.innerHTML=`In <a href='#'>Display Properties › Screen saver</a>.`;s.replaceWith(n);if(l)l.textContent='Screen saver';n.querySelector('a').onclick=e=>{e.preventDefault();W.show('disp')};
- const k=c.querySelector('#ulk');if(k){const lb=k.closest('label');if(lb)lb.remove()}}})();
+ const k=c.querySelector('#ulk');if(k){const lb=k.closest('label');if(lb)lb.remove()}},"saver31.js");})();
