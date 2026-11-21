@@ -16,6 +16,8 @@ st "kernel and start-up image"
 # 1.6.0 (plan Part 11): apps' requests to keep the screen on or the computer awake (rudolf-portal writes them; anyone may
 # add one, only its owner removes it, only root lists them)
 mkdir -p /run/rudolf/inhibit && chmod 1733 /run/rudolf/inhibit
+# 1.6.1 (plan-1.6.1 Part 19): games' GameMode requests (rudolf-portal), as the inhibit requests: anyone may add, only root lists
+mkdir -p /run/rudolf/game-req && chmod 1733 /run/rudolf/game-req
 chmod 1777 /tmp/.X11-unix
 mkdir -p /var/tmp; chmod 1777 /tmp /var/tmp
 mount -t tmpfs -o mode=1777 tmpfs /dev/shm

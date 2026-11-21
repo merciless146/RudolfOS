@@ -6971,6 +6971,44 @@ static void toast_add(AppWin *from, JSCValue *v) { toast_addf(from, NULL, fget_j
 /* (a pop-up of the shell's own, as the page's notify(t, b, {quiet: true, toast: ms}): "Workspace N") */
 static void fget_tt(void *v, const char *k, char *o, size_t n) { const char *const *f = v; snprintf(o, n, "%s", !strcmp(k, "t") ? f[0] : !strcmp(k, "b") ? f[1] : !strcmp(k, "ms") ? f[2] : ""); }
 static void toast_text(const char *t, const char *b, int ms) { char m[16]; snprintf(m, sizeof m, "%d", ms); const char *f[3] = {t, b, m}; toast_addf(NULL, NULL, fget_tt, (void *)f); }
+/* ------------------------------------------------------------------ game mode (1.6.1, docs/plan-1.6.1.md Part 19)
+   The native desktop is the window manager, so it is what sees a game full screen (a Linux window, Oracle's window, one of
+   its own app windows: a page's full screen): it tells rudolfd every 2 s while one is (game/on?src=native: root raises the
+   processor's preference and, for a Linux game, lowers the desktop's own processor time; a source that stops saying so
+   counts 6 s at most, so a crash of the native desktop leaves nothing behind), and game/off when none is. The pages hear
+   of it from rudolfd (gamemode61.js): they hold their notifications and background work, as Standard's page does. The
+   shell's own pop-ups (the cellular notices, its own messages) are held here too, but errors, and once the game is over
+   one pop-up says how many came, as the page's does (game51.js). Not with Game mode off (rudolfd says so). */
+static int GM61_ON, GM61_HELD;
+static Atom A_NPID;
+static Client *gm61_full(void)
+{
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
+		if (!c->full || c->hidden || c->off || c->min || (c->app && !strcmp(c->app->k, "do-saver"))) continue;
+		return c; }
+	return NULL;
+}
+static long gm61_pid(Window w)
+{
+	if (!A_NPID) A_NPID = XInternAtom(DPY, "_NET_WM_PID", False);
+	Atom type; int fmt; unsigned long n, after; unsigned char *d = NULL; long p = 0;
+	if (XGetWindowProperty(DPY, w, A_NPID, 0, 1, False, XA_CARDINAL, &type, &fmt, &n, &after, &d) == Success && d) { if (n == 1 && fmt == 32) p = (long)*(unsigned long *)d; XFree(d); }
+	return p;
+}
+static gboolean gm61_tick(gpointer d)
+{
+	(void)d; Client *c = USER_ID[0] && DPY ? gm61_full() : NULL; int on = 0;
+	if (c) { char p[160]; GByteArray *b = NULL; long pid = gm61_pid(c->w);
+		snprintf(p, sizeof p, "/api/game/on?src=native&kind=%s&pid=%ld", c->app ? "page" : c->ak[0] ? "oracle" : "linux", pid > 1 ? pid : 0);
+		if (http("POST", p, NULL, 0, &b) == 200 && b) { g_byte_array_append(b, (const guint8 *)"", 1); JV *v = jparse((char *)b->data); on = v && jbool(v, "enabled"); jfree(v); }
+		if (b) g_byte_array_free(b, TRUE); }
+	else if (GM61_ON) http("POST", "/api/game/off?src=native", NULL, 0, NULL);
+	int was = GM61_ON; GM61_ON = on;
+	if (was && !on && GM61_HELD) { char t[160]; snprintf(t, sizeof t, "%d notification%s came in. They are in the notification centre.", GM61_HELD, GM61_HELD == 1 ? "" : "s"); GM61_HELD = 0; toast_text("While you were playing", t, 6000); }
+	return TRUE;
+}
+/* a pop-up held while a game is full screen (kept in the centre by whoever sent it, as with Do not disturb) */
+static int gm61_hold(const char *kind) { if (!GM61_ON || !strcmp(kind, "error")) return 0; GM61_HELD++; return 1; }
 static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 {
 	if (!USER_ID[0]) return; if (NTST == 8) { memmove(&TST[0], &TST[1], 7 * sizeof TST[0]); NTST--; }
@@ -6983,6 +7021,7 @@ static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 	/* (1.6.0) Do not disturb: no pop-up, from any window or the shell, but an error's (shell25.js __notifCentre.add: !S.dnd||n.k=='error'), as on
 	   Standard where one page decides; a window whose page had not heard of the switch yet no longer shows one */
 	if (S.dnd && strcmp(t->k, "error")) { NTST--; return; }
+	if (gm61_hold(t->k)) { NTST--; return; }   /* (1.6.1 Part 19: game mode) */
 	toast_place(); if (!g_signal_handler_find(TWIN, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, toast_press, NULL)) { g_signal_connect(TWIN, "button-press-event", G_CALLBACK(toast_press), NULL); g_signal_connect(TWIN, "motion-notify-event", G_CALLBACK(toast_motion), NULL); }
 	toast_anim();
 }
@@ -7306,6 +7345,7 @@ int main(int argc, char **argv)
 	bri_load(); bar_redraw(); BL_LAST = bl_read(); g_timeout_add(300, bl_tick, NULL);
 	g_thread_unref(g_thread_new("events", ev_thread, NULL));
 	g_thread_unref(g_thread_new("portal", pt_thread, NULL));   /* (1.6.0: the portal's requests, collected here) */
+	g_timeout_add_seconds(2, gm61_tick, NULL);   /* (1.6.1 Part 19: game mode) */
 	g_timeout_add_seconds(2, svc_tick, NULL);   /* (1.6.0 Part 12, item 12: the desktop's service page, kept open while an account is signed in) */
 	teval_init(); clip_init();
 	state_write();
