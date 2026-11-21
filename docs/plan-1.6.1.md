@@ -430,10 +430,10 @@ rudolfd runs as root today (they keep running as root, from the helper).
   "shared"; at most 256, no line over 80) and takes the uids and who is removed from the account list. rudolfd asks it
   only when an account came or went (au_sync_needed reads the account list, which anyone may: the same test au_sync
   made), not at every save. The keyring's account is the one signed in (RUN/home-session and the list), never one the
-  caller names; ID checked as rudolfd checks it. Part 20: the accounts helper has no line in rudolf-rootd-confine.h's
-  HELPER_CAPS (branch rudolfd-confine); with confine=on rudolf-rootd would not start it (253), and rudolfd then does
-  the work itself as before (said in its log), so nothing breaks; the line to add there: CAP_CHOWN, CAP_DAC_OVERRIDE,
-  CAP_DAC_READ_SEARCH, CAP_FOWNER, CAP_KILL, CAP_SETUID, CAP_SETGID. Found and kept as they were: which accounts exist
+  caller names; ID checked as rudolfd checks it. Part 20 (merged, #534): the accounts helper's line in
+  rudolf-rootd-confine.h's HELPER_CAPS: CAP_CHOWN, CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH, CAP_FOWNER, CAP_KILL,
+  CAP_SETUID, CAP_SETGID, and the helpers' deny list. Should it ever not start (253), rudolfd does the work itself as
+  before (said in its log), so nothing breaks. Found and kept as they were: which accounts exist
   is still rudolfd's word (the page's storage is the only list of them), so a rudolfd that is not what it should be
   could have an account's user removed and its Oracle folder deleted (its home folder stays, encrypted): for the
   owner, with the drop (a signed list from the page, or the removal asked with the account's key). Tests:
