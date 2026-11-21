@@ -6,6 +6,9 @@
 #                             previous setting comes back (a monitor that cannot show the mode stays usable)
 #   screenctl keep            keep the new setting (saved on installed systems)
 #   screenctl revert          go back to the previous setting
+#   screenctl arrange SPEC    (1.6.1 Part 1) the arrangement of the monitors plugged in now, kept for this set of monitors in
+#                             /etc/rudolf-monitors: SPEC is NAME=WS,NAME=WS[,NAME=WS] from the left, the first the main one, each a
+#                             different workspace (1 to 3); rudolf-display arranges them anew within a second
 RUN=/run/rudolf; CUR=/etc/rudolf-screen; PREV=$RUN/screen-prev
 cur() { [ -s $CUR ] && cat $CUR || echo "auto 60"; }
 restart() { touch $RUN/screen-restart; }
@@ -20,8 +23,9 @@ E
 	[ "$M" = gpu ] && MODES=$(DISPLAY=:0 rudolf-display --modes 2>/dev/null | grep '^{' || echo null)
 	PEND=false; [ -e $PREV ] && PEND=true
 	PERS=false; [ -e $RUN/persistent ] && PERS=true
-	printf '{"ok":true,"res":"%s","fps":%s,"actual":{"w":%s,"h":%s,"hz":%s,"kind":"%s","panel":"%s"},"display":"%s","modes":%s,"pending":%s,"previous":"%s","persistent":%s}\n' \
-		"$RES" "$FPS" "${1:-0}" "${2:-0}" "${3:-0}" "${4:-native}" "${5:-}" "${M:-soft}" "$MODES" "$PEND" "$(cat $PREV 2>/dev/null)" "$PERS";;
+	MONS=null; [ -s $RUN/monitors ] && MONS=$(head -c 4000 $RUN/monitors | grep '^{' || echo null)
+	printf '{"ok":true,"res":"%s","fps":%s,"actual":{"w":%s,"h":%s,"hz":%s,"kind":"%s","panel":"%s"},"display":"%s","modes":%s,"pending":%s,"previous":"%s","persistent":%s,"monitors":%s}\n' \
+		"$RES" "$FPS" "${1:-0}" "${2:-0}" "${3:-0}" "${4:-native}" "${5:-}" "${M:-soft}" "$MODES" "$PEND" "$(cat $PREV 2>/dev/null)" "$PERS" "$MONS";;
 set)
 	case "$2" in auto|1920x1080|1366x768|1280x720|1024x576) ;; *) echo "unknown resolution" >&2; exit 2;; esac
 	case "$3" in 30|60|90|120) ;; *) echo "unknown frame rate" >&2; exit 2;; esac
@@ -40,5 +44,19 @@ keep)
 revert)
 	[ -e $PREV ] || exit 0
 	rm -f $RUN/screen-token; mv $PREV $CUR; restart; exit 0;;
-*) echo "usage: screenctl status | set RES FPS | keep | revert" >&2; exit 2;;
+arrange)
+	export LC_ALL=C
+	# the names and workspaces: letters, digits and - _ . : before '=', 1 to 3 after it, each workspace once, at most three
+	echo "$2" | grep -qxE '[A-Za-z0-9_.:-]{1,39}=[1-3](,[A-Za-z0-9_.:-]{1,39}=[1-3]){0,2}' || { echo "bad arrangement" >&2; exit 2; }
+	[ "$(echo "$2" | tr ',' '\n' | cut -d= -f2 | sort | uniq -d)" ] && { echo "a workspace on two monitors" >&2; exit 2; }
+	[ "$(echo "$2" | tr ',' '\n' | cut -d= -f1 | sort | uniq -d)" ] && { echo "a monitor twice" >&2; exit 2; }
+	KEY=$(sed -n 's/^{"key":"\([A-Za-z0-9_.:+-]*\)".*/\1/p' $RUN/monitors 2>/dev/null)
+	[ "$KEY" ] || { echo "the monitors are not known" >&2; exit 2; }
+	# every monitor of the set named
+	[ "$(echo "$2" | tr ',' '\n' | cut -d= -f1 | sort | tr '\n' '+' | sed 's/+$//')" = "$KEY" ] || { echo "not the monitors plugged in" >&2; exit 2; }
+	CONF=/etc/rudolf-monitors; T=$CONF.t
+	{ [ -f $CONF ] && awk -F '\t' -v k="$KEY" '$1 != k' $CONF | tail -n 30; printf '%s\t%s\n' "$KEY" "$2"; } > $T && mv $T $CONF
+	[ -e $RUN/persistent ] && { mkdir -p /persist/etc; cp $CONF /persist/etc/rudolf-monitors; }
+	exit 0;;
+*) echo "usage: screenctl status | set RES FPS | keep | revert | arrange SPEC" >&2; exit 2;;
 esac

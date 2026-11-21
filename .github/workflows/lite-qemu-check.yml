@@ -1,0 +1,50 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 3, Lite as a compatibility option): Lite's Oracle tabs on the real release in QEMU
+# (iso/qt/sb/lt161_t.py): the release started with Lite, this tree's rudolf-webkit beside its desktop with a stand-in
+# desktop page; the screen read from QEMU. Run by a push that changes .github/lt161-run.txt (lines: serial=SERIAL, empty:
+# the newest beta; modes=session,soft), or by hand. Nothing is published.
+name: Lite QEMU check
+on:
+  push:
+    paths: ['.github/lt161-run.txt']
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'A release to test (its serial); empty: the newest beta', required: false, default: ''}
+permissions: {contents: read}
+jobs:
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial modes; do echo "L_$k=$(sed -n "s/^$k=//p" .github/lt161-run.txt | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-pil bzip2 libwebkit2gtk-4.1-dev >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S='${{ inputs.serial }}'; [ -n "$S" ] || S="$L_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Lite QEMU check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), modes ${L_modes:-session,soft}"
+      - name: This tree's rudolf-webkit (as the release builds it)
+        run: |
+          cd iso && . systools/hardflags.sh && cd .. && mkdir -p fix
+          gcc -O2 $HARD -Wno-deprecated-declarations -o fix/rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
+          ls -la fix && echo "LT_FIX=$PWD/fix" >> $GITHUB_ENV
+      - name: lt161
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} LT_FIX=$LT_FIX LT_MODES=${L_modes:-session,soft} python3 ../iso/qt/sb/lt161_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: lt161, retention-days: 7, path: "run/lt161.txt\nrun/lt161*/qemu.log\nrun/lt161*/*.png"}
