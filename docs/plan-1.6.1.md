@@ -961,7 +961,7 @@ behind a full-screen game. (The newest-kernel track and Wayland, for HDR and var
     Exception".) build.sh checks both wordings in the .run's own LICENSE and stops if neither is there.
   - **The kernel modules** are NVIDIA's open kernel modules (MIT/GPL-2.0, kernel-open/ in the same .run; source:
     github.com/NVIDIA/open-gpu-kernel-modules at the same tag), built for the release's own kernel: its version from the
-    release, Rudolf OS's configuration (iso/kconfig.sh with the Secure Boot certificate), `make modules_prepare`, and their
+    release, Rudolf OS's configuration (iso/kconfig.sh with the Secure Boot certificate), the kernel built for its Module.symvers, and their
     vermagic compared with the release's own nouveau.ko (the build stops if they differ). **Secure Boot:** lockdown and
     MODULE_SIG_FORCE are unchanged. The modules are signed (the kernel's own scripts/sign-file, SHA-256) with the Rudolf OS
     Secure Boot key, whose certificate every Rudolf OS kernel has built in as trusted (SYSTEM_TRUSTED_KEYS): the same

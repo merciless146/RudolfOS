@@ -49,7 +49,9 @@ if [ -n "$LINUX_SRC" ]; then K=$LINUX_SRC; else
 		mkdir -p "$K" && tar -xJf "$W/$T" -C "$K" --strip-components=1 && rm -f "$W/$T"; fi
 	# (the configuration as the release's: kconfig.sh with the Secure Boot certificate the kernel trusts; no initramfs is built)
 	SB_CERT=${SB_CERT:-$I/boot/sb/rudolf-sb.crt} sh "$I/kconfig.sh" "$K" "$W/none" >/dev/null
-	make -C "$K" -s olddefconfig >/dev/null; make -C "$K" -s -j"$(nproc)" modules_prepare >/dev/null
+	# (the whole kernel and its modules are built, for Module.symvers: the open modules' build needs it, and so does a
+	#  dependency on one of the kernel's own modules; the release's kernel itself is not replaced, only compared)
+	make -C "$K" -s olddefconfig >/dev/null; make -C "$K" -s -j"$(nproc)" vmlinux modules >/dev/null 2>"$W/kernel.log" || { tail -30 "$W/kernel.log"; exit 1; }
 fi
 [ "$(make -C "$K" -s kernelrelease)" = "$KVER" ] || { echo "nvidia: the kernel tree is $(make -C "$K" -s kernelrelease), not $KVER"; exit 1; }
 # ---- the open kernel modules

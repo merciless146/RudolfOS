@@ -75,6 +75,8 @@ nodes() { [ -n "$GPU_NOMOUNT" ] && return 0; maj=$(awk '$2=="nvidia-frontend"||$
 # signature (MODULE_SIG_FORCE): "Key was rejected by service" for one signed by any other key
 load() { f=$(ls "$MODDIR/$1.ko"* 2>/dev/null | head -1); [ -n "$f" ] || { echo "$1.ko is not in the extension"; return 1; }
 	m=$(echo "$1" | tr - _); grep -q "^$m " /proc/modules 2>/dev/null && return 0
+	# (the kernel's own modules it needs first, by name: modinfo's depends, as modprobe would)
+	for dep in $(modinfo -F depends "$f" 2>/dev/null | tr , ' '); do case "$dep" in nvidia*) ;; *) modprobe -q "$dep" 2>/dev/null;; esac; done
 	shift; e=$(insmod "$f" "$@" 2>&1) || { echo "$m did not load: ${e##*: }"; return 1; }; return 0; }
 xconf() { cat > "$XCONF.t" <<'EOF'
 # Rudolf OS (gpudriver): Xorg on NVIDIA's driver. Input as in /usr/lib/rudolf/xorg.conf: rudolf-display passes it in.
