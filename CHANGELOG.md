@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Native: each app's window uses about 10 MB less memory. A window no longer makes the pictures of the start menu, the
+  desktop's icons and the taskbar for itself (the native desktop draws those), nor the taskbar's pinned buttons or the
+  dynamic background's moving parts under the app, and it no longer gives the desktop its list of apps again when it opens
+  if the list is unchanged. On the test computer, five app windows and the hidden page: 483 MB instead of 531 MB.
 - Native: the window's menu of an app that draws its own title bar says whether it can use Rudolf's instead. For apps
   whose own bar holds only the title and the three buttons, "Title bar: Rudolf's" cuts their own bar away and frames them
   as any other window, remembered for each account and app; for others the menu says Rudolf's would hide their menus and
