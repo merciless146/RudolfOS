@@ -1,0 +1,86 @@
+#!/bin/sh
+# Rudolf OS 1.6.1 (docs/plan-1.6.1.md Part 19): game mode, kept by root. Run by rudolfd (on, off, status, set) as root.
+# Game mode is on while at least one of its sources is:
+#   - a full screen the desktop sees (SRC page: Standard's page, a page full screen or a Linux window full screen in front;
+#     SRC native: the native desktop's window manager, a window full screen): "on" again every 2 s while it lasts, so a source
+#     that stops saying so (its page or the native desktop stopped, or crashed) counts for 6 s at most;
+#   - a game that asked for it through GameMode's D-Bus API (com.feralinteractive.GameMode, rudolf-portal: a request file in
+#     /run/rudolf/game-req, made as inhibit's are: UID-PORTALPID-GAMEPID, its owner's): counted while that game's process
+#     runs, is its owner's and the portal that wrote it runs; a game that ends, or crashes, ends it.
+# While it is on: the processor's energy preference raised (the power settings' game=1: amd_pstate and intel_pstate,
+# performance unless battery saver is on; nothing elsewhere), and, while a full screen is the reason and the game is not one
+# of the desktop's own pages, the desktop's own processor time lowered (its group's cpu.weight, the cpu controller turned on
+# for it and off again after): Standard's page, its tabs and the native desktop's windows wait behind the game. The desktop
+# itself holds its notifications and its background jobs (game51.js, gamesleep59.js, gamemode61.js). A D-Bus request gets
+# the processor's preference only: it cannot hold notifications, slow the desktop or reach any other process.
+# Everything is put back as it was when the last source ends: by the next "on", "off" or "status", and by a watcher started
+# with game mode that checks every 2 s, so a crash of the game, the page or rudolfd leaves nothing behind.
+#   gamemode on SRC KIND [PID]   (KIND: page, linux or oracle: what is full screen; PID: its process, when known)
+#   gamemode off SRC | status | set enabled=0|1 | sync | watch
+# The setting (Settings › System health › Memory › Game mode, on by default): /persist/etc/gamemode.
+# Test overrides: GM_RUN, GM_REQ, GM_CONF, GM_CG (the cgroup root), GM_POWER (the power command), GM_PROC, GM_NOW. GPL-2.0-or-later.
+RUN=${GM_RUN:-/run/rudolf}; D=$RUN/game; REQ=${GM_REQ:-/run/rudolf/game-req}; CG=${GM_CG:-/sys/fs/cgroup}; PROC=${GM_PROC:-/proc}
+if [ -n "$GM_CONF" ]; then CONF=$GM_CONF; elif [ -d /persist/etc ]; then CONF=/persist/etc/gamemode; else CONF=$RUN/gamemode.conf; fi
+POWER=${GM_POWER:-/usr/lib/rudolf/power}; WEIGHT=20
+now() { [ -n "$GM_NOW" ] && cat "$GM_NOW" 2>/dev/null || date +%s; }
+enabled() { [ "$(sed -n 's/^enabled=//p' "$CONF" 2>/dev/null | tail -1)" != 0 ]; }
+ev() { echo "$*" >> "$RUN/events" 2>/dev/null; }
+js() { printf '"%s"' "$(printf '%s' "$1" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+alive() { [ -n "$1" ] && [ -d "$PROC/$1" ] && [ "$(awk '$1=="State:"{print $2; exit}' "$PROC/$1/status" 2>/dev/null)" != Z ]; }   # (a zombie: ended)
+uid_of() { awk '/^Uid:/{print $2; exit}' "$PROC/$1/status" 2>/dev/null; }
+in_desktop() { grep -q ':/desktop$\|:/desktop/' "$PROC/$1/cgroup" 2>/dev/null; }
+# the sources in force: "SRC KIND PID" lines (expired ones removed)
+fs_sources() { t=$(now); for f in "$D"/src.*; do [ -f "$f" ] || continue; exp=$(sed -n 's/^exp=//p' "$f"); pid=$(sed -n 's/^pid=//p' "$f")
+	if [ "${exp:-0}" -lt "$t" ] || { [ -n "$pid" ] && ! alive "$pid"; }; then rm -f "$f"; continue; fi
+	echo "${f##*/src.} $(sed -n 's/^kind=//p' "$f") ${pid:--}"; done; }
+# the games that asked through D-Bus: "PID UID" (a request whose portal or game is gone, or not its owner's, is removed)
+dbus_games() { [ -d "$REQ" ] || return 0; for f in "$REQ"/*; do [ -f "$f" ] || continue; n=${f##*/}
+	case "$n" in *[!0-9-]*|*-*-*-*) rm -f "$f"; continue;; *-*-*) ;; *) continue;; esac
+	u=${n%%-*}; r=${n#*-}; pp=${r%%-*}; gp=${r#*-}
+	ow=$(stat -c %u "$f" 2>/dev/null); [ "$ow" = "$u" ] || continue
+	{ [ "$(cat $PROC/$pp/comm 2>/dev/null | cut -c1-13)" = rudolf-portal ] && [ "$(uid_of $pp)" = "$u" ]; } || { rm -f "$f"; continue; }
+	{ alive "$gp" && [ "$(uid_of $gp)" = "$u" ]; } || { rm -f "$f"; continue; }
+	echo "$gp $u"; done; }
+throttle_on() { [ -d "$CG/desktop" ] || return 0; [ -e "$D/cpu-was" ] || { grep -qw cpu "$CG/cgroup.subtree_control" 2>/dev/null && echo on || echo off; } > "$D/cpu-was"
+	grep -qw cpu "$CG/cgroup.subtree_control" 2>/dev/null || echo +cpu > "$CG/cgroup.subtree_control" 2>/dev/null
+	[ -e "$CG/desktop/cpu.weight" ] || return 0; [ -e "$D/weight-was" ] || cat "$CG/desktop/cpu.weight" > "$D/weight-was"; echo $WEIGHT > "$CG/desktop/cpu.weight" 2>/dev/null; : > "$D/throttled"; }
+throttle_off() { [ -e "$D/throttled" ] || [ -e "$D/cpu-was" ] || return 0
+	[ -e "$D/weight-was" ] && [ -e "$CG/desktop/cpu.weight" ] && cat "$D/weight-was" > "$CG/desktop/cpu.weight" 2>/dev/null
+	[ "$(cat "$D/cpu-was" 2>/dev/null)" = off ] && echo -cpu > "$CG/cgroup.subtree_control" 2>/dev/null
+	rm -f "$D/throttled" "$D/weight-was" "$D/cpu-was"; }
+sync_() {
+	mkdir -p "$D"; S=$(fs_sources); G=$(dbus_games); on=0; thr=0
+	if enabled; then [ -n "$S$G" ] && on=1
+		# the desktop slowed only for a full screen that is not one of its own pages, and not a game in its own group
+		if [ -n "$S" ] && ! echo "$S" | grep -q ' page '; then thr=1; for p in $(echo "$S" | awk '$3!="-"{print $3}'); do in_desktop "$p" && thr=0; done; fi
+	fi
+	if [ $on = 1 ]; then
+		[ -e "$D/on" ] || { : > "$D/on"; $POWER set game=1 >/dev/null 2>&1; ev "game on"; }
+		[ $thr = 1 ] && [ ! -e "$D/throttled" ] && throttle_on
+		[ $thr = 0 ] && throttle_off
+	elif [ -e "$D/on" ]; then throttle_off; $POWER set game=0 >/dev/null 2>&1; rm -f "$D/on"; ev "game off"; fi
+	return 0
+}
+# the watcher: one at a time (its folder is the lock), until game mode is over and no source is left
+watch_() { mkdir "$D/watch" 2>/dev/null || { p=$(cat "$D/watch/pid" 2>/dev/null); alive "$p" && return 0; rm -rf "$D/watch"; mkdir "$D/watch" || return 0; }
+	echo $$ > "$D/watch/pid"; while :; do sync_; [ -e "$D/on" ] || [ -n "$(ls "$D"/src.* 2>/dev/null)" ] || break; sleep ${GM_TICK:-2}; done; rm -rf "$D/watch"; }
+watcher() { [ -n "$GM_NOWATCH" ] && return 0; p=$(cat "$D/watch/pid" 2>/dev/null); alive "$p" && return 0; ( watch_ ) >/dev/null 2>&1 & }
+status() {
+	sync_; printf '{"ok":true,"enabled":%s,"on":%s,"throttled":%s,"sources":[' "$(enabled && echo true || echo false)" "$( [ -e "$D/on" ] && echo true || echo false)" "$( [ -e "$D/throttled" ] && echo true || echo false)"
+	s=; fs_sources | while read -r a k p; do printf '%s{"src":%s,"kind":%s,"pid":%s}' "$s" "$(js "$a")" "$(js "$k")" "$( [ "$p" = - ] && echo null || echo "$p")"; s=,; done
+	printf '],"games":['; s=; dbus_games | while read -r p u; do printf '%s{"pid":%s,"name":%s}' "$s" "$p" "$(js "$(cat $PROC/$p/comm 2>/dev/null)")"; s=,; done
+	printf '],"cpu":%s}\n' "$(js "$(sed -n 's/^game=//p' "$RUN/power-now" 2>/dev/null)")"
+}
+word() { case "$1" in ''|*[!a-z]*) return 1;; esac; [ ${#1} -le 12 ]; }
+case "$1" in
+on) word "$2" && word "$3" || { echo '{"ok":false,"error":"on SRC KIND [PID]"}'; exit 2; }
+	case "$4" in ''|*[!0-9]*) pid=;; *) pid=$4;; esac
+	mkdir -p "$D"; printf 'exp=%s\nkind=%s\npid=%s\n' $(( $(now) + 6 )) "$3" "$pid" > "$D/src.$2.t" && mv "$D/src.$2.t" "$D/src.$2"; sync_; watcher; status ;;
+off) word "$2" || exit 2; rm -f "$D/src.$2"; sync_; status ;;
+status) status ;;
+sync) sync_; [ -e "$D/on" ] && watcher; exit 0 ;;
+watch) watch_ ;;
+set) case "$2" in enabled=0|enabled=1) ;; *) echo '{"ok":false,"error":"enabled=0 or enabled=1"}'; exit 2;; esac
+	mkdir -p "${CONF%/*}"; echo "$2" > "$CONF.t" && mv "$CONF.t" "$CONF"; sync_; status ;;
+*) echo "usage: gamemode on SRC KIND [PID] | off SRC | status | set enabled=0|1 | sync | watch"; exit 2 ;;
+esac
