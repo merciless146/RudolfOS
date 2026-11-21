@@ -7,8 +7,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - run: |
-          git clone -q --depth 1 https://gitlab.com/kernel-firmware/linux-firmware.git /tmp/lf
-          git -C /tmp/lf log -1 --format='%H %cI'
-          python3 iso/systools/fwextra.py list /tmp/lf > /tmp/new.txt
-          echo '=== qcc'; grep 'QCC2072' /tmp/new.txt
-          grep -c . /tmp/new.txt
+          cd iso; FW=/tmp/lf; git clone -q --depth 1 --filter=blob:none --no-checkout https://gitlab.com/kernel-firmware/linux-firmware.git $FW
+          awk '$1=="F"{print "/"$3}' firmware-extra.txt | { echo /WHENCE; cat; } | git -C "$FW" sparse-checkout set --no-cone --stdin && git -C "$FW" checkout -q
+          python3 systools/fwextra.py copy firmware-extra.txt "$FW" /tmp/o | tail -3; ls -la /tmp/o/qca/QCC2072 | head -8
