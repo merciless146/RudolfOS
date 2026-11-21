@@ -57,6 +57,20 @@ Desktop engine as a compatibility option, "to be worked on and refined later". L
 - the lock and sign-in screen settings and the shutting-down screen;
 - the dynamic backgrounds' moving parts.
 
+**Status (2026-11-21, the unattended session for Part 3; one PR each, in this order):**
+- *Done:* the desktop's menus and windows behind Oracle's tab pages. While the desktop covers part of a tab (a menu,
+  another window), rudolf-webkit sends a still picture of the page (tabev `still`, a JPEG), which tabs26.js shows in the
+  tab's place under the desktop's menus and windows; the live page is moved out of sight (moved, not hidden, so it stays a
+  visible page for WebKit and keeps running), its picture taken again every 2 s; uncovered, the live page is back. Cutting
+  the page on the screen (its window's shape, a clip, a native window) never worked in GTK 3 (branch litetabs, 1.5.8):
+  the Lite engine check showed the page staying on top in all three drawing modes, and it still did on main. Tests:
+  iso/qt/webkit/tabs58_ci.py (what is on the screen, in the three drawing modes), iso/qt/shell2/litestill61_t.js (the
+  desktop's side: the Start menu over a tab), iso/qt/sb/lt161_t.py (the release in QEMU with Lite: the release's own X
+  server, WebKitGTK and session; this tree's rudolf-webkit beside its desktop; workflow lite-qemu-check.yml). Owner's
+  check on the Vivobook (Lite): the Start menu, a taskbar menu and another window over an Oracle tab; a video in a tab
+  half covered by another window (its picture every 2 s; full speed once uncovered).
+- The others: in the PRs that follow (this list is brought up to date by each).
+
 ### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
 **Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**
 
