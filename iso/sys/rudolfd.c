@@ -4450,6 +4450,7 @@ static void api(struct req *r)
 	int post = !strcmp(r->method, "POST");
 	if (!strcmp(p, "ping")) { reply_ok(r->fd, "rudolfd"); return; }
 	if (!strcmp(p, "info")) { api_info(r); return; }
+	if (!strcmp(p, "webkey")) { api_webkey(r); return; }   /* (1.6.1 Part 20: rudolfd-webkey.inc) */
 	if (!strcmp(p, "sleep")) { api_sleep(r); return; }   /* (1.6.0: what the last sleep did, the hardware check) */
 	if (!strcmp(p, "stats")) { api_stats(r); return; }
 	if (!strcmp(p, "system")) { api_system(r); return; }
@@ -4944,7 +4945,6 @@ static void api(struct req *r)
 	if (!strncmp(p, "portal/", 7)) { api_portal(r, p + 7); return; }
 	if (!strncmp(p, "web/", 4)) { api_web(r, p + 4); return; }
 	if (!strncmp(p, "torwin/", 7)) { api_torwin(r, p + 7, !strcmp(r->method, "POST")); return; }
-	if (!strcmp(p, "webkey")) { api_webkey(r); return; }   /* (1.6.1 Part 20: rudolfd-webkey.inc) */
 	if (!strncmp(p, "orawin/", 7)) { api_orawin(r, p + 7, !strcmp(r->method, "POST")); return; }   /* (1.6.0 Part 22: Standard's Oracle encrypted) */   /* (1.5.9, 16.2: Oracle's Tor windows on Standard) */
 	if (!strncmp(p, "sys/", 4)) {
 		const char *w = p + 4;
