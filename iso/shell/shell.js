@@ -111,6 +111,7 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
      blur                       keyboard focus back to the desktop
      unfs                       (1.5.8) leave full screen, whichever tab has it (Task Manager and the power dialog come first)
      ruffle {cfg}               Ruffle for Flash content in pages: {on, urls, config} (as the extension's settings)
+     find {text, mc, back, again, id} | findstop | findsel {id}   (1.6.1) find in page; answered by tabev find {id, n, i} or {id, sel}
    shell -> desktop {rudolfShell: 'tabev', tid, ev, ...}
      nav {url, back, fwd}       the page's address changed (also inside the page); back/fwd: its own history
      load {loading}             title {title}       focus       close (the page closed itself)
@@ -155,6 +156,9 @@ addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctr
  /* 1.5.6: Chromium's own pages, windows and bubbles (history, downloads, bookmarks, its task manager, view source,
     save and open dialogs, help) never open from a website: the page still sees the key */
  else if(e.isTrusted&&UI.has((c?'C':'')+(e.shiftKey?'S':'')+(e.altKey?'A':'')+e.code))e.preventDefault()},true);
+/* 1.6.1 (Part 10): find in page: Ctrl+F, F3, Shift+F3, Ctrl+G and Ctrl+Shift+G open Oracle's find bar, before the page sees them, as Chrome does */
+addEventListener('keydown',e=>{if(!e.isTrusted)return;const c=e.ctrlKey||e.metaKey;let a='';if(c&&!e.shiftKey&&!e.altKey&&e.code=='KeyF')a='cf';else if(!c&&!e.altKey&&e.code=='F3')a=e.shiftKey?'sf3':'f3';else if(c&&!e.altKey&&e.code=='KeyG')a=e.shiftKey?'sf3':'f3';
+ if(a){e.preventDefault();e.stopImmediatePropagation();say({k:a})}},true);
 addEventListener('click',e=>{if(!e.isTrusted)return;const a=e.target&&e.target.closest&&e.target.closest('a[href^="tel:" i]');if(!a)return;e.preventDefault();e.stopImmediatePropagation();say({tel:String(a.getAttribute('href')).slice(4,80)})},true);
 let t=null;const tt=()=>{if(document.title!==t){t=document.title;say({title:t})}};
 addEventListener('DOMContentLoaded',tt);addEventListener('load',tt);setInterval(tt,1500)})()`;
@@ -341,6 +345,63 @@ b.onclick=e=>{if(!e.isTrusted)return;try{console.debug(${JSON.stringify(NONCE)}+
 /* (1.5.9) what the page is doing that sleeping would lose: media playing, text typed and not sent */
 const BUSY_JS = `JSON.stringify({m:[...document.querySelectorAll('video,audio')].some(x=>!x.paused&&!x.muted&&x.readyState>2),
 f:[...document.querySelectorAll('input,textarea')].some(x=>!x.disabled&&/^(text|search|email|url|tel|number|password|textarea|)$/.test(x.type||'')&&x.value&&x.value!==x.defaultValue)||[...document.querySelectorAll('[contenteditable]')].some(x=>x.isContentEditable&&(x.textContent||'').trim().length>0&&x.contains(document.activeElement))})`;
+/* 1.6.1 (docs/plan-1.6.1.md Part 10): find in page. Oracle's find bar (desktop/orafind61.js) asks {text, mc, back, again, id};
+   the Controlled Frame's own find does it (Chromium's highlighting, every frame), its answer (and findupdate's) sent as tabev find
+   {id, n, i}. Without it (or if it fails), FIND_FN in the page's isolated world: the same walker as Oracle's own pages
+   (orafind61.js oraFindFn; oraclefind61_t.js checks that they are the same). findstop clears; findsel asks for the selected text. */
+const FIND_FN = function (o) {
+  const F = window.__rudolfFind || (window.__rudolfFind = {q: null, mc: false, r: [], i: -1});
+  const HL = typeof CSS != 'undefined' && CSS.highlights && typeof Highlight == 'function';
+  const clear = () => { try { if (HL) { CSS.highlights.delete('rudolf-find'); CSS.highlights.delete('rudolf-find-cur') } else if (F.r.length) getSelection().removeAllRanges() } catch (e) {} F.r = []; F.i = -1; F.q = null };
+  if (o.stop) { clear(); return {n: 0, i: 0} }
+  if (o.sel) { let s = ''; try { s = String(getSelection() || '').trim() } catch (e) {} return {sel: s.length <= 200 && !/\n/.test(s) ? s : ''} }
+  const q = String(o.text || '').slice(0, 500); if (!q) { clear(); return {n: 0, i: 0} }
+  if (F.q !== q || F.mc !== !!o.mc || !o.again) {
+    clear(); F.q = q; F.mc = !!o.mc;
+    /* the visible text nodes, joined; a block's edge (or a hidden part) breaks a match, as in Chromium's find */
+    const root = document.body || document.documentElement, nodes = [], blk = new Map();
+    const blockOf = el => { let e = el; while (e && e !== root) { let b = blk.get(e); if (b === undefined) { let d = ''; try { d = getComputedStyle(e).display } catch (x) {} b = !/^(inline|contents)/.test(d); blk.set(e, b) } if (b) return e; e = e.parentElement } return root };
+    if (root) { const tw = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {acceptNode: n => { const p = n.parentElement;
+        if (!p || /^(SCRIPT|STYLE|NOSCRIPT|TEMPLATE|TEXTAREA|SELECT|OPTION)$/.test(p.tagName) || !n.data) return NodeFilter.FILTER_REJECT;
+        if (p.checkVisibility && !p.checkVisibility({visibilityProperty: true})) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT }});
+      for (let n = tw.nextNode(), k = 0; n && k < 20000; n = tw.nextNode(), k++) nodes.push(n) }
+    let txt = '', at = [], prev = null;
+    for (const n of nodes) { const b = blockOf(n.parentElement); if (prev && b !== prev) txt += '\u0000'; prev = b; at.push([txt.length, n]); txt += n.data }
+    const hay = F.mc ? txt : txt.toLowerCase(), nd = F.mc ? q : q.toLowerCase(), pos = (k) => { let lo = 0, hi = at.length - 1; while (lo < hi) { const m = (lo + hi + 1) >> 1; if (at[m][0] <= k) lo = m; else hi = m - 1 } return at[lo] };
+    for (let k = hay.indexOf(nd); k >= 0 && F.r.length < 1000; k = hay.indexOf(nd, k + nd.length)) {
+      try { const a = pos(k), b = pos(k + nd.length - 1), r = document.createRange(); r.setStart(a[1], k - a[0]); r.setEnd(b[1], k + nd.length - b[0]); F.r.push(r) } catch (e) {} }
+    F.i = F.r.length ? (o.back ? F.r.length - 1 : 0) : -1;
+    if (HL && F.r.length) { try { if (!document.getElementById('rudolf-find-css')) { const s = document.createElement('style'); s.id = 'rudolf-find-css';
+        s.textContent = '::highlight(rudolf-find){background-color:#fde047;color:#111}::highlight(rudolf-find-cur){background-color:#f97316;color:#000}'; (document.head || document.documentElement).appendChild(s) }
+      CSS.highlights.set('rudolf-find', new Highlight(...F.r)) } catch (e) {} }
+  } else if (F.r.length) F.i = (F.i + (o.back ? F.r.length - 1 : 1)) % F.r.length;
+  const r = F.r[F.i];
+  if (r) { try { if (HL) CSS.highlights.set('rudolf-find-cur', new Highlight(r)); else { const s = getSelection(); s.removeAllRanges(); s.addRange(r) } } catch (e) {}
+    try { const el = r.startContainer.parentElement, b = r.getBoundingClientRect(); if (b.top < 0 || b.bottom > innerHeight || b.left < 0 || b.right > innerWidth) el.scrollIntoView({block: 'center', inline: 'nearest'}) } catch (e) {} }
+  return {n: F.r.length, i: F.i + 1};
+};
+const findJs = (t, o) => t.f.executeScript({code: '(' + FIND_FN.toString() + ')(' + JSON.stringify(o) + ')'}).then(r => { const x = r && r[0]; if (x && typeof x == 'object') toTab(t.tid, 'find', Object.assign({id: o.id | 0}, x)) }).catch(() => {});
+function tabFind(t, m) {
+  const text = String(m.text || '').slice(0, 500), id = m.id | 0, o = {text, mc: !!m.mc, back: !!m.back, again: !!m.again, id};
+  if (!text) return tabFindStop(t);
+  if (t.fnat !== false && typeof t.f.find == 'function') {
+    try {
+      if (!t.fev) { t.fev = 1; t.f.addEventListener('findupdate', e => { const q = t.fq; if (q && t.fnat && e.searchText === q.text && !e.canceled) toTab(t.tid, 'find', {id: q.id, n: e.numberOfMatches | 0, i: e.activeMatchOrdinal | 0}) }) }
+      /* (a new search, not the next match, when the case choice changed for the same words) */
+      if (t.fq && t.fq.text === text && t.fq.mc !== o.mc) try { t.f.stopFinding('clear') } catch (e) {}
+      t.fq = {text, mc: o.mc, id}; let got = false;
+      const done = r => { if (got || !r || typeof r != 'object' || r.canceled) return; got = true; t.fnat = true; toTab(t.tid, 'find', {id, n: r.numberOfMatches | 0, i: r.activeMatchOrdinal | 0}) };
+      const p = t.f.find(text, {backward: o.back, matchCase: o.mc}, done);
+      if (p && typeof p.then == 'function') p.then(done, () => { if (!got) { t.fnat = false; findJs(t, o) } });
+      /* (no answer at all: the walker) */
+      setTimeout(() => { if (!got && t.fq && t.fq.id === id && t.fnat !== true) { t.fnat = false; findJs(t, Object.assign({}, o, {again: false})) } }, 3000);
+      return;
+    } catch (e) { t.fnat = false }
+  }
+  findJs(t, o);
+}
+function tabFindStop(t) { t.fq = null; if (t.fnat && typeof t.f.stopFinding == 'function') try { t.f.stopFinding('keep') } catch (e) {} t.f.executeScript({code: '(' + FIND_FN.toString() + ')({stop:1})'}).catch(() => {}) }
 const TAB_OPS = {
   open: m => {
     let t = m.adopt && TABS.get(String(m.adopt));
@@ -366,12 +427,17 @@ const TAB_OPS = {
     try { const x = await t.f.executeScript({code: BUSY_JS}); r = JSON.parse((x && x[0]) || '{}') } catch (e) { r = {f: true} }
     toTab(t.tid, 'busy', {id: m.id, m: a || !!r.m, f: !!r.f});
   },
+  find: (m, t) => tabFind(t, m),   // (1.6.1: find in page)
+  findstop: (m, t) => tabFindStop(t),
+  findsel: (m, t) => { t.f.executeScript({code: '(' + FIND_FN.toString() + ')({sel:1})'}).then(r => { const x = r && r[0]; if (x && typeof x.sel == 'string') toTab(t.tid, 'find', {id: m.id | 0, sel: x.sel.slice(0, 200)}) }).catch(() => {}) },
   place: (m, t) => place(t, rect(m.r), Array.isArray(m.vis) ? m.vis.map(rect).filter(Boolean) : null, m.z),
 };
 function onTab(m) {
   if (m.op == 'fw') { const r = m.rules || {}; FW = {on: !!r.on, mode: String(r.mode || 'open'), block: [].concat(r.block || []).map(String), trust: [].concat(r.trust || []).map(String)}; return }
   if (m.op == 'dialog') { const d = DLG.get(m.did); DLG.delete(m.did); if (d) try { m.ok ? d.ok(String(m.text == null ? '' : m.text)) : d.cancel() } catch (e) {} return }
-  if (m.op == 'blur') { desk.focus(); return }
+  /* (1.6.1: blurred first: after a click into a tab the shell still had the desktop as its focused element while the keyboard was the
+     tab's, so focus() did nothing and what was typed next went on to the website, not to Oracle's find bar or address box) */
+  if (m.op == 'blur') { desk.blur(); desk.focus(); return }
   if (m.op == 'unfs') { if (document.fullscreenElement) document.exitFullscreen().catch(() => {}); return }   // 1.5.8: Task Manager, the power dialog
   if (m.op == 'dark') { const on = !!m.on; if (on === DARK) return; DARK = on; for (const t of TABS.values()) t.f.executeScript({code: darkJS(on)}).catch(() => {}); return }
   if (m.op == 'ruffle') { const r = m.cfg || {}; RUFFLE = {on: !!r.on, urls: [].concat(r.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 4), config: Object.assign({}, r.config || {})}; return }

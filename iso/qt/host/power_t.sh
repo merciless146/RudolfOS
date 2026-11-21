@@ -74,7 +74,8 @@ echo 0 > $A/online; echo Discharging > $B/status; $SH $P apply; ok "1.6.1: ...ga
 $SH $P set saver_now=1 >/dev/null; ok "1.6.1: ...but battery saver wins over game mode: power" $([ "$(epp)" = power ] && echo 1 || echo 0) "$(epp)"
 $SH $P set saver_now=0 game=0 >/dev/null; ok "1.6.1: ...game mode over: balance_power again" $([ "$(epp)" = balance_power ] && [ ! -e $T/run/power-game ] && echo 1 || echo 0) "$(epp)"
 $SH $P set cpu=std >/dev/null; ok "1.6.1: back to std: balance_performance on battery (1.6.0)" $([ "$(epp)" = balance_performance ] && echo 1 || echo 0) "$(epp)"
-$SH $P set game=1 >/dev/null; ok "1.6.1: std ignores game mode (as 1.6.0)" $([ "$(epp)" = balance_performance ] && echo 1 || echo 0) "$(epp)"; $SH $P set game=0 >/dev/null
+$SH $P set game=1 >/dev/null; ok "1.6.1 (Part 19): std in game mode: performance too" $([ "$(epp)" = performance ] && echo 1 || echo 0) "$(epp)"; $SH $P set game=0 >/dev/null
+ok "1.6.1 (Part 19): ...game mode over: std's own preference again" $([ "$(epp)" = balance_performance ] && echo 1 || echo 0) "$(epp)"
 $SH $P set cpu=passive >/dev/null; ok "1.6.1: passive: amd_pstate's mode passive, the mode it had kept" $([ "$(cat $T/sys/devices/system/cpu/amd_pstate/status)" = passive ] && [ "$(cat $T/run/power-pstate0)" = active ] && echo 1 || echo 0) "$(cat $T/sys/devices/system/cpu/amd_pstate/status)"
 for c in 0 1 2 3; do echo amd-pstate > $T/sys/devices/system/cpu/cpu$c/cpufreq/scaling_driver; done
 s=$($SH $P status); ok "1.6.1: ...running as amd-pstate (passive): still tunable, cpu passive in force" $([ "$(has "$s" '"tunable":true')" = 1 ] && [ "$(has "$s" '"cpu":"passive"')" = 1 ] && echo 1 || echo 0) "$s"
@@ -85,7 +86,8 @@ ok "1.6.1: amd_pstate passive by the start-up options (not by this setting): lef
 # Intel (intel_pstate has the same preference names): tuned and passive do what std does, amd_pstate is not touched
 rm -rf $T/sys/devices/system/cpu/amd_pstate; for c in 0 1 2 3; do echo intel_pstate > $T/sys/devices/system/cpu/cpu$c/cpufreq/scaling_driver; done
 $SH $P set cpu=tuned game=1 >/dev/null; s=$($SH $P status)
-ok "1.6.1: Intel: not tunable, std in force: balance_performance on battery, game mode ignored" $([ "$(epp)" = balance_performance ] && [ "$(has "$s" '"tunable":false')" = 1 ] && grep -q '^cpu=std$' $T/run/power-now && [ ! -e $T/sys/devices/system/cpu/amd_pstate ] && echo 1 || echo 0) "$(epp) $s"
+ok "1.6.1: Intel: not tunable, std in force; game mode asks intel_pstate for performance (Part 19)" $([ "$(epp)" = performance ] && [ "$(has "$s" '"tunable":false')" = 1 ] && grep -q '^cpu=std$' $T/run/power-now && [ ! -e $T/sys/devices/system/cpu/amd_pstate ] && echo 1 || echo 0) "$(epp) $s"
+$SH $P set game=0 >/dev/null; ok "1.6.1 (Part 19): Intel: game mode over: balance_performance on battery again" $([ "$(epp)" = balance_performance ] && echo 1 || echo 0) "$(epp)"
 $SH $P set cpu=passive game=0 >/dev/null; ok "1.6.1: Intel: passive asks nothing of amd_pstate" $([ ! -e $T/sys/devices/system/cpu/amd_pstate ] && [ ! -e $T/run/power-pstate0 ] && [ "$(epp)" = balance_performance ] && echo 1 || echo 0)
 s=$($SH $P set cpu=fast 2>&1); ok "1.6.1: a cpu value that is not a choice is refused" $(has "$s" '"ok":false') "$s"
 $SH $P set cpu=std >/dev/null; echo 1 > $A/online; echo Charging > $B/status

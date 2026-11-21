@@ -17,7 +17,12 @@ mkdir -p "$OUT" "$DEBS"; W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 for d in $(python3 -c 'import json,sys;print(" ".join(json.load(open(sys.argv[1])).get("debs",[])))' "$R"); do
 	ls "$DEBS/${d}"_*.deb >/dev/null 2>&1 || (cd "$DEBS" && apt-get download -q "$d" >/dev/null) || { echo "mkext: $d could not be downloaded"; exit 1; }
 done
-python3 "$I/pkgtools/rpk-tool.py" sysext-recipe "$R" "$W/pkg" --base-abi "$ABI" ${KVER:+--kernel "$KVER"} --debs "$DEBS"
+# 1.6.1 (docs/plan-1.6.1.md Part 19): a recipe with its own build script ("build": NVIDIA's driver, built for KVER from its
+# own download, its kernel modules signed with MODSIGN_KEY and MODSIGN_CERT when given) lays its files out itself
+BS=$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("build",""))' "$R")
+if [ -n "$BS" ]; then [ -n "$KVER" ] || { echo "mkext: $N is built for a kernel: KVER is needed"; exit 1; }
+	WORK=$W/work sh "$I/ext/$N/$BS" "$W/built"; TREE="--tree $W/built"; else TREE=; fi
+python3 "$I/pkgtools/rpk-tool.py" sysext-recipe "$R" "$W/pkg" --base-abi "$ABI" ${KVER:+--kernel "$KVER"} --debs "$DEBS" $TREE
 # what the base has already is left out
 (cd "$W/pkg" && find usr lib ! -type d 2>/dev/null) | while read -r f; do
 	if [ -e "$BR/$f" ] || [ -L "$BR/$f" ]; then echo "  the base has /$f already: left out of the extension"; rm -f "$W/pkg/$f"; fi; done
