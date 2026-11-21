@@ -121,7 +121,9 @@ USB printers reading PDF or PostScript) stays; what 1.6.1 adds is a print queue 
   account's own Linux user, as Debian's user namespace maps it). Only that user cancels a job; the queue lists other
   users' jobs as "Another account's document", without their names, users or messages. Root (rudolfd) says for whom it
   asks (X-Rudolf-As: the signed-in account's Linux user, au_app_user, or rudolf) and is held to that user's jobs the same
-  way; anyone else saying so is ignored.
+  way; anyone else saying so is ignored. (For Part 11's drop: once rudolfd runs as uid 1000 it is no longer root to
+  the queue, so its jobs would be the desktop user's; the account must then come another way, such as a helper of
+  rudolf-rootd's that hands the queue rudolfd's word, never by trusting uid 1000, which the browser has too.)
 - **Its own user:** started by rudolf-init as root (again if it ends), it makes the socket (0666) and its folders, then
   becomes "print" (952, in group lp for /dev/usb/lpN, which udev and mdev now give to lp) with no_new_privs. mkrootfs.sh
   and ci_release.sh build it and add the user; the list of listeners names the socket (and ipp-usb's port, missing in
