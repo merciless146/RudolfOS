@@ -77,6 +77,11 @@ Summary: In progress.
   Downloads goes to the Trash with it; otherwise the notification "File removed from list: Not in Downloads. Ask Blitzen
   if you need help finding this file." has a "⚡ Ask Blitzen" button. Blitzen reads the download's record, the Trash and
   where files of that name are, and says whether the file was moved, put in the Trash, deleted or never downloaded.
+- New: reopen a closed tab in Oracle. Ctrl+Shift+T (also inside a website) or ☰ › Reopen closed tab brings back the last
+  tab you closed, at its place and with its back and forward pages; again, the one before. ☰ › Recently closed… lists the
+  last 25; a closed window is one entry that brings its tabs back in a window of their own. The list is kept in memory
+  only, never written anywhere: it is forgotten when Oracle's last window closes and when you sign out. Private and Tor
+  windows keep their own list, which goes with the window. On Standard, Native and Lite.
 - Fixed: Make a Rudolf OS USB stick on an older Rudolf OS stick said "/dev/sdb is in use (mounted at
   /run/rudolf/stkinfo-sdb/i). Unmount it first." Settings' look at what such a stick holds left its image mounted
   when the stick had no third partition. It now always unmounts, never looks while a stick is being made, and Make the
