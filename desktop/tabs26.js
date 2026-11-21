@@ -200,6 +200,8 @@ addEventListener('message', e => {
     else if (ev == 'keys') h.keys(String(m.k || ''));
     else if (ev == 'newwin' && typeof m.ntid == 'string') h.newwin(String(m.url || ''), m.ntid, !!m.popup);
     else if (ev == 'gone') h.gone(String(m.why || ''));
+    else if (ev == 'readable') { if (h.readable) h.readable(!!m.on) }   /* (1.6.1: reader mode, orareader61.js) */
+    else if (ev == 'readhtml') { if (h.readhtml) h.readhtml({id: +m.id || 0, html: typeof m.html == 'string' ? m.html.slice(0, 4e6) : '', title: String(m.title || '').slice(0, 300)}) }
     else if (ev == 'notice') { const w = RT_NOTICE.get(+m.id); if (w) { RT_NOTICE.delete(+m.id); w(m.tid) } }   // 1.5.9: a notice's button
     else if (ev == 'tel') { if (typeof telOpen == 'function') telOpen(m.num) }   // 1.5.9 (plan 7.3): a phone number clicked in a tab
     else if (ev == 'busy') { const w = RT_BUSY.get(m.id); if (w) { RT_BUSY.delete(m.id); w({m: !!m.m, f: !!m.f}) } }

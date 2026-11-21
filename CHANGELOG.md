@@ -54,6 +54,17 @@ Summary: In progress.
   own, no longer by rudolfd; it is asked only when an account comes or goes. Nothing changes on screen.
 - Security: restart, shut down, sleep, the power settings, brightness, Task Manager's "Clear cache" and the desktop's
   priority, and setting the clock are done by a power helper of its own, no longer by rudolfd. Nothing changes on screen.
+- Security: Wi-Fi (scan, join, forget, the radios and bands, the country, the adapter), an address by DHCP or a fixed
+  one and the name server, the firewall, the hotspot and metered connections are handled by a network helper of its
+  own, no longer by rudolfd; a network's password reaches it on its standard input only. Nothing changes on screen.
+- Security: Bluetooth (turning it on and off, searching, pairing, connecting, forgetting, the pairing question) and
+  Thunderbolt and USB4 devices (approving, not approving, forgetting) are handled by a devices helper of its own, no
+  longer by rudolfd. Nothing changes on screen.
+- Security: Task Manager's End process and End process tree, and reading the kernel's messages (System health, the
+  crashes list), are handled by two small helpers of their own, no longer by rudolfd. Nothing changes on screen.
+- Security: the display's settings (the graphics path, the desktop's shell, resolution and frame rate, the keyboard's
+  layout, restarting the display or the desktop's browser) and sound (the volume, the microphone, the echo canceller,
+  the sound card) are handled by helpers of their own, no longer by rudolfd. Nothing changes on screen.
 - Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
   rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
   starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own
@@ -69,6 +80,12 @@ Summary: In progress.
 - Changed: files kept on the disk can now be in sub-folders of Downloads, where they stay (before, they were moved back to
   the top of Downloads); only those at the top are renamed on the disk when renamed. Deleting them, the Trash and
   Downloads' own files work as before.
+- New: reader mode in Oracle. On a page with an article (a news story, a blog post, a recipe) a 📖 button shows in the
+  address box; it, F9 (also inside a website) or ☰ › Reader mode shows the article alone: its title, author and text, its
+  pictures and links, in Rudolf's reading style, with A− A+, the width, the font (serif, sans, OpenDyslexic), light, sepia
+  or dark (dark with Rudolf's dark theme), 🔊 Read aloud in Rudolf's own voice (the sentence being read highlighted) and
+  🖨 Print (the article alone). ✕ Exit reader or F9 gives the page back as it was. Nothing of the website runs in reader
+  mode. Also for .HTM files on C:. On Standard, Native and Lite. It uses Mozilla's Readability (Apache License 2.0).
 - Fixed: the release build no longer stops when linux-firmware updates a file: it takes linux-firmware at the commit the firmware list was made from (the list's new "R" line), and a check runs that fetch on every change to the list.
 - Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
   follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at
@@ -198,6 +215,13 @@ Summary: In progress.
   at the left, as Settings › Display › Displays arranged them for that set of monitors (kept per set); plugged in or out,
   they are arranged again within a second. Linux apps and games open on the main monitor. (rudolf-display --arrange and
   --monitors, screenctl arrange, rudolfd's screen/arrange; the software display still shows one monitor.)
+- Several monitors on the desktop (plan Part 1), Standard and Native alike: each monitor shows one of the three workspaces,
+  with the wallpaper and a taskbar of its own (the start button, the pinned apps, that workspace's windows, the workspaces
+  and the clock); the main monitor keeps the tray, the desktop's icons and the Start menu. A window moved to another
+  workspace moves to the monitor showing it, one dragged onto another monitor joins its workspace, and a maximised window
+  fills its own monitor. A workspace's button on a monitor's taskbar shows it there. A monitor unplugged: its windows stay
+  in their workspace and none is left off the screen. Settings › Display › Displays lists the displays and which
+  workspace each shows, and makes another the main one. The sign-in and lock screens cover every monitor.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.

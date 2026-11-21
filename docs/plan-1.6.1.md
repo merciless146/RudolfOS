@@ -23,8 +23,33 @@ work." Built after the 1.6.0 beta.
   › Display lists the displays and which workspace each shows.
 - **Tests:** Xvfb with several screens (or Xephyr / RandR's virtual outputs) for both engines, compared with same_t.sh;
   on the Vivobook with an HDMI monitor (owner).
-- **Status (2026-11-21):** the system's part built (rudolf-display arranges the monitors and lists them; screenctl and rudolfd keep the
-  arrangement per set of monitors; iso/qt/host/monitors161_t.sh on Xorg's dummy driver); the desktop's part follows.
+- **Status (2026-11-21):** built, for the owner's checks on the Vivobook with an HDMI monitor (unattended session, two PRs: the system's
+  part, branch monitors-arrange, then the desktop's, branch monitors-desktop).
+  - *The system:* rudolf-display --arrange lights every connected monitor (up to three) side by side, the main one at 0,0, the
+    others to its right, each at its own preferred mode (the main one keeps Settings › Display › Resolution's); the order, the
+    main one and each one's workspace come from /etc/rudolf-monitors, a line per set of monitors (the connectors' names, so another
+    monitor on the same port shares the arrangement); --input arranges again on a hot plug (RandR's events) and when the file
+    changes, and keeps /run/rudolf/monitors, which screenctl status passes to the page and rudolf-native reads. The desktop's
+    Chromium window covers every monitor; Linux apps' windows, games and the touchscreen stay on the main one.
+  - *The desktop (desktop/mon61.js; rudolf-native's "several monitors"):* as written above. The page's own box is the main
+    monitor's (innerWidth too), so everything that was on the screen stays on the main monitor; the other monitors get the
+    wallpaper (fitted to each), a taskbar from the main one's CSS (its rules copied: the same styles, colours and accent) and the
+    windows of the workspace each shows. The workspace in use is the one of the monitor last clicked or the window in use.
+  - *Tests:* iso/qt/host/monitors161_t.sh (the plan, screenctl arrange, and on Xorg's dummy driver --arrange, --monitors, a
+    monitor plugged in under --input and a new arrangement taken); iso/qt/native/monbeh_t.sh (Xorg's dummy driver, 1920×1080 and
+    1280×800: the same twelve steps on Standard and Native, each step's outcome the same on both, the second taskbar, wallpaper,
+    lock cover and a maximised window compared by picture; Settings › Display › Displays; at 100 % and at 125 % display
+    scaling), run by .github/workflows/monitors-check.yml. wsbeh_t.js and titlebeh_t.js (one monitor) still pass.
+  - *Not done here:* QEMU's second virtio-vga output stays "disconnected" without a display (as docs/native-findings-2026-11-15.md
+    found), so the real release was not run with two heads; the dummy driver's RandR stands in, and the Vivobook is the check.
+    The software display (recovery, safe graphics, Xorg failing) shows one monitor. One display scaling for all monitors. The
+    window transitions (LitePoint) of a window on another monitor were not compared.
+  - *The owner's checks (Vivobook, HDMI monitor), on Standard and on Native:* plug the monitor in with windows open (both lit side
+    by side within a few seconds, the laptop's screen the main one, workspace 2 on the monitor); move a window there by its menu
+    and by dragging it; maximise it there; the monitor's taskbar (its pins, windows, workspaces, clock, Start menu); unplug it
+    with windows on it (they stay in workspace 2, nothing off the laptop's screen) and plug it in again; Settings › Display ›
+    Displays: another workspace, "Make main", and that this is kept after a restart; Super+L (both screens covered); a game or a
+    Linux app full screen (on the laptop's screen).
 
 ### The phone, split in two (owner, 2026-11-15)
 Decided on 2026-11-15, after asking whether the first real phone would be easier in 2.0 than in 1.6: "Make the sensible
@@ -219,6 +244,34 @@ workflow dlzip-check.yml. Left: a ZIP in a home folder kept on the disk (1.5.6 a
 whose large downloads home56.js moves into the home) is not listed yet: it keeps the old message; BusyBox's unzip drops ".."
 and a leading "/" from names itself, so with it such entries land inside the folder rather than refusing the ZIP.
 
+**Built (2026-11-21, branch oracle-reader): item 7, reader mode** (desktop/orareader61.js, libs/readability). A 📖 button after the
+address box when the page has an article; it, F9 (in Oracle or inside a website) or ☰ › Reader mode shows the article alone, in the
+tab's own frame, the address unchanged; ✕ Exit reader or F9 gives the page back as it was (a website's tab is only hidden meanwhile:
+nothing is loaded again, what was typed in it is still there); a link clicked opens in the tab and leaves reader mode.
+- **Whether a page has an article:** when it has loaded the tab checks itself (the shell's READABLE_JS, rudolf-webkit's the same:
+  Readability's isProbablyReaderable rewritten small, run in the page's isolated world) and says so (tabev `readable`); an .HTM
+  file on C: is checked by the desktop. The page is read only when the person asks: op `readhtml` gives its HTML as it is now
+  (at most 4 MB), its address and title.
+- **Reading it:** Mozilla's Readability 0.6.0 (libs/readability, unchanged from npm's @mozilla/readability, Apache License 2.0:
+  credited in About Oracle and in libs/readability/README.md) runs in Oracle's page on an inert copy (DOMParser: nothing in it runs
+  or loads); it is a file beside the page (iso/www/a/, by build19.py), loaded the first time reader mode is used, so the page is
+  not larger for windows that never use it. Its HTML goes through safeHtml (sanitize59.js), forms, fields, styles, audio, video and
+  canvases are left out, links and pictures made whole, then safeHtml again (htmlsinks reviewed).
+- **Showing it:** an Oracle page of its own in the tab's frame (srcdoc, sandboxed: scripts only, no origin of its own) with a
+  Content-Security-Policy: only Oracle's own script (a nonce per page) runs, pictures load from the site as the page loaded them,
+  nothing else (no fonts but the one given, no frames, no forms). Styles: A− A+, Narrow / Medium / Wide, Serif / Sans / OpenDyslexic
+  (the desktop's own font, handed in as data), Light / Sepia / Dark (dark when Rudolf's dark theme is on), kept in the account's
+  settings (S.oreader: the look only, never a page). Read aloud: sentence by sentence with ttsSpeak (tts25.js), the sentence
+  highlighted (CSS highlights), Stop. Print: the article alone through print25.js's dialog (Rudolf OS's print service).
+- Private and Tor windows: available; nothing is kept. A website in a plain frame (no shell): no button (its page cannot be read).
+- Tests: iso/qt/shell2/orareader61_t.js (32: the check, the article, nothing of the page runs (a script, onerror, javascript:, a
+  form), the CSP, styles, read aloud, print, a link, exit, F9, dark, About, a file, a plain frame), iso/qt/webkit/reader61_ci.py (6:
+  rudolf-webkit), iso/qt/native/orareader61_t.sh (12: the real shell on Standard and Native: F9 in a website, the article, back as
+  it was); oracle58, private59, orahover61, oraacct60, tor59, bmadd59, oraclefile60 unchanged. Workflow oracle-reader-check.yml.
+- **The owner's checks (Vivobook):** on Standard, Native and Lite: a long news article (the BBC, The Guardian, a Wikipedia article):
+  📖, the article, A+, Sepia and Dark, OpenDyslexic, Read aloud (the highlight follows), Print to a PDF, a link, ✕ Exit reader and
+  F9; a page with no article (a search page): no 📖.
+
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
 
 **Shipped in 1.6.0 (owner, 2026-11-17: "I do want to keep 446 and 447 in 1.6.0"):** rudolf-rootd with the drives' and
@@ -276,25 +329,25 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Power | power/set, `main`'s power apply, brightness (backlight writes through the power script) | /usr/lib/rudolf/power (CPU governor, backlight, USB autosuspend under /sys) | power |
 | Power | memory/dropcache, memory settings (zram) | /proc/sys/vm/drop_caches, /usr/lib/rudolf/memory | power |
 | Power | desktop/priority | /usr/lib/rudolf/desktop-priority (cgroup weights of the desktop) | power |
-| Network | `api_wifi` (wifi/*: scan, connect (job), forget, radios, power) | wifi.sh (wpa_supplicant, wpa_cli, iw, rfkill), the root-only request file | network |
-| Network | net/dhcp, net/static, dns, `api_net`'s wpa_cli status | ip link/addr/route, udhcpc, /etc/resolv.conf | network |
-| Network | firewall (GET/POST), remote access's firewall holes, health_tick's firewall status | /usr/lib/rudolf/firewall (nft) | network |
-| Network | hotspot, netplug, mobile/* (rudolfd-mobile.inc: modem, SMS, airplane mode) | hostapd, dnsmasq, ModemManager through /usr/lib/rudolf/hotspot, netplug, modem | network |
+| Network | `api_wifi` (wifi/*: scan, connect (job), forget, radios, power) | wifi.sh (wpa_supplicant, wpa_cli, iw, rfkill), the root-only request file | **network** (moved) |
+| Network | net/dhcp, net/static, dns, `api_net`'s wpa_cli status | ip link/addr/route, udhcpc, /etc/resolv.conf | **network** (moved) |
+| Network | firewall (GET/POST), remote access's firewall holes, health_tick's firewall status | /usr/lib/rudolf/firewall (nft) | **network** (moved) |
+| Network | hotspot, netplug, mobile/* (rudolfd-mobile.inc: modem, SMS, airplane mode) | hostapd, dnsmasq, ModemManager through /usr/lib/rudolf/hotspot, netplug, modem | **network** (moved: hotspot, netplug); modem next |
 | Network | tor (`tor_start`, `tor_kill`), torwin (`torwin_start`) | Tor started as its own user (setuid in the child), its folder made and chowned; Chromium for Tor windows as the desktop's user with a cgroup write | network |
-| Network | bt/* (bluetooth), tb/* (thunderbolt) | /usr/lib/rudolf/bluetooth, thunderbolt (sysfs authorize) | network (devices) |
+| Network | bt/* (bluetooth), tb/* (thunderbolt) | /usr/lib/rudolf/bluetooth, thunderbolt (sysfs authorize) | **devices** (moved) |
 | Network | remote/* (`remote_start`, `remote_stop`) | rudolf-remote started (as root today), its certificate and settings in /persist/etc | network |
-| Network | time sync (`time_tick`, POST time, time/sync) | settimeofday, ntpd, hwclock -w | power (the clock) |
+| Network | time sync (`time_tick`, POST time, time/sync) | settimeofday, ntpd, hwclock -w | **power** (moved, the clock) |
 | Packages | pkg/* (rpk refresh, update, install, remove, install-file: jobs), pkg/exec (`api_pkg_exec`: setuid to the account's user) | rpk on the system's package folders; a Library program run as the account's user | packages |
 | Packages | apps/* (`api_apps`: Flathub, install, update, remove, appextra), catalog | flatpak --system, /usr/lib/rudolf/appextra, RUN/apps chowned | packages |
 | Packages | sysext/* (`api_sysext`) | rpk sysext (signed system extensions mounted over /usr) | packages |
 | Packages | debian/* (`api_debian`, `spawn_debian`: setup, update, wine, deb, run --root), ai/* python and C++ | rudolf-debian (a container: namespaces, mounts) as root | packages (rudolf-debian is already a program: through the helper) |
 | Packages | games/* (games-import), ai/* (`api_ai`: rudolf-ai, the model's folder), print/* (`api_print`: rudolf-print, usbprint) | folders chowned to 1000; rudolf-ai and rudolf-print as root | packages (most need no root: they run as the desktop's user after the drop) |
-| Display | display (POST: /etc/rudolf-display), screen/* (screenctl), layout, pointer | /etc writes, xrandr through screenctl, setxkbmap through layout.sh | display |
+| Display | display (POST: /etc/rudolf-display), screen/* (screenctl), layout, pointer | /etc writes, xrandr through screenctl, setxkbmap through layout.sh | **screen** (moved: display, shell, screen/*, keyboard); pointer is RUN's (the drop) |
 | Display | screenshot (`grab_x`, `grab_fb`), clipboard (`api_clipboard`: su rudolf) | /dev/fb0; su to the desktop's user | none after the drop (video group; rudolfd is that user) |
 | Display | native/*, web/*, shell (POST shell: /etc/rudolf-shell), restart-browser, desktop/engine | the native desktop, Chromium windows started as the desktop's user (su/setuid), pkill of the kiosk browser, /etc and /persist/etc writes | display |
-| Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | display (devices) |
-| Other | processes, proc/end (`api_proc_end`, `proc_tree_end`) | kill(2) of other users' processes (the accounts' apps), /proc of every process | other: **procs** |
-| Other | service (restart sound, Wi-Fi, display), selftest, starts, system (`api_system`: dmesg, modules), log, crash_list, health_tick's dmesg | the self-test, dmesg (kernel.dmesg_restrict), /proc/modules | other: **logs** (dmesg read by a helper, or dmesg_restrict=0 chosen in Part 12) |
+| Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | **sound** (moved) |
+| Other | processes, proc/end (`api_proc_end`, `proc_tree_end`) | kill(2) of other users' processes (the accounts' apps), /proc of every process | other: **procs** (moved) |
+| Other | service (restart sound, Wi-Fi, display), selftest, starts, system (`api_system`: dmesg, modules), log, crash_list, health_tick's dmesg | the self-test, dmesg (kernel.dmesg_restrict), /proc/modules | other: **logs** (moved: dmesg read by a helper); the self-test and service next |
 | Other | devlink/* (`dl_start`, `dl_stop`) | rudolf-devlink started with its own user and environment | other |
 | Other | camera, portal, term (Debian's terminals) | /usr/lib/rudolf/camera, the portal's files chowned, rudolf-debian's terminals | other |
 | Other | fs/* (`api_fs`: the desktop's file browser outside the accounts' folders) | chown of new files to 1000 under the shared folders, and reading any path it allows | none after the drop (rudolfd is 1000), accounts for the accounts' folders |
@@ -469,7 +522,98 @@ rudolfd runs as root today (they keep running as root, from the helper).
   In QEMU (roothelpers-check.yml, run 44874168648): r161_t.py 22/22 with its new 16-21 (the settings, the desktop's
   priority, the cache, the clock set and back, the helper never skipped, a restart through the API that comes back),
   t160_t.py 31/31, t150_t.py 18/18. Sleep, brightness and shut down: for the owner on the Vivobook.
-- Next: network; packages; display; other; then the drop (with the accounts' file service of 11.2).
+- **Network (2026-11-21, branch root-helpers-network):** the network helper (iso/sys/rudolf-network.c,
+  /usr/lib/rudolf/root/network, a small program of its own; rudolfd-rootnet.inc): every wifi.sh action rudolfd ran
+  (`network wifi status|scan|disconnect|reconnect|radios|bands IF`, `country IF CC`, `adapter IF`, `radio IF BSSID
+  on|off`, `band IF 2.4|5|6 on|off`, and `connect|forget IF` with the request on the helper's standard input, at most
+  600 bytes, which the helper writes to the same root-only file wifi.sh reads and removes; the join is still a job),
+  System health's wifiNow and Settings' service restart (reconnect, with no adapter at all, as before), `wifi-link IF` (GET net's network name and signal:
+  wpa_cli status and signal_poll on wpa_supplicant's sockets, root's), `dhcp IF` (ip link up, udhcpc with udhcpc.sh),
+  `static IF ADDR GW DNS` (flush, add, up, the default route; DNS into /etc/resolv.conf, written even when ip failed,
+  as before), `firewall on|off|status`, `firewall remote on|off` (remote access's port), the health log's hourly count,
+  `hotspot status|stop|start` (its request on standard input, at most 200 bytes) and `metered-state`, `metered IF
+  on|off|auto` (netplug; Blitzen's knowledge download asks it too). The helper checks every argument as rudolfd does
+  (an adapter's name: letters, digits and - _ . :, at most 16; a country two capital letters or 00; a radio's address,
+  a band, on or off), and for dhcp and static, which hand the name to ip and udhcpc, also that the kernel has it
+  (/sys/class/net) and that it does not start with "-" (both answered 500 before as now). Its commands are looked for in
+  the system's folders only, with no environment but PATH. GET net's own reads (ip route, ip addr show, /etc/resolv.conf,
+  /sys/class/net) stay in rudolfd: any user may make them. rudolfd keeps each old line beside the call for when the
+  helper does not start (-2), so the network always works. Part 20: the network helper's line in HELPER_CAPS
+  (CAP_NET_ADMIN, CAP_NET_RAW, CAP_NET_BIND_SERVICE for the hotspot's dnsmasq, CAP_DAC_OVERRIDE and
+  CAP_DAC_READ_SEARCH for wpa_supplicant's sockets and saved networks, CAP_FOWNER, CAP_CHOWN, CAP_KILL, CAP_SETUID and
+  CAP_SETGID for dnsmasq's own user); no CAP_SYS_ADMIN, so it gets no_new_privs. The programs it starts and leaves
+  running (wpa_supplicant, hostapd, dnsmasq, udhcpc's renewals) are now rudolf-rootd's descendants instead of
+  rudolfd's, and with the confinement on they keep the network helper's capabilities and system-call list (enough for
+  what they do; for the owner's check on the Vivobook: Wi-Fi joined, the hotspot shared). confinepure.py: no request
+  became narrow (each keeps its old line for when the helper does not start). Found and kept as they were: POST
+  net/static may still be asked for the loopback adapter (lo); the request files' names (RUN/wifi.req,
+  RUN/hotspot.req) are the same as before, now written by the helper as root. Tests: roothelpers161_t.sh N1-N6 (the
+  arguments, the requests on standard input only, stand-ins for wifi.sh, the firewall, the hotspot, netplug, ip, udhcpc
+  and wpa_cli, so a host test never touches this computer's network) and check 25 (every network request through the
+  helper, with and without rudolf-rootd, and as rudolfd doing it itself: the same answers and the same calls, byte for
+  byte); in QEMU r161_t.py 22-26 (the firewall off and on with nft, a fixed address, DHCP with no server, Wi-Fi without
+  an adapter, the helper never skipped). Not moved yet: the modem (mobile/*), Tor, remote access's own start
+  (rudolf-remote), Bluetooth and Thunderbolt (the devices: next).
+- **Devices (2026-11-21, branch root-helpers-devices, after root-helpers-network):** the devices helper
+  (iso/sys/rudolf-devices.c, /usr/lib/rudolf/root/devices; rudolfd-rootdev.inc, which asks it the network's way):
+  `devices bt status|on|off|visible`, `bt scan SECONDS` (3-60), `bt answer yes|no`, `bt pair|connect|disconnect|remove
+  MAC` (capital hex digits, as rudolfd's bt_mac_ok), `devices tb json`, `tb allow|deny ID`, `tb forget UID` (as
+  tb_arg_ok); the scripts' start-up actions (bluetooth start, stop, agent-run, boot; thunderbolt plug, boot) are refused:
+  only rudolf-init and mdev run them, as root. GET bt, every POST bt/..., GET tb, POST tb/... and System health's
+  Thunderbolt line go through it; each keeps its old command for when the helper does not start. Part 20: its line in
+  HELPER_CAPS (CAP_NET_ADMIN, CAP_NET_RAW, CAP_NET_BIND_SERVICE for bluetoothd and its D-Bus when "on" starts them
+  again, the DAC capabilities, CAP_FOWNER and CAP_CHOWN for the pairings in /persist/bluetooth, CAP_KILL, CAP_SETUID and
+  CAP_SETGID for headphones set up as the desktop's user); no CAP_SYS_ADMIN, so no_new_privs. For the owner (with the
+  confinement on only): whether the kernel asks more than the file's mode for a Thunderbolt device's "authorized" (the
+  test computers have no Thunderbolt). Tests: roothelpers161_t.sh D1-D2 and check 26 (in check 25's comparison: the same
+  answers and calls with and without rudolf-rootd and as rudolfd itself); r161_t.py 27-28 in QEMU (no adapter, no bus).
+- **Other, part 1: Task Manager's End process and the kernel's messages (2026-11-21, branch root-helpers-procs, after
+  root-helpers-devices):** two small helpers (rudolfd-rootother.inc). The procs helper (iso/sys/rudolf-procs.c,
+  /usr/lib/rudolf/root/procs): `procs end term|kill` (one process) and `procs tree term|kill` (End process tree, in
+  rudolfd's order: all stopped, then ended from the last, each let go again), the numbers on standard input (a tree
+  can be longer than an argument list), one result a line (0, or the error's number: the API's 500 said with it as
+  before). rudolfd still lists the processes and decides; the helper checks each again as Task Manager marks what must
+  keep running (pid 1, the kernel's, rudolfd, rudolf-display, X, the session, rudolf-launch, the desktop's own browser,
+  and rudolf-rootd and the helper itself) and refuses the whole list if one is there (Security). The logs helper
+  (iso/sys/rudolf-logs.c): `logs dmesg`, `logs dmesg-raw` (-r), nothing else; rudolfd keeps every one of its pipelines
+  (the crashes, a job's last crash line, Wi-Fi's kernel lines, System health's messages and the graphics' firmware,
+  GET log) with the messages on their standard input instead of dmesg's own. Part 20: HELPER_CAPS has "procs"
+  (CAP_KILL only) and "logs" (CAP_SYSLOG only), both with no_new_privs. Each keeps its old way for when its helper does
+  not start. Tests: roothelpers161_t.sh O1-O3 (the test's own processes only, a stand-in dmesg) and check 27 (in check
+  25's comparison: End process, a tree of five, rudolfd itself 403, a process gone 404, the log, the crashes, a job's
+  last crash line; the same with and without rudolf-rootd and as rudolfd itself); proctree57_t.sh unchanged;
+  r161_t.py 29-31 in QEMU.
+- **Display and sound (2026-11-21, branch root-helpers-display, after root-helpers-procs):** two helpers
+  (rudolfd-rootscreen.inc). The screen helper (iso/sys/rudolf-screen.c, /usr/lib/rudolf/root/screen; not "display":
+  sys/rudolf-display.c is the window manager): `screen mode soft|games|full` and `screen shell on|off` (/etc's file, and
+  /persist/etc's on an installed Rudolf OS, which the helper reads itself from /run/rudolf/persistent), `screen ctl
+  status|keep|revert`, `ctl set RES FPS` (screenctl), `screen keyboard LAYOUT [VARIANT]` (setxkbmap on :0),
+  `screen restart-display` (System health's restart of rudolf-display) and `screen restart-browser` (the desktop's own
+  browser, either engine: the proxy, the sound card and POST restart-browser). The sound helper
+  (iso/sys/rudolf-sound.c): `sound volume get|up|down|mute|set N|muted 0|1`, `sound playing`, `sound mic
+  users|get|muted 0|1` (hotkey), `sound echo on|off|status`, `sound mics`, `sound mic-default NAME`, `sound default N`,
+  `sound restart` (the sound script; echo, the microphone chosen and the restart still into RUN/sound.log), `sound card
+  N` (/etc/asound.conf, and /persist/etc's on an installed one). Part 20: HELPER_CAPS "screen" (the DAC capabilities,
+  CAP_FOWNER, CAP_KILL) and "sound" (CAP_SETUID and CAP_SETGID for su to the desktop's user, CAP_KILL, the DAC
+  capabilities, CAP_FOWNER, CAP_CHOWN), both with no_new_privs. Not moved: GET display's and the shell's reads (any
+  user's), pointer (RUN/pointer, rudolfd's own: the drop), desktop/engine (/persist/etc's files: the drop), the native
+  desktop's and web windows' starts as the desktop's user (none needed after the drop: rudolfd is that user; Tor
+  windows' cgroup write with Tor). Found and kept as it was: GET audio/mics never answers (a "use POST" for every GET
+  further up api() comes first; Settings' microphone test falls back to the browser's list): for the owner. Tests:
+  roothelpers161_t.sh S1-S2 and check 28 (in check 25's comparison: every display and sound request with and without
+  rudolf-rootd and as rudolfd itself, the files written in /etc and /persist/etc too); r161_t.py 32-33 in QEMU.
+- **Where 11.1 stands (2026-11-21, after the display and sound branch; PRs #561-#564, stacked in that order):** moved:
+  drives, updates (but the EFI boot entries), accounts, power and the clock, network (Wi-Fi, addresses, the firewall,
+  the hotspot, metered), devices (Bluetooth, Thunderbolt), procs, logs, screen, sound. Stay in rudolfd by design:
+  `addpart` (rudolfd --addpart is run by root's own scripts, not a request), every read any user may make (GET net's
+  ip and /sys reads, /proc/asound, the display's and shell's files), and what is rudolfd's own (RUN's files, pointer,
+  /persist/etc's settings such as desktop/engine and vault.json, the health log): those become the rudolf user's at
+  the drop instead. Not moved yet (each still run as root by rudolfd, with no change from 1.6.0): the modem
+  (mobile/*: its PIN and SMS request files), Tor and remote access (long-running services started as their own user
+  or as root), packages (rpk, Flatpak's system parts, system extensions, rudolf-debian, Blitzen's and printing's
+  folders), the EFI variables (bootmenu, secureboot), dl_acct_dir, and the rest of other (the self-test, devlink, the
+  camera, the portal's files, Debian's terminals); then the drop with the accounts' file service of 11.2.
+- Next: the modem, Tor and remote access; packages; the EFI variables; the rest of other; then the drop.
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 **Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").**

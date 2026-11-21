@@ -8,6 +8,7 @@
 # password, fixtures/deskls.js), calls (every request), session (when there: Native starts signed in as Ann),
 # wall.jpg (a picture of your own), tm/ (test media, served at /tm/NAME).        python3 same_rd.py PORT DIR
 import http.server, json, os, re, sys, threading, time
+from urllib.parse import unquote as monunq
 PORT = int(sys.argv[1]); D = sys.argv[2]; HERE = os.path.dirname(os.path.abspath(__file__))
 WWW = os.path.join(HERE, '../../www'); TOK = 'tok160same'; LOCK = threading.Lock()
 ST = {'locked': False}
@@ -230,6 +231,23 @@ class H(http.server.BaseHTTPRequestHandler):
             if w == 'debian/apps': return self.j({'ok': True, 'apps': [{'id': 'starport-ge', 'name': 'Starport GE', 'icon': '/usr/share/pixmaps/starport-ge.png', 'mime': '', 'wmclass': 'starport.exe', 'categories': 'Game;', 'menu': True}]})
             if w in ('apps/icon', 'debian/icon'): return self.send(200, square_png((200, 40, 160) if w == 'apps/icon' else (40, 160, 200)), 'image/png')
             if w in ('apps/run', 'debian/launch', 'pkg/run'): return self.j({'ok': True})
+        # (1.6.1 Part 1) DIR/monitors: the monitors as rudolf-display --monitors writes them (/run/rudolf/monitors); screen/arrange
+        # does what screenctl arrange and rudolf-display do: the main one first, the others to its right in that order, their workspaces
+        if w == 'screen':
+            mons = rd('monitors')
+            return self.j({'ok': True, 'res': 'auto', 'fps': 60, 'display': 'gpu', 'monitors': json.loads(mons) if mons else None})
+        if w == 'screen/arrange' and m == 'POST':
+            mons = rd('monitors'); spec = monunq(q.partition('set=')[2].split('&')[0])
+            if not mons: return self.err(400, 'the monitors are not known')
+            M = json.loads(mons); by = {x['name']: x for x in M['monitors']}; L = []; x0 = 0
+            for it in spec.split(','):
+                n, _, ws = it.partition('=')
+                if n not in by: return self.err(400, 'not the monitors plugged in')
+                o = dict(by[n], ws=int(ws), main=not L, x=x0, y=0); x0 += o['w']; L.append(o)
+            if len(L) != len(by): return self.err(400, 'not the monitors plugged in')
+            M['monitors'] = L
+            with open(os.path.join(D, 'monitors'), 'w') as f: f.write(json.dumps(M))
+            return self.j({'ok': True, 'message': 'the displays are arranged anew'})
         if w == 'bootmenu': return self.j(dict({'ok': True, 'uefi': True, 'loader': True, 'windows': []}, **json.loads(rd('bootmenu', b'{}') or b'{}')))
         return self.j({'ok': True})
 def square_png(c, n=48):   # (a plain square of one colour: a stand-in for a program's own icon)
