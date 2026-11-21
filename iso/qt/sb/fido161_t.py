@@ -166,11 +166,16 @@ try:
            "WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; "
            "[ -f /tmp/fx/index.html ] && cp /tmp/fx/index.html /tmp/page.html && chmod 644 /tmp/page.html && mount --bind /tmp/page.html $WWW/index.html && echo page; "
            "L=/usr/lib/x86_64-linux-gnu; for f in /tmp/fx/lib*.so*; do [ -f $f ] && { [ -e $L/$(basename $f) ] || { cp $f $L/ && chmod 644 $L/$(basename $f) && echo lib $(basename $f); }; }; done; "
-           "if [ -x /tmp/fx/rudolfd ]; then P=$(pgrep -x rudolfd); kill $P; sleep 2; kill -9 $P 2>/dev/null; setsid /tmp/fx/rudolfd >> /run/rudolf/rudolfd.log 2>&1 < /dev/null & sleep 4; echo rudolfd now $(pgrep -x rudolfd); fi; "
+           # (this tree's rudolfd bound over the release's, so whatever starts it again starts this one; then the old one stopped)
+           "if [ -x /tmp/fx/rudolfd ]; then cp /tmp/fx/rudolfd /tmp/rudolfd.fix; chmod 755 /tmp/rudolfd.fix; B=$(command -v rudolfd || echo /usr/bin/rudolfd); mount --bind /tmp/rudolfd.fix $B; "
+           "for t in 1 2 3; do P=$(pgrep -x rudolfd); [ -n \"$P\" ] && kill $P; sleep 2; P=$(pgrep -x rudolfd); [ -n \"$P\" ] && kill -9 $P; sleep 1; "
+           "pgrep -x rudolfd >/dev/null || setsid $B >> /run/rudolf/rudolfd.log 2>&1 < /dev/null & sleep 4; "
+           f"busybox wget -q -O- --header \"X-Rudolf-Token: {TOK}\" 'http://127.0.0.1:8080/api/desktop/keys?acct=uX' 2>&1 | grep -q '\"lib\"' && {{ echo rudolfd ours $(pgrep -x rudolfd); break; }}; done; "
+           "for p in $(pgrep -x rudolfd); do echo exe $p $(readlink /proc/$p/exe); done; tail -5 /run/rudolf/rudolfd.log; fi; "
            "ls -la /dev/uhid /dev/ttyS1; cp /tmp/fx/vfido_uhid /tmp/vfido_uhid; chmod 755 /tmp/vfido_uhid; setsid /tmp/vfido_uhid /dev/ttyS1 > /tmp/vfido.log 2>&1 < /dev/null & sleep 1; echo relay $(pgrep -f vfido_uhid); "
            "pkill -f '[-]-rudolf-kiosk'; echo reloaded", 120)
-    MUX.connect(); got = MUX.hello.wait(30)
-    ok('0b. this tree\'s page, rudolfd and libfido2 in place; the relay runs on ttyS1 and the host hears it', 'page' in o and 'rudolfd now' in o and got, o)
+    MUX.connect(); MUX.send(3, 0); got = MUX.hello.wait(30)   # (its first hello went before the host was there: asked again)
+    ok('0b. this tree\'s page, rudolfd and libfido2 in place; the relay runs on ttyS1 and answers the host', 'page' in o and 'rudolfd ours' in o and got, o)
     time.sleep(20); end = time.time() + 600
     while time.time() < end and js("typeof acctNew=='function'&&typeof fidoSignin=='function'", 20) is not True: time.sleep(5)
     time.sleep(20); js(INIT_JS)

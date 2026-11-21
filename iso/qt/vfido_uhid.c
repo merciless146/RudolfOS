@@ -6,8 +6,8 @@
  * a FIDO HID device as a USB security key is (usage page 0xF1D0, 64-byte input and output reports), so the guest's own
  * libfido2 finds it as /dev/hidrawN and rudolfd talks to it as it would to a key in a USB port. The reports go to the
  * host over a serial port (QEMU's isa-serial on a socket), in frames of 66 bytes: TYPE, KEY, 64 bytes, where TYPE 0 is
- * a report (either way), TYPE 1 from the host plugs KEY in (byte 0 of the data: 1) or takes it out (0), and TYPE 2 to
- * the host says the relay is running.
+ * a report (either way), TYPE 1 from the host plugs KEY in (byte 0 of the data: 1) or takes it out (0), TYPE 2 to the
+ * host says the relay is running (at its start, and when the host asks with TYPE 3).
  *   vfido_uhid /dev/ttyS1        (root: /dev/uhid)        Built static: gcc -O2 -static -o vfido_uhid vfido_uhid.c
  * Copyright (C) 2026 Rudolf OS contributors. GPL-2.0-or-later.
  */
@@ -65,6 +65,7 @@ int main(int argc, char **argv)
 		if (p[0].revents & POLLIN) {
 			uint8_t f[66]; if (full(S, f, 66, 0)) return 1;
 			if (f[0] == 1) plug(f[1], f[2]);
+			else if (f[0] == 3) send_frame(2, 0, NULL);   /* (the host asks whether the relay is there) */
 			else if (f[0] == 0 && f[1] < KEYS && K[f[1]] >= 0) { struct uhid_event e; memset(&e, 0, sizeof e); e.type = UHID_INPUT2; e.u.input2.size = 64; memcpy(e.u.input2.data, f + 2, 64); full(K[f[1]], &e, sizeof e, 1); }
 		}
 		for (int j = 1; j < n; j++) if (p[j].revents & POLLIN) {
