@@ -72,3 +72,14 @@ folder's (no link on the way).
 
 While an extraction runs, or its result has not been taken (at most 15 minutes), `GET dl/home?acct=` for that account says
 `"unzip":true`, and the page takes no file of that folder in as a download of its own (dl27.js `dlAdopt`, in every page).
+
+## Graphics driver (1.6.1; rudolfd-gpu.inc, /usr/lib/rudolf/gpudriver)
+Settings › Display › Graphics driver (docs/plan-1.6.1.md Part 19): the open driver (nouveau, NVK) or NVIDIA's, from the system
+extension `nvidia-driver`.
+
+| Request | What it does |
+|---|---|
+| `GET gpu/driver` | `{"ok","card":"10de:ID"\|null,"name","offered","why","extension":{"installed","version","state"},"choice":"open"\|"nvidia","inUse","version","fellBack":{"at","why"}}`: `fellBack` while the note of a switch back by itself has not been shown. |
+| `POST gpu/driver/set?to=open\|nvidia` | The choice for the next start; the body `{"n":ADMIN,"p":PASSWORD}` (rudolfd checks it). `nvidia` is refused (`{"ok":false,"error"}`) for a card that is not offered. |
+| `POST gpu/driver/ack` | The switch back was shown (the desktop's notification): its note is forgotten. |
+| `GET gpu/driver/licence` | NVIDIA's licence (text), from the installed extension; 404 without it. |
