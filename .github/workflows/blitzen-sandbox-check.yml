@@ -33,7 +33,7 @@ jobs:
           S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
           mkdir -p rel && gh release download "r$S" -D rel -p 'chromium.sfs'
           sh iso/qt/host/betachrome.sh rel/chromium.sfs chr
-      - name: Host (as root: an encrypted ext4 drive; rudolf-dev as nobody)
+      - name: 'Host, as root (an encrypted ext4 drive; rudolf-dev as nobody)'
         run: |
           sudo sh iso/qt/host/blzlearn161_t.sh | tee host.txt; sudo sh iso/qt/host/blzdev161_t.sh | tee -a host.txt; sh iso/qt/host/aiindex60_t.sh | tee -a host.txt
           [ "$(grep -c ' passed$' host.txt)" = 3 ] && ! grep -q '^FAIL' host.txt
