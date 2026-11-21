@@ -197,6 +197,7 @@ try:
         r = js("(async()=>{try{const a=ACCTS.find(x=>x.n=='boss');if(USER)userLogout();USER=a;await userLogin(a,'b1');lastInput=Date.now();"
                "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()", 300)
         out('sign-in (Standard):', r)
+        if str(r).startswith('ERR'): continue   # (the page loaded again meanwhile: from the start)
         if wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300) is True: break
     time.sleep(10)
     AU = sh("sed -n 's/^USER=//p' /run/rudolf/acct-session.env", 30, False).strip().split('\n')[-1]
