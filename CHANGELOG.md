@@ -181,6 +181,8 @@ Summary: In progress.
 - Lite: the desktop's menus and windows now open over Oracle's tabs instead of behind their pages. While something covers
   part of a tab, a still picture of the page is shown there (taken again every 2 seconds); the page itself goes on running
   and is back as soon as nothing covers it.
+- Lite: with the graphics card set to "Use it for games and Linux apps" (the default), Oracle's tabs are now drawn by the
+  graphics card while the desktop itself stays drawn by the processor, for smoother scrolling, games and videos in tabs.
 
 - New (docs/plan-1.6.1.md Part 19): NVIDIA's own graphics driver, by choice, for GeForce 16 and newer: Settings › Display ›
   Graphics driver, "Open (NVK)" (the default) or "NVIDIA's driver" (NVIDIA's open kernel modules and its OpenGL and Vulkan
