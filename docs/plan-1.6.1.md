@@ -23,8 +23,33 @@ work." Built after the 1.6.0 beta.
   › Display lists the displays and which workspace each shows.
 - **Tests:** Xvfb with several screens (or Xephyr / RandR's virtual outputs) for both engines, compared with same_t.sh;
   on the Vivobook with an HDMI monitor (owner).
-- **Status (2026-11-21):** the system's part built (rudolf-display arranges the monitors and lists them; screenctl and rudolfd keep the
-  arrangement per set of monitors; iso/qt/host/monitors161_t.sh on Xorg's dummy driver); the desktop's part follows.
+- **Status (2026-11-21):** built, for the owner's checks on the Vivobook with an HDMI monitor (unattended session, two PRs: the system's
+  part, branch monitors-arrange, then the desktop's, branch monitors-desktop).
+  - *The system:* rudolf-display --arrange lights every connected monitor (up to three) side by side, the main one at 0,0, the
+    others to its right, each at its own preferred mode (the main one keeps Settings › Display › Resolution's); the order, the
+    main one and each one's workspace come from /etc/rudolf-monitors, a line per set of monitors (the connectors' names, so another
+    monitor on the same port shares the arrangement); --input arranges again on a hot plug (RandR's events) and when the file
+    changes, and keeps /run/rudolf/monitors, which screenctl status passes to the page and rudolf-native reads. The desktop's
+    Chromium window covers every monitor; Linux apps' windows, games and the touchscreen stay on the main one.
+  - *The desktop (desktop/mon61.js; rudolf-native's "several monitors"):* as written above. The page's own box is the main
+    monitor's (innerWidth too), so everything that was on the screen stays on the main monitor; the other monitors get the
+    wallpaper (fitted to each), a taskbar from the main one's CSS (its rules copied: the same styles, colours and accent) and the
+    windows of the workspace each shows. The workspace in use is the one of the monitor last clicked or the window in use.
+  - *Tests:* iso/qt/host/monitors161_t.sh (the plan, screenctl arrange, and on Xorg's dummy driver --arrange, --monitors, a
+    monitor plugged in under --input and a new arrangement taken); iso/qt/native/monbeh_t.sh (Xorg's dummy driver, 1920×1080 and
+    1280×800: the same twelve steps on Standard and Native, each step's outcome the same on both, the second taskbar, wallpaper,
+    lock cover and a maximised window compared by picture; Settings › Display › Displays; at 100 % and at 125 % display
+    scaling), run by .github/workflows/monitors-check.yml. wsbeh_t.js and titlebeh_t.js (one monitor) still pass.
+  - *Not done here:* QEMU's second virtio-vga output stays "disconnected" without a display (as docs/native-findings-2026-11-15.md
+    found), so the real release was not run with two heads; the dummy driver's RandR stands in, and the Vivobook is the check.
+    The software display (recovery, safe graphics, Xorg failing) shows one monitor. One display scaling for all monitors. The
+    window transitions (LitePoint) of a window on another monitor were not compared.
+  - *The owner's checks (Vivobook, HDMI monitor), on Standard and on Native:* plug the monitor in with windows open (both lit side
+    by side within a few seconds, the laptop's screen the main one, workspace 2 on the monitor); move a window there by its menu
+    and by dragging it; maximise it there; the monitor's taskbar (its pins, windows, workspaces, clock, Start menu); unplug it
+    with windows on it (they stay in workspace 2, nothing off the laptop's screen) and plug it in again; Settings › Display ›
+    Displays: another workspace, "Make main", and that this is kept after a restart; Super+L (both screens covered); a game or a
+    Linux app full screen (on the laptop's screen).
 
 ### The phone, split in two (owner, 2026-11-15)
 Decided on 2026-11-15, after asking whether the first real phone would be easier in 2.0 than in 1.6: "Make the sensible

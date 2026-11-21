@@ -268,6 +268,7 @@ static const char *const WINAPI_PAGE[] = {   /* the desktop's page: Standard, Li
 	"sc/dod/remove",
 	"sc/status",
 	"screen",
+	"screen/arrange",
 	"screen/keep",
 	"screen/revert",
 	"screen4x3",
