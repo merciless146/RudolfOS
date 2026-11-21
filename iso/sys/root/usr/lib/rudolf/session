@@ -263,6 +263,10 @@ PWSTORE=basic
 webkey_note() { printf '{"state":"%s","why":"%s","t":%s}\n' "$1" "$(printf '%s' "$2" | tr -d '"\\' | head -c 300)" "$(date +%s)" > /run/rudolf/webkey.json.t && chmod 644 /run/rudolf/webkey.json.t && mv /run/rudolf/webkey.json.t /run/rudolf/webkey.json; }
 webkey_start() {
 	[ "$PWSTORE" = kwallet6 ] && [ -n "$WKPID" ] && kill -0 $WKPID 2>/dev/null && return 0
+	# (this script started again during this start: the key store it started before is still there; another would find
+	# its names taken and the desktop would fall back to the built-in key, which drops what it cannot read)
+	if [ -z "$WKPID" ] && grep -qs '"state":"tpm"' /run/rudolf/webkey.json && W0=$(pgrep -f '^/usr/bin/rudolf-webkey wallet$' | head -1) && [ -n "$W0" ]; then
+		WKDONE=1; WKPID=$W0; PWSTORE=kwallet6; return 0; fi
 	PWSTORE=basic
 	[ -n "$WKDONE" ] && [ -z "$WKPID" ] && return 0   # (no TPM key this start: as it was)
 	WKDONE=1; WKPID=
