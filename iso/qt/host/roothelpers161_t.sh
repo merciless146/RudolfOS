@@ -40,6 +40,8 @@ RR_TEST_DIR=$T/root
 RR_TEST_UPDATE=$T/ru
 RR_TEST_PERSIST=$T/persist
 EOF
+# (RH_CONFINE=on: rudolf-rootd puts plan Part 20's confinement on each helper, as /persist/etc/rudolf-confine would)
+[ -n "$RH_CONFINE" ] && { echo "$RH_CONFINE" > $T/confine; echo "RR_TEST_CONFINE_FILE=$T/confine" >> $T/rr.conf; echo "(rudolf-rootd's confinement: $RH_CONFINE)"; }
 CF="-O2 -Wall -Wno-format-truncation -DRR_TEST -DRR_TEST_CONF=\"$T/rr.conf\""
 gcc $CF -o $T/root/drives $SYS/rudolf-drives.c && gcc $CF -o $T/root/updates $SYS/rudolf-updates.c && gcc $CF -o $T/rudolf-rootd $SYS/rudolf-rootd.c || { echo "FAIL build"; exit 1; }
 gcc $CF -w -o $T/drives-home.real $SYS/rudolf-drives-home.c -lz && gcc $CF -w -o $T/root/accounts $SYS/rudolf-accounts.c -lz || { echo "FAIL build drives-home, accounts"; exit 1; }
