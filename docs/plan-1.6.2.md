@@ -432,6 +432,8 @@ weight (20) is one line in /usr/lib/rudolf/gamemode.
 - **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned
   on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
   Native; calls; a real CAC only when the owner asks.
+- **Blitzen's guards (1.6.1 Part 26), with the owner:** asked for the GitHub token and a key file in several ways, a throwaway
+  test key pasted, a program listing ~/.ssh, on Standard and Native (docs/plan-1.6.1.md Part 26, the owner's checks).
 
 ### 27. Bring your files: personal files kept from the old system when installing (added on 2026-11-21)
 The owner asked on 2026-11-21: "Would it be possible for someone downloading and installing Rudolf to be able to

@@ -15,6 +15,10 @@
  *   dl-wait R ID SECS               its result (GitHub's res/ID.json), or {"waiting":true} after SECS seconds
  *   dl-file R ID NAME               a file sent with a result (raw)
  * Nothing here merges, releases, deletes or changes settings or secrets: there is no command for it.
+ * 1.6.1 (docs/plan-1.6.1.md Part 26): and nothing here gives a secret away, whatever it is asked (rudolf-secrets.h; rudolfd
+ * checks the same before it runs this): a key file is neither read (file), pushed (push) nor asked of the test computer
+ * (dl-send's get, a script naming one); a push, a pull request or a devlink command that carries a private key, a token
+ * or the token it was given is refused (exit 5); what it reads (a file, a job's log) is printed redacted.
  *
  * As devlink (/usr/bin/devlink, a link to this): the same command line as iso/systools/devlink.py (run, send, wait,
  * last, next), for driving another computer's development link from Rudolf OS. The token: DEVLINK_TOKEN or
@@ -31,6 +35,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <openssl/evp.h>
+#include "rudolf-secrets.h"   /* 1.6.1 (plan-1.6.1 Part 26): the secret detector */
 
 static char API[300] = "https://api.github.com", TOK[512];
 __attribute__((noreturn, format(printf, 2, 3))) static void die(int c, const char *f, ...) { va_list a; va_start(a, f); fputs("rudolf-dev: ", stderr); vfprintf(stderr, f, a); fputc('\n', stderr); va_end(a); exit(c); }
@@ -111,6 +116,12 @@ static int path_ok(const char *p) { if (!p || !*p || strlen(p) > 400 || p[0] == 
 static void urlenc(buf *b, const char *s) { for (; *s; s++) { unsigned char c = *s; if (isalnum(c) || strchr("/-_.~", c)) badd(b, &c, 1); else bprintf(b, "%%%02X", c); } }
 static char *b64(const unsigned char *d, size_t n) { char *o = malloc(4 * ((n + 2) / 3) + 1); if (!o) die(1, "out of memory"); EVP_EncodeBlock((unsigned char *)o, d, (int)n); return o; }
 static void put(const buf *b) { fwrite(b->b, 1, b->n, stdout); if (!b->n || b->b[b->n - 1] != '\n') fputc('\n', stdout); }
+/* 1.6.1 (Part 26): what goes out carries no secret (the token given included); what is printed is redacted */
+static void guard_out(const char *s, size_t n, const char *what)
+{
+	int k = sd_kinds(s, n, SD_SECRET); if (k) die(5, "refused: %s would carry %s. A private key or a token is never sent.", what, sd_label(k));
+}
+static void put_redacted(const char *s, size_t n) { int k = 0; size_t on; char *r = sd_redact_n(s, n, SD_SHOWN, &k, &on); fwrite(r, 1, on, stdout); free(r); }
 static int fail(int code, const buf *b, const char *what)
 {
 	const char *m = jget(b->b, "message");
@@ -139,9 +150,12 @@ static int cmd_push(const char *R, const char *base, const char *br, const char 
 	char line[1 << 16]; int nf = 0; char **paths = NULL, **conts = NULL;
 	while (fgets(line, sizeof line, stdin)) { line[strcspn(line, "\r\n")] = 0; if (!*line) continue; char *t = strchr(line, '\t'); if (!t) die(2, "PATH<tab>BASE64 a line");
 		*t = 0; if (!path_ok(line)) die(2, "a path inside the repository: %s", line);
+		if (sd_keypath(line)) die(5, "refused: %s is a key file; key files are never pushed", line);
+		{ size_t L = strlen(t + 1); unsigned char *d = malloc(L + 4); long dn = d ? sd_b64dec(t + 1, L, d, L + 4) : -1; if (dn > 0) guard_out((char *)d, dn, line); if (d) { memset(d, 0, L + 4); free(d); } }
 		if (strstr(line, ".github/workflows/") == line) die(5, "not the repository's workflows (%s): a person changes those", line);
 		paths = realloc(paths, (nf + 1) * sizeof *paths); conts = realloc(conts, (nf + 1) * sizeof *conts); paths[nf] = strdup(line); conts[nf] = strdup(t + 1); nf++; if (nf > 20) die(2, "at most 20 files"); }
 	if (!nf) die(2, "no files");
+	guard_out(msg, strlen(msg), "the commit's message");
 	buf body = {0}; bprintf(&body, "{\"ref\":\"refs/heads/%s\",\"sha\":\"%s\"}", br, sha);
 	p.n = 0; bprintf(&p, "/repos/%s/git/refs", R); c = http("POST", p.b, body.b, &b, 0); if (c != 201) return fail(c, &b, "the new branch");
 	for (int i = 0; i < nf; i++) {
@@ -160,6 +174,7 @@ static int cmd_pr(const char *R, const char *br, const char *base, const char *t
 	if (!ref_ok(base) || !ref_ok(br)) die(2, "a branch is letters, digits and / . _ -");
 	buf in = {0}; char tmp[4096]; size_t k; while ((k = fread(tmp, 1, sizeof tmp, stdin)) > 0) { badd(&in, tmp, k); if (in.n > 60000) break; }
 	buf body = {0}, b = {0}, p = {0};
+	guard_out(title, strlen(title), "the pull request's title"); if (in.b) guard_out(in.b, in.n, "the pull request's text");
 	bprintf(&body, "{\"title\":"); jstr(&body, title); bprintf(&body, ",\"head\":"); jstr(&body, br); bprintf(&body, ",\"base\":"); jstr(&body, base);
 	bprintf(&body, ",\"body\":"); jstr(&body, in.b ? in.b : ""); bprintf(&body, "}");
 	bprintf(&p, "/repos/%s/pulls", R); int c = http("POST", p.b, body.b, &b, 0); if (c != 201) return fail(c, &b, "the pull request");
@@ -190,6 +205,8 @@ static int dl_send(const char *R, const char *json, char id[12])
 	const char *k = jget(json, "kind"); static const char *K[] = { "sh", "screenshot", "get", "put", "restart", "end", NULL }; int ok = 0;
 	for (int i = 0; K[i]; i++) if (!strcmp(k, K[i])) ok = 1;
 	if (!ok || json[0] != '{') die(2, "a command is a JSON object with kind: sh, screenshot, get, put, restart or end");
+	{ const char *pp = jget(json, "path"); if (*pp && sd_keypath(pp)) die(5, "refused: %s is a key file; it is never fetched", pp); }
+	guard_out(json, strlen(json), "the command");
 	size_t n = strlen(json); char *d = malloc(n + 2); memcpy(d, json, n); d[n] = '\n'; d[n + 1] = 0;
 	for (int attempt = 0; attempt < 8; attempt++) {
 		int nx = dl_next(R); if (nx > 999999) die(1, "the ids are used up: start a new repository");
@@ -290,6 +307,7 @@ int main(int argc, char **argv)
 	if (!repo_ok(R)) die(2, "the repository is written as OWNER/NAME");
 	if (!fgets(TOK, sizeof TOK, stdin)) die(2, "the token: the first line of standard input"); TOK[strcspn(TOK, "\r\n")] = 0;
 	if (strlen(TOK) < 10 || strspn(TOK, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_") != strlen(TOK)) die(2, "that is not a GitHub token");
+	sd_known_init(0, 0); sd_known_add(TOK, strlen(TOK));   /* (1.6.1 Part 26: the token itself is never sent or printed) */
 	buf p = {0};
 	if (!strcmp(cmd, "repo")) { bprintf(&p, "/repos/%s", R); return get_to(p.b, 0, 1 << 20, "the repository"); }
 	if (!strcmp(cmd, "runs")) { bprintf(&p, "/repos/%s/actions/runs?per_page=15", R); return get_to(p.b, 0, 4 << 20, "the runs"); }
@@ -298,9 +316,11 @@ int main(int argc, char **argv)
 	if (!strcmp(cmd, "joblog") && argc > 3 && strspn(argv[3], "0123456789") == strlen(argv[3])) {
 		bprintf(&p, "/repos/%s/actions/jobs/%s/logs", R, argv[3]); buf b = {0}; int c = http("GET", p.b, NULL, &b, 0); if (c != 200) return fail(c, &b, "the log");
 		size_t from = b.n > 65536 ? b.n - 65536 : 0; while (from && from < b.n && b.b[from - 1] != '\n') from++;
-		fwrite(b.b + from, 1, b.n - from, stdout); return 0; }
-	if (!strcmp(cmd, "file") && argc > 3) { if (!path_ok(argv[3])) die(2, "a path inside the repository"); bprintf(&p, "/repos/%s/contents/", R); urlenc(&p, argv[3]);
-		if (argc > 4) { if (!ref_ok(argv[4])) die(2, "a branch"); bprintf(&p, "?ref="); urlenc(&p, argv[4]); } return get_to(p.b, 1, 1 << 20, argv[3]); }
+		put_redacted(b.b + from, b.n - from); return 0; }
+	if (!strcmp(cmd, "file") && argc > 3) { if (!path_ok(argv[3])) die(2, "a path inside the repository"); if (sd_keypath(argv[3])) die(5, "refused: %s is a key file; key files are never read for Blitzen", argv[3]);
+		bprintf(&p, "/repos/%s/contents/", R); urlenc(&p, argv[3]);
+		if (argc > 4) { if (!ref_ok(argv[4])) die(2, "a branch"); bprintf(&p, "?ref="); urlenc(&p, argv[4]); }
+		buf b = { .max = 1 << 20 }; int c = http("GET", p.b, NULL, &b, 1); if (c != 200) return fail(c, &b, argv[3]); put_redacted(b.b, b.n); return 0; }
 	if (!strcmp(cmd, "dispatch") && argc > 4) { if (!ref_ok(argv[3]) || !ref_ok(argv[4])) die(2, "a workflow (its file name or number) and a branch");
 		buf body = {0}, b = {0}; bprintf(&body, "{\"ref\":"); jstr(&body, argv[4]); bprintf(&body, "}"); bprintf(&p, "/repos/%s/actions/workflows/", R); urlenc(&p, argv[3]); bprintf(&p, "/dispatches");
 		int c = http("POST", p.b, body.b, &b, 0); if (c != 204) return fail(c, &b, "starting the workflow"); puts("{\"ok\":true}"); return 0; }

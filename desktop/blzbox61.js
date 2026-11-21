@@ -201,8 +201,10 @@ blzdAllow=function(title,lines,detail,o={}){return new Promise(res=>{const d=doc
   <div class='msg'>${o.refuse?'Nothing is sent.':'Nothing is done until you choose Allow. This allows this one thing only, this once.'}</div>
   <div class='rmrow'>${o.refuse?'':"<button class='ok'>Allow</button>"}<button class='no pri'>${o.refuse?'Close':'Refuse'}</button></div></div>`;
  if(detail!=null)d.querySelector('pre').textContent=String(detail);
- const end=v=>{d.remove();res(v)};const ok=d.querySelector('.ok');if(ok)ok.onclick=()=>end(true);d.querySelector('.no').onclick=()=>end(false);
- d.addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Escape')end(false)});document.body.appendChild(d);d.querySelector('.no').focus()})};
+ const end=v=>{d.remove();res(v)};
+ /* (Part 26: only the person's own click or key press answers it, never a script's click(), Blitzen's code or a page) */
+ const ok=d.querySelector('.ok');if(ok)ok.onclick=e=>{if(!e.isTrusted)return;end(true)};d.querySelector('.no').onclick=e=>{if(!e.isTrusted)return;end(false)};
+ d.addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Escape'&&e.isTrusted)end(false)});document.body.appendChild(d);d.querySelector('.no').focus()})};
 const BLZD_ONE={busy:null};
 /* a command through the development link (replaces blzdev60.js's): one waiting at a time, refused when it carries a secret */
 blzdSend=async function(cmd,S,out){S=S||await blzdSettings(true);if(!S||!S.devlink||!S.devlinkToken){out&&(out.textContent='No development link is set (Settings › Apps › Blitzen › Developer).');return null}

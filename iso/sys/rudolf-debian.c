@@ -4,7 +4,8 @@
  *   rudolf-debian status                    installed=, version=, running=, size= (key=value lines)
  *   rudolf-debian setup PASSWORD-FILE       download, check, unpack /persist/debian; set the Linux password
  *   rudolf-debian start | stop              the namespaces' first process (started by any command on demand)
- *   rudolf-debian run [--root] [--cwd D] [--log FILE] [--bg] [--nonet] -- CMD ARGS...   (--nonet: no network)
+ *   rudolf-debian run [--root] [--cwd D] [--log FILE] [--bg] [--nonet] [--only D] -- CMD ARGS...   (--nonet: no network;
+ *                                           1.6.1 --only D: nothing of the person's but the folder D, for Blitzen's programs)
  *   rudolf-debian pty ID [--root]           terminal server on /run/rudolf/term/ID.sock (see below)
  *   rudolf-debian apps                      launchers of installed graphical apps (JSON)
  *   rudolf-debian launch APP-ID             start one of them as the user
@@ -387,6 +388,33 @@ static void env_for(int root, const char *home)
 }
 /* join the running sandbox; returns in a child process that is inside (PID namespace included) */
 static int nonet;   /* run: a network namespace of its own (no network) for what runs */
+static const char *only_dir;   /* run --only: the one folder of the person's that what runs may see */
+/* 1.6.1 (docs/plan-1.6.1.md Part 26): a program Blitzen runs (rudolfd's ai/run) sees nothing of the person's but its own
+ * folder: in a mount namespace of its own (made inside Debian's, as Debian's root), the home folders, /root, /tmp (the
+ * display's socket), the session's folder (D-Bus, the sound), the smart cards', the printers', USB drives, and the
+ * devices that see or hear (input, sound, cameras, USB, hidraw) are covered by empty ones; then its folder alone is put
+ * back. The keyring, ~/.ssh, ~/.gnupg, other accounts' folders, the Documents and rudolfd's token are not there (rudolfd's
+ * folders, /run/rudolf and /persist, were never in Debian). With --nonet (always for ai/run) it has no network either. */
+static int run_only(const char *dir)
+{
+	if (!dir || dir[0] != '/' || strstr(dir, "..")) return -1;
+	if (unshare(CLONE_NEWNS) || mount(NULL, "/", NULL, MS_REC | MS_SLAVE, NULL)) return -1;
+	/* (held open in the new namespace, before what is above it is covered: a bind needs a source of its own namespace) */
+	int keep = open(dir, O_PATH | O_DIRECTORY | O_CLOEXEC); if (keep < 0) return -1;
+	static const char *const hide[] = { "/home", "/root", "/tmp", "/var/tmp", "/run/user", "/run/pcscd", "/run/cups", "/run/udev", "/media", "/mnt", "/dev/shm", NULL };
+	for (int i = 0; hide[i]; i++) { struct stat st; if (lstat(hide[i], &st) || !S_ISDIR(st.st_mode)) continue;
+		if (mount("tmpfs", hide[i], "tmpfs", MS_NOSUID | MS_NODEV, !strcmp(hide[i], "/tmp") || !strcmp(hide[i], "/var/tmp") || !strcmp(hide[i], "/dev/shm") ? "size=64m,mode=1777" : "size=1m,mode=755")) { close(keep); return -1; } }
+	static const char *const devd[] = { "/dev/input", "/dev/snd", "/dev/bus/usb", "/dev/dri", NULL };
+	for (int i = 0; devd[i]; i++) if (!access(devd[i], F_OK) && mount("tmpfs", devd[i], "tmpfs", MS_NOSUID | MS_NOEXEC, "size=16k,mode=755")) { close(keep); return -1; }
+	DIR *d = opendir("/dev"); struct dirent *e;
+	while (d && (e = readdir(d))) if (!strncmp(e->d_name, "video", 5) || !strncmp(e->d_name, "media", 5) || !strncmp(e->d_name, "hidraw", 6) || !strcmp(e->d_name, "uinput") || !strncmp(e->d_name, "v4l-subdev", 10)) {
+		char p[300]; snprintf(p, sizeof p, "/dev/%s", e->d_name); if (mount("/dev/null", p, NULL, MS_BIND, NULL)) { closedir(d); close(keep); return -1; } }
+	if (d) closedir(d);
+	/* its own folder back, where it was */
+	char t[512]; snprintf(t, sizeof t, "%s", dir); for (char *q = t + 1; *q; q++) if (*q == '/') { *q = 0; mkdir(t, 0755); *q = '/'; } mkdir(t, 0755);
+	char fp[64]; snprintf(fp, sizeof fp, "/proc/self/fd/%d", keep);
+	int r = mount(fp, dir, NULL, MS_BIND, NULL); close(keep); return r ? -1 : 0;
+}
 static pid_t enter(int root, const char *cwd)
 {
 	pid_t k = start();
@@ -403,6 +431,7 @@ static pid_t enter(int root, const char *cwd)
 	if (chdir("/")) _exit(1);
 	if (setresgid(0, 0, 0) || setresuid(0, 0, 0)) _exit(1);
 	if (nonet && unshare(CLONE_NEWNET)) { fprintf(stderr, "rudolf-debian: cannot cut the network (%s)\n", strerror(errno)); _exit(1); }
+	if (only_dir && run_only(only_dir)) { fprintf(stderr, "rudolf-debian: cannot keep the program to its folder (%s)\n", strerror(errno)); _exit(1); }
 	if (!root) {
 		gid_t gs[] = {27, 29, 44, 46, 100};
 		if (setgroups(5, gs) || setresgid(1000, 1000, 1000) || setresuid(1000, 1000, 1000)) { fprintf(stderr, "rudolf-debian: cannot become the user\n"); _exit(1); }
@@ -552,6 +581,7 @@ static int cmd_run(int argc, char **argv)
 	int root = 0, bg = 0; const char *cwd = NULL, *log = NULL; int i = 0;
 	for (; i < argc; i++) {
 		if (!strcmp(argv[i], "--root")) root = 1; else if (!strcmp(argv[i], "--bg")) bg = 1; else if (!strcmp(argv[i], "--nonet")) nonet = 1;
+		else if (!strcmp(argv[i], "--only") && i + 1 < argc) only_dir = argv[++i];
 		else if (!strcmp(argv[i], "--cwd") && i + 1 < argc) cwd = argv[++i]; else if (!strcmp(argv[i], "--log") && i + 1 < argc) log = argv[++i];
 		else if (!strcmp(argv[i], "--")) { i++; break; } else break;
 	}
@@ -1033,6 +1063,7 @@ static long long du(const char *path)
 	char cmd[300]; snprintf(cmd, sizeof cmd, "du -sk %s 2>/dev/null", path);
 	FILE *p = popen(cmd, "r"); long long k = 0; if (p) { if (fscanf(p, "%lld", &k) != 1) k = 0; pclose(p); } return k * 1024;
 }
+#ifndef RUDOLF_DEBIAN_NO_MAIN   /* (a test builds run_only alone: iso/qt/host/blzrun161_t.sh) */
 int main(int argc, char **argv)
 {
 	if (argc < 2) { fprintf(stderr, "usage: rudolf-debian status|setup|passwd|start|stop|run|pty|apps|launch|update|remove\n"); return 1; }
@@ -1116,3 +1147,4 @@ int main(int argc, char **argv)
 	}
 	die("unknown command %s", c);
 }
+#endif

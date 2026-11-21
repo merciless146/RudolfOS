@@ -67,7 +67,7 @@ static char *know_run(const char *const *args, const char *in, size_t inl, int s
 static void know_reply(struct req *r, char *o, int st, const char *fail)
 {
 	/* (as every reply of rudolfd's: an object with "ok"; a list as its "items") */
-	if (st == 0 && o && *o == '[') { str s = {0}; sadd(&s, "{\"ok\":true,\"items\":%s}", o); reply_json(r->fd, &s); }
+	if (st == 0 && o && *o == '[') { str s = {0}; sadd(&s, "{\"ok\":true,\"items\":%s}", o); guard_reply_json(r, &s, "what Blitzen looked up"); }   /* (1.6.1 Part 26: redacted) */
 	else reply_err(r->fd, st == -1 ? 504 : 409, fail);
 	free(o);
 }
@@ -102,7 +102,7 @@ static void api_ai_know(struct req *r, const char *what)
 		if (!f || !*f || strlen(f) > 300 || strstr(f, "..") || !l || atoi(l) < 1) { reply_err(r->fd, 400, "src=FILE&line=N"); return; }
 		char ln[16]; snprintf(ln, sizeof ln, "%d", atoi(l)); const char *a[] = { "show", "--", f, ln, NULL };
 		char *o = know_run(a, NULL, 0, 15, &x); if (x) { reply_err(r->fd, 404, "that file is not among what Blitzen keeps"); free(o); return; }
-		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, o ? o : ""); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
+		guard_reply_text(r, "text", o ? o : "", "a source Blitzen named"); free(o); return;   /* (1.6.1 Part 26: redacted) */
 	}
 	if (!strcmp(what, "web")) {
 		const char *q = qparam(r->query, "q"), *t = qparam(r->query, "tor"); if (!q || !*q || strlen(q) > 400) { reply_err(r->fd, 400, "search for what?"); return; }

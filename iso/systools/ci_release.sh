@@ -172,6 +172,7 @@ BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-webkey.c sys/rudolfd-webkey.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the website data's key)
 BSRC=$( (echo "$BSRC"; cat sys/rudolfd-confine.inc sys/rudolf-confine.h sys/rudolfd-confine-tables.h sys/rudolfd-confine-narrow.h sys/rudolfd-confine-pure.h sys/rudolfd-winapi.h sys/rudolf-rootd-confine.h) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the confinement)
+BSRC=$( (echo "$BSRC"; cat sys/rudolf-secrets.h sys/rudolfd-guard.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 26: Blitzen's guards, the secret detector)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
 	B=$W/bbin; mkdir -p "$B"

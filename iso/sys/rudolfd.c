@@ -187,6 +187,7 @@ static char *run_out(const char *cmd)
 	return s.b;
 }
 #include "origin.h"           /* 1.6.0 (plan Part 19): where this build comes from */
+#include "rudolf-secrets.h"   /* 1.6.1 (plan-1.6.1 Part 26): the secret detector of Blitzen's guards (rudolfd-guard.inc) */
 #include "rudolfd-root.inc"   /* 1.6.1 (plan Part 11): what needs root, through the root helpers */
 #include "rudolfd-boottime.inc"  /* 1.6.1: the time before the kernel (firmware, boot loader) (plan-1.6.1 Part 12) */
 #ifndef RU_BIN
@@ -2307,6 +2308,16 @@ static void api_debian(struct req *r, const char *what)
  * it is written; ai/run?lang=python|cpp: the body is a program, run in the Debian sandbox with no network and a
  * time limit; ai/install?what=python|cpp: install python3 or g++ into Debian (a job). */
 #define AI_BIN "/usr/bin/rudolf-ai"
+/* 1.6.1 (plan-1.6.1 Part 26): Blitzen's guards (rudolfd-guard.inc, with rudolf-secrets.h) */
+static void api_ai_guard(struct req *r);
+static void api_ai_authorize(struct req *r);
+static char *guard_chat_in(const char *b, size_t n, int *k, size_t *on);
+static void guard_chat_out(int efd, int pfd, int input_kinds);
+static char *guard_text(const char *s, size_t n, int *k, size_t *on);
+static void guard_note(const char *guard, int k, int refused);
+static int guard_action(struct req *r, const char *path, const char *what, const char *payload, size_t n, const char *dest);
+static void guard_reply_json(struct req *r, str *s, const char *guard);
+static void guard_reply_text(struct req *r, const char *field, const char *t, const char *guard);
 static void ai_touch(void) { int f = open(RUN "/ai/last", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (f >= 0) close(f); }
 static int ai_connect(void)
 {
@@ -2334,7 +2345,7 @@ static void facts_hide_runs(char *l)
 	while (*p) {
 		char *q = p; while (*q && (isalnum((unsigned char)*q) || *q == '+' || *q == '=' || *q == '_' || *q == '-')) q++;
 		size_t n = q - p; int dig = 0; for (char *c = p; c < q; c++) if (isdigit((unsigned char)*c)) dig = 1;
-		if (n >= 32 && dig) { memcpy(o, "[hidden]", 8); o += 8; p = q; continue; }
+		if (n >= 32 && dig && !sd_is_public(p, 0, n)) { memcpy(o, "[hidden]", 8); o += 8; p = q; continue; }
 		if (n) { memmove(o, p, n); o += n; p = q; continue; }
 		*o++ = *p++;
 	}
@@ -2358,7 +2369,9 @@ static char *facts_tail(const char *path, int n)
 		if (facts_secret_line(l)) { sadd(&s, "(a line with a password, token or key was left out)\n"); continue; }
 		facts_hide_runs(l); sadd(&s, "%s\n", l);
 	}
-	free(b); return s.b;
+	free(b);
+	/* 1.6.1 (plan Part 26): and the detector's rules, with this computer's own secrets by their value */
+	{ int k = 0; size_t on; char *x = guard_text(s.b, s.n, &k, &on); guard_note("the logs Blitzen reads", k, 0); explicit_bzero(s.b, s.n); free(s.b); return x; }
 }
 static void facts_add(str *s, const char *key, const char *path, int n)
 {
@@ -2403,6 +2416,8 @@ static void api_ai_dev(struct req *r, const char *what);    /* rudolfd-dev.inc (
 static void api_ai(struct req *r, const char *what)
 {
 	if (!strcmp(what, "facts")) { api_ai_facts(r); return; }   /* 1.5.7: also without Blitzen installed */
+	if (!strcmp(what, "guard")) { api_ai_guard(r); return; }   /* 1.6.1 (plan Part 26): the secret detector, for the page */
+	if (!strcmp(what, "authorize")) { api_ai_authorize(r); return; }   /* 1.6.1 (plan Part 26): an action the person allowed */
 	if (!strncmp(what, "know/", 5)) { api_ai_know(r, what + 5); return; }
 	if (!strncmp(what, "dev/", 4)) { api_ai_dev(r, what + 4); return; }   /* 1.6.0: Blitzen as a developer's agent (rudolfd-dev.inc) */   /* 1.6.0: what Blitzen looks up (its pieces need no model) */
 	if (access(AI_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no Blitzen"); return; }
@@ -2456,13 +2471,16 @@ static void api_ai(struct req *r, const char *what)
 		int s = key ? ai_connect() : -1;
 		if (s < 0) { free(key); reply_err(r->fd, 502, "Blitzen is not answering"); return; }
 		ai_touch();
-		char h[400]; snprintf(h, sizeof h, "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n", key, r->blen);
+		/* 1.6.1 (plan Part 26): what Blitzen is given, redacted first (what was typed or pasted, files, logs, pages) */
+		int ink = 0; size_t inl; char *in = guard_chat_in(r->body, r->blen, &ink, &inl);
+		if (!in) { close(s); memset(key, 0, strlen(key)); free(key); reply_err(r->fd, 400, "the request is not JSON"); return; }
+		guard_note("what was given to Blitzen", ink, 0);
+		char h[400]; snprintf(h, sizeof h, "POST /v1/chat/completions HTTP/1.1\r\nHost: 127.0.0.1\r\nAuthorization: Bearer %s\r\nContent-Type: application/json\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n", key, inl);
 		memset(key, 0, strlen(key)); free(key);
-		send_all(s, h, strlen(h)); send_all(s, r->body, r->blen);
-		/* the engine's whole reply (status line, headers, chunked stream) goes to the page as it arrives;
-		 * the page's connection ends with it */
-		char buf[16384]; ssize_t n; time_t t0 = time(NULL);
-		while ((n = read(s, buf, sizeof buf)) > 0) { send_all(r->fd, buf, n); if (time(NULL) - t0 > 30) { ai_touch(); t0 = time(NULL); } }
+		send_all(s, h, strlen(h)); send_all(s, in, inl); explicit_bzero(in, inl); free(in);
+		/* the engine's answer goes to the page as it streams, redacted on the way (a short window held back), with the
+		 * whole answer redacted once more as its last event; the page's connection ends with it */
+		guard_chat_out(s, r->fd, ink);
 		close(s); ai_touch(); return;
 	}
 	if (!strcmp(what, "run")) {
@@ -2470,6 +2488,7 @@ static void api_ai(struct req *r, const char *what)
 		int py = !strcmp(lang, "python"), cpp = !strcmp(lang, "cpp");
 		if (!py && !cpp) { reply_err(r->fd, 400, "Blitzen runs Python and C++ here (BlockLua and JavaScript run in the page)"); return; }
 		if (!r->body || r->blen > 200000) { reply_err(r->fd, 400, "no program"); return; }
+		if (guard_action(r, "ai/run", "a program Blitzen runs", r->body, r->blen, "a program run on this computer")) return;   /* 1.6.1 (plan Part 26) */
 		if (access("/persist/debian/.rudolf-ready", F_OK)) { str j = {0}; sadd(&j, "{\"ok\":false,\"missing\":\"debian\",\"error\":\"Running %s needs Linux (Debian): open Terminal and choose Linux to set it up\"}", py ? "Python" : "C++"); reply_json(r->fd, &j); return; }
 		if (access(py ? "/persist/debian/usr/bin/python3" : "/persist/debian/usr/bin/g++", F_OK)) { str j = {0}; sadd(&j, "{\"ok\":false,\"missing\":\"%s\",\"error\":\"%s is not installed in Debian yet\"}", lang, py ? "Python" : "The C++ compiler (g++)"); reply_json(r->fd, &j); return; }
 		/* a fresh folder in the home folder (shared with Debian), owned by the user */
@@ -2483,12 +2502,14 @@ static void api_ai(struct req *r, const char *what)
 		int f = open(file, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0644);
 		if (f < 0 || (r->blen && write(f, r->body, r->blen) != (ssize_t)r->blen)) { if (f >= 0) close(f); reply_err(r->fd, 500, "could not write the program"); return; }
 		close(f); if (chown(file, 1000, 1000)) {}
-		char cmd[800];
+		char cmd[1400];
 		/* the exit status comes back through a file: BusyBox sh has no PIPESTATUS */
 		char st[260]; snprintf(st, sizeof st, "%s/.status", dir);
-		if (py) snprintf(cmd, sizeof cmd, "(/usr/bin/rudolf-debian run --nonet --cwd %s -- timeout -k 2 10 python3 -I main.py </dev/null 2>&1; echo $? > %s) | head -c 65536", dir, st);
-		else snprintf(cmd, sizeof cmd, "(/usr/bin/rudolf-debian run --nonet --cwd %s -- sh -c 'timeout -k 2 30 g++ -std=c++17 -O1 -Wall -o prog main.cpp && timeout -k 2 10 ./prog' </dev/null 2>&1; echo $? > %s) | head -c 65536", dir, st);
+		/* (1.6.1 Part 26: --only: it sees its own folder and nothing else of the person's, and no network) */
+		if (py) snprintf(cmd, sizeof cmd, "(/usr/bin/rudolf-debian run --nonet --only %s --cwd %s -- timeout -k 2 10 python3 -I main.py </dev/null 2>&1; echo $? > %s) | head -c 65536", dir, dir, st);
+		else snprintf(cmd, sizeof cmd, "(/usr/bin/rudolf-debian run --nonet --only %s --cwd %s -- sh -c 'timeout -k 2 30 g++ -std=c++17 -O1 -Wall -o prog main.cpp && timeout -k 2 10 ./prog' </dev/null 2>&1; echo $? > %s) | head -c 65536", dir, dir, st);
 		char *out = run_out(cmd); long long code = read_ll(st, -1);
+		{ int k = 0; size_t on; char *x = guard_text(out ? out : "", out ? strlen(out) : 0, &k, &on); guard_note("what a program Blitzen ran printed", k, 0); free(out); out = x; }
 		str j = {0}; sadd(&j, "{\"ok\":true,\"code\":%lld,\"timeout\":%s,\"out\":", code, code == 124 || code == 137 ? "true" : "false"); sjson(&j, out ? out : ""); sadd(&j, "}");
 		free(out); char rm[260]; snprintf(rm, sizeof rm, "rm -rf %s", dir); run(rm);
 		reply_json(r->fd, &j); return;
@@ -4489,6 +4510,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-smartcard.inc"   /* 1.6.0: smart cards and the DoD Common Access Card (plan Part 20) */
 #include "rudolfd-drop.inc"      /* 1.6.1: files dropped from outside onto the native desktop (plan-1.6.1 Part 13) */
 #include "rudolfd-know.inc"      /* 1.6.0: Blitzen knows the system (plan Part 18) */
+#include "rudolfd-guard.inc"     /* 1.6.1: Blitzen hardened against giving away secrets (plan-1.6.1 Part 26) */
 #include "rudolfd-dev.inc"       /* 1.6.0: Blitzen as a developer's agent (plan Part 19) */
 #include "rudolfd-game.inc"      /* 1.6.1: game mode (plan-1.6.1 Part 19) */
 #include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */

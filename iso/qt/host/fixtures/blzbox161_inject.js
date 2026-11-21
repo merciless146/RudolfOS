@@ -33,6 +33,9 @@
     if (w == 'dl-send') { D.sent.push(JSON.parse(body)); return J({ok: true, data: {ok: true, id: '00000' + D.sent.length}}) }
     if (w == 'dl-wait') { if (!D.release) { await wait(300); return J({ok: true, data: {ok: true, waiting: true}}) } return J({ok: true, data: {ok: true, result: {id: qs.get('id'), kind: 'sh', status: 0, stdout: 'done\n'}}}) }
     return J({ok: false, error: 'no'}) }
+  /* Part 26: the desktop's Allow answers only the person's own click or key press (a script's click() is ignored), so the
+     scenario asks its runner to press the keys: Standard's through Playwright (__tkey), Native's through xdotool (keyReq) */
+  async function tkey(k) { if (window.__tkey) return window.__tkey(k); __blzT.keyReq = k; await until(() => !__blzT.keyReq, 10000); await wait(300) }
   async function until(f, ms) { const t = Date.now(); while (Date.now() - t < (ms || 20000)) { try { const v = f(); if (v) return v } catch (e) {} await wait(100) } return null }
   const R = []; const ok = (n, c, d) => R.push([n, !!c, c ? '' : String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 700)]);
   const T = window.__blzT = {res: {done: false, r: R}};
@@ -160,32 +163,32 @@ T(()=>{const m=document.createElement('meta');m.httpEquiv='refresh';m.content='0
     const want = ['deletes or overwrites files', 'changes the firewall or the network', 'installs or removes software', 'downloads something and runs it', 'changes Secure Boot or the computer', 'sends data off the computer', 'restarts or stops the computer', 'runs as the administrator'];
     ok('6. ...what is risky said in plain words', want.every(w => risk.some(r => r.startsWith(w))), risk);
     ok('6. ...Refuse has the focus (Enter refuses); no "allow all", nothing remembered', document.activeElement && document.activeElement.textContent == 'Refuse' && !/allow all|always|remember/i.test(d.innerText), [document.activeElement && document.activeElement.textContent, d.innerText.slice(-200)]);
-    document.activeElement.click(); await wait(300);
+    await tkey('Return'); await wait(300);
     ok('6. ...Refuse: nothing sent', DV.sent.length == 0 && !document.querySelector('.blzdallow'), DV.sent);
-    tc.click(); d = await until(() => document.querySelector('.blzdallow'), 5000); d.querySelector('.ok').click();
+    tc.click(); d = await until(() => document.querySelector('.blzdallow'), 5000); await tkey('shift+Tab Return');
     await until(() => DV.sent.length == 1, 5000); await wait(500);
     tc.click(); await wait(500);
     ok('6. ...Allow: sent once; another while it waits: "one at a time", no dialog, not sent', DV.sent.length == 1 && DV.sent[0].script === script && !document.querySelector('.blzdallow') && NOTES.some(t => /One command at a time 000001 is still waiting/.test(t)), [DV.sent.length, NOTES.slice(-2)]);
     DV.release = true; await until(() => /done/.test(el.querySelector('.blzout').textContent), 10000);
     tc.click(); d = await until(() => document.querySelector('.blzdallow'), 5000);
-    ok('6. ...its result read: the next one is asked about again (each Allow is for one command)', !!d, ''); d && d.querySelector('.no').click(); await wait(200);
+    ok('6. ...its result read: the next one is asked about again (each Allow is for one command)', !!d, ''); d && await tkey('Escape'); await wait(200);
     const tok = 'ghp_' + 'Ab1'.repeat(12);
     el = await ask(['```sh\ncurl -H "Authorization: Bearer ' + tok + '" https://api.github.com/user\n```'], 'check my token');
     (await until(() => el.querySelector('.bdtc'), 10000)).click(); d = await until(() => document.querySelector('.blzdallow'), 5000);
     ok('6. ...a command carrying a token: refused (said why, no Allow), not sent', d && d.querySelector('.blzdno') && !d.querySelector('.ok') && DV.sent.length == 1, d && d.innerText.slice(0, 300));
-    d && d.querySelector('.no').click(); await wait(200);
+    d && await tkey('Escape'); await wait(200);
     // a workflow started: its file shown; a pull request: the whole change, a secret in it refused
     const DW = await blzDevApp('runs'); await until(() => DW.body.querySelector('.bdgo'), 10000); DW.body.querySelector('.bdgo').click();
     d = await until(() => document.querySelector('.blzdallow'), 5000);
     const wr = d ? [...d.querySelectorAll('.blzdrisk li')].map(x => x.textContent) : [];
     ok('6. a workflow to start: its file shown whole, publishing and secrets said', d && d.querySelector('pre').textContent == WF && wr.some(x => /may publish/.test(x)) && wr.some(x => /secrets/.test(x)), [wr, d && d.querySelector('pre').textContent.slice(0, 80)]);
-    d && d.querySelector('.no').click(); await wait(200); ok('6. ...Refuse: not started', DV.dispatch.length == 0, DV.dispatch); DW.close();
+    d && await tkey('Escape'); await wait(200); ok('6. ...Refuse: not started', DV.dispatch.length == 0, DV.dispatch); DW.close();
     const DC = await blzDevApp('change'); await until(() => DC.body.querySelector('.bdpath'), 10000);
     DC.body.querySelector('.bdpath').value = 'desktop/a.js'; DC.body.querySelector('.bdload').click(); await until(() => !DC.body.querySelector('.bdmake').disabled, 5000);
     Q.push('```js\nlet a = 1\nlet b = 2\nconst t = "' + tok + '"\n```'); DC.body.querySelector('.bdwhat').value = 'add the token'; DC.body.querySelector('.bdmake').click();
     await until(() => !DC.body.querySelector('.bdpush').hidden, 10000); DC.body.querySelector('.bdpr').click(); d = await until(() => document.querySelector('.blzdallow'), 5000);
     ok('6. a pull request whose change carries a token: refused, the whole change shown, nothing pushed', d && d.querySelector('.blzdno') && !d.querySelector('.ok') && /\+ const t = "ghp_/.test(d.querySelector('pre').textContent), d && d.innerText.slice(0, 300));
-    d && d.querySelector('.no').click(); await wait(200); ok('6. ...nothing pushed', DV.push.length == 0, DV.push); DC.close();
+    d && await tkey('Escape'); await wait(200); ok('6. ...nothing pushed', DV.push.length == 0, DV.push); DC.close();
     ok('no page error in the run', !(window.__blzErrs || []).length, window.__blzErrs);
   };
   addEventListener('error', e => { (window.__blzErrs = window.__blzErrs || []).push(String(e.message)) });

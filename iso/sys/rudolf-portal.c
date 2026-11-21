@@ -23,6 +23,9 @@
  * Saved passwords for apps:  rudolf-portal --keyring-list  (JSON: what the account's keyring and its Flatpak apps'
  * secrets hold, names only, never a secret) and  rudolf-portal --keyring-forget ID  (one of them removed).
  * Blitzen's developer tokens (1.6.0, Part 19):  --keyring-store KEY LABEL (stdin), --keyring-lookup KEY, --keyring-clear KEY.
+ * 1.6.1 (plan-1.6.1 Part 26):  --keyring-fingerprints  (stdin: "B1 B2", two random bases from rudolfd) prints, for each
+ * secret of the unlocked keyring and of the Flatpak apps' secrets, its length and two keyed fingerprints ("LEN H1 H2"),
+ * never the secret: rudolfd's guards then hide that value wherever Blitzen would show or send it.
  * Copyright (C) 2026 the Rudolf OS authors. SPDX-License-Identifier: GPL-2.0-or-later */
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
@@ -39,6 +42,7 @@
 #include <openssl/kdf.h>
 #include <openssl/rand.h>
 #include <openssl/crypto.h>
+#include "rudolf-secrets.h"   /* 1.6.1 (plan-1.6.1 Part 26): the fingerprints of --keyring-fingerprints */
 
 #define DIR_ "/run/rudolf/portal"
 static GDBusConnection *BUS;
@@ -749,6 +753,45 @@ static int keyring_forget(const char *id)
 	puts("{\"ok\":true}"); return 0;
 }
 
+/* ---------------- 1.6.1 (docs/plan-1.6.1.md Part 26): the keyring's secrets as fingerprints, for Blitzen's guards */
+static void fp_print(const char *v, size_t n)
+{
+	SD_K.n = 0; sd_known_add(v, n);   /* (the value and its form without spacing: sd_known_add's two) */
+	for (size_t i = 0; i < SD_K.n; i++) printf("%zu %llx %llx\n", SD_K.f[i].len, (unsigned long long)SD_K.f[i].h1, (unsigned long long)SD_K.f[i].h2);
+	SD_K.n = 0;
+}
+static const char *blz_session(GDBusConnection *b, char *out, size_t n);
+static int keyring_fingerprints(void)
+{
+	char in[100]; unsigned long long b1 = 0, b2 = 0; if (!fgets(in, sizeof in, stdin) || sscanf(in, "%llx %llx", &b1, &b2) != 2 || !b1 || !b2) { fprintf(stderr, "B1 B2 on standard input\n"); return 2; }
+	sd_known_init(b1, b2); SD_K.b1 = b1; SD_K.b2 = b2;   /* (rudolfd's own bases, as they are) */
+	GDBusConnection *b = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL); int n = 0;
+	GVariant *cols = b ? ss_prop(b, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "Collections") : NULL; char ses[300];
+	if (cols && blz_session(b, ses, sizeof ses)) { GVariantIter ci; const char *cp; g_variant_iter_init(&ci, cols);
+		while (g_variant_iter_next(&ci, "&o", &cp)) {
+			GVariant *lk = ss_prop(b, cp, "org.freedesktop.Secret.Collection", "Locked"); int locked = lk && g_variant_get_boolean(lk); if (lk) g_variant_unref(lk);
+			if (locked) continue;   /* (a locked keyring is never opened for this: no prompt is asked) */
+			GVariant *its = ss_prop(b, cp, "org.freedesktop.Secret.Collection", "Items"); if (!its || !g_variant_n_children(its)) { if (its) g_variant_unref(its); continue; }
+			GVariant *gs = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "GetSecrets",
+				g_variant_new("(@aoo)", its, ses), G_VARIANT_TYPE("(a{o(oayays)})"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, NULL);
+			if (!gs) continue;
+			GVariant *m; g_variant_get(gs, "(@a{o(oayays)})", &m); GVariantIter it; const char *ip; GVariant *sec; g_variant_iter_init(&it, m);
+			while (g_variant_iter_next(&it, "{&o@(oayays)}", &ip, &sec) && n < 2000) {
+				GVariant *val = g_variant_get_child_value(sec, 2); gsize vl; const char *d = g_variant_get_fixed_array(val, &vl, 1);
+				if (d && vl >= 8 && vl <= 512) { fp_print(d, vl); n++; }
+				g_variant_unref(val); g_variant_unref(sec); }
+			g_variant_unref(m); g_variant_unref(gs);
+		} }
+	if (cols) g_variant_unref(cols);
+	/* the Flatpak apps' secrets (the Secret portal's files, the account's own): those that are text */
+	char *dd = secrets_dir(); GDir *dir = dd ? g_dir_open(dd, 0, NULL) : NULL; const char *nm;
+	while (dir && (nm = g_dir_read_name(dir)) && n < 2600) { if (!app_id_ok(nm) || g_str_has_suffix(nm, ".tmp")) continue;
+		char *f = g_build_filename(dd, nm, NULL); gchar *c = NULL; gsize cl = 0;
+		if (g_file_get_contents(f, &c, &cl, NULL) && cl >= 8 && cl <= 512 && !memchr(c, 0, cl)) { fp_print(c, cl); n++; }
+		if (c) { memset(c, 0, cl); g_free(c); } g_free(f); }
+	if (dir) g_dir_close(dir); g_free(dd);
+	fflush(stdout); return 0;
+}
 /* ---------------- 1.6.0 (docs/plan-1.6.0.md Part 19 item 4): Blitzen's developer tokens in the account's keyring.
    rudolf-portal --keyring-store KEY LABEL   (the secret on standard input, one line)   keeps it, replacing one there
    rudolf-portal --keyring-lookup KEY        prints it (exit 1: none)
@@ -1124,6 +1167,7 @@ static int sx_test(void)
 int main(int argc, char **argv)
 {
 	if (argc > 1 && !strcmp(argv[1], "--keyring-list")) return keyring_list();
+	if (argc > 1 && !strcmp(argv[1], "--keyring-fingerprints")) return keyring_fingerprints();   /* 1.6.1 (plan Part 26) */
 	if (argc > 2 && !strcmp(argv[1], "--keyring-forget")) return keyring_forget(argv[2]);
 	if (argc > 2 && !strcmp(argv[1], "--keyring-lookup")) return keyring_blz("lookup", argv[2], NULL);
 	if (argc > 2 && !strcmp(argv[1], "--keyring-clear")) return keyring_blz("clear", argv[2], NULL);

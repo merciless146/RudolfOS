@@ -69,6 +69,11 @@ EOC
 		o=$($S timeout 10 $T/rp --keyring-clear github 2>&1); l=$($S timeout 10 $T/rp --keyring-lookup github 2>&1); r=$?
 		ok "...cleared" "$(echo "$o" | grep -q '"ok":true' && [ $r = 1 ] && echo 1)" "$o / $l"
 		o=$($S $T/rp --keyring-lookup ../x 2>&1); ok "...only the keys github and devlink" "$([ $? = 2 ] && echo 1)" "$o"
+		# 1.6.1 (plan-1.6.1 Part 26): the keyring's secrets as fingerprints for Blitzen's guards, never the secrets
+		echo -n "Ann-sign-in-9a8b7c6d" | $S timeout 10 secret-tool store --label="Mail sign-in" app mail account ann 2>/dev/null
+		o=$(echo "1234abcd5678 9abcdef01234" | $S timeout 10 $T/rp --keyring-fingerprints 2>&1)
+		if gcc -O1 -o $T/sdt $HERE/sdtool161.c 2>/dev/null; then want=$(printf 'Ann-sign-in-9a8b7c6d' | $T/sdt fp 1234abcd5678 9abcdef01234); else want=x; fi
+		ok "11. Blitzen's guards: each secret of the keyring as its length and two fingerprints (as rudolfd makes them), never the secret" "$(echo "$want" | while read l; do echo "$o" | grep -qx "$l" || echo miss; done | grep -q miss || { ! echo "$o" | grep -q 'Ann-sign' && [ -n "$want" ] && echo 1; })" "$o / $want"
 	else echo "SKIP 9: no GLib headers to build rudolf-portal"; fi
 	if [ "$(id -u)" = 0 ] && command -v setpriv >/dev/null; then chmod 755 $T; o=$(setpriv --reuid=65534 --regid=65534 --clear-groups cat $H/.local/share/keyrings/login.keyring 2>&1); r=$?
 		ok "8. another user cannot read it" "$([ $r != 0 ] && echo 1)" "$o"; fi

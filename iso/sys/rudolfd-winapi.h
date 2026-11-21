@@ -2,7 +2,9 @@
  * each window asks for, read from its code. A name ending in * is a prefix. */
 static const char *const WINAPI_PAGE[] = {   /* the desktop's page: Standard, Lite, the native desktop's app windows */
 	"accounts/users",
+	"ai/authorize",
 	"ai/chat",
+	"ai/dev/",
 	"ai/dev/*",
 	"ai/dev/dispatch",
 	"ai/dev/dl-file",
@@ -19,6 +21,7 @@ static const char *const WINAPI_PAGE[] = {   /* the desktop's page: Standard, Li
 	"ai/dev/workflows",
 	"ai/download",
 	"ai/facts",
+	"ai/guard",
 	"ai/install",
 	"ai/know/",
 	"ai/know/*",
