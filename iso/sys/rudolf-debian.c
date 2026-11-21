@@ -781,6 +781,23 @@ static int cmd_apps(void)
 	if (installed()) user_apps(uapps_out(), "", 0, &first);
 	printf("]}\n"); return 0;
 }
+/* (1.6.1, docs/plan-1.6.1.md Part 15, item 1) a Debian app that can use the system's title bar is asked to once, as Flatpak's are:
+   rudolf-apps does it (its list, /usr/share/rudolf/titlebars, deb:LAUNCHER), as the person's own Linux user, in the person's own
+   folder as Rudolf OS sees it (Debian's ~/.config is that folder's) */
+static void titlebar_ask(const char *id)
+{
+	char key[200]; snprintf(key, sizeof key, "deb:%s", id);
+	if (strlen(id) > 180 || access("/usr/bin/rudolf-apps", X_OK)) return;
+	who(); const char *home = out_home(); if (!home || home[0] != '/') return;
+	pid_t c = fork(); if (c < 0) return;
+	if (!c) {
+		if (setgroups(0, NULL) || setgid(1000) || setuid(d_uid) || !getuid()) _exit(1);
+		int nul = open("/dev/null", O_RDWR); if (nul >= 0) { dup2(nul, 0); dup2(nul, 1); }
+		setenv("HOME", home, 1);
+		execl("/usr/bin/rudolf-apps", "rudolf-apps", "titlebar", key, home, (char *)NULL); _exit(127);
+	}
+	int st; waitpid(c, &st, 0);
+}
 static int cmd_launch(const char *id, const char *file)
 {
 	for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("._-+", *c)) die("bad app id");
@@ -805,6 +822,7 @@ static int cmd_launch(const char *id, const char *file)
 		argv[n++] = o;
 	}
 	argv[n] = NULL; if (!n) die("the app has no command");
+	titlebar_ask(id);
 	mkdirs(RUND, 0755);
 	char log[300]; snprintf(log, sizeof log, RUND "/%s.log", id);
 	int lf = open(log, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);

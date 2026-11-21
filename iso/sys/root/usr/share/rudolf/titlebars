@@ -1,0 +1,18 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 15, item 1): apps Rudolf asks to use the system's title bar (Rudolf's), once, the first time it
+# starts them for an account, only where the person has not chosen otherwise in the app (rudolf-apps titlebar).
+# ID<TAB>HOW<TAB>WHERE: ID a Flatpak app's ID or deb:LAUNCHER (Debian's); HOW chromium (browser.custom_chrome_frame: false,
+# Chromium's "Use system title bar and borders", chrome/common/pref_names.h kUseCustomChromeFrame) or vscode (window.titleBarStyle:
+# native, VS Code's documented setting); WHERE the file under the app's settings folder (Flatpak: ~/.var/app/ID/config;
+# Debian: ~/.config). Each entry checked against the app's own documentation and Flathub manifest before it goes in.
+# (Item 3, rudolf-native) CLASS<TAB>cut<TAB>N: an app whose own title bar holds only its title and the three buttons, N px high at
+# 100 %, CLASS its windows' WM_CLASS: the window's menu then offers Rudolf's title bar instead, its own cut away. None is listed
+# yet: each needs its bar measured on the app itself first (Discord's, Steam's and Claude's have more than that).
+org.chromium.Chromium	chromium	chromium/Default/Preferences
+io.github.ungoogled_software.ungoogled_chromium	chromium	chromium/Default/Preferences
+com.google.Chrome	chromium	google-chrome/Default/Preferences
+com.brave.Browser	chromium	BraveSoftware/Brave-Browser/Default/Preferences
+com.microsoft.Edge	chromium	microsoft-edge/Default/Preferences
+com.vivaldi.Vivaldi	chromium	vivaldi/Default/Preferences
+deb:chromium	chromium	chromium/Default/Preferences
+com.visualstudio.code	vscode	Code/User/settings.json
+com.vscodium.codium	vscode	VSCodium/User/settings.json

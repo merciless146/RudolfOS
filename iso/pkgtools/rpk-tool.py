@@ -15,7 +15,7 @@
   rpk-tool.py build PKGDIR OUT.rpk --key KEY --cert CERT
                                                  (1.5.9, a developer) a package with its certificate
   The index takes revocations from REPODIR/revoked.txt: "key KEY" or "pkg NAME VERSION|*" lines.
-  rpk-tool.py sysext-recipe RECIPE.json OUTDIR --base-abi ABI [--kernel KVER] [--debs DIR] [--from-system]
+  rpk-tool.py sysext-recipe RECIPE.json OUTDIR --base-abi ABI [--kernel KVER] [--debs DIR] [--from-system] [--tree DIR]
                                                  (1.6.0, plan Part 13) lay out a system extension (kind sysext) from its
                                                  recipe (iso/ext/NAME/recipe.json): its Debian packages' files under usr/
                                                  (or this machine's own with --from-system), its own files, its start
@@ -192,7 +192,7 @@ def index(repo, key, serial, days):
     open(os.path.join(repo, 'index.sig'), 'wb').write(load_key(key).sign(text))
     print(f'{repo}: {len(rows)} packages, serial {serial}')
 
-def sysext_recipe(recipe, outdir, abi, kernel, debs, from_system):
+def sysext_recipe(recipe, outdir, abi, kernel, debs, from_system, tree=None):
     """(1.6.0) a system extension's files: "files" (paths under usr/ to take from the Debian packages or this machine,
     globs allowed), "map" (a file kept elsewhere, put under usr/), "tree" (the recipe's own files, laid over), "start" (its start script); "need" lists programs that must be
     there. Only usr/, lib/firmware and lib/modules/KVER/extra may be filled (rpk refuses anything else)."""
@@ -224,6 +224,8 @@ def sysext_recipe(recipe, outdir, abi, kernel, debs, from_system):
         if not os.path.exists(h): die(f'{recipe}: map: {a} is not in the packages')
         t = os.path.join(outdir, b); os.makedirs(os.path.dirname(t), exist_ok=True); shutil.copy2(os.path.realpath(h), t)
     if r.get('tree'): shutil.copytree(os.path.join(rdir, r['tree']), outdir, symlinks=True, dirs_exist_ok=True)
+    # (1.6.1) a tree made by the recipe's own build script ("build": iso/systools/mkext.sh runs it): NVIDIA's driver
+    if tree: shutil.copytree(tree, outdir, symlinks=True, dirs_exist_ok=True)
     if r.get('start'):
         t = os.path.join(outdir, 'usr/lib/rudolf/ext.d', name + '.start'); os.makedirs(os.path.dirname(t), exist_ok=True)
         shutil.copy(os.path.join(rdir, r['start']), t); os.chmod(t, 0o755)
@@ -263,7 +265,7 @@ if __name__ == '__main__':
     p = s.add_parser('cert'); p.add_argument('out'); p.add_argument('--key', required=True); p.add_argument('--name', required=True); p.add_argument('--github', required=True); p.add_argument('--pubkey', required=True); p.add_argument('--prefix', required=True); p.add_argument('--days', type=int, default=365)
     p = s.add_parser('index'); p.add_argument('repo'); p.add_argument('--key', required=True); p.add_argument('--serial', type=int, default=int(datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d%H'))); p.add_argument('--expires-days', type=int, default=0)
     p = s.add_parser('local-deb'); p.add_argument('package'); p.add_argument('outdir')
-    p = s.add_parser('sysext-recipe'); p.add_argument('recipe'); p.add_argument('outdir'); p.add_argument('--base-abi', required=True); p.add_argument('--kernel', default=''); p.add_argument('--debs', default='.'); p.add_argument('--from-system', action='store_true')
+    p = s.add_parser('sysext-recipe'); p.add_argument('recipe'); p.add_argument('outdir'); p.add_argument('--base-abi', required=True); p.add_argument('--kernel', default=''); p.add_argument('--debs', default='.'); p.add_argument('--from-system', action='store_true'); p.add_argument('--tree')
     o = a.parse_args()
     if o.cmd == 'keygen': keygen(o.dir)
     elif o.cmd == 'from-recipe': from_recipe(o.recipe, o.outdir, o.debs, o.rootfs)
@@ -271,4 +273,4 @@ if __name__ == '__main__':
     elif o.cmd == 'cert': cert(o.out, o.key, o.name, o.github, o.pubkey, o.prefix, o.days)
     elif o.cmd == 'index': index(o.repo, o.key, o.serial, o.expires_days)
     elif o.cmd == 'local-deb': local_deb(o.package, o.outdir)
-    elif o.cmd == 'sysext-recipe': sysext_recipe(o.recipe, o.outdir, o.base_abi, o.kernel, o.debs, o.from_system)
+    elif o.cmd == 'sysext-recipe': sysext_recipe(o.recipe, o.outdir, o.base_abi, o.kernel, o.debs, o.from_system, o.tree)

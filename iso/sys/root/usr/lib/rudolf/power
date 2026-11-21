@@ -12,8 +12,8 @@
 # a 60 kept before 1.5.6 is read as 70, the nearest choice, rather than falling back to 100).
 # 1.6.1 (docs/plan-1.6.1.md Part 12): cpu (std|tuned|passive), the processor's energy preference on AMD processors run by
 # amd_pstate in active mode (amd-pstate-epp, the kernel's default mode): std as in 1.6.0 (Balanced asks balance_performance
-# on battery too); tuned: Balanced asks balance_power on battery, and game mode (game=1, set by the desktop while a game is
-# full screen, not kept) asks performance, unless battery saver is on; passive: amd_pstate in passive mode (the schedutil
+# on battery too); tuned: Balanced asks balance_power on battery; game mode (game=1, set by /usr/lib/rudolf/gamemode while
+# a game is full screen or asked for it, not kept) asks performance with std and tuned, unless battery saver is on (Part 19); passive: amd_pstate in passive mode (the schedutil
 # governor picks the speed, no preference), to compare. Elsewhere (Intel, acpi-cpufreq, QEMU) tuned and passive do what std
 # does and the status says so (can.cpu). Kept as std until the owner's battery measurements decide (docs/plan-1.6.1.md).
 # Test overrides: POWER_SYS (a stand-in /sys), POWER_CONF, POWER_RUN, POWER_SUSPEND (a command), POWER_CARE_FW (the limit
@@ -61,6 +61,11 @@ pstate_mode() { [ -w "$PST" ] || return 0; cur=$(rd1 "$PST"); case "$cur" in act
 # what the cpu setting can do on this computer: tuned needs amd-pstate-epp (or amd_pstate in passive mode by this setting)
 cpu_tunable() { case "$(cpu_driver)" in amd-pstate-epp) return 0;; amd-pstate) [ -e "$RUN/power-pstate0" ] && return 0;; esac; return 1; }
 
+# 1.6.1 (docs/plan-1.6.1.md Part 19): game mode (game=1, /usr/lib/rudolf/gamemode) asks performance of every processor with an
+# energy preference (amd_pstate's active mode, amd-pstate-epp, and intel_pstate's: both have energy_performance_preference),
+# with any cpu setting but passive, unless battery saver is on; elsewhere (acpi-cpufreq, intel_cpufreq, QEMU) there is no
+# preference and nothing changes. Leaving game mode applies the setting's own preference again.
+game_epp() { [ -e "$RUN/power-game" ] && [ $saver = 0 ] && [ "$cpu" != passive ] && e=performance; return 0; }
 apply() {
 	ac=$(on_ac); src=bat; [ "$ac" = 1 ] && src=ac
 	b=$(bat_dir); cap=$( [ -n "$b" ] && rd1 $b/capacity ); [ -n "$cap" ] || cap=100
@@ -71,9 +76,9 @@ apply() {
 	pp=$(profile_for $mode); [ -n "$pp" ] && [ -w "$SYS/firmware/acpi/platform_profile" ] && echo "$pp" > "$SYS/firmware/acpi/platform_profile" 2>/dev/null
 	cpu=$(get cpu); cpu_tunable || cpu=std; pstate_mode $cpu
 	e=$(epp_for $mode)
-	# 1.6.1, cpu=tuned on amd-pstate-epp: balance_power for Balanced on battery; performance in game mode (not with battery saver)
-	if [ "$cpu" = tuned ]; then [ "$mode" = balanced ] && [ "$src" = bat ] && e=balance_power
-		[ -e "$RUN/power-game" ] && [ $saver = 0 ] && e=performance; fi
+	# 1.6.1, cpu=tuned on amd-pstate-epp: balance_power for Balanced on battery
+	if [ "$cpu" = tuned ]; then [ "$mode" = balanced ] && [ "$src" = bat ] && e=balance_power; fi
+	game_epp
 	[ "$cpu" = passive ] || for f in $(epp_files); do a=" $(rd1 ${f%/*}/energy_performance_available_preferences) "; case "$a" in *" $e "*) [ "$(rd1 $f)" = "$e" ] || echo "$e" > "$f" 2>/dev/null;; esac; done
 	if [ -n "$b" ] && [ -w "$b/charge_control_end_threshold" ]; then want=$(get care); echo "$want" > "$b/charge_control_end_threshold" 2>/dev/null
 		[ -n "$POWER_CARE_FW" ] && echo "$POWER_CARE_FW" > "$b/charge_control_end_threshold"   # (the host test: firmware that keeps another limit)

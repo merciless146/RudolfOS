@@ -4401,6 +4401,8 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-drop.inc"      /* 1.6.1: files dropped from outside onto the native desktop (plan-1.6.1 Part 13) */
 #include "rudolfd-know.inc"      /* 1.6.0: Blitzen knows the system (plan Part 18) */
 #include "rudolfd-dev.inc"       /* 1.6.0: Blitzen as a developer's agent (plan Part 19) */
+#include "rudolfd-game.inc"      /* 1.6.1: game mode (plan-1.6.1 Part 19) */
+#include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
@@ -5090,9 +5092,11 @@ static void api(struct req *r)
 	if (!strncmp(p, "print/", 6)) { api_print(r, p + 6); return; }
 	if (!strncmp(p, "keyring/", 8)) { api_keyring(r, p + 8, post); return; }   /* 1.6.0 (plan Part 14) */
 	if (!strncmp(p, "sysext/", 7)) { api_sysext(r, p + 7, post); return; }   /* 1.6.0 (plan Part 13) */
+	if (!strcmp(p, "gpu/driver") || !strncmp(p, "gpu/driver/", 11)) { api_gpudriver(r, p[10] ? p + 11 : "", post); return; }   /* 1.6.1 (plan-1.6.1 Part 19) */
 	if (!strncmp(p, "apps/", 5)) { api_apps(r, p + 5); return; }
 	if (!strncmp(p, "debian/", 7)) { api_debian(r, p + 7); return; }
 	if (!strncmp(p, "ai/", 3)) { api_ai(r, p + 3); return; }
+	if (!strncmp(p, "game/", 5)) { api_game(r, p + 5, post); return; }   /* 1.6.1 (plan-1.6.1 Part 19) */
 	if (!strncmp(p, "games/", 6)) { api_games(r, p + 6); return; }
 	if (!strncmp(p, "term/", 5)) { api_term(r, p + 5); return; }
 	if (!strncmp(p, "portal/", 7)) { api_portal(r, p + 7); return; }
