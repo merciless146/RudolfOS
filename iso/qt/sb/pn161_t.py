@@ -111,7 +111,8 @@ try:
             while time.time() < end and js(f"typeof acctNew=='function'&&typeof wsGo=='function'&&typeof pnSwipe=='function'&&typeof ACCTS=='object'&&({extra})", 20) is not True: time.sleep(5)
             time.sleep(20); js(INIT_JS)
             if make or not js("ACCTS.some(x=>x.n=='boss')"): js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120)
-            out('sign-in:', js(LOGIN, 300))
+            r = js(LOGIN, 300); out('sign-in:', r)
+            if str(r).startswith('ERR'): continue   # (the page loaded again meanwhile: from the start)
             if wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300) is True: break
         time.sleep(8)
     page_in(True)
@@ -182,7 +183,8 @@ try:
     if cl:
         p = cl[0].split(); ty = int(p[4]) + 12   # (its frame's top: the title bar)
     seq = []
-    if ty is not None: swipe(g.q, SW * 0.7, ty, SW * 0.15, ty, SW, SH); seq.append(st_get(state(), 'ws'))
+    time.sleep(10)   # (its page ready: the window shown, not still covered)
+    if ty is not None: swipe(g.q, SW * 0.7, ty, SW * 0.15, ty, SW, SH); time.sleep(1); seq.append(st_get(state(), 'ws'))
     swipe(g.q, SW * 0.8, my, SW * 0.2, my, SW, SH); seq.append(st_get(state(), 'ws'))
     swipe(g.q, SW * 0.8, my, SW * 0.2, my, SW, SH); seq.append(st_get(state(), 'ws'))
     swipe(g.q, SW * 0.2, my, SW * 0.8, my, SW, SH); seq.append(st_get(state(), 'ws'))
@@ -196,7 +198,7 @@ try:
         return v
     a = ws_after(('ctrl', 'alt', 'left'), '1'); b = ws_after(('ctrl', 'alt', 'right'), '2')
     ok('N5. Native: the keys (Ctrl+Alt+arrows) as before', a == '1' and b == '2', (a, b))
-    out(sh("grep -v 'dbus\\|Warning' /run/rudolf/native-desktop.log | tail -20", 30, False))
+    out(sh("grep -E 'swipe' /run/rudolf/native-desktop.log | tail -10; grep -v 'dbus\\|Warning' /run/rudolf/native-desktop.log | tail -20", 30, False))
 except RuntimeError as e:
     ok('the run went on: ' + str(e), False)
 finally:

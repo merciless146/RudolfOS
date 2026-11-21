@@ -70,7 +70,8 @@ Part 4). The phone's home screen itself, with its status bar, notification shade
   full screen and its title bar; the keys and the slide; nothing on the desktop builds, at a phone's size with touch
   and on a computer; nothing in an app's own page); in QEMU on the 1.6.0 stable release with this tree's rudolfd, page
   and rudolf-native put in place, iso/qt/sb/pn161_t.py: Standard and Native without the flag (nothing) and with it,
-  swiped on QEMU's tablet, which rudolf-display takes as a touch screen. QEMU's virtio-multitouch reports only the
+  swiped on QEMU's tablet, which rudolf-display takes as a touch screen: 14/14 (2026-11-21, run without KVM in the
+  session; panels-check.yml runs it on GitHub). QEMU's virtio-multitouch reports only the
   multi-touch axes, which rudolf-display does not read (it reads ABS_X and ABS_Y, as real touch screens' drivers also
   report them): noted for 2.0's Wayland input, not changed here.
 - **For the owner:** none needed now (nothing changes on the desktop builds); the phone of Part 4 when it is there.

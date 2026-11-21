@@ -998,7 +998,7 @@ static void pn_client(Client *c) { if (pn_on() && !c->trans && !c->full) wm_maxi
 /* a press on a maximised window's title bar (not on its buttons): followed to its release */
 static int pn_press(Client *c, XButtonEvent *e)
 {
-	if (!pn_on() || !c->max || c->full || e->y >= TH) return 0;
+	if (!pn_on() || !c->max || c->full || e->y >= th_of(c)) return 0;
 	PN.c = c; PN.px = e->x_root; PN.py = e->y_root; PN.t = e->time;
 	XGrabPointer(DPY, c->frame, False, ButtonReleaseMask | PointerMotionMask, GrabModeAsync, GrabModeAsync, None, None, e->time);
 	return 1;
@@ -1007,14 +1007,17 @@ static int pn_release(XButtonEvent *e)
 {
 	if (!PN.c) return 0;
 	XUngrabPointer(DPY, e->time); PN.c = NULL;
-	pn_go(pn_swipe(e->x_root - PN.px, e->y_root - PN.py, (long)(e->time - PN.t), SW)); return 1;
+	int dx = e->x_root - PN.px, dy = e->y_root - PN.py, d = pn_swipe(dx, dy, (long)(e->time - PN.t), SW);
+	fprintf(stderr, "rudolf-native: a title bar's swipe %d,%d in %ld ms: %s\n", dx, dy, (long)(e->time - PN.t), d ? (d > 0 ? "the next workspace" : "the one before") : "none");
+	pn_go(d); return 1;
 }
 /* on the desktop: seen before its own handlers (the icons, the selection box), which go on as before */
 static gboolean pn_desk_event(GtkWidget *w, GdkEvent *e, gpointer d)
 {
 	(void)w; (void)d; static double px, py; static guint32 pt; static int down;
 	if (e->type == GDK_BUTTON_PRESS && e->button.button == 1) { px = e->button.x_root; py = e->button.y_root; pt = e->button.time; down = 1; }
-	else if (e->type == GDK_BUTTON_RELEASE && e->button.button == 1 && down) { down = 0; pn_go(pn_swipe((int)(e->button.x_root - px), (int)(e->button.y_root - py), (long)(e->button.time - pt), SW)); }
+	else if (e->type == GDK_BUTTON_RELEASE && e->button.button == 1 && down) { down = 0; int dx = (int)(e->button.x_root - px), dy = (int)(e->button.y_root - py), d = pn_swipe(dx, dy, (long)(e->button.time - pt), SW);
+		if (d) fprintf(stderr, "rudolf-native: the desktop's swipe %d,%d: %s\n", dx, dy, d > 0 ? "the next workspace" : "the one before"); pn_go(d); }
 	return FALSE;
 }
 static void pn_init(GtkWidget *desk) { if (pn_on()) g_signal_connect(desk, "event", G_CALLBACK(pn_desk_event), NULL); }
