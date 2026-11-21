@@ -81,7 +81,7 @@ async function run(){say('hello');
  send({rudolfShell:'tab',op:'place',tid:'t1',r:null});await sl(1000);say('shot fs');await gate('fs');
  const off=await wait(m=>m.ev=='fs'&&m.tid=='t1',180000).catch(()=>null);say('fs '+(off&&off.on===false?'off':'none'));
  send({rudolfShell:'tab',op:'place',tid:'t1',r:[200,150,600,400],vis:null,z:1});await sl(1000);say('shot back');await gate('back');
- send({rudolfShell:'tab',op:'go',tid:'t1',url:'http://127.0.0.1:8601/file.bin'});
+ send({rudolfShell:'tab',op:'go',tid:'t1',url:'http://127.0.0.1:8601/dl.html'});
  const dl=await wait(m=>m.ev=='download'&&m.tid=='t1').catch(()=>null);say('download '+(dl?dl.url:'none'));await sl(4000);say('dl done');await gate('dl');
  send({rudolfShell:'tab',op:'close',tid:'t1'});
  for(let i=1;i<=5;i++){send({rudolfShell:'tab',op:'open',tid:'f'+i,url:'http://127.0.0.1:8601/page'+i+'.html',part:'five'});
@@ -99,6 +99,9 @@ os.makedirs(f'{W}/fix/www8600'); os.makedirs(f'{W}/fix/www8601')
 open(f'{W}/fix/www8600/desk.html', 'w').write(DESK); open(f'{W}/fix/www8601/tab.html', 'w').write(TAB)
 open(f'{W}/fix/www8600/desk2.html', 'w').write(DESK2); open(f'{W}/fix/www8601/fs.html', 'w').write(FS)
 open(f'{W}/fix/www8601/file.bin', 'wb').write(bytes(range(256)) * 400)
+# (a site's download link: busybox httpd says nothing of a download, so the link says it; WebKit takes it whatever the type)
+open(f'{W}/fix/www8601/dl.html', 'w').write('<!doctype html><meta charset=utf-8><title>dl</title><body style="background:#fde68a">'
+    '<a id=a href="file.bin" download="file.bin">Download</a><script>setTimeout(()=>a.click(),500)</script>')
 for i in range(1, 6): open(f'{W}/fix/www8601/page{i}.html', 'w').write(PAGE % (i, i, ' '.join(['Some words of text in a paragraph.'] * 400)))
 shutil.copy(f'{FIX}/rudolf-webkit', f'{W}/fix/rudolf-webkit')
 FIXIMG = os.path.abspath('lt161fix.img'); subprocess.run(['truncate', '-s', '64M', FIXIMG], check=True)

@@ -80,7 +80,8 @@ Desktop engine as a compatibility option, "to be worked on and refined later". L
   five tabs at once work as they should, with nothing to change: iso/qt/webkit/tabsfs61_ci.py (full screen from a real
   click fills the screen, Escape brings the tab back where it was; five tabs, each its own process, about 33 MB each in
   the Lite engine check) and lt161_t.py's tabs phase on the release in QEMU (the same, the download arriving complete in
-  the desktop's download folder as the desktop's user, the memory on the release). Left to the owner on the Vivobook:
+  the desktop's download folder as the desktop's user; the memory on the release, under QEMU: the desktop page 96 MB,
+  four tabs in the background 61 MB each, the one shown 116 MB). Left to the owner on the Vivobook:
   YouTube (a video, full screen), a Google sign-in with FedCM off and on (WebKitGTK has no FedCM: the menu item says so),
   a real download from a site, memory with 5 real sites against Chromium's.
 - The others: in the PRs that follow (this list is brought up to date by each).
