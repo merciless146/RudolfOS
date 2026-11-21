@@ -236,6 +236,57 @@ USB printers reading PDF or PostScript) stays; what 1.6.1 adds is a print queue 
 - **For the owner (the Vivobook):** a real USB printer: plugged in, Settings › Devices lists it and the queue; a page
   from WordPro and a PDF from the PDF Viewer printed, on Standard and on Native; from a Linux app (LibreOffice or a GTK
   app in Debian); a job cancelled from Settings; a second account's job shown without its name.
+#### 9.2 Status: Find printers with the firewall on (2026-11-21, branch printer-mdns; mdns-check.yml)
+The owner, 2026-11-21: "Yes" to fixing network printer discovery for 1.6.1. **The bug** (the owner's Vivobook, 1.6.0,
+read-only evidence: find listed no printer in about 2 s and the firewall's blocked counter rose during it): find asked
+its multicast DNS question from an ephemeral port; printers answer by multicast to 224.0.0.251:5353, which the
+firewall did not let in (and the socket had not joined the group), or by unicast from their own address, which
+conntrack does not see as a reply to a question sent to the group (ct state new): every answer was dropped. The tests
+had pointed RP_MDNS at a stand-in by unicast, which never meets the firewall.
+- **rudolf-print find** is now a full querier (RFC 6762): bound to port 5353 (SO_REUSEADDR: rudolfd's find and the print
+  queue's may run at once; Rudolf OS has no Avahi), joined to 224.0.0.251 on each interface that is up (IP_ADD_MEMBERSHIP;
+  not loopback, point-to-point or a cellular modem's, the firewall's own /run/rudolf/firewall-cellular), the question
+  sent out of each of them, so printers answer by multicast. It reads only responses (QR set) from source port 5353
+  (RFC 6762 6), arriving on a joined interface (IP_PKTINFO), not from this computer's own addresses (a program here
+  cannot pose as a printer to other users' finds), and only the groups it joined (IP_MULTICAST_ALL off, its own
+  questions not looped back). The group is left and the port closed when find ends (about 4 s). RP_MDNS unchanged for
+  the tests. parse_mdns's limits stay (64 services, 64 addresses, 20 compression hops, every length checked); a fuzz
+  test now covers it (iso/qt/host/fuzz/mdns_fuzz.c: none existed). The QU bit is not set: a unicast answer to port
+  5353 needs the firewall's second rule below, a multicast one does not, so multicast is asked for.
+- **The firewall:** a chain of its own, mdns, after remote and hotspot and before the drop: `iifname @cellular return`
+  (never on a cellular interface, as the remote chain), then `ip daddr 224.0.0.251 udp sport 5353 udp dport 5353
+  accept` (an mDNS answer to the group: 224.0.0.x is link-local, never forwarded by a router) and `ip saddr { private
+  and link-local IPv4 } ip ttl 255 udp sport 5353 udp dport 5353 accept` (a printer that answers by unicast to the
+  question's source, port 5353 now; TTL 255 means no router lowered it, so the sender is on this link: RFC 6762 11's
+  check). No `udp sport 5353` rule to other ports: an answer to an ephemeral port is not needed any more, and the
+  host test checks that a packet from 5353 to another port is dropped. No IPv6 rule: find asks over IPv4 only (the A
+  records are what it prints to), so ff02::fb is not opened. **Always on, not only while find runs:** find runs both as
+  root (rudolfd) and as the print queue's unprivileged "print" user, which cannot change nftables; opening the port only
+  during find would need a new root helper the queue's user may call, and a count of the finds running, for a rule
+  that lets in only answers addressed to the mDNS port; nothing listens on 5353 between finds (the kernel discards
+  such packets; a multicast one gets no reply), as Fedora's firewalld allows mdns by default. The blocked counter no
+  longer counts the network's other mDNS traffic (phones, TVs) either.
+- **The list of listeners:** udp *:5353, rudolf-print, only while Find printers runs (the self-test checks TCP and
+  Unix sockets: its line is unchanged, and passes).
+- **Unchanged:** rudolfd's requests (print/find runs a program as before: layer 1 of the confinement only, no change to
+  confinepure or winapi), the queue's user and no_new_privs, the firewall's other rules.
+- **Tests:** iso/qt/host/mdns161_t.sh (17: in network namespaces of its own, the firewall's real rules with nft; a
+  stand-in printer answering by multicast and one by unicast both found with the firewall on, the blocked counter
+  unchanged; port 5353 and the group only while find runs, on wlan0 and not the cellular wwan0; find made to ask on
+  wwan0 still gets nothing there, and with the firewall off it does (the control); from 5353 to another port, a lowered
+  TTL, another source port, anything on the cellular interface: dropped; a program on this computer posing as a printer
+  not listed; two finds at once; RP_MDNS; the fuzz test). 17/17 as root and in a user namespace as nobody; the
+  release's own rudolf-print (1.6.0) in the same namespaces lists no printer (the bug). iso/qt/sb/m161_t.py on the
+  stable release 1.6.0.261120 (2026112014) in QEMU, two printers played at the Ethernet level on a socket netdev on
+  QEMU's hub: the release's own find, the firewall on: no printer and the blocked counter rising (0 to 2), as on the
+  Vivobook; this tree's rudolf-print and firewall put in place: both printers, the counter unchanged, a packet from 5353
+  to port 9999 dropped and counted, the self-test's listeners line passes: 6/6 (2026-11-21, without KVM).
+  listeners59_t 16/16, conn60_t (the firewall's cellular set) 19/19, hotspot59_t 11/11, printqapi161_t 7/7,
+  printq161_t 31/32 (the one PWG decoding check fails the same on main in this session), usbprint60_t 30/31 (its
+  kernel module check, as in print-check.yml).
+- **For the owner (the Vivobook):** the firewall on (Settings › Security); the Canon imageCLASS MF264dw II working, on
+  Wi-Fi with Bonjour/mDNS on; Find printers lists it; a page printed to it; the firewall's blocked counter (System
+  health) not rising during Find printers.
 
 ### 10. Oracle: find, closed tabs, reader mode and blocking (added on 2026-11-16)
 docs/plan-oracle.md, asked for by the owner on 2026-11-16. Suggested for 1.6.1: item 1 (find in page), item 2 (reopen a

@@ -11,6 +11,12 @@
  * URI is ipp://host[:port]/path or ipps://... (printers use self-made certificates on the local network,
  * so ipps is encrypted but not checked against a certificate authority).
  * RP_MDNS=ADDR:PORT sends the discovery query there instead of the multicast group (tests).
+ * 1.6.1 (docs/plan-1.6.1.md Part 9, found on the owner's Vivobook): find asks as a full mDNS querier (RFC 6762): from
+ * port 5353 (SO_REUSEADDR: rudolfd's find and the print queue's may run at once; Rudolf OS has no Avahi), joined to
+ * 224.0.0.251 on each interface that is up (not loopback, point-to-point or a cellular modem's: /run/rudolf/firewall-
+ * cellular, RP_CELLULAR elsewhere for tests), so printers answer by multicast, which the firewall lets in (its mdns
+ * chain). Until then it asked from an ephemeral port, and the firewall dropped every answer. Only responses (QR set)
+ * from source port 5353 that arrive on a joined interface and are not from this computer's own addresses are read.
  * 1.6.0 (docs/plan-1.6.0.md Part 8): USB printers, from /run/rudolf/usb-printers (written by /usr/lib/rudolf/usbprint;
  * RP_USB elsewhere for tests), are listed by find as "USB: name": an IPP over USB printer at ipp-usb's local address
  * (printed to as a network printer), a plain one as usb://lpN (its job written to /dev/usb/lpN: a PDF as it is, for a
@@ -25,6 +31,8 @@
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <ifaddrs.h>
+#include <net/if.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <stdarg.h>
@@ -400,11 +408,44 @@ static void parse_mdns(const unsigned char *m, size_t n)
 		i += len;
 	}
 }
+/* the interfaces find asks on (joined to 224.0.0.251) and this computer's own addresses (whose packets are not answers) */
+static int MIF[16], NMIF, MCAST;
+static struct in_addr OWN[32]; static int NOWN;
+static int mif_has(int ix) { for (int i = 0; i < NMIF; i++) if (MIF[i] == ix) return 1; return 0; }
+static int is_cellular(const char *ifn)
+{
+	const char *p = getenv("RP_CELLULAR"); FILE *f = fopen(p ? p : "/run/rudolf/firewall-cellular", "r"); char l[64]; int r = 0;
+	if (!f) return 0;
+	while (!r && fgets(l, sizeof l, f)) { l[strcspn(l, "\r\n")] = 0; if (!strcmp(l, ifn)) r = 1; }
+	fclose(f); return r;
+}
+static void mdns_join(int fd, int drop)
+{
+	if (drop) {
+		for (int i = 0; i < NMIF; i++) { struct ip_mreqn mr = {0}; inet_pton(AF_INET, "224.0.0.251", &mr.imr_multiaddr); mr.imr_ifindex = MIF[i]; setsockopt(fd, IPPROTO_IP, IP_DROP_MEMBERSHIP, &mr, sizeof mr); }
+		NMIF = 0; return;
+	}
+	struct ifaddrs *ifs = NULL; if (getifaddrs(&ifs)) return;
+	for (struct ifaddrs *a = ifs; a; a = a->ifa_next) {
+		if (!a->ifa_addr || a->ifa_addr->sa_family != AF_INET) continue;
+		if (NOWN < 32) OWN[NOWN++] = ((struct sockaddr_in *)a->ifa_addr)->sin_addr;
+		unsigned fl = a->ifa_flags; if (!(fl & IFF_UP) || !(fl & IFF_MULTICAST) || (fl & (IFF_LOOPBACK | IFF_POINTOPOINT))) continue;
+		int ix = if_nametoindex(a->ifa_name); if (!ix || mif_has(ix) || NMIF >= 16 || is_cellular(a->ifa_name)) continue;
+		struct ip_mreqn mr = {0}; inet_pton(AF_INET, "224.0.0.251", &mr.imr_multiaddr); mr.imr_ifindex = ix;
+		if (!setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mr, sizeof mr)) MIF[NMIF++] = ix;
+	}
+	freeifaddrs(ifs);
+}
 static void mdns_query(int fd, struct sockaddr_in *to, const char **names, const int *types, int k)
 {
 	buf q = {0}; put16(&q, 0); put16(&q, 0); put16(&q, k); put16(&q, 0); put16(&q, 0); put16(&q, 0);
 	for (int i = 0; i < k; i++) { qname(&q, names[i]); put16(&q, types[i]); put16(&q, 1); }
-	if (sendto(fd, q.b, q.n, 0, (struct sockaddr *)to, sizeof *to) < 0) {} free(q.b);
+	if (MCAST && NMIF) for (int i = 0; i < NMIF; i++) {   /* out of each joined interface */
+		struct ip_mreqn mr = {0}; mr.imr_ifindex = MIF[i]; setsockopt(fd, IPPROTO_IP, IP_MULTICAST_IF, &mr, sizeof mr);
+		if (sendto(fd, q.b, q.n, 0, (struct sockaddr *)to, sizeof *to) < 0) {}
+	}
+	else if (sendto(fd, q.b, q.n, 0, (struct sockaddr *)to, sizeof *to) < 0) {}
+	free(q.b);
 }
 static void mdns_listen(int fd, int ms)
 {
@@ -412,15 +453,35 @@ static void mdns_listen(int fd, int ms)
 	for (;;) {
 		struct timeval t; gettimeofday(&t, NULL); int left = ms - (int)((t.tv_sec - t0.tv_sec) * 1000 + (t.tv_usec - t0.tv_usec) / 1000); if (left <= 0) break;
 		struct pollfd p = {fd, POLLIN, 0}; if (poll(&p, 1, left) <= 0) break;
-		unsigned char m[9000]; ssize_t n = recv(fd, m, sizeof m, 0); if (n > 0) parse_mdns(m, n);
+		unsigned char m[9000]; struct sockaddr_in from = {0}; char cb[256];
+		struct iovec io = {m, sizeof m}; struct msghdr mh = {&from, sizeof from, &io, 1, cb, sizeof cb, 0};
+		ssize_t n = recvmsg(fd, &mh, 0); if (n < 12 || !(m[2] & 0x80)) continue;   /* (responses only: QR set) */
+		if (MCAST) {
+			/* RFC 6762 6: a response's source port is 5353; and only what came in on an interface find asks on, from
+			   another computer (not a program here pretending to be a printer) */
+			int ix = 0; for (struct cmsghdr *c = CMSG_FIRSTHDR(&mh); c; c = CMSG_NXTHDR(&mh, c)) if (c->cmsg_level == IPPROTO_IP && c->cmsg_type == IP_PKTINFO) ix = ((struct in_pktinfo *)CMSG_DATA(c))->ipi_ifindex;
+			if (ntohs(from.sin_port) != 5353 || !mif_has(ix)) continue;
+			int own = 0; for (int i = 0; i < NOWN; i++) if (OWN[i].s_addr == from.sin_addr.s_addr) own = 1; if (own) continue;
+		}
+		parse_mdns(m, n);
 	}
 }
 static int cmd_find(void)
 {
-	int fd = socket(AF_INET, SOCK_DGRAM, 0); if (fd < 0) die("no network");
+	int fd = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0); if (fd < 0) die("no network");
 	struct sockaddr_in to = {0}; to.sin_family = AF_INET; to.sin_port = htons(5353); inet_pton(AF_INET, "224.0.0.251", &to.sin_addr);
 	const char *ov = getenv("RP_MDNS");
 	if (ov) { char a[64]; snprintf(a, sizeof a, "%s", ov); char *c = strrchr(a, ':'); if (c) { *c = 0; to.sin_port = htons(atoi(c + 1)); } inet_pton(AF_INET, a, &to.sin_addr); }
+	else {
+		/* a full querier: port 5353, the group joined, so that the answers come by multicast (RFC 6762 5.2, 6) */
+		int one = 1, zero = 0; setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
+		setsockopt(fd, IPPROTO_IP, IP_MULTICAST_ALL, &zero, sizeof zero); setsockopt(fd, IPPROTO_IP, IP_PKTINFO, &one, sizeof one);
+		unsigned char lp = 0; setsockopt(fd, IPPROTO_IP, IP_MULTICAST_LOOP, &lp, 1);
+		struct sockaddr_in me = {0}; me.sin_family = AF_INET; me.sin_port = htons(5353); me.sin_addr.s_addr = htonl(INADDR_ANY);
+		if (!bind(fd, (struct sockaddr *)&me, sizeof me)) { MCAST = 1; mdns_join(fd, 0); }
+		/* (otherwise, port 5353 held by a program that does not share it: asked from an ephemeral port as before 1.6.1,
+		   whose answers only arrive when the firewall is off) */
+	}
 	unsigned char ttl = 255; setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, 1);
 	const char *n1[] = {"_ipp._tcp.local", "_ipps._tcp.local", "_print._sub._ipp._tcp.local"}; const int t1[] = {12, 12, 12};
 	mdns_query(fd, &to, n1, t1, 3); mdns_listen(fd, 1200); mdns_query(fd, &to, n1, t1, 3); mdns_listen(fd, 900);
@@ -431,6 +492,7 @@ static int cmd_find(void)
 		for (int i = 0; i < NS && k < 31; i++) if (S[i].srv) { int have = 0; for (int j = 0; j < NA; j++) if (!strcasecmp(A[j].name, S[i].host)) have = 1; if (!have) { nn[k] = S[i].host; tt[k++] = 1; } }
 		if (!k) break; mdns_query(fd, &to, nn, tt, k); mdns_listen(fd, 800);
 	}
+	if (MCAST) mdns_join(fd, 1);   /* (the group left, the port given back) */
 	close(fd);
 	printf("{\"ok\":true,\"printers\":["); int first = 1;
 	/* one entry per printer: prefer plain ipp (some printers' TLS is slow), keep ipps when it is the only one */

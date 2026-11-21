@@ -1,0 +1,66 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 9): Find printers with the firewall on (found on the owner's Vivobook: find's multicast
+# DNS answers were all dropped). host: qt/host/mdns161_t.sh (network namespaces of its own: the firewall's real rules
+# with nft, stand-in printers answering by multicast and by unicast, a cellular-marked interface, packets that must stay
+# dropped; the fuzz test of rudolf-print's mDNS parsing), the list of listeners' test, 1.6.0's USB printers test.
+# qemu: the newest stable release (or serial=) with this tree's rudolf-print and firewall put in place (qt/sb/m161_t.py),
+# its network card also on a socket netdev where the check plays two printers. Nothing is published.
+name: Printer discovery check
+on:
+  workflow_dispatch:
+    inputs:
+      serial: {description: 'A release to start in QEMU (its serial); empty: the newest stable', required: false, default: ''}
+  pull_request:
+    paths: ['iso/sys/rudolf-print.c', 'iso/sys/root/usr/lib/rudolf/firewall', 'iso/sys/root/usr/share/rudolf/listeners', 'iso/qt/host/mdns161_t.sh',
+      'iso/qt/host/fixtures/mdnsnet.py', 'iso/qt/host/fuzz/mdns_fuzz.c', 'iso/qt/sb/m161_t.py', '.github/workflows/mdns-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables iproute2 util-linux python3 gcc >/dev/null
+      - name: mdns161_t.sh (as root: its own network namespaces)
+        run: sudo sh iso/qt/host/mdns161_t.sh
+      - name: listeners59_t.sh
+        run: sh iso/qt/host/listeners59_t.sh
+      - name: usbprint60_t.sh (1.6.0's rudolf-print test)
+        run: sh iso/qt/host/usbprint60_t.sh || true   # (its check of the kernel's usblp module reads the kernel's build, not this tree's)
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}', N_serial: '${{ github.event.inputs.serial }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          for c in stable beta; do if [ "$(git show origin/gh-pages:$c/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:$c/manifest.txt > rel/manifest.txt; git show origin/gh-pages:$c/manifest.sig > rel/manifest.sig; break; fi; done
+          [ -s rel/manifest.txt ] || { git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; }
+          echo "::notice title=Printer discovery check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: This tree's rudolf-print and firewall (as the release builds them)
+        run: |
+          . iso/systools/hardflags.sh; mkdir -p fix
+          gcc -O2 $HARD -o fix/rudolf-print iso/sys/rudolf-print.c -ldl
+          python3 iso/systools/hardcheck.py fix/rudolf-print
+          cp iso/sys/root/usr/lib/rudolf/firewall iso/sys/root/usr/share/rudolf/listeners fix/
+      - name: m161
+        run: |
+          mkdir -p run && cd run
+          sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} M161_FIX=$PWD/../fix python3 ../iso/qt/sb/m161_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: m161, retention-days: 7, path: "run/m161.txt\nrun/m161/qemu.log"}

@@ -11,6 +11,10 @@ Summary: In progress.
   bar in the window). Work with no percentage creeps towards the end and completes when it is done; the fill fades away then, and
   restoring the window hides it. Green as it comes: Display Properties › Taskbar › Progress colour has Blue, Orange, Purple, Red,
   the accent colour and any colour. The same on Standard, Native and Lite.
+- Fixed: Find printers finds network printers with the firewall on (found on a Vivobook: it listed none). It now asks
+  the network as other computers do (multicast DNS from its own port, 5353), and the firewall lets in only those
+  answers, from the local network and never on a cellular connection; nothing else is opened. Printers that answer
+  only to the computer that asked are found too.
 - Changed: Settings' pages are built from one list of additions each, in the same order as before, instead of a
   function wrapped up to 15 times. They look and work as they did; a section that fails no longer stops the sections
   after it from being shown (the failure is written to the console).
