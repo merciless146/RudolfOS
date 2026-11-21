@@ -549,8 +549,18 @@ rudolfd runs as root today (they keep running as root, from the helper).
   further up api() comes first; Settings' microphone test falls back to the browser's list): for the owner. Tests:
   roothelpers161_t.sh S1-S2 and check 28 (in check 25's comparison: every display and sound request with and without
   rudolf-rootd and as rudolfd itself, the files written in /etc and /persist/etc too); r161_t.py 32-33 in QEMU.
-- Next: the modem, Tor and remote access; packages; the rest of other (the self-test, devlink, the camera, the portal,
-  the terminals); then the drop (with the accounts' file service of 11.2).
+- **Where 11.1 stands (2026-11-21, after the display and sound branch; PRs #561-#564, stacked in that order):** moved:
+  drives, updates (but the EFI boot entries), accounts, power and the clock, network (Wi-Fi, addresses, the firewall,
+  the hotspot, metered), devices (Bluetooth, Thunderbolt), procs, logs, screen, sound. Stay in rudolfd by design:
+  `addpart` (rudolfd --addpart is run by root's own scripts, not a request), every read any user may make (GET net's
+  ip and /sys reads, /proc/asound, the display's and shell's files), and what is rudolfd's own (RUN's files, pointer,
+  /persist/etc's settings such as desktop/engine and vault.json, the health log): those become the rudolf user's at
+  the drop instead. Not moved yet (each still run as root by rudolfd, with no change from 1.6.0): the modem
+  (mobile/*: its PIN and SMS request files), Tor and remote access (long-running services started as their own user
+  or as root), packages (rpk, Flatpak's system parts, system extensions, rudolf-debian, Blitzen's and printing's
+  folders), the EFI variables (bootmenu, secureboot), dl_acct_dir, and the rest of other (the self-test, devlink, the
+  camera, the portal's files, Debian's terminals); then the drop with the accounts' file service of 11.2.
+- Next: the modem, Tor and remote access; packages; the EFI variables; the rest of other; then the drop.
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).
