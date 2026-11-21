@@ -84,6 +84,13 @@ Desktop engine as a compatibility option, "to be worked on and refined later". L
   four tabs in the background 61 MB each, the one shown 116 MB). Left to the owner on the Vivobook:
   YouTube (a video, full screen), a Google sign-in with FedCM off and on (WebKitGTK has no FedCM: the menu item says so),
   a real download from a site, memory with 5 real sites against Chromium's.
+- *Checked without the owner, nothing to change:* the lock and sign-in screen settings and the shutting-down screen in
+  Lite. iso/qt/webkit/lock61_ci.py runs the real desktop page in rudolf-webkit (a stand-in rudolfd, iso/qt/webkit/wkpage.py)
+  through lock58_t.js's steps: Display Properties › Lock and sign-in screen kept for the computer and shown on the lock
+  screen (a colour, a picture of one's own blurred, the desktop's background), the sign-in page's background and clock,
+  the full-screen "Shutting down…" and the power asked for after the tone; and what is on the screen (the colour, the
+  picture, the shutting-down screen) from screenshots. Owner's check on the Vivobook (Lite): the lock screen and sign-in
+  page with a picture of his own, then Shut down (the tone, the screen).
 - The others: in the PRs that follow (this list is brought up to date by each).
 
 ### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
