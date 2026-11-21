@@ -346,6 +346,88 @@ The NVIDIA driver choice and the game mode are built in 1.6.1; measuring them ne
   off, on the owner's Asus desktop (live from a stick, as Part 12) and the Vivobook.
 
 
+**The checklist is written (2026-11-21, branch game-checklist): below; the numbers are the owner's.** It follows the
+  NVIDIA driver PR (#544, branch nvidia-driver) and the game mode PR (#546, branch game-mode): run it once both are in a beta.
+
+#### 19b. The owner's checklist: games measured (the Asus desktop live from a stick, as Part 12, and the Vivobook)
+What is measured: the same games' frame rates and frame times on the open driver (NVK) and on NVIDIA's driver, each with
+game mode on and off, on the owner's **Asus desktop** (RuckXTrauma: its NVIDIA card must be GeForce 16 or newer for NVIDIA's
+driver to be offered), Rudolf OS running live from a USB stick (nothing on its disk changed), and with game mode on and off
+on the **Vivobook** (AMD graphics: no NVIDIA rows). Nothing here was measured by a session: no NVIDIA card or real game is
+reachable from CI.
+
+**Before (once).**
+1. The stick: made with Settings › Update and recovery › Make a stick, with its RUDOLFDATA partition (system extensions and
+   Steam's games are kept there; a stick without one cannot keep NVIDIA's driver). Start the Asus from it; Secure Boot as
+   it is on that computer (with Secure Boot on, the first start asks to enroll the Rudolf OS key: that is the firmware's
+   own list, the disk is not touched; or start with Secure Boot off for these tests).
+2. NVIDIA's driver: after the owner ran **Actions › System extensions › Run workflow** (release = the release's serial,
+   names = `nvidia-driver`), Settings › Update and recovery › System extensions › Install… › NVIDIA's graphics driver
+   (an administrator's password), then restart. Settings › Display › Graphics driver shows the card's name.
+3. The games, the same on both computers where they run (fill in): A ______ (a native Linux game in Steam),
+   B ______ (a Windows game through Proton, DirectX 11/12), C ______ (a Vulkan game or a built-in benchmark), D ______
+   (a browser game in Oracle, WebGL). Each with the same settings every time (resolution ____, quality ____, V-Sync **off**),
+   the same 2-minute scene or the game's own benchmark.
+4. Frame times: Steam (Flatpak) with MangoHud (`flatpak install flathub org.freedesktop.Platform.VulkanLayer.MangoHud`,
+   the game's launch options `MANGOHUD=1 MANGOHUD_CONFIG=autostart_log=1,log_duration=120 %command%`): each run leaves a
+   CSV in ~/.var/app/com.valvesoftware.Steam/ (its summary: average FPS, 1 % low, 0.1 % low). The browser game: Oracle's
+   own frame meter (F12 › Rendering › Frame rendering stats) or the game's counter, average only.
+5. Each line below: 3 runs, the median written; the computer on mains power; nothing else open (Oracle closed for A-C).
+
+**Each run, also look at (write "ok" or what happened):**
+- Game mode on: Settings › System health › Memory › Game mode says "On now" during the game (open it with the game
+  in the background, then go back); on the Vivobook, System health › Power and battery shows the energy preference
+  "performance" during the game and the usual one after; a notification sent during the game (a message, a reminder)
+  is held, and "While you were playing" comes once the game leaves full screen.
+- Game mode off (the same switch): none of that.
+- After each game is closed: Task Manager › System (the desktop's processor time is back), no slow desktop.
+- NVIDIA's driver: Task Manager › System › Graphics names NVIDIA's driver; once, start Recovery mode: it starts on the
+  open driver (the firmware's screen), and the next normal start is back on NVIDIA's.
+- Once, to see the switch back: with NVIDIA's driver chosen, remove the extension (System extensions › Remove) and
+  restart: that start is on the open driver, and a notification says it went back by itself and why.
+
+**The Asus desktop (RuckXTrauma), live from the stick.** CPU ______, memory ______, NVIDIA card ______ (its PCI ID from
+Settings › Display › Graphics driver ______), screen ______ Hz.
+
+| Game | Driver | Game mode | Average FPS | 1 % low FPS | 0.1 % low FPS | Frame time p99 (ms) | Notes (stutter, errors) |
+|---|---|---|---|---|---|---|---|
+| A | Open (NVK) | off | | | | | |
+| A | Open (NVK) | on | | | | | |
+| A | NVIDIA's | off | | | | | |
+| A | NVIDIA's | on | | | | | |
+| B | Open (NVK) | off | | | | | |
+| B | Open (NVK) | on | | | | | |
+| B | NVIDIA's | off | | | | | |
+| B | NVIDIA's | on | | | | | |
+| C | Open (NVK) | off | | | | | |
+| C | Open (NVK) | on | | | | | |
+| C | NVIDIA's | off | | | | | |
+| C | NVIDIA's | on | | | | | |
+| D | Open (NVK) | off | | | | | |
+| D | Open (NVK) | on | | | | | |
+| D | NVIDIA's | off | | | | | |
+| D | NVIDIA's | on | | | | | |
+
+Also on NVIDIA's driver, once: does DLSS (or its frame generation, GeForce 40 and newer) appear in B's or C's settings
+(Proton gives games NVIDIA's DLSS files: the extension carries them), and does ray tracing switch on? ______
+
+**The Vivobook (AMD graphics, amd_pstate).** The games that run on it (A, D, and B or C if they start):
+
+| Game | Game mode | Average FPS | 1 % low FPS | 0.1 % low FPS | Frame time p99 (ms) | Energy preference during the game | Notes |
+|---|---|---|---|---|---|---|---|
+| A | off | | | | | | |
+| A | on | | | | | | |
+| D | off | | | | | | |
+| D | on | | | | | | |
+| B or C | off | | | | | | |
+| B or C | on | | | | | | |
+
+**What decides.** NVIDIA's driver stays an option (never the default) if it starts and runs the games on the Asus; it is
+worth recommending in Settings only where it is clearly faster (more than 10 % average or 1 % low). Game mode stays on by
+default if "on" is never slower than "off" on either computer (within the runs' own spread); if the desktop's
+slowing behind a game ever makes the game itself stutter (a launcher or overlay in the desktop's group), say so: the
+weight (20) is one line in /usr/lib/rudolf/gamemode.
+
 ### 21b. The checks with the owner (from 1.6.1 Part 21)
 - **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned
   on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
