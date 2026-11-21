@@ -1026,6 +1026,7 @@ function browser(url,bo){bo=bo||{};const PV=!!bo.priv,W=win('Oracle','\u{1F310}\
  const norm=v=>{v=v.trim();if(!v)return'about:blank';if(/^(about:|file:|https?:|data:)/i.test(v))return v;if(/^[A-Za-z]:[\\\/]/.test(v)||/^[A-Za-z]:$/.test(v))return'file:///'+v.split(BS).join('/');if(/^[^\s]+\.[a-z]{2,}([\/?#:]|$)/i.test(v))return'https://'+v;return'about:search?q='+encodeURIComponent(v)};
  const MX={video:/\.(mp4|m4v|webm|ogv|mov)$/i,audio:/\.(mp3|wav|ogg|oga|m4a|aac|flac|opus)$/i,image:/\.(png|jpe?g|gif|webp|avif|bmp|svg|ico)$/i};
  const mkind=u=>{let p=u;try{p=new URL(u).pathname}catch(e){}return MX.video.test(p)?'video':MX.audio.test(p)?'audio':MX.image.test(p)?'image':''};
+ const OB=typeof oraBlock=='function'?oraBlock({W,T:()=>T(),tabs:()=>tabs,priv:PV,tor:!!bo.tor}):null;   /* 1.6.1 (docs/plan-1.6.1.md Part 10): ad and tracker blocking's shield (orablock61.js) */
  const mediaDoc=(t,k,s)=>doc(t,`<div style='text-align:center'>`+(k=='video'?`<video src='${esc(s)}' controls autoplay playsinline style='max-width:100%;max-height:72vh;background:#000'></video>`:k=='audio'?`<div style='font-size:64px'>🎵</div><audio src='${esc(s)}' controls autoplay style='width:min(520px,95%)'></audio>`:`<img src='${esc(s)}' style='max-width:100%'>`)+`<p style='color:#6b7280;font-size:12px;word-break:break-all'>${esc(s.startsWith('data:')?t:s)}</p><p id='e' style='color:#b91c1c'></p></div>`,"var m=document.querySelector('video,audio,img');m.onerror=function(){document.getElementById('e').textContent='This media could not be loaded (missing file, unsupported format, or blocked by the site).'}");
  const embedOf=u=>{let x,m;try{x=new URL(u)}catch(e){return null}const h=x.hostname.replace(/^www\.|^m\./,'');let id='';
   if(h=='youtu.be')id=x.pathname.slice(1).split('/')[0];else if(h=='youtube.com'){if(x.pathname=='/watch')id=x.searchParams.get('v')||'';else if((m=x.pathname.match(/^\/(shorts|embed|live)\/([\w-]{6,})/)))id=m[2]}
@@ -1218,6 +1219,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   readable:on=>{if(OR)OR.readable(t,on)},readhtml:o=>{if(OR)OR.readhtml(t,o)},   /* (1.6.1: reader mode: the page has an article; its HTML) */
   dialog:(k,x,d)=>{if(!W.el.classList.contains('act'))W.focus();return rtDialog(W,k,x,d)},
   perm:(p,u)=>rtPerm(W,p,u),
+  adblock:n=>{if(OB)OB.count(t,n)},   /* (1.6.1: how many ads and trackers the page's tab blocked) */
   blocked:(u,why)=>{t.blk=Date.now();notify('Blocked by the firewall',why+' ('+rtHost(u)+')',{kind:'error'});if(t===T())st.textContent='Blocked by the firewall: '+rtHost(u)},
   fs:()=>{},
   flash:()=>{if(t===T())st.textContent='⚡ Flash content on this page is played by Ruffle'},
@@ -1256,6 +1258,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
   /* 1.5.9 (plan Part 16): Browse with Tor (tor59.js), at the bar's far right */
   if(typeof oTorBtn=='function')b.appendChild(oTorBtn({W,tor:!!bo.tor,urls:()=>tabs.map(x=>x.h[x.i])}));W.setTitle((!t.title||t.title=='Oracle'?'Oracle':t.title+' - Oracle')+(bo.tor?' (Tor)':PV?' (Private)':''))}
  function nav(u){const t=T();u=norm(u);t.h=t.h.slice(0,t.i+1);t.h.push(u);t.i++;loadTab(t)}
+ if(OB){const s0=sync;sync=function(){s0.apply(this,arguments);OB.sync()}}   /* (1.6.1: the shield follows its tab) */
  function newTab(u){if(tabs.length>=12){st.textContent='Too many tabs open.';return}const t=mkTab(u?norm(u):u);ci=tabs.length-1;loadTab(t);if(!u||u=='about:home')setTimeout(()=>{if(typeof rtBlur=='function')rtBlur();ad.focus()},50)}
  function closeTab(k){const t=tabs[k];if(tabs.length<2){W.close();return}t.fr.remove();if(t.rt)rtClose(t.rt);tabs.splice(k,1);ci=Math.min(ci>k?ci-1:ci,tabs.length-1);sync()}
  const go=d=>{const t=T();if(t.real&&t.rt&&(d<0?t.rb:t.rf)){rtCmd(t.rt,d<0?'back':'forward');return}t.i=Math.max(0,Math.min(t.h.length-1,t.i+d));loadTab(t)};

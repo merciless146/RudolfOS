@@ -48,11 +48,14 @@ function lazyFail(name,g,retry){try{notify(name+' could not be loaded','Its file
 for _g,(_fs,_fn,_nm) in LAZY.items():
     _lz+=f"async function {_fn}(...a){{const me={_fn};try{{await lazyApp('{_g}')}}catch(e){{lazyFail('{_nm}','{_g}',()=>{_fn}(...a));return null}}if({_fn}===me)throw new Error('{_nm}: not loaded');return {_fn}(...a)}}\n"
     _lz+=LAZY_REG[_g]+'\n'
+mods.append('orablock61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's ad and tracker blocking; its list (desktop/orablock61.json, iso/systools/blocklist.py) put in below
 changes=open(os.path.join(here,'../CHANGELOG.md')).read()   # "What's new" and the notice after an update
 # 1.5.9: Search in Settings: the pages' sections and settings (made by iso/qt/shell2/setsearch59_t.js --write)
 _six=os.path.join(here,'settings-index.json');setidx=open(_six).read() if os.path.exists(_six) else '{}'
 code='const SETIDX='+json.dumps(json.loads(setidx),ensure_ascii=False).replace('</','<\\/')+';\nconst PINYIN_JSON='+json.dumps(pinyin)+';\nconst RCHANGES='+json.dumps(changes).replace('</','<\\/')+';\n'+'\n'.join('__svcMod('+json.dumps(m)+');\n'+L(m) for m in mods)
 code=code+'\n'+_lz+"\n__svcMod('base');"
+_n=code.count('const ORA_BLOCK_LIST = null;');assert _n==1,_n
+code=code.replace('const ORA_BLOCK_LIST = null;','const ORA_BLOCK_LIST = '+json.dumps(json.load(open(os.path.join(here,'orablock61.json'))),separators=(',',':')).replace('</','<\\/')+';')
 anchor="(function(){const d=document.createElement('div');d.className='ic tr';"
 rep(anchor,code+'\n'+anchor)
 # 1.6.0 (plan Part 12, item 12): svc60.js before the page's own code (it holds back the timers a native app window's page starts while it
