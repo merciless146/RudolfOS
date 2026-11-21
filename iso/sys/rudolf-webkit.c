@@ -144,6 +144,8 @@ static char RUFFLE_JS[16384];
 static const char *PAGE_JS =
 	"(()=>{const say=o=>{try{window.webkit.messageHandlers.rudolfTab.postMessage(o)}catch(e){}};"
 	"const SUB={F20:'w',F21:'t',F22:'n',F23:'q'};"
+	/* 1.6.1 (Part 10): Ctrl+Shift+T reopens Oracle's last closed tab */
+	"addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.shiftKey&&!e.altKey&&(e.code=='KeyT'||e.code=='F21')){e.preventDefault();e.stopImmediatePropagation();say({k:'cst'})}},true);"
 	"addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctrlKey?SUB[e.code]:e.key;let a='';"
 	" if(c&&e.shiftKey&&!e.altKey&&e.code=='KeyN')a='cpn';else if(c&&!e.altKey&&!e.shiftKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(c&&k=='q')a='none';else if(k=='F5')a='f5';"
 	" else if(e.altKey&&!c&&(k=='ArrowLeft'||k=='ArrowRight'))a=k=='ArrowLeft'?'back':'fwd';else if(e.altKey&&!c&&(k=='F4'||e.code=='F20'))a='af4';"
