@@ -967,6 +967,52 @@ static void ws_go(int n)
 	g_timeout_add(80, ws_said, GINT_TO_POINTER(WSC));
 }
 static void ws_move(Client *c, int n) { if (!c) return; if (n < 1) n = 1; if (n > NWS) n = NWS; c->ws = n; ws_apply(); if (!FOCUS) wm_focus(top_client()); bar_redraw(); state_write(); }
+/* ---- 1.6.1 (docs/plan-1.6.1.md Part 2): the mobile build's three panels, the groundwork only, as the page's (panels61.js).
+   On the mobile build only (/etc/rudolf/build-kind is "mobile"; RUDOLF_NATIVE_BUILD_KIND names another file for the tests):
+   a panel is a workspace shown full screen (each window maximised as it comes, its title bar kept), and a horizontal
+   swipe (a finger, which X gives as the pointer, or the pointer itself) on the desktop or on a window's title bar
+   switches to the next workspace (to the left) or the one before (to the right), decided as the page decides it
+   (pn_swipe = pnSwipe); the keys (Ctrl+Alt+arrows) as before. On the desktop builds nothing here does anything. The
+   phone's own interface (its status bar, shade, app grid) is 2.0's. */
+static int pn_on(void)
+{
+	static int on = -1;
+	if (on < 0) { const char *f = getenv("RUDOLF_NATIVE_BUILD_KIND"); char *k = NULL; g_file_get_contents(f && *f ? f : "/etc/rudolf/build-kind", &k, NULL, NULL); on = k && !strncmp(k, "mobile", 6); g_free(k); }
+	return on;
+}
+static int pn_swipe(int dx, int dy, long ms, int w)
+{
+	double far = MAX(48, w * 0.15);
+	if (ms < 0 || ms > 900 || abs(dx) < far || abs(dx) < abs(dy) * 1.5) return 0;
+	return dx < 0 ? 1 : -1;
+}
+static void pn_go(int d) { int n = WSC + d; if (d && n >= 1 && n <= NWS) ws_go(n); }
+static struct { Client *c; int px, py; Time t; } PN;
+static void wm_maximise_now(Client *c, int on);
+static void pn_client(Client *c) { if (pn_on() && !c->trans && !c->full) wm_maximise_now(c, 1); }
+/* a press on a maximised window's title bar (not on its buttons): followed to its release */
+static int pn_press(Client *c, XButtonEvent *e)
+{
+	if (!pn_on() || !c->max || c->full || e->y >= TH) return 0;
+	PN.c = c; PN.px = e->x_root; PN.py = e->y_root; PN.t = e->time;
+	XGrabPointer(DPY, c->frame, False, ButtonReleaseMask | PointerMotionMask, GrabModeAsync, GrabModeAsync, None, None, e->time);
+	return 1;
+}
+static int pn_release(XButtonEvent *e)
+{
+	if (!PN.c) return 0;
+	XUngrabPointer(DPY, e->time); PN.c = NULL;
+	pn_go(pn_swipe(e->x_root - PN.px, e->y_root - PN.py, (long)(e->time - PN.t), SW)); return 1;
+}
+/* on the desktop: seen before its own handlers (the icons, the selection box), which go on as before */
+static gboolean pn_desk_event(GtkWidget *w, GdkEvent *e, gpointer d)
+{
+	(void)w; (void)d; static double px, py; static guint32 pt; static int down;
+	if (e->type == GDK_BUTTON_PRESS && e->button.button == 1) { px = e->button.x_root; py = e->button.y_root; pt = e->button.time; down = 1; }
+	else if (e->type == GDK_BUTTON_RELEASE && e->button.button == 1 && down) { down = 0; pn_go(pn_swipe((int)(e->button.x_root - px), (int)(e->button.y_root - py), (long)(e->button.time - pt), SW)); }
+	return FALSE;
+}
+static void pn_init(GtkWidget *desk) { if (pn_on()) g_signal_connect(desk, "event", G_CALLBACK(pn_desk_event), NULL); }
 static void wm_minimise(Client *c)
 {
 	desk_shadows();
@@ -1410,6 +1456,7 @@ static void wm_manage(Window w, AppWin *own)
 	   a plain background of the app's colour until it is ready (appwin_wait_late) */
 	if (own && !own->sized && !own->modal && !own->hidden && strcmp(own->k, "do-saver")) { c->wait = 1; c->hidden = 1; }
 	CLIENTS = g_list_append(CLIENTS, c);
+	pn_client(c);   /* (1.6.1 Part 2: the mobile build's panels) */
 	XMapWindow(DPY, w); frame_shape(c); rz_place(c); if (!c->hidden) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); desk_shadows();
 	grab_clicks(c, 1); tell_geom(c);
 	/* asked for full screen before it was shown */
@@ -1480,6 +1527,7 @@ static void frame_press(Client *c, XButtonEvent *e)
 	if (e->button != 1) return;
 	int b = btn_at(c, e->x, e->y);
 	if (b) { c->press = b; frame_draw(c); return; }
+	if (pn_press(c, e)) return;   /* (1.6.1 Part 2: a swipe on the title bar, the mobile build's) */
 	if (c->full) return;
 	int ed = c->max ? 0 : edge_at(c, e->x, e->y);
 	if (!ed && e->y < TH) { if (e->time - c->last_click < 400) { c->last_click = 0; wm_maximise(c, !c->max); return; } c->last_click = e->time; if (c->max) return; }
@@ -1502,6 +1550,7 @@ static void drag_motion(int rx, int ry)
 }
 static void frame_release(Client *c, XButtonEvent *e)
 {
+	if (pn_release(e)) return;   /* (1.6.1 Part 2) */
 	if (DRAG.c) { XUngrabPointer(DPY, e->time); if (DRAG.c == c) tell_geom(c); DRAG.c = NULL; desk_shadows(); state_write(); return; }
 	int b = c->press; c->press = 0; frame_draw(c);
 	if (b && b == btn_at(c, e->x, e->y)) { if (b == 1) wm_minimise(c); else if (b == 2) wm_maximise(c, !c->max); else wm_close(c); }
@@ -7448,6 +7497,7 @@ int main(int argc, char **argv)
 	g_signal_connect(DESKAREA, "motion-notify-event", G_CALLBACK(desk_motion), NULL); g_signal_connect(DESKAREA, "key-press-event", G_CALLBACK(desk_key), NULL);
 	g_signal_connect(DESK, "delete-event", G_CALLBACK(gtk_true), NULL);
 	xd_init(DESKAREA);   /* (files dropped from outside: 1.6.1 Part 13) */
+	pn_init(DESKAREA);   /* (1.6.1 Part 2: the mobile build's panels, swiped) */
 	/* (the widgets' note: typing, item 2) */
 	gtk_widget_add_events(DESKAREA, GDK_BUTTON_MOTION_MASK | GDK_FOCUS_CHANGE_MASK); NIM = gtk_im_context_simple_new(); g_signal_connect(NIM, "commit", G_CALLBACK(note_commit), NULL);
 	g_signal_connect(DESKAREA, "realize", G_CALLBACK(im_realize), NIM); g_signal_connect(DESK, "focus-out-event", G_CALLBACK(on_desk_out), NULL);

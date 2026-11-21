@@ -466,6 +466,13 @@ static const char LSJS[] =
 	"window.__rudolfLsQuiet=function(k,v){si.call(S,k,v)};"
 	"addEventListener('pagehide',function(){if(t){clearTimeout(t);push()}})})();";
 
+/* 1.6.1 (docs/plan-1.6.1.md Part 2): the mobile build's flag. The system layer of the mobile build says what it is in
+   /etc/rudolf/build-kind ("mobile"; no build writes it yet: 2.0's phone build will); the page's panels (panels61.js)
+   and the native shell's (pn_on) are on only there, and the desktop builds stay as they are. */
+#ifndef BUILD_KIND
+#define BUILD_KIND "/etc/rudolf/build-kind"
+#endif
+static int mobile_build(void) { char *k = slurp(BUILD_KIND, NULL); int m = k && !strncmp(k, "mobile", 6); free(k); return m; }
 static void serve_index(struct req *r, const char *root)
 {
 	char p[512];
@@ -490,6 +497,7 @@ static void serve_index(struct req *r, const char *root)
 		"addEventListener('error',function(e){s('error: '+e.message+' @'+(e.filename||'').split('/').pop()+':'+e.lineno+':'+e.colno)});"
 		"addEventListener('unhandledrejection',function(e){var r=e.reason;s('promise: '+(r&&r.stack||r))});window.__rdlog=s})();%s</script>",
 		token, boot_mode, media_mode, live, recovery, eng, LSJS);
+	if (mobile_build()) q += sprintf(q, "<script>window.RUDOLFD.mobile=1;</script>");   /* (1.6.1 Part 2: the mobile build's panels) */
 	size_t il = q - inj;
 	free(ls);
 	char *h = strstr(html, "<head>");
