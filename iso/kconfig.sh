@@ -87,6 +87,9 @@ m VIDEO_DEV USB_VIDEO_CLASS
 y USB_VIDEO_CLASS_INPUT_EVDEV
 # power, ACPI
 y ACPI ACPI_BATTERY ACPI_AC ACPI_BUTTON ACPI_VIDEO ACPI_FAN ACPI_THERMAL BACKLIGHT_CLASS_DEVICE SUSPEND CPU_FREQ X86_INTEL_PSTATE X86_AMD_PSTATE RTC_DRV_CMOS HWMON SENSORS_CORETEMP SENSORS_K10TEMP
+# 1.6.1 (plan-1.6.1.md Part 12): ACPI's Firmware Performance Data Table, so the start-up's steps can say how long the
+# computer's firmware and the boot loader took before the kernel (rudolfd-boottime.inc); read-only records in sysfs
+y ACPI_FPDT
 # 1.6.0 (the owner's Vivobook Go, Ryzen 3 7320U): sleep on AMD laptops is the firmware's modern standby (s2idle, mem_sleep's
 # only choice there), which needs AMD's power management controller driver to reach the low-power state; without it amdgpu warned
 # "Power consumption will be higher as the kernel has not been compiled with CONFIG_AMD_PMC" and treated sleep as the old S3, and

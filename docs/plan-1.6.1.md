@@ -525,6 +525,18 @@ No setting ended a process (no OOM kills, the memory guard ended nothing) and ev
 AppImages); it is added there. Not on the list, noted: `lsm=` names landlock but SECURITY_LANDLOCK is not built; the
 encrypted folders use fscrypt, not dm-crypt (the list checks fscrypt and its ciphers).
 
+- **The time before the kernel, on real computers (2026-11-20, the owner: "add a firmware/kernel/system breakdown ... if it
+  will help to optimize the start-up time").** The steps above start at the kernel's clock; QEMU's "before the kernel"
+  came from the test's own counter. Now rudolfd (rudolfd-boottime.inc), at its start, as root, adds one line to the
+  steps: the time from power-on to the kernel's clock, from the processor's time-stamp counter (a constant, non-stop TSC,
+  its rate from the kernel's log), split into the firmware's part and the boot loader's from ACPI's FPDT (the kernel's
+  `ACPI_FPDT`, now on), with a handover's first stage (rudolf.t0) taken off. Last starts shows it first and ends with
+  the whole from power-on; the health log's "ready" line adds "N s from power-on" (Standard and Native). Nothing is
+  shown when neither source gives a believable number (0 to 300 s). Host test boottime61_t.sh (14/14); the check
+  workflow boottime-check.yml. What it tells: whether the Vivobook's 27-37 s is mostly firmware (only the firmware's
+  own settings can help: Fast Boot, fewer boot entries), the handover (the "skip the handover" idea below), Xorg and
+  amdgpu, or the desktop.
+
 #### The owner's checklist (the Vivobook; the Asus desktop where it says)
 1. **Start-up** (each kernel: 1.6.0's, then this one): restart 3 times; after each, Settings › System health › Last starts
    › Where the time went: write down "the desktop answered" and the first line (t0, the boot files' part before the
