@@ -9893,7 +9893,28 @@ async function emuOpenReal(path){const sys=emuSysOf(path),name=path.split('/').p
 async function emuOpenDrive(p){const v=node(p);if(typeof v!='string')return;const sys=emuSysOf(p.at(-1));
  const u=v.startsWith('data:')?new Uint8Array(await (await fetch(v)).arrayBuffer()):Uint8Array.from(v,c=>c.charCodeAt(0)&255);
  return emuPlay({sys,name:p.at(-1),bytes:u,drive:p})}
-function emuPickFile(){const i=document.createElement('input');i.type='file';i.accept='.sfc,.smc,.nds,.gb,.gbc,.gba,.md,.gen,.smd,.bin';i.onchange=async()=>{const f=i.files[0];if(!f)return;
+/* 1.6.1 (the owner, 2026-11-20: a 693 MB ZIP was refused, "larger than 512 MB; copy it in Files instead"): discs, ZIPs and
+   large files chosen with "Open a file…" are not read into the page: the picker hands over their place on the disk
+   (picker26.js data-rf-real), and Emu adds them to the game library (rudolfd games/import: a ZIP is unpacked, a .gdi or
+   .cue with its tracks) and plays one that was added; a cartridge in a usual place plays from where it is */
+const EMU_REAL_RE='\\.(zip|chd|cdi|gdi|cue|pbp|z64|n64|v64|7z)$';
+async function emuOpenPaths(paths){const p=paths[0],name=p.split('/').pop(),guest=USER&&USER.r=='guest';
+ if(paths.every(x=>x.startsWith(EMU_GAMES+'/')))return emuOpenReal(p);
+ if(/\.7z$/i.test(name)){notify('Emu',name+' is a 7-Zip file, which Emu cannot unpack. Unpack it first (or use a ZIP), then add the game.',{kind:'error'});return}
+ if(paths.length==1&&/\.(gb|gbc|gba|sfc|smc|nds|md|gen|smd)$/i.test(name))return emuOpenReal(p);
+ if(guest){notify('Emu','Discs and ZIP files play from the game library, which the Guest account cannot add to. Sign in to your own account.',{kind:'error'});return}
+ if(!paths.every(x=>/^\/(home\/rudolf\/(Downloads|Documents)|media)\//.test(x))){notify('Emu','Games are added from Downloads, Documents or a USB drive. Copy '+name+' to Downloads first.',{kind:'error'});return}
+ if(!await emuAsk('Add to the game library?',`<p>${lxEsc(paths.length>1?paths.length+' files':name)} ${paths.length>1?'are':'is'} added to Emu's game library${/\.zip$/i.test(name)?' (the ZIP is unpacked)':''}, then ${paths.length>1?'they play':'it plays'} from there. The original stays where it is.</p>`,'Add'))return;
+ try{await lxApi('games/import',paths.join('\n'))}catch(e){notify('Emu',e.message,{kind:'error'});return}
+ const W=win('Adding to the game library','🦤',460,190);W.body.innerHTML=`<p class='msg eanote'>Starting…</p><div class='dsbar'><i style='width:3%'></i></div><pre class='msg eares' style='white-space:pre-wrap;max-height:70px;overflow:auto'></pre>`;
+ const note=W.body.querySelector('.eanote'),bar=W.body.querySelector('.dsbar i'),res=[],added=[];
+ const j=await lxJobWait(l=>{let m;if((m=/^progress (\d+) (\d+) (.*)/.exec(l))){note.textContent=`Copying ${m[3]} (${m[1]} of ${m[2]})…`;bar.style.width=Math.max(3,m[1]/m[2]*90)+'%'}
+  else if((m=/^added (.*)/.exec(l))){added.push(m[1]);res.push('✓ '+m[1])}else if(/^skip /.test(l))res.push('– '+l.slice(5))});
+ bar.style.width='100%';W.body.querySelector('.eares').textContent=res.join('\n');const last=(j.log||'').trim().split('\n').pop()||'';
+ note.textContent=/^done /.test(last)?(added.length?'Added: '+last.slice(5)+'.':'Nothing was added: '+(res[0]||last.slice(5))):'Adding stopped: '+last;
+ try{EMU_LIBW&&wins.includes(EMU_LIBW)&&EMU_LIBW.refresh()}catch(e){}
+ if(added.length==1){const a=added[0],full=EMU_GAMES+'/'+a;setTimeout(()=>{try{W.close()}catch(e){}emuOpenReal(full)},900)}}
+function emuPickFile(){const i=document.createElement('input');i.type='file';i.accept='.sfc,.smc,.nds,.gb,.gbc,.gba,.md,.gen,.smd,.bin,.zip,.chd,.cdi,.gdi,.cue,.pbp,.z64,.n64,.v64';if(RD){i.dataset.rfReal=EMU_REAL_RE;i.addEventListener('rfreal',e=>emuOpenPaths(e.detail.paths))}i.onchange=async()=>{const f=i.files[0];if(!f)return;if(/\.(zip|7z)$/i.test(f.name)){notify('Emu','Unpack '+f.name+' first, then open the game inside it.',{kind:'error'});return}
  if(EMU_GB_RE.test(f.name)){const P=typeof gbPlayer=='function'&&gbPlayer();if(P&&P.loadAny)P.loadAny(new Uint8Array(await f.arrayBuffer()),f.name);return}
  const sys=emuSysOf(f.name);if(emuNat(sys)||EMU_SYS[sys].lr&&EMU_SYS[sys].lr.disc){notify('Emu',EMU_SYS[sys].name+' games play from the game library: add them with “Add games…”.',{kind:'error'});return}
  emuPlay({sys,name:f.name,bytes:new Uint8Array(await f.arrayBuffer())})};i.click()}
@@ -10491,6 +10512,12 @@ function rfPick(input) {
     if (done) return;
     if (!ok) { done = true; o.remove(); input.dispatchEvent(new Event('cancel', {bubbles: false})); return }
     const paths = [...sel]; if (!paths.length) return;
+    /* 1.6.1: an input that takes some files by their place on the disk (data-rf-real: a pattern of names; Emu's discs and
+       ZIPs, which are too large to read into the page) gets their paths in an "rfreal" event instead, as does any file
+       larger than RF_MAX it chose; nothing is read */
+    if (input.dataset.rfReal) { let re = null; try { re = new RegExp(input.dataset.rfReal, 'i') } catch (e) {}
+      if (re && paths.some(p => re.test(p) || ((items.find(i => cur + '/' + i.name == p) || {}).size > RF_MAX))) {
+        done = true; RF_LAST = cur; o.remove(); input.dispatchEvent(new CustomEvent('rfreal', {detail: {paths}})); return } }
     const big = paths.map(p => items.find(i => cur + '/' + i.name == p)).filter(i => i && i.size > RF_MAX);
     if (big.length) { q('.rfmsg').textContent = big[0].name + ' is larger than ' + rfSize(RF_MAX) + '; copy it in Files instead.'; return }
     done = true; q('.rfok').disabled = true; q('.rfmsg').textContent = 'Reading…';
