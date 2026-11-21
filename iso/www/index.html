@@ -17892,7 +17892,20 @@ const OWE_DEF = {std: false, native: true, lite: true};
 /* the desktops where "on" is built (the rest show the choice, kept for when they have it) */
 const OWE_BUILT = {native: true, lite: true, std: true};
 async function oweGet() { try { return await rd('desktop/owenc?acct=' + encodeURIComponent(USER.id)) } catch (e) { return {ok: false, error: e.message} } }
+/* 1.6.1 (docs/plan-1.6.1.md Part 20): what keeps the shared browser profile at this start (rudolfd's webkey: tpm, none, failed,
+   off), for "Off" on the desktops whose Oracle uses it (Standard; Native's Oracle in Rudolf's Chromium) */
+async function oweKey() { try { return await rd('webkey') } catch (e) { return null } }
+function oweOffText(eng, wk) {
+  const where = 'Off: Oracle\'s websites are kept in this computer\'s shared browser ' + (eng == 'std' ? 'profile' : 'data');
+  const st = wk && wk.state;
+  if (eng == 'lite' || !st || st == 'off') return where + ', and they are not encrypted: someone with this computer\'s drive could read them.';
+  if (st == 'tpm') return where + ', encrypted with a key kept in this computer\'s security chip (TPM) and tied to its Secure Boot: this computer\'s drive alone cannot read them, nor can another system started on it. Anyone who can sign in on this computer can still use them.'
+    + (wk.why && !/^the first time/.test(wk.why) ? ' A new key was made at this start (' + wk.why.replace(/ \(.*$/, '') + '): what was kept under the previous one could not be read, so websites asked you to sign in again.' : '');
+  if (st == 'none') return where + ', with the browser\'s built-in key only: this computer has no TPM security chip (or it is turned off in its firmware\'s settings), so someone with this computer\'s drive could read them.';
+  return where + ', with the browser\'s built-in key at this start: the TPM security chip did not give its key' + (wk.why ? ' (' + wk.why + ')' : '') + ', so someone with this computer\'s drive could read what is kept now.';
+}
 function oweOn(st) { const eng = OWE_ENG(); return st && st.on != null ? !!st.on : OWE_DEF[eng] }
+let OWE_WK = null;
 function oweRow(c) {
   if (typeof USER == 'undefined' || !USER || USER.r == 'guest' || !USER.id) return;
   const box = document.createElement('div'); box.className = 'owebox';
@@ -17904,12 +17917,11 @@ function oweRow(c) {
       m.textContent = USER.disk ? 'Your files are not open on this computer\'s disk right now, so this cannot be changed.' : 'Only for accounts whose files are kept on this computer\'s disk.'; return }
     ck.disabled = false; ck.checked = on;
     m.textContent = on ? 'On: Oracle\'s websites (your sign-ins, site data, cache and saved site passwords) are encrypted with your account\'s key and locked when you sign out.' + (eng == 'std' ? ' On this desktop Oracle then opens in a window of its own, over the desktop, and uses a little more memory while it is open.' : '')
-      : eng == 'std' ? 'Off: Oracle\'s websites are kept in this computer\'s shared browser profile, and they are not encrypted: someone with this computer\'s drive could read them.'
-      : 'Off: Oracle\'s websites are kept in this computer\'s shared browser data, and they are not encrypted: someone with this computer\'s drive could read them.';
+      : oweOffText(eng, OWE_WK);
     n.textContent = (!OWE_BUILT[eng] ? 'On this desktop, Oracle keeps its websites the shared way until a later update; your choice is kept for then. ' : '')
       + 'A change applies the next time Oracle opens, and websites ask you to sign in again. It protects your websites while you are signed out; anyone using your account while it is signed in can still use them.';
   };
-  oweGet().then(st => say(oweOn(st), st));
+  Promise.all([oweGet(), oweKey()]).then(([st, wk]) => { OWE_WK = wk; say(oweOn(st), st) });
   ck.onchange = async () => {
     const want = ck.checked; ck.disabled = true;
     let body = {acct: USER.id, on: want};

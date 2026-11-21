@@ -44,3 +44,8 @@ rudolf-native never reads that copy itself, and never sees a password hash or a 
 | `GET desktop/dropped?path=PATH` | (1.6.1, plan-1.6.1 Part 13) A file dropped from a Linux app onto the native desktop, for the page that keeps it (oneapp59.js `oaXdrop`): the file itself (at most 64 MB), read by the signed-in account's own Linux user, every step of the path opened without following a link. Only the account's own folder (under /home/acctUID, /persist/accounts/ID or Debian's /home/rudolf) and the drives (/media); Flatpak's document portal (/run/user/UID/doc/…, /run/flatpak/doc/… in a sandbox) is mapped to the real file it names (its `user.document-portal.host-path`), which must be one of those. Else `{"ok":false,"error":WHY}`: `nobody` (409; also the guest), `path` (400: not absolute, `.` or `..`, or too long to be whole), `outside`, `link`, `folder`, `unreadable` (403), `gone` (404), `too-large` (413). rudolfd-drop.inc. |
 
 `desktop/engine` and `desktop/priority` are older (1.5.7: Settings' desktop engine; Task Manager's priority).
+
+## The website data's key (1.6.1, docs/plan-1.6.1.md Part 20; rudolfd-webkey.inc)
+| Request | What it does |
+|---|---|
+| `GET webkey` | What keeps the shared browser profile's website data at this start (written by the session's webkey_start): `{"state","why","t"}`, state `tpm` (a key sealed in this computer's TPM; `why`: why it is a new one, if it is), `none` (no TPM 2.0: Chromium's built-in key), `failed` (the TPM would not give it at this start; `why`), `off` (not started: an older session, or Lite). Never the key. docs/website-data-key.md. |

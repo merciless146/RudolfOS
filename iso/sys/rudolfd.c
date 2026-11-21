@@ -4266,6 +4266,7 @@ static void api_vault(struct req *r, const char *what, int post)
 static int au_session_start(const char *id);   /* rudolfd-users.inc (1.5.9, plan 15.3) */
 static void au_session_stop(const char *id);
 static unsigned au_uid(const char *id);
+#include "rudolfd-webkey.inc"    /* 1.6.1: the website data's key in the TPM (plan-1.6.1 Part 20) */
 #include "rudolfd-home.inc"
 #include "rudolfd-desktop.inc"   /* 1.5.9: the native desktop's API (plan Part 12) */
 #include "rudolfd-fido.inc"      /* 1.6.1: security keys that unlock the files (plan-1.6.1 Part 18) */
@@ -4943,6 +4944,7 @@ static void api(struct req *r)
 	if (!strncmp(p, "portal/", 7)) { api_portal(r, p + 7); return; }
 	if (!strncmp(p, "web/", 4)) { api_web(r, p + 4); return; }
 	if (!strncmp(p, "torwin/", 7)) { api_torwin(r, p + 7, !strcmp(r->method, "POST")); return; }
+	if (!strcmp(p, "webkey")) { api_webkey(r); return; }   /* (1.6.1 Part 20: rudolfd-webkey.inc) */
 	if (!strncmp(p, "orawin/", 7)) { api_orawin(r, p + 7, !strcmp(r->method, "POST")); return; }   /* (1.6.0 Part 22: Standard's Oracle encrypted) */   /* (1.5.9, 16.2: Oracle's Tor windows on Standard) */
 	if (!strncmp(p, "sys/", 4)) {
 		const char *w = p + 4;
