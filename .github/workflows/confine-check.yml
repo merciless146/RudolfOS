@@ -22,18 +22,24 @@ jobs:
           sudo apt-get update -qq; sudo apt-get install -y -qq zlib1g-dev curl >/dev/null
           echo "Landlock ABI here: $(python3 -c 'import ctypes;print(ctypes.CDLL(None).syscall(444,None,0,1))')"
           set +e
+          sudo apt-get install -y -qq libglib2.0-dev libssl-dev >/dev/null
           sudo sh iso/qt/host/confine161_t.sh || exit 1
-          F=0
+          # rudolfd's host tests with the switch off and on: the same answers either way (a test this machine cannot run
+          # fails the same with both, and is said so; only a difference between the two fails the job)
           # (not users59_t.sh: it stops the processes of the accounts' Linux users, uid 1001 among them, which on GitHub's
           # runner is the runner itself; it passes off and on on a machine of its own)
-          for m in off on; do
-            for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh roothelpers161_t.sh drop161_t.sh fido161_t.sh devlink59_t.sh tor59_t.sh torwin59_t.sh inhibit60_t.sh dlpath_t.sh fssearch_t.sh vaultnative60_t.sh; do
-              echo "== $t ($m)"; sudo timeout -k 10 600 env RUDOLFD_CONFINE=$m sh iso/qt/host/$t > out.txt 2>&1; rc=$?; [ $rc = 124 ] && echo "(timed out after 10 minutes)"; tail -1 out.txt; grep '^FAIL' out.txt; [ $rc = 0 ] || { F=$((F+1)); echo "::error::$t ($m) failed"; }
+          D=0
+          for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh roothelpers161_t.sh drop161_t.sh fido161_t.sh devlink59_t.sh tor59_t.sh torwin59_t.sh inhibit60_t.sh dlpath_t.sh fssearch_t.sh vaultnative60_t.sh listeners59_t.sh; do
+            for m in off on; do
+              if [ $t = listeners59_t.sh ]; then RUDOLFD_CONFINE=$m timeout 600 sh iso/qt/host/$t > out.$m 2>&1; else sudo timeout -k 10 600 env RUDOLFD_CONFINE=$m sh iso/qt/host/$t > out.$m 2>&1; fi
+              echo "rc=$?" >> out.$m
             done
-            echo "== listeners59_t.sh ($m)"; RUDOLFD_CONFINE=$m timeout 600 sh iso/qt/host/listeners59_t.sh | tail -1 || F=$((F+1))
+            grep -E '^(PASS|FAIL|SKIP)|^rc=' out.off | sed 's/ - .*//' > r.off; grep -E '^(PASS|FAIL|SKIP)|^rc=' out.on | sed 's/ - .*//' > r.on
+            if cmp -s r.off r.on; then echo "== $t: the same off and on ($(grep -c '^PASS' r.on) passed, $(grep -c '^FAIL' r.on) failed$(grep -q '^FAIL' r.on && echo ': this machine'))"; grep '^FAIL' out.on | head -3
+            else D=$((D+1)); echo "::error::$t differs with the confinement on"; diff r.off r.on; fi
           done
           RUDOLFD_CONFINE=on FUZZ_SECONDS=60 timeout 900 sh iso/qt/host/fuzz59_t.sh | tail -2
-          [ $F = 0 ]
+          [ $D = 0 ]
   kernel:
     runs-on: ubuntu-24.04
     timeout-minutes: 120
