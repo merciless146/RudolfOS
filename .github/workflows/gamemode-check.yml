@@ -1,0 +1,90 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 19): game mode. Checks only, nothing published.
+#   host:   /usr/lib/rudolf/gamemode (stand-in /proc, cgroups and power: sources said again, ended, expired, crashes, the
+#           state before and after, GameMode's requests, the setting, the watcher), GameMode's D-Bus API in rudolf-portal
+#           (a private session bus, as a normal user), the power settings (game mode on amd_pstate and intel_pstate), rudolfd
+#   page:   game mode in the page (gamemode61.js), and 1.5.x's game mode and its memory and background checks as before
+#   native: rudolf-native under Xvfb with a stand-in full-screen game (fixtures/fsgame.c): said, ended, crashed
+#   qemu:   the newest beta in QEMU (iso/qt/sb/t161g_t.py): the cpu controller and weight on a real kernel, the power
+#           settings, the watcher after a stand-in game crashes
+name: Game mode check
+on:
+  workflow_dispatch:
+  push:
+    branches: ['game-mode*']
+    paths: ['iso/sys/root/usr/lib/rudolf/gamemode', 'iso/sys/root/usr/lib/rudolf/power', 'iso/sys/rudolfd-game.inc', 'iso/sys/rudolf-portal.c', 'iso/sys/rudolf-native.c',
+      'desktop/gamemode61.js', 'desktop/game51.js', 'desktop/gamesleep59.js', 'desktop/power31.js', 'iso/qt/host/gamemode161*', 'iso/qt/host/gamemodeportal161_t.sh',
+      'iso/qt/host/fixtures/gmclient.c', 'iso/qt/host/fixtures/fsgame.c', 'iso/qt/shell2/gamemode61_t.js', 'iso/qt/sb/t161g_t.py', '.github/workflows/gamemode-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libglib2.0-dev libssl-dev zlib1g-dev dbus >/dev/null
+      - name: gamemode (stand-ins)
+        run: sh iso/qt/host/gamemode161_t.sh
+      - name: GameMode's D-Bus API (rudolf-portal, as a normal user)
+        run: sh iso/qt/host/gamemodeportal161_t.sh
+      - name: The power settings
+        run: sh iso/qt/host/power_t.sh
+      - name: rudolfd and rudolf-portal build (the release's flags)
+        run: |
+          . iso/systools/hardflags.sh
+          gcc -O2 $HARD -Wall -o /tmp/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic; python3 iso/systools/hardcheck.py /tmp/rudolfd
+          gcc -O2 $HARD -o /tmp/rudolf-portal iso/sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
+      - name: The portal's other parts as before
+        run: sh iso/qt/host/inhibit60_t.sh
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: Game mode in the page
+        run: node iso/qt/shell2/gamemode61_t.js
+      - name: Game mode as before (notifications, memory, background work, dynamic backgrounds)
+        run: |
+          node iso/qt/shell2/game51_t.js
+          node iso/qt/shell2/gamesleep59_t.js
+          node iso/qt/shell2/ovpause58_t.js
+          node iso/qt/shell2/dynps59_t.js
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev xvfb xdotool imagemagick >/dev/null
+      - name: The native desktop with a stand-in full-screen game
+        run: sh iso/qt/host/gamemode161_native_t.sh
+  qemu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs squashfs-tools python3-cryptography libssl-dev bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The newest beta
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs' -p boot.iso
+          git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+      - name: t161g (game mode on the real release)
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU FIX=1 QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t161g_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: t161g, retention-days: 7, path: "run/t161g.txt\nrun/t161g*/qemu.log\nrun/t161g*/serial.txt"}

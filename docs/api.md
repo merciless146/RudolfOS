@@ -72,3 +72,25 @@ folder's (no link on the way).
 
 While an extraction runs, or its result has not been taken (at most 15 minutes), `GET dl/home?acct=` for that account says
 `"unzip":true`, and the page takes no file of that folder in as a download of its own (dl27.js `dlAdopt`, in every page).
+
+## Game mode (1.6.1; rudolfd-game.inc, /usr/lib/rudolf/gamemode)
+Root keeps game mode (docs/plan-1.6.1.md Part 19): the processor's energy preference raised (the power settings' `game=1`)
+while any source is on, and the desktop's group slowed (`cpu.weight` 20) behind a Linux game; all put back when none is.
+
+| Request | What it does |
+|---|---|
+| `POST game/on?src=page\|native&kind=page\|linux\|oracle[&pid=N]` | A full screen the desktop sees (Standard's page; the native desktop's window manager, with the window's `_NET_WM_PID`), said again every 2 s while it lasts: it counts 6 s at most, and not once its process (`pid`) is gone. The answer is `game/status`'s. |
+| `POST game/off?src=page\|native` | That source's full screen is over. |
+| `GET game/status` | `{"ok","enabled","on","throttled","sources":[{"src","kind","pid"}],"games":[{"pid","name"}],"cpu"}`: `games` asked through GameMode's D-Bus API (rudolf-portal's request files in /run/rudolf/game-req), `throttled` the desktop slowed. |
+| `POST game/set?enabled=0\|1` | Settings › System health › Memory › Game mode (kept in /persist/etc/gamemode). |
+
+## Graphics driver (1.6.1; rudolfd-gpu.inc, /usr/lib/rudolf/gpudriver)
+Settings › Display › Graphics driver (docs/plan-1.6.1.md Part 19): the open driver (nouveau, NVK) or NVIDIA's, from the system
+extension `nvidia-driver`.
+
+| Request | What it does |
+|---|---|
+| `GET gpu/driver` | `{"ok","card":"10de:ID"\|null,"name","offered","why","extension":{"installed","version","state"},"choice":"open"\|"nvidia","inUse","version","fellBack":{"at","why"}}`: `fellBack` while the note of a switch back by itself has not been shown. |
+| `POST gpu/driver/set?to=open\|nvidia` | The choice for the next start; the body `{"n":ADMIN,"p":PASSWORD}` (rudolfd checks it). `nvidia` is refused (`{"ok":false,"error"}`) for a card that is not offered. |
+| `POST gpu/driver/ack` | The switch back was shown (the desktop's notification): its note is forgotten. |
+| `GET gpu/driver/licence` | NVIDIA's licence (text), from the installed extension; 404 without it. |
