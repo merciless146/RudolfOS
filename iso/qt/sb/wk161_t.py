@@ -52,7 +52,7 @@ def make_drive(path):
 make_drive(DRV)
 # the fix disk: this tree's rudolf-webkey and session, the test's tool, two pages that set and show a cookie
 F = f'{W}/fix'; os.makedirs(f'{F}/www')
-for n in ('rudolf-webkey', 'tpmext'): shutil.copy(os.path.join(FIX, n), f'{F}/{n}')
+for n in ('rudolf-webkey', 'tpmext', 'rudolfd'): shutil.copy(os.path.join(FIX, n), f'{F}/{n}')
 shutil.copy(os.path.join(ISO, 'sys', 'root', 'usr', 'lib', 'rudolf', 'session'), f'{F}/session')
 open(f'{F}/www/set.html', 'w').write("<html><script>document.cookie='sid='+location.hash.slice(1)+'; max-age=86400; path=/';document.write('set')</script></html>")
 open(f'{F}/www/show.html', 'w').write("<html><script>document.write('cookie=['+document.cookie+']')</script></html>")
@@ -113,6 +113,12 @@ cp /tmp/fx/rudolf-webkey /tmp/fx/tpmext $X/; chmod 755 $X/rudolf-webkey $X/tpmex
 sed -n '/^PWSTORE=basic$/,/^}$/p' /tmp/fx/session | sed "s#/usr/bin/rudolf-webkey#$X/rudolf-webkey#g" > $X/wk.sh
 grep -c webkey_start $X/wk.sh
 pgrep -f "httpd -p 8625" >/dev/null || busybox httpd -p 127.0.0.1:8625 -h $X/www
+# this tree's rudolfd (its webkey request), started again through rudolf-rootd as fix161.sh does
+if ! mountpoint -q /usr/bin/rudolfd; then cp /tmp/fx/rudolfd $X/rudolfd; chmod 755 $X/rudolfd; mount --bind $X/rudolfd /usr/bin/rudolfd
+  R=$(pidof rudolf-rootd); [ -n "$R" ] && kill $R; P=$(pidof rudolfd | tr ' ' '\n' | sort -n | head -1); [ -n "$P" ] && kill $P 2>/dev/null
+  for i in $(seq 1 20); do busybox wget -q -O /dev/null http://127.0.0.1:8080/favicon.png 2>/dev/null || break; sleep 0.5; done
+  (setsid /usr/bin/rudolf-rootd /usr/bin/rudolfd >> /run/rudolf/rudolfd.log 2>&1 < /dev/null &)
+  for i in $(seq 1 60); do busybox wget -q -O /dev/null http://127.0.0.1:8080/favicon.png 2>/dev/null && break; sleep 1; done; fi
 '''
 START = r'''
 set -a; . /run/rudolf/session.env; set +a; PROFILE=/home/rudolf/.wk161-prof; mkdir -p $PROFILE; chown rudolf:rudolf $PROFILE
@@ -148,9 +154,9 @@ try:
         ok("4. the release's own Chromium, as the desktop's user, with the key store: the cookie kept as v11", 'v10 0 v11 1' in o, o)
         o = run(g, chrome('kwallet6', 'show.html'), 200)
         ok('...and read back', 'cookie=[sid=kept-under-the-tpm]' in o, o)
-        o = run(g, "su -s /bin/sh nobody -c 'DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus dbus-send --session --print-reply --dest=org.kde.kwalletd6 /modules/kwalletd6 org.kde.KWallet.isEnabled' 2>&1 | tail -2; "
+        o = run(g, "su -s /bin/sh nobody -c 'ls /run/user/1000/ >/dev/null 2>&1 && echo REACHED || echo REFUSED; [ -w /run/user/1000/bus ] && echo BUS-OPEN'; "
                    "ls -ld /run/user/1000 /run/user/1000/bus", 30)
-        ok("5. another user (an account's own Linux user) cannot reach the key store: the desktop's bus is its user's alone", ('boolean true' not in o) and re.search(r'drwx------ .* /run/user/1000', o), o)
+        ok("5. another user (an account's own Linux user) cannot reach the key store: the desktop's bus is in its user's folder alone (0700)", 'REFUSED' in o and 'BUS-OPEN' not in o and re.search(r'drwx------ .*rudolf.* /run/user/1000\b', o), o)
         stop(vm, g)
         # a restart: the same key
         vm, g, up = boot('b', VARS0)

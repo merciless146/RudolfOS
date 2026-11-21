@@ -80,11 +80,14 @@ jobs:
         run: |
           . iso/systools/hardflags.sh; mkdir -p wkfix
           gcc -O2 $HARD -o wkfix/rudolf-webkey iso/sys/rudolf-webkey.c $(pkg-config --cflags --libs gio-2.0) -lcrypto -ldl
+          gcc -O2 $HARD -o wkfix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
           gcc -O2 -static -o wkfix/tpmext iso/qt/sb/tpmext.c; ls -la wkfix
       - name: wk161
         run: |
           mkdir -p run && cd run
           sudo -E env PATH=$PATH SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} KERNEL=$PWD/../kout WK_FIX=$PWD/../wkfix python3 ../iso/qt/sb/wk161_t.py ../rel
+      - if: always()
+        run: sudo chmod -R a+rX run
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: wk161, retention-days: 7, path: "run/wk161.txt\nrun/wk161*/qemu.log\nrun/w161wk/swtpm.log"}
