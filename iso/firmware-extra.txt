@@ -1,4 +1,5 @@
 # firmware in the modules layer (iso/systools/fwextra.py); made by: fwextra.py list LINUX_FIRMWARE
+R 0af0ecfd29f3b8cacbfc9414a60543e7a82a28e9
 F ded779f55b3fc5bb8576b2d2b6c724581c72160b3c2f88e33b42dc6c2c4e70b0 rtl_nic/rtl8168d-1.fw
 F 35dd68c01a7b24f6e554bd2c0b9cf57cf962a826651f66e75ffcea37cf2c3bb9 rtl_nic/rtl8168d-2.fw
 F 03f7ee92f1a7c1723ac7a7447ae006930c9bb07e1d77c3d12bc70cc0d855bb00 rtl_nic/rtl8105e-1.fw
