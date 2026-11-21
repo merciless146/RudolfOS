@@ -254,7 +254,7 @@ function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;try{sfx('logout')}
  o.querySelector('.lkn').textContent=USER.n;o.querySelector('.lkr').textContent=reason||'';const P=maskInput(o.querySelector('.lkp'));if(USER.r=='guest'&&!adminOnly)o.querySelector('.lkp').style.display='none';
  const tick=()=>{const c=clockParts();o.querySelector('.lkclock').textContent=c.time;o.querySelector('.lkdate').textContent=c.longNoYear};tick();const iv=setInterval(tick,1000);
  document.body.appendChild(o);setTimeout(()=>o.querySelector('.lkp').focus(),50);
- const un=async()=>{let ok=false;if(adminOnly)ok=await elevate(reason||'Unlock this account');else{const pw=P.get();ok=USER.r=='guest'||(await pwCheck(USER,pw)&&(!USER.otp||typeof otpCheck!='function'||await otpCheck(USER,pw)))}   /* (1.6.0: the second step again: otp60.js) */
+ const un=async()=>{let ok=false;if(adminOnly)ok=await elevate(reason||'Unlock this account');else{const pw=P.get();ok=USER.r=='guest'||(await pwCheck(USER,pw)&&await(async()=>{const g=typeof fidoGate=='function'?await fidoGate(USER,pw,'Unlock'):'none';return g=='ok'||(g=='none'&&(!USER.otp||typeof otpCheck!='function'||await otpCheck(USER,pw)))})())}   /* (1.6.0: the second step again: otp60.js; 1.6.1: a security key, fido61.js) */
   if(ok){clearInterval(iv);o.remove();LOCKED=false;lastInput=UNLOCKED_AT=Date.now();if(window.__lockDone)__lockDone();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
  o.querySelector('.lku').onclick=un;o.querySelector('.lkp').addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Enter')un()});
  o.querySelector('.lks').onclick=()=>{clearInterval(iv);o.remove();LOCKED=false;A.logoff()};

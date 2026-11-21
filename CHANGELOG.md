@@ -56,6 +56,11 @@ Summary: In progress.
 - New: User Settings › Sign-in options › Authenticator app shows the setup link as a QR code beside the setup key, so
   a phone's authenticator app adds the account with its camera (an encoder of Rudolf OS's own; dark on white with its
   margin in every theme). On Standard, Native and Lite.
+- New: security keys that protect your files (User Settings › Sign-in options › Security keys). Rudolf OS reads FIDO2
+  keys itself on Standard, Native and Lite: after your password, touch one of your keys. Add two (one as a spare) and
+  "Require a security key": then a copy of your disk opens nothing without your password and one of your keys together.
+  Old security keys checked by the sign-in screen only are moved over when you add your keys again. What to do if keys
+  are lost: docs/security-keys.md.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.

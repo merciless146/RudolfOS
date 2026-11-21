@@ -61,6 +61,12 @@ class H(http.server.BaseHTTPRequestHandler):
             self.send_response(code); self.send_header('content-type', ctype); self.send_header('content-length', str(len(b))); self.end_headers(); self.wfile.write(b)
         except Exception: pass
     def j(self, o, code=200): self.send(code, json.dumps(o))
+    def fido(self, o):
+        """(1.6.1) the key step: 401 need key first; with k, the touch the test set in D/fidotouch (ok, or a wrong key)"""
+        open(os.path.join(D, 'fidocalls'), 'a').write(('k' if o.get('k') else 'p') + '\n')
+        if not o.get('k'): return self.send(401, json.dumps({'ok': False, 'need': 'key', 'error': 'Touch your security key.'}).encode())
+        if (rd('fidotouch', b'') or b'').strip() != b'ok': return self.send(403, json.dumps({'ok': False, 'need': 'key', 'error': "This security key is not one of this account's keys."}).encode())
+        return None
     def err(self, code, m): self.j({'ok': False, 'error': m}, code)
     def body(self):
         n = int(self.headers.get('content-length') or 0); return self.rfile.read(n) if n else b''
@@ -113,6 +119,9 @@ class H(http.server.BaseHTTPRequestHandler):
             if o.get('guest'): s['session'] = {'ok': True, 'id': 'guest', 'n': 'Guest', 'r': 'guest', 'pk': '', 'fk': ''}; return self.j({'ok': True, 'id': 'guest', 'n': 'Guest', 'r': 'guest'})
             k = KEYS.get('Ann')
             if (o.get('n') or '').lower() != 'ann' or not k or o.get('p') != k['pw']: return self.err(403, 'The user name or password is incorrect.')
+            if rd('fidokey') is not None:   # (1.6.1, nativekey161_t.sh: Ann has security keys, as rudolfd-fido.inc answers)
+                r = self.fido(o)
+                if r: return r
             s['session'] = {'ok': True, 'id': k['id'], 'n': 'Ann', 'r': 'admin', 'pk': k['pk'], 'fk': k['fk']}; s['locked'] = False
             return self.j({'ok': True, 'id': k['id'], 'n': 'Ann', 'r': 'admin'})
         if w == 'desktop/session':
@@ -124,6 +133,9 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'desktop/unlock':
             o = json.loads(b or b'{}')
             if o.get('p') != KEYS['Ann']['pw']: return self.err(403, 'The password is incorrect.')
+            if rd('fidokey') is not None:
+                r = self.fido(o)
+                if r: return r
             s['locked'] = False; return self.j({'ok': True})
         if w == 'desktop/settings':
             p = os.path.join(D, 'settings.json'); mt = os.path.getmtime(p) if os.path.exists(p) else 0

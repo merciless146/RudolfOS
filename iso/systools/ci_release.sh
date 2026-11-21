@@ -257,6 +257,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	done
 	SCP=$(echo "$SCF" | grep '/opensc-pkcs11\.so$' | head -1); echo "$SCP" | sudo tee "$W/broot/etc/rudolf-pkcs11" >/dev/null   # (where the card's module is: /usr/lib/rudolf/smartcard)
 	echo "  Smart cards (pcscd, CCID, OpenSC, NSS tools): $((SCB / 1024)) KB"; echo "::notice title=Smart cards::$((SCB / 1024)) KB added to the base layer"
+	# 1.6.1 (plan-1.6.1 Part 18): security keys that unlock the files: libfido2 (rudolfd opens it with dlopen, so ldd does not
+	# see it) and what it links that the base layer does not have yet (libcbor at least)
+	FXL=$(dpkg -L libfido2-1 2>/dev/null | grep -E '/libfido2\.so\.1$' | head -1)
+	[ -n "$FXL" ] || { echo "libfido2-1 is missing on the build machine (apt-get install libfido2-1)"; exit 1; }
+	FXB=0; for x in $FXL $(ldd "$FXL" | awk '/=>/{print $3}'); do [ -e "$W/broot$x" ] || [ -e "$W/broot/usr$x" ] || [ -e "$W/broot/usr/lib/$MA/$(basename "$x")" ] || { sudo cp -L "$x" "$W/broot/usr/lib/$MA/"; FXB=$((FXB + $(stat -L -c %s "$x"))); }; done
+	echo "  Security keys (libfido2): $((FXB / 1024)) KB"; echo "::notice title=Security keys::$((FXB / 1024)) KB added to the base layer"
 	# 1.5.9 (plan Part 1): ModemManager (read only in 1.5.9: /usr/lib/rudolf/modem) with libqmi, libmbim and libqrtr,
 	# its plug-ins and the operators' database (mobile-broadband-provider-info, for 1.6.0's APNs). Its udev rules too:
 	# with no udev, ModemManager applies them itself (/usr/lib/rudolf/modem runs it with --test-no-udev).
