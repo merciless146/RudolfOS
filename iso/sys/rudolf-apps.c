@@ -4,6 +4,7 @@
  *                                    downloads with `flatpak update --appstream`), as compact JSON
  *   rudolf-apps info ID              one app in full: description, screenshots, release, links
  *   rudolf-apps installed            installed apps with their names, sizes, launchers and file types
+ *   rudolf-apps titlebar ID HOME     (1.6.1 Part 15) ask the app to use the system's title bar, once (see cmd_titlebar)
  *
  * RA_APPSTREAM overrides the catalogue file, RA_EXPORTS the exported launchers folder (tests).
  * Copyright (C) 2026 the Rudolf OS authors. SPDX-License-Identifier: GPL-2.0-or-later */
@@ -16,6 +17,7 @@
 #define _GNU_SOURCE
 #include <ctype.h>
 #include <dirent.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -325,6 +327,108 @@ static void remote_extra(const char *id, str *s)
 	sadd(s, "}");
 }
 
+/* ---------------- (1.6.1, docs/plan-1.6.1.md Part 15, item 1) the app's own setting first: Rudolf's title bar, nothing lost.
+   An app that can use the system's title bar is asked to, once (the first time Rudolf starts it for this account), and only
+   when the person has not chosen otherwise in the app: the key is added only where it is missing, an existing choice is kept.
+   The list, /usr/share/rudolf/titlebars (RA_TITLEBARS for tests): "ID<TAB>HOW<TAB>WHERE" lines, ID a Flatpak app's ID or
+   deb:LAUNCHER for Debian's, HOW chromium (browser.custom_chrome_frame false in a Chromium profile's Preferences) or vscode
+   (window.titleBarStyle native in VS Code's settings.json), WHERE the file under the app's settings folder (Flatpak's
+   ~/.var/app/ID/config, Debian's ~/.config). Done as the account's own Linux user, in its own home. */
+#include <fcntl.h>
+#include <unistd.h>
+/* JSON text: the index after the string starting at s[i] (a "), or n */
+static size_t js_str_end(const char *s, size_t i, size_t n) { for (i++; i < n; i++) { if (s[i] == '\\') i++; else if (s[i] == '"') return i + 1; } return n; }
+/* the next character that is not white space (nor, in VS Code's settings, a // or block comment) from i */
+static size_t js_skip(const char *s, size_t i, size_t n, int comments)
+{
+	for (;;) {
+		while (i < n && strchr(" \t\r\n", s[i])) i++;
+		if (comments && i + 1 < n && s[i] == '/' && s[i + 1] == '/') { while (i < n && s[i] != '\n') i++; continue; }
+		if (comments && i + 1 < n && s[i] == '/' && s[i + 1] == '*') { const char *e = strstr(s + i + 2, "*/"); i = e ? (size_t)(e - s) + 2 : n; continue; }
+		return i;
+	}
+}
+/* t with ins put in at i, a comma after it unless the object it opens is empty; NULL when t is not an object */
+static char *js_insert(const char *t, size_t i, const char *ins, int comments)
+{
+	size_t n = strlen(t), j = js_skip(t, i, n, comments); int comma = j < n && t[j] != '}';
+	str o = {0}; sput(&o, t, i); sadd(&o, ins); if (comma) sadd(&o, ","); sadd(&o, t + i); return o.b;
+}
+static char *tb_chromium(const char *t)
+{
+	if (!t || !*t) return strdup("{\"browser\":{\"custom_chrome_frame\":false}}");
+	if (strstr(t, "\"custom_chrome_frame\"")) return NULL;   /* (chosen already, either way) */
+	size_t n = strlen(t), i = js_skip(t, 0, n, 0); if (i >= n || t[i] != '{') return NULL;
+	size_t root = i + 1; int depth = 0;
+	for (size_t k = i; k < n; k++) {   /* the top-level "browser" object, if there is one */
+		char c = t[k];
+		if (c == '"') { size_t e = js_str_end(t, k, n); if (depth == 1 && e - k == 9 && !strncmp(t + k, "\"browser\"", 9)) { size_t c2 = js_skip(t, e, n, 0);
+				if (c2 < n && t[c2] == ':') { size_t v = js_skip(t, c2 + 1, n, 0); if (v < n && t[v] == '{') return js_insert(t, v + 1, "\"custom_chrome_frame\":false", 0); return NULL; } }
+			k = e - 1; continue; }
+		if (c == '{' || c == '[') depth++; else if (c == '}' || c == ']') depth--;
+	}
+	return js_insert(t, root, "\"browser\":{\"custom_chrome_frame\":false}", 0);
+}
+static char *tb_vscode(const char *t)
+{
+	if (!t || !*t) return strdup("{\n\t\"window.titleBarStyle\": \"native\"\n}\n");
+	if (strstr(t, "\"window.titleBarStyle\"")) return NULL;
+	size_t n = strlen(t), i = js_skip(t, 0, n, 1); if (i >= n || t[i] != '{') return NULL;
+	return js_insert(t, i + 1, "\n\t\"window.titleBarStyle\": \"native\"", 1);
+}
+/* mkdir -p of path's folders (its last part is the file) */
+static void tb_dirs(const char *path)
+{
+	char p[1200]; snprintf(p, sizeof p, "%s", path);
+	for (char *s = p + 1; (s = strchr(s, '/')); s++) { *s = 0; mkdir(p, 0700); *s = '/'; }
+}
+static int tb_where_ok(const char *w) { return w && *w && *w != '/' && !strstr(w, "..") && strspn(w, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/ ") == strlen(w); }
+/* one app (a Flatpak ID, or deb:LAUNCHER) for the account whose home is home: 0 done or nothing to do */
+static int cmd_titlebar(const char *id, const char *home)
+{
+	if (!id || !*id || strlen(id) > 200 || strchr(id, '/') || strstr(id, "..") || !home || home[0] != '/' || strstr(home, "..")) return 2;
+	char mark[1200]; snprintf(mark, sizeof mark, "%s/.local/state/rudolf-titlebars/%s", home, id);
+	if (!access(mark, F_OK)) return 0;   /* (once) */
+	const char *lp = getenv("RA_TITLEBARS") ? getenv("RA_TITLEBARS") : "/usr/share/rudolf/titlebars";
+	char *list = slurp(lp); if (!list) return 0;
+	int deb = !strncmp(id, "deb:", 4), any = 0;
+	for (char *l = strtok(list, "\n"); l; l = strtok(NULL, "\n")) {
+		if (l[0] == '#') continue;
+		char *how = strchr(l, '\t'); if (!how) continue; *how++ = 0; char *where = strchr(how, '\t'); if (!where) continue; *where++ = 0;
+		if (strcmp(l, id) || !tb_where_ok(where)) continue;
+		int chr = !strcmp(how, "chromium"), vsc = !strcmp(how, "vscode"); if (!chr && !vsc) continue;
+		char f[1200]; if (deb) snprintf(f, sizeof f, "%s/.config/%s", home, where); else snprintf(f, sizeof f, "%s/.var/app/%s/config/%s", home, id, where);
+		any = 1;
+		char *t = NULL; int fd = open(f, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+		if (fd >= 0) { struct stat st; if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_size > (64 << 20)) { close(fd); continue; }
+			str s = {0}; char b[65536]; ssize_t r; while ((r = read(fd, b, sizeof b)) > 0) sput(&s, b, r); close(fd); t = s.b ? s.b : strdup(""); }
+		else if (errno != ENOENT) continue;
+		char *o = chr ? tb_chromium(t) : tb_vscode(t); free(t);
+		if (!o) { fprintf(stderr, "rudolf-apps: %s keeps its own title bar setting (%s)\n", id, where); continue; }
+		tb_dirs(f); char tmp[1300]; snprintf(tmp, sizeof tmp, "%s.rudolf-tmp", f);
+		int w = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0600);
+		if (w >= 0) { size_t len = strlen(o); int okw = write(w, o, len) == (ssize_t)len; okw = !fsync(w) && okw; close(w);
+			if (okw && !rename(tmp, f)) fprintf(stderr, "rudolf-apps: %s asked to use the system's title bar (%s)\n", id, where); else unlink(tmp); }
+		free(o);
+	}
+	free(list);
+	if (any) { tb_dirs(mark); int m = open(mark, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600); if (m >= 0) close(m); }
+	return 0;
+}
+/* (launching) the Flatpak app a launcher belongs to: its ID is the launcher's, or the launcher's less one last ".part" */
+static void titlebar_flatpak(const char *desk)
+{
+	const char *home = getenv("HOME"); if (!home || !*home) return;
+	/* (not while it runs: Chromium writes its Preferences back as it closes) */
+	FILE *p = popen("flatpak ps --columns=application 2>/dev/null", "r"); char run[8192] = ""; if (p) { size_t r = fread(run, 1, sizeof run - 1, p); run[r] = 0; pclose(p); }
+	char id[256]; snprintf(id, sizeof id, "%s", desk);
+	for (int k = 0; k < 2; k++) {
+		char ln[260]; snprintf(ln, sizeof ln, "\n%s\n", id); char rn[8200]; snprintf(rn, sizeof rn, "\n%s", run);
+		if (!strstr(rn, ln)) cmd_titlebar(id, home);
+		char *d = strrchr(id, '.'); if (!d) break; *d = 0;
+	}
+}
+
 /* ---------------- starting an app through its launcher, as the desktop user */
 static int cmd_launch(const char *desk, const char *argfile)
 {
@@ -356,6 +460,7 @@ static int cmd_launch(const char *desk, const char *argfile)
 		argv[n++] = "flatpak"; argv[n++] = "run"; argv[n++] = (char *)desk; if (*file) argv[n++] = file;
 	}
 	argv[n] = NULL;
+	titlebar_flatpak(desk);   /* (1.6.1 Part 15, item 1) */
 	fprintf(stderr, "rudolf-apps: starting %s%s%s\n", desk, *file ? " with " : "", file);
 	execvp(argv[0], argv); perror(argv[0]); return 127;
 }
@@ -366,5 +471,6 @@ int main(int argc, char **argv)
 	if (argc >= 3 && !strcmp(argv[1], "info")) return cmd_info(argv[2], argc >= 4 && !strcmp(argv[3], "--remote"));
 	if (argc >= 3 && !strcmp(argv[1], "launch")) return cmd_launch(argv[2], argc >= 4 ? argv[3] : NULL);
 	if (argc >= 2 && !strcmp(argv[1], "installed")) return cmd_installed();
+	if (argc >= 4 && !strcmp(argv[1], "titlebar")) return cmd_titlebar(argv[2], argv[3]);   /* (1.6.1 Part 15: rudolf-debian, as the account's user) */
 	fprintf(stderr, "usage: rudolf-apps catalog [OUT] | info ID | installed\n"); return 2;
 }

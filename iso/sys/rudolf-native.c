@@ -802,9 +802,12 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
    own requests are not redirected to us, so they are framed as they are shown). The taskbar lists them all. */
 static double tw_tbh(void);   /* (the title bar's height in the page's pixels: tw_geom) */
 static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast; the title bar's height, TH, follows the display scaling, the font size and the touch mode: tw_th) */
-typedef struct Client { Window w, frame, rz[3]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
-	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; char ptitle[256]; int wait; Window cover; int lpclip; LPRect lpcr; } Client;   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
+typedef struct Client { Window w, frame, rz[4]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
+	char ak[40]; Window clip; int il, it, ir, ib; int ws, off; gint64 oask, used; int opened; char ptitle[256]; int wait; Window cover; int lpclip; LPRect lpcr;
+	int csd, gl, gr, gt, gb, nodeco, tbcut; } Client;   /* (1.6.1 Part 15: csd, the app draws its own title bar (_MOTIF_WM_HINTS, no decorations): Rudolf's frame keeps only its edge; gl..gb, GTK's
+	   invisible margins around it (_GTK_FRAME_EXTENTS), cut away by the clip window as Oracle's own bar is) */   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static void wopen_start(Client *c);
+static void csd_extents(Client *c); static void csd_read(Client *c, XWindowAttributes *wa); static void tb_cut_apply(Client *c); static void csd_update(Client *c); static void net_state_sync(Client *c); static void csd_max_first(Client *c); static void csd_frame_draw(Client *c);   /* (1.6.1 Part 15, below) */
 static int lp_min(Client *c); static void lp_unmin(Client *c); static int lp_maxi(Client *c, int on); static void lp_gone(Client *c);   /* (1.6.0 Part 17) */
 static void lp_menu_open(GtkWidget *pw, int wx, int wy, int kind, double x, double y, double w, double h, double bx, double by, int corner);
 static void lp_menu_closed(GtkWidget *pw, double x, double y, double w, double h); static void lp_tbb(Client *c); static int lp_dir(void); static void lp_draw_clip(cairo_t *cr, GtkWidget *pw, int wx, int wy); static int lp_hit_mid(const char *kind, const char *arg, double *x, double *y, LPRect *r);   /* (Part 17b) */
@@ -817,11 +820,12 @@ static Cursor CUR[9];
 static int wm_err;
 static int wm_errh(Display *d, XErrorEvent *e) { (void)d; if (e->error_code == BadAccess) wm_err = 1; return 0; }
 static void clients_forget(AppWin *a) { for (GList *l = CLIENTS; l; l = l->next) if (((Client *)l->data)->app == a) ((Client *)l->data)->app = NULL; }
-static Client *client_of(Window w) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->w == w || c->frame == w || (w && (c->clip == w || c->rz[0] == w || c->rz[1] == w || c->rz[2] == w))) return c; } return NULL; }
-static int rz_of(Client *c, Window w) { for (int i = 0; i < 3; i++) if (c->rz[i] && c->rz[i] == w) return i; return -1; }
+static Client *client_of(Window w) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->w == w || c->frame == w || (w && (c->clip == w || c->rz[0] == w || c->rz[1] == w || c->rz[2] == w || c->rz[3] == w))) return c; } return NULL; }
+static int rz_of(Client *c, Window w) { for (int i = 0; i < 4; i++) if (c->rz[i] && c->rz[i] == w) return i; return -1; }
 static Client *client_of_app(AppWin *a) { for (GList *l = CLIENTS; l; l = l->next) if (((Client *)l->data)->app == a) return l->data; return NULL; }
 static int fw_of(Client *c) { return c->cw + 2 * BW; }
-static int fh_of(Client *c) { return c->ch + TH + BW; }
+static int th_of(Client *c) { return c->csd ? BW : TH; }   /* (the frame's top: its edge and Rudolf's title bar, or the edge alone: 1.6.1 Part 15) */
+static int fh_of(Client *c) { return c->ch + th_of(c) + BW; }
 static void wm_title(Client *c)
 {
 	if (c->app) { snprintf(c->title, sizeof c->title, "%s", c->app->title); return; }
@@ -848,7 +852,7 @@ static void client_list(void)
 static void tell_geom(Client *c)
 {
 	XEvent e = {0}; e.xconfigure.type = ConfigureNotify; e.xconfigure.event = c->w; e.xconfigure.window = c->w;
-	e.xconfigure.x = c->full ? 0 : c->x + BW; e.xconfigure.y = c->full ? 0 : c->y + TH; e.xconfigure.width = c->cw; e.xconfigure.height = c->ch;
+	e.xconfigure.x = c->full ? 0 : c->x + BW; e.xconfigure.y = c->full ? 0 : c->y + th_of(c); e.xconfigure.width = c->cw; e.xconfigure.height = c->ch;
 	if (c->clip && !c->full) { e.xconfigure.x -= c->il; e.xconfigure.y -= c->it; e.xconfigure.width += c->il + c->ir; e.xconfigure.height += c->it + c->ib; }
 	XSendEvent(DPY, c->w, False, StructureNotifyMask, &e);
 }
@@ -858,18 +862,19 @@ static void frame_shape(Client *c);
 static int RZG(void) { return (int)lround(4 * Z); }
 static void rz_place(Client *c)
 {
-	int fw = c->cw + 2 * BW, fh = c->ch + TH + BW, g = RZG();
-	for (int i = 0; i < 3; i++) {
+	int fw = c->cw + 2 * BW, fh = c->ch + th_of(c) + BW, g = RZG(), TH = th_of(c);
+	for (int i = 0; i < 4; i++) {
 		if (!c->rz[i]) { XSetWindowAttributes at = {0}; at.event_mask = ButtonPressMask | ButtonReleaseMask | PointerMotionMask; c->rz[i] = XCreateWindow(DPY, c->frame, 0, 0, 1, 1, 0, 0, InputOnly, CopyFromParent, CWEventMask, &at); }
-		if (c->max || c->full) { XUnmapWindow(DPY, c->rz[i]); continue; }
-		if (i == 0) XMoveResizeWindow(DPY, c->rz[i], 0, TH, g, fh - TH); else if (i == 1) XMoveResizeWindow(DPY, c->rz[i], fw - g, TH, g, fh - TH); else XMoveResizeWindow(DPY, c->rz[i], 0, fh - g, fw, g);
+		if (c->max || c->full || (i == 3 && !c->csd)) { XUnmapWindow(DPY, c->rz[i]); continue; }
+		if (i == 3) XMoveResizeWindow(DPY, c->rz[i], 0, 0, fw, (int)lround(3 * Z)); else if (i == 0) XMoveResizeWindow(DPY, c->rz[i], 0, TH, g, fh - TH); else if (i == 1) XMoveResizeWindow(DPY, c->rz[i], fw - g, TH, g, fh - TH); else XMoveResizeWindow(DPY, c->rz[i], 0, fh - g, fw, g);
 		XMapRaised(DPY, c->rz[i]);
 	}
 }
-static void rz_to_frame(Client *c, int i, int *x, int *y) { int fw = c->cw + 2 * BW, fh = c->ch + TH + BW, g = RZG(); if (i == 0) *y += TH; else if (i == 1) { *x += fw - g; *y += TH; } else *y += fh - g; }
-static struct { Client *c; int edge, px, py, x, y, w, h; } DRAG;   /* edge: 0 move, else 1 left 2 right 4 top 8 bottom */
+static void rz_to_frame(Client *c, int i, int *x, int *y) { int TH = th_of(c), fw = c->cw + 2 * BW, fh = c->ch + TH + BW, g = RZG(); if (i == 3) return; if (i == 0) *y += TH; else if (i == 1) { *x += fw - g; *y += TH; } else *y += fh - g; }
+static struct { Client *c; int edge, px, py, x, y, w, h, kbd, kx, ky; } DRAG;   /* edge: 0 move, else 1 left 2 right 4 top 8 bottom; kbd: with the keyboard, the pointer at kx ky (1.6.1 Part 15) */
 static void place(Client *c)
 {
+	int TH = th_of(c);
 	if (c->full) { XMoveResizeWindow(DPY, c->frame, -BW, -TH, SW + 2 * BW, SH + TH + BW); c->cw = SW; c->ch = SH; }
 	else XMoveResizeWindow(DPY, c->frame, c->x, c->y, fw_of(c), fh_of(c));
 	/* (Oracle's Chromium: its own title bar and edges cut away by the clip window; full screen, it draws none) */
@@ -879,7 +884,7 @@ static void place(Client *c)
 	/* (our own app window: GTK resizes itself to the size it was last asked for (its requests are not redirected: the shell's
 	   connection is GTK's), so it is asked for the window's size) */
 	if (c->app && c->app->win && !c->full) { int gw = 0, gh = 0; gtk_window_get_size(GTK_WINDOW(c->app->win), &gw, &gh); if (gw != c->cw || gh != c->ch) gtk_window_resize(GTK_WINDOW(c->app->win), c->cw, c->ch); }
-	frame_shape(c); rz_place(c); tell_geom(c); if (!DRAG.c) desk_shadows();
+	frame_shape(c); rz_place(c); tell_geom(c); csd_extents(c); if (!DRAG.c) desk_shadows();
 }
 static void frame_draw(Client *c);
 static void btn_rects(Client *c, int r[3][4]);
@@ -923,7 +928,7 @@ static void wm_focus(Client *c)
 	if (c && c->app && c->app->rest) appwin_wake(c->app);   /* (1.6.1 Part 23 C: its page loaded again, back where it was) */
 	if (c) {
 		c->used = g_get_monotonic_time();   /* (the page's MRU: item 5) */
-		if (c->min) { c->min = 0; if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); lp_unmin(c); }   /* (Part 17: the drop backward) */
+		if (c->min) { c->min = 0; if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); net_state_sync(c); lp_unmin(c); }   /* (Part 17: the drop backward) */
 		XRaiseWindow(DPY, c->frame);
 		/* its dialogs stay above it */
 		for (GList *l = CLIENTS; l; l = l->next) { Client *d = l->data; if (d->trans == c->w && !d->min) XRaiseWindow(DPY, d->frame); }
@@ -1016,7 +1021,7 @@ static void pn_init(GtkWidget *desk) { if (pn_on()) g_signal_connect(desk, "even
 static void wm_minimise(Client *c)
 {
 	desk_shadows();
-	if (c->min) return; c->min = 1; if (!lp_min(c)) XUnmapWindow(DPY, c->frame); set_wm_state(c, IconicState);   /* (Part 17: unmapped once it has dropped into its button) */
+	if (c->min) return; c->min = 1; if (!lp_min(c)) XUnmapWindow(DPY, c->frame); set_wm_state(c, IconicState); net_state_sync(c);   /* (Part 17: unmapped once it has dropped into its button) */
 	if (FOCUS == c) { FOCUS = NULL; wm_focus(top_client()); }
 	bar_redraw(); state_write();
 }
@@ -1027,7 +1032,7 @@ static int desk_top(void) { return TOPRES + (!strcmp(S.tb, "top") ? BARH + (int)
 static void max_geom(Client *c)
 {
 	int top = !strcmp(S.tb, "top"), dt = desk_top(), dh = tb_side() ? SH - TOPRES : top ? SH - dt : SH - TOPRES - BARH + (int)lround(4 * Z);
-	c->x = desk_left(); c->y = dt; c->cw = (int)lround(desk_w() - 6 * Z); c->ch = (int)lround(dh - 6 * Z) - (TH - BW);
+	c->x = desk_left(); c->y = dt; c->cw = (int)lround(desk_w() - 6 * Z); c->ch = (int)lround(dh - 6 * Z) - (th_of(c) - BW);
 }
 static void wm_maximise_now(Client *c, int on);
 static void wm_maximise(Client *c, int on)
@@ -1041,14 +1046,14 @@ static void wm_maximise_now(Client *c, int on)
 	if (c->full || on == c->max) return;
 	if (on) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; max_geom(c); }
 	else { c->x = c->sx; c->y = c->sy; c->cw = c->scw; c->ch = c->sch; }
-	c->max = on; place(c); frame_draw(c); state_write();
+	c->max = on; place(c); frame_draw(c); net_state_sync(c); state_write();
 }
 static void wm_fullscreen(Client *c, int on)
 {
 	if (on == c->full) return;
 	if (on) { if (!c->max) { c->sx = c->x; c->sy = c->y; c->scw = c->cw; c->sch = c->ch; } c->full = 1; }
 	else { c->full = 0; if (c->max) { c->max = 0; wm_maximise(c, 1); } else { c->x = c->sx; c->y = c->sy; c->cw = c->scw; c->ch = c->sch; } }
-	Atom a[1] = {A_NFULL}; XChangeProperty(DPY, c->w, A_NSTATE, XA_ATOM, 32, PropModeReplace, (unsigned char *)a, on ? 1 : 0);
+	net_state_sync(c);
 	place(c); frame_draw(c); wm_focus(c);
 }
 static void wm_close(Client *c)
@@ -1428,13 +1433,15 @@ static void wm_manage(Window w, AppWin *own)
 	Client *c = g_new0(Client, 1); c->w = w; c->app = own; c->cw = wa.width; c->ch = wa.height; c->ws = WSC;
 	if (!XGetTransientForHint(DPY, w, &c->trans)) c->trans = None;
 	if (!own) oracle_client(c, &wa);   /* (1.5.9, 12.3c: Oracle's Chromium is Oracle's window) */
+	if (!own && !c->ak[0]) csd_read(c, &wa);   /* (1.6.1 Part 15: an app drawing its own title bar) */
 	wm_title(c);
-	int ay = work_top(), ah = work_h();
+	int ay = work_top(), ah = work_h(), TH = th_of(c);
+	int big = c->csd && !c->trans && wa.width >= SW && wa.height >= SH;   /* (a borderless window the screen's size: a game's full screen, as rudolf-display takes it) */
 	if (c->cw > SW - 2 * BW) c->cw = SW - 2 * BW; if (c->ch > ah - TH - BW) c->ch = ah - TH - BW;
 	Client *owner = c->trans ? client_of(c->trans) : NULL;
 	if (owner) { c->x = owner->x + (fw_of(owner) - fw_of(c)) / 2; c->y = owner->y + (fh_of(owner) - fh_of(c)) / 2; }
 	else if (own || (wa.x <= 0 && wa.y <= 0)) { int n = g_list_length(CLIENTS) % 8; c->x = 40 + n * 28; c->y = ay + 16 + n * 28; }
-	else { c->x = wa.x - BW; c->y = wa.y - TH; }
+	else { c->x = wa.x + c->il - BW; c->y = wa.y + c->it - TH; }
 	if (c->x + fw_of(c) > SW) c->x = SW - fw_of(c); if (c->x < 0) c->x = 0;
 	if (c->y + fh_of(c) > ay + ah) c->y = ay + ah - fh_of(c); if (c->y < ay) c->y = ay;
 	XSetWindowAttributes at = {0}; at.event_mask = SubstructureRedirectMask | SubstructureNotifyMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | ExposureMask | LeaveWindowMask;
@@ -1445,7 +1452,7 @@ static void wm_manage(Window w, AppWin *own)
 	XSelectInput(DPY, w, PropertyChangeMask | (own ? wa.your_event_mask : StructureNotifyMask));
 	XAddToSaveSet(DPY, w); XSetWindowBorderWidth(DPY, w, 0);
 	if (wa.map_state != IsUnmapped) c->ignore_unmap++;   /* (reparenting a shown window unmaps it once) */
-	if (c->ak[0] && c->it) {
+	if ((c->ak[0] && c->it) || c->nodeco) {   /* (an app drawing its own title bar too: GTK's margins, and Part 15's cut, as Oracle's) */
 		XSetWindowAttributes ca = {0}; ca.event_mask = SubstructureNotifyMask | SubstructureRedirectMask; ca.background_pixel = WhitePixel(DPY, DefaultScreen(DPY));
 		c->clip = XCreateWindow(DPY, c->frame, BW, TH, c->cw, c->ch, 0, CopyFromParent, InputOutput, CopyFromParent, CWEventMask | CWBackPixel, &ca); XMapWindow(DPY, c->clip);
 		XReparentWindow(DPY, w, c->clip, -c->il, -c->it); XResizeWindow(DPY, w, c->cw + c->il + c->ir, c->ch + c->it + c->ib); }
@@ -1465,16 +1472,20 @@ static void wm_manage(Window w, AppWin *own)
 	if (own && !strcmp(own->k, "do-saver")) { c->ontop = 1; wm_fullscreen(c, 1); }   /* (the screen saver: over everything, the taskbar too: item 6) */
 	if (own && TM_TOP && !strcmp(own->k, "taskmgr")) { c->ontop = 1; TM_TOP = 0; }   /* (1.6.0: Ctrl+Alt+Del's Task Manager, above every window) */
 	if (c->ak[0]) { XSync(DPY, False); oracle_title_take(c); }   /* (1.6.0: Oracle's page's title, when it came first) */
+	if (big && !c->full) wm_fullscreen(c, 1);
+	if (!c->full) csd_max_first(c);
+	csd_extents(c);
 	if (c->wait) { appwin_wait_arm(own); client_list(); bar_redraw(); state_write(); return; }
 	wm_focus(c);
 	if (!own) wopen_start(c);   /* (another program's window (Oracle's, a Linux app's) opens as the page's do; an app's own, at its page's size: appwin_size) */
 }
 static void wm_unmanage(Client *c, int gone)
 {
+	if (DRAG.c == c) { XUngrabPointer(DPY, CurrentTime); if (DRAG.kbd) XUngrabKeyboard(DPY, CurrentTime); DRAG.c = NULL; DRAG.kbd = 0; }   /* (1.6.1 Part 15: a window going while moved) */
 	lp_gone(c);   /* (Part 17: its frame folding away where it was) */
 	desk_shadows();
 	CLIENTS = g_list_remove(CLIENTS, c);
-	if (!gone) { XReparentWindow(DPY, c->w, ROOT, c->x + BW, c->y + TH); XRemoveFromSaveSet(DPY, c->w); set_wm_state(c, WithdrawnState); grab_clicks(c, 0); }
+	if (!gone) { XReparentWindow(DPY, c->w, ROOT, c->x + BW - c->il, c->y + th_of(c) - c->it); XRemoveFromSaveSet(DPY, c->w); set_wm_state(c, WithdrawnState); grab_clicks(c, 0); }
 	if (c->clip) XDestroyWindow(DPY, c->clip);
 	XDestroyWindow(DPY, c->frame);
 	if (c->ak[0]) oracle_gone();
@@ -1506,7 +1517,7 @@ static int edge_at(Client *c, int x, int y)
 	if (e & 3) { if (y < k) e |= 4; if (y >= fh - k) e |= 8; } if (e & 12) { if (x < k) e |= 1; if (x >= fw - k) e |= 2; }   /* (the corners' handles) */
 	return e;
 }
-static int btn_at(Client *c, int x, int y) { int r[3][4]; btn_rects(c, r); for (int i = 0; i < 3; i++) if (x >= r[i][0] && x < r[i][0] + r[i][2] && y >= r[i][1] && y < r[i][1] + r[i][3]) return i + 1; return 0; }
+static int btn_at(Client *c, int x, int y) { if (c->csd) return 0; int r[3][4]; btn_rects(c, r); for (int i = 0; i < 3; i++) if (x >= r[i][0] && x < r[i][0] + r[i][2] && y >= r[i][1] && y < r[i][1] + r[i][3]) return i + 1; return 0; }
 static Cursor cursor_for(int e) { int i = e == 1 ? 1 : e == 2 ? 2 : e == 4 ? 3 : e == 8 ? 4 : e == 5 ? 5 : e == 6 ? 6 : e == 9 ? 7 : e == 10 ? 8 : 0; return CUR[i]; }
 static void win_menu_at(Client *c, int x, int y);
 /* (base_v24.html, a middle-click on a title bar) the window behind every other, the one now in front in use */
@@ -1518,12 +1529,225 @@ static void wm_lower(Client *c)
 	if (k) XFree(k);
 	if (top) wm_focus(top); else state_write();
 }
+/* ---- (1.6.1, docs/plan-1.6.1.md Part 15, item 2) one title bar for apps that draw their own. Electron and Chromium apps
+   (Discord, Steam's new interface, VS Code), GTK 3 and 4 apps with a header bar ask the window manager for no decorations
+   (_MOTIF_WM_HINTS, decorations 0) and draw their own bar: such a window gets no title bar of Rudolf's. Its frame keeps the
+   edge (1 px, 2 px with high contrast), the round corners and the resize edges (a fourth handle along the top); the taskbar,
+   Alt+Tab, the overview, the workspaces and the transitions as for every window. For their own bar to work, what they ask:
+   _NET_WM_MOVERESIZE (moving by their bar, resizing by their edges, the keyboard's move and size), done as a drag of Rudolf's
+   own title bar is (drag_motion: the same limits); _NET_WM_STATE_MAXIMIZED_VERT and _HORZ (their maximize button, a
+   double-click on their bar): Rudolf's maximize and restore, with its transition; _NET_FRAME_EXTENTS on their windows;
+   _GTK_FRAME_EXTENTS (GTK's invisible margins, its shadows, cut away by the clip window as Oracle's own bar is: 1.5.9 12.3c);
+   _GTK_SHOW_WINDOW_MENU (a right-click on a GTK header bar: the window's menu, as the taskbar button's). Rudolf's own app
+   windows and Oracle's are framed as before. */
+static Atom A_MOTIF, A_GTKFE, A_NFE, A_NREQFE, A_NMOVERESIZE, A_NMAXV, A_NMAXH, A_GTKMENU;
+static void csd_atoms(void)
+{
+	if (A_MOTIF) return;
+	A_MOTIF = XInternAtom(DPY, "_MOTIF_WM_HINTS", False); A_GTKFE = XInternAtom(DPY, "_GTK_FRAME_EXTENTS", False); A_NFE = XInternAtom(DPY, "_NET_FRAME_EXTENTS", False);
+	A_NREQFE = XInternAtom(DPY, "_NET_REQUEST_FRAME_EXTENTS", False); A_NMOVERESIZE = XInternAtom(DPY, "_NET_WM_MOVERESIZE", False);
+	A_NMAXV = XInternAtom(DPY, "_NET_WM_STATE_MAXIMIZED_VERT", False); A_NMAXH = XInternAtom(DPY, "_NET_WM_STATE_MAXIMIZED_HORZ", False); A_GTKMENU = XInternAtom(DPY, "_GTK_SHOW_WINDOW_MENU", False);
+}
+/* no decorations asked for (MWM_HINTS_DECORATIONS set, decorations 0), as rudolf-display's borderless() reads it */
+static int csd_nodeco(Window w)
+{
+	csd_atoms(); Atom type; int fmt; unsigned long n = 0, after; unsigned char *d = NULL; int r = 0;
+	if (XGetWindowProperty(DPY, w, A_MOTIF, 0, 5, False, AnyPropertyType, &type, &fmt, &n, &after, &d) == Success && d && fmt == 32 && n >= 3) r = (((long *)d)[0] & 2) && ((long *)d)[2] == 0;
+	if (d) XFree(d);
+	return r;
+}
+/* GTK's margins (left, right, top, bottom), each 0 to 200 */
+static void csd_gtk(Window w, int *l, int *r, int *t, int *b)
+{
+	csd_atoms(); Atom type; int fmt; unsigned long n = 0, after; unsigned char *d = NULL; *l = *r = *t = *b = 0;
+	if (XGetWindowProperty(DPY, w, A_GTKFE, 0, 4, False, XA_CARDINAL, &type, &fmt, &n, &after, &d) == Success && d && fmt == 32 && n == 4) {
+		long *v = (long *)d; int *o[4] = {l, r, t, b}; for (int i = 0; i < 4; i++) *o[i] = v[i] < 0 ? 0 : v[i] > 200 ? 200 : (int)v[i]; }
+	if (d) XFree(d);
+}
+/* (wm_manage, before the frame is made) another program's window that draws its own title bar */
+static void csd_read(Client *c, XWindowAttributes *wa)
+{
+	c->nodeco = c->csd = !c->app && !c->ak[0] && csd_nodeco(c->w); if (!c->csd) return;
+	csd_gtk(c->w, &c->gl, &c->gr, &c->gt, &c->gb); c->il = c->gl; c->ir = c->gr; c->it = c->gt; c->ib = c->gb;
+	tb_cut_apply(c);   /* (item 3: Rudolf's title bar chosen for it) */
+	c->cw = MAX(1, wa->width - c->il - c->ir); c->ch = MAX(1, wa->height - c->it - c->ib);
+}
+/* (a window already framed whose hints change: Chromium's "Use system title bar and borders" turned on or off; GTK's margins
+   as it is maximised) its frame redrawn for them; the clip window made if it has none yet */
+static void csd_clip(Client *c)
+{
+	if (c->clip) return;
+	XWindowAttributes wa; int mapped = XGetWindowAttributes(DPY, c->w, &wa) && wa.map_state != IsUnmapped;
+	XSetWindowAttributes ca = {0}; ca.event_mask = SubstructureNotifyMask | SubstructureRedirectMask; ca.background_pixel = WhitePixel(DPY, DefaultScreen(DPY));
+	c->clip = XCreateWindow(DPY, c->frame, BW, th_of(c), MAX(1, c->cw), MAX(1, c->ch), 0, CopyFromParent, InputOutput, CopyFromParent, CWEventMask | CWBackPixel, &ca); XMapWindow(DPY, c->clip);
+	if (mapped) c->ignore_unmap++;   /* (reparenting a shown window unmaps it once) */
+	XReparentWindow(DPY, c->w, c->clip, -c->il, -c->it);
+}
+static void csd_update(Client *c)
+{
+	if (c->app || c->ak[0] || !c->frame) return;
+	int now = csd_nodeco(c->w), l = 0, r = 0, t = 0, b = 0; if (now) csd_gtk(c->w, &l, &r, &t, &b);
+	if (now == c->nodeco && l == c->gl && r == c->gr && t == c->gt && b == c->gb) return;
+	int ocut = c->tbcut;
+	c->nodeco = c->csd = now; c->gl = l; c->gr = r; c->gt = t; c->gb = b; c->il = l; c->ir = r; c->it = t; c->ib = b;
+	tb_cut_apply(c);   /* (item 3) */
+	if (!c->max && !c->full) c->ch = MAX(1, c->ch + ocut - c->tbcut);   /* (item 3: the app's window keeps its height; what is cut is taken from what shows) */
+	if (now || l || r || t || b) csd_clip(c);
+	if (c->max) max_geom(c);
+	place(c); frame_draw(c); state_write();
+}
+/* _NET_FRAME_EXTENTS (left, right, top, bottom) on another program's window: the frame's edges and its title bar, none full
+   screen (not on Rudolf's own windows, nor Oracle's: they are cut as their pages have it) */
+static void csd_extents(Client *c)
+{
+	if (!c || c->app || c->ak[0]) return; csd_atoms();
+	long v[4] = { BW, BW, th_of(c), BW }; if (c->full) v[0] = v[1] = v[2] = v[3] = 0;
+	XChangeProperty(DPY, c->w, A_NFE, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)v, 4);
+}
+/* _NET_WM_STATE as the window is: full screen, maximized (both ways), minimized (Rudolf's own windows: full screen alone, as before) */
+static void net_state_sync(Client *c)
+{
+	if (!c) return; csd_atoms(); Atom a[4]; int n = 0;
+	if (c->full) a[n++] = A_NFULL;
+	if (!c->app) { if (c->max && !c->full) { a[n++] = A_NMAXV; a[n++] = A_NMAXH; } if (c->min) a[n++] = A_NHIDDEN; }
+	XChangeProperty(DPY, c->w, A_NSTATE, XA_ATOM, 32, PropModeReplace, (unsigned char *)a, n);
+}
+/* (wm_manage) maximized before it was shown (an app restoring how it was left) */
+static void csd_max_first(Client *c)
+{
+	csd_atoms(); Atom type; int fmt; unsigned long n = 0, after; unsigned char *d = NULL; int m = 0;
+	if (XGetWindowProperty(DPY, c->w, A_NSTATE, 0, 32, False, XA_ATOM, &type, &fmt, &n, &after, &d) == Success && d) { for (unsigned long i = 0; i < n; i++) if (((Atom *)d)[i] == A_NMAXV || ((Atom *)d)[i] == A_NMAXH) m = 1; XFree(d); }
+	if (m && !c->app && !c->full && !c->trans) wm_maximise_now(c, 1);
+}
+/* the drag: with the pointer (Rudolf's title bar or edges, or the app's _NET_WM_MOVERESIZE) until the button is let go, or with the
+   keyboard (the app's own Move and Size: the arrows, Enter or a click ends it, Escape puts the window back) */
+static void drag_motion(int rx, int ry);
+static int drag_begin(Client *c, int ed, int rx, int ry, Time t, int kbd)
+{
+	DRAG.c = c; DRAG.edge = ed; DRAG.px = rx; DRAG.py = ry; DRAG.x = c->x; DRAG.y = c->y; DRAG.w = c->cw; DRAG.h = c->ch; DRAG.kbd = kbd; DRAG.kx = rx; DRAG.ky = ry;
+	if (XGrabPointer(DPY, c->frame, False, ButtonReleaseMask | PointerMotionMask | (kbd ? ButtonPressMask : 0), GrabModeAsync, GrabModeAsync, None, cursor_for(ed), t) != GrabSuccess) { DRAG.c = NULL; DRAG.kbd = 0; return 0; }
+	if (kbd && XGrabKeyboard(DPY, c->frame, False, GrabModeAsync, GrabModeAsync, t) != GrabSuccess) { XUngrabPointer(DPY, t); DRAG.c = NULL; DRAG.kbd = 0; return 0; }
+	return 1;
+}
+static void drag_end(Time t, int cancel)
+{
+	Client *c = DRAG.c; if (!c) return;
+	XUngrabPointer(DPY, t); if (DRAG.kbd) XUngrabKeyboard(DPY, t);
+	DRAG.c = NULL; DRAG.kbd = 0;
+	if (!g_list_find(CLIENTS, c)) return;
+	if (cancel) { c->x = DRAG.x; c->y = DRAG.y; c->cw = DRAG.w; c->ch = DRAG.h; place(c); frame_draw(c); }
+	tell_geom(c); desk_shadows(); state_write();
+}
+static void drag_key(XKeyEvent *e)
+{
+	KeySym k = XLookupKeysym(e, 0); int s = (int)lround(10 * Z);
+	if (k == XK_Return || k == XK_KP_Enter || k == XK_space) { drag_end(e->time, 0); return; }
+	if (k == XK_Escape) { drag_end(e->time, 1); return; }
+	if (k == XK_Left || k == XK_KP_Left) DRAG.kx -= s; else if (k == XK_Right || k == XK_KP_Right) DRAG.kx += s;
+	else if (k == XK_Up || k == XK_KP_Up) DRAG.ky -= s; else if (k == XK_Down || k == XK_KP_Down) DRAG.ky += s; else return;
+	XWarpPointer(DPY, None, ROOT, 0, 0, 0, 0, DRAG.kx, DRAG.ky); drag_motion(DRAG.kx, DRAG.ky);
+}
+/* _NET_WM_MOVERESIZE: x_root, y_root, direction (0 top-left .. 7 left clockwise, 8 move, 9 size and 10 move with the keyboard,
+   11 cancel), button, source. A maximized window is not moved by its bar, as Rudolf's own title bar does not move it */
+static void csd_moveresize(Client *c, XClientMessageEvent *m)
+{
+	long dir = m->data.l[2];
+	if (dir == 11) { if (DRAG.c == c) drag_end(CurrentTime, 0); return; }
+	if (DRAG.c || c->full || c->min || c->hidden || c->off || dir < 0 || dir > 10) return;
+	if (c->max) return;
+	static const int ED[9] = {5, 4, 6, 2, 10, 8, 9, 1, 0};   /* (drag_motion's edges: 1 left, 2 right, 4 top, 8 bottom; 0 move) */
+	if (c != FOCUS) wm_focus(c);
+	if (dir >= 9) {
+		int rx = dir == 10 ? c->x + fw_of(c) / 2 : c->x + fw_of(c) - 1, ry = dir == 10 ? c->y + th_of(c) / 2 + BW : c->y + fh_of(c) - 1;
+		XWarpPointer(DPY, None, ROOT, 0, 0, 0, 0, rx, ry); drag_begin(c, dir == 10 ? 0 : 10, rx, ry, CurrentTime, 1); return; }
+	Window r, ch; int rx, ry, wx, wy; unsigned mask = 0;
+	XQueryPointer(DPY, ROOT, &r, &ch, &rx, &ry, &wx, &wy, &mask);
+	if (!(mask & (Button1Mask | Button2Mask | Button3Mask))) return;   /* (the button let go before the request came: nothing to drag) */
+	drag_begin(c, ED[dir], (int)m->data.l[0], (int)m->data.l[1], CurrentTime, 0);
+}
+/* the requests (wm_filter's client messages): 1 when it was one of these */
+static int csd_message(XClientMessageEvent *m)
+{
+	csd_atoms(); Client *c = client_of(m->window);
+	if (m->message_type == A_NREQFE) {   /* (before it is shown: what its frame will be) */
+		if (c) { csd_extents(c); return 1; }
+		long v[4] = { BW, BW, csd_nodeco(m->window) ? BW : TH, BW }; XChangeProperty(DPY, m->window, A_NFE, XA_CARDINAL, 32, PropModeReplace, (unsigned char *)v, 4); return 1; }
+	if (!c || c->w != m->window) return 0;
+	if (m->message_type == A_NMOVERESIZE) { csd_moveresize(c, m); return 1; }
+	if (m->message_type == A_GTKMENU) { if (!c->full) win_menu_at(c, (int)m->data.l[1], (int)m->data.l[2]); return 1; }
+	if (m->message_type == A_NSTATE) {
+		Atom p1 = (Atom)m->data.l[1], p2 = (Atom)m->data.l[2]; long act = m->data.l[0];
+		if (p1 == A_NMAXV || p1 == A_NMAXH || p2 == A_NMAXV || p2 == A_NMAXH) { int on = act == 1 ? 1 : act == 0 ? 0 : !c->max; if (!c->full && !c->trans && on != c->max) wm_maximise(c, on); else net_state_sync(c); }
+		return 0;   /* (full screen and minimize: wm_filter's own) */
+	}
+	return 0;
+}
+/* ---- (1.6.1, docs/plan-1.6.1.md Part 15, item 3) Rudolf's title bar instead, by choice, per app. The window's menu (its taskbar
+   button's, Rudolf's title bar's, a GTK header bar's right-click) on a window that draws its own bar has "Title bar: the app's own" and
+   "Title bar: Rudolf's". With Rudolf's, the app's own bar is cut away as Oracle's Chromium bar is (the clip window and its top inset), at
+   its height from the list (/usr/share/rudolf/titlebars, "ID<TAB>cut<TAB>N": N the bar's height in the app's pixels at 100 %, scaled
+   as the desktop is; ID the window's class, WM_CLASS), offered only for apps on it (their bar holds only the title and the three
+   buttons); for any other the menu says what would be lost instead. Kept per account and app: bd95titlebar:ID in its settings
+   (rudolfd's copy of the pages' storage), {"CLASS":"rudolf"}, read by the shell. */
+typedef struct { char id[64]; int h; } TbCut;
+static TbCut TBCUT[32]; static int NTBCUT = -1;
+static char TBCH[2048], TBCH_FOR[80];   /* (the account's choices, as kept; whose) */
+static void tbcut_load(void)
+{
+	if (NTBCUT >= 0) return; NTBCUT = 0;
+	const char *f = getenv("RUDOLF_TITLEBARS") ? getenv("RUDOLF_TITLEBARS") : "/usr/share/rudolf/titlebars"; gchar *t = NULL;
+	if (!g_file_get_contents(f, &t, NULL, NULL)) return;
+	for (char *l = strtok(t, "\n"); l && NTBCUT < 32; l = strtok(NULL, "\n")) { char id[64], how[16]; int h = 0;
+		if (l[0] != '#' && sscanf(l, "%63[^\t]\t%15[^\t]\t%d", id, how, &h) == 3 && !strcmp(how, "cut") && h > 0 && h <= 200) { snprintf(TBCUT[NTBCUT].id, sizeof TBCUT[0].id, "%s", id); TBCUT[NTBCUT++].h = h; } }
+	g_free(t);
+}
+/* the window's app, as the list and the choices name it: its class (WM_CLASS), lower case; 0 when it has none fit for a key */
+static int tb_key(Client *c, char *k, size_t n)
+{
+	XClassHint ch = {0}; k[0] = 0; if (!XGetClassHint(DPY, c->w, &ch)) return 0;
+	snprintf(k, n, "%s", ch.res_class ? ch.res_class : ch.res_name ? ch.res_name : ""); if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class);
+	for (char *p = k; *p; p++) *p = g_ascii_tolower(*p);
+	return k[0] && strlen(k) < 60 && strspn(k, "abcdefghijklmnopqrstuvwxyz0123456789._-") == strlen(k);
+}
+static int tbcut_of(Client *c) { char k[64]; tbcut_load(); if (!tb_key(c, k, sizeof k)) return 0; for (int i = 0; i < NTBCUT; i++) if (!g_ascii_strcasecmp(TBCUT[i].id, k)) return TBCUT[i].h; return 0; }
+static void tbch_load(void)
+{
+	if (!USER_ID[0] || !id_ok(USER_ID)) { TBCH[0] = TBCH_FOR[0] = 0; return; }
+	if (!strcmp(TBCH_FOR, USER_ID)) return;
+	char p[160]; snprintf(p, sizeof p, "/api/lsync?key=bd95titlebar%%3A%s", USER_ID); JV *r = jget(p); JV *v = jprop(r, "v");
+	snprintf(TBCH, sizeof TBCH, "%s", v && v->t == 3 && v->s[0] == '{' ? v->s : "{}"); snprintf(TBCH_FOR, sizeof TBCH_FOR, "%s", USER_ID); jfree(r);
+}
+static int tb_rudolf(Client *c)
+{
+	char k[64]; if (!tb_key(c, k, sizeof k)) return 0; tbch_load(); JV *o = jparse(TBCH), *v = jprop(o, k);
+	int r = v && v->t == 3 && !strcmp(v->s, "rudolf"); jfree(o); return r;
+}
+/* (csd_read, csd_update) the cut, when Rudolf's title bar is chosen for an app on the list: the window framed as any other */
+static void tb_cut_apply(Client *c)
+{
+	int h = c->nodeco ? tbcut_of(c) : 0; c->tbcut = h && tb_rudolf(c) ? (int)lround(h * Z) : 0;
+	if (c->tbcut) { c->csd = 0; c->it = c->gt + c->tbcut; }
+}
+static void tb_choose(Client *c, int rudolf)
+{
+	char k[64]; if (!tb_key(c, k, sizeof k) || !USER_ID[0] || !id_ok(USER_ID) || (rudolf && !tbcut_of(c))) return;
+	tbch_load(); JV *o = jparse(TBCH); GString *js = g_string_new("{"); int n = 0;
+	for (int i = 0; o && o->t == 5 && i < o->len; i++) { if (!strcmp(o->k[i], k) || o->v[i]->t != 3) continue; if (n++) g_string_append_c(js, ','); json_esc(js, o->k[i]); g_string_append_c(js, ':'); json_esc(js, o->v[i]->s); }
+	if (rudolf) { if (n++) g_string_append_c(js, ','); json_esc(js, k); g_string_append(js, ":\"rudolf\""); }
+	g_string_append_c(js, '}'); jfree(o);
+	GString *b = g_string_new("{\"gen\":0,\"part\":1,\"set\":{"); char key[100]; snprintf(key, sizeof key, "bd95titlebar:%s", USER_ID); json_esc(b, key); g_string_append_c(b, ':'); json_esc(b, js->str); g_string_append(b, "},\"del\":[]}");
+	if (http("POST", "/api/lsync", b->str, b->len, NULL) == 200) snprintf(TBCH, sizeof TBCH, "%s", js->str);
+	g_string_free(js, TRUE); g_string_free(b, TRUE);
+	/* every window of that app, now */
+	for (GList *l = CLIENTS; l; l = l->next) { Client *o2 = l->data; char k2[64]; if (o2->nodeco && tb_key(o2, k2, sizeof k2) && !strcmp(k2, k)) { o2->gt = -1; csd_update(o2); } }
+}
 static void frame_press(Client *c, XButtonEvent *e)
 {
 	if (c != FOCUS && e->button != 2) wm_focus(c);
 	/* (the owner's photo) the title bar's other buttons, as the page's (base_v24.html): a right-click there opens the window's menu at
 	   the pointer (winMenu: the page's own rows, as the taskbar button's), a middle-click sends the window behind the others */
-	if ((e->button == 3 || e->button == 2) && e->y < TH && !btn_at(c, e->x, e->y) && !c->full) { if (e->button == 3) win_menu_at(c, e->x_root, e->y_root); else wm_lower(c); return; }
+	int TH = th_of(c);
+	if ((e->button == 3 || e->button == 2) && e->y < TH && !c->csd && !btn_at(c, e->x, e->y) && !c->full) { if (e->button == 3) win_menu_at(c, e->x_root, e->y_root); else wm_lower(c); return; }
 	if (e->button != 1) return;
 	int b = btn_at(c, e->x, e->y);
 	if (b) { c->press = b; frame_draw(c); return; }
@@ -1532,8 +1756,7 @@ static void frame_press(Client *c, XButtonEvent *e)
 	int ed = c->max ? 0 : edge_at(c, e->x, e->y);
 	if (!ed && e->y < TH) { if (e->time - c->last_click < 400) { c->last_click = 0; wm_maximise(c, !c->max); return; } c->last_click = e->time; if (c->max) return; }
 	else if (!ed) return;
-	DRAG.c = c; DRAG.edge = ed; DRAG.px = e->x_root; DRAG.py = e->y_root; DRAG.x = c->x; DRAG.y = c->y; DRAG.w = c->cw; DRAG.h = c->ch;
-	XGrabPointer(DPY, c->frame, False, ButtonReleaseMask | PointerMotionMask, GrabModeAsync, GrabModeAsync, None, cursor_for(ed), e->time);
+	drag_begin(c, ed, e->x_root, e->y_root, e->time, 0);
 }
 static void drag_motion(int rx, int ry)
 {
@@ -1541,7 +1764,7 @@ static void drag_motion(int rx, int ry)
 	if (!DRAG.edge) { c->x = DRAG.x + dx; c->y = DRAG.y + dy; if (c->y < desk_top()) c->y = desk_top(); XMoveWindow(DPY, c->frame, c->x, c->y); return; }
 	/* (the owner's photo: as the page's addResize, shell25.js: the window's new size from its size with its edges (offsetWidth,
 	   offsetHeight) and the pointer's way, at least 200 by 120, its top not above the desktop's) */
-	int x = DRAG.x, y = DRAG.y, w = DRAG.w, h = DRAG.h, ow = DRAG.w + 2 * BW, oh = DRAG.h + TH + BW, tbh = TH - BW, mw = (int)lround(200 * Z), mh = (int)lround(120 * Z);
+	int x = DRAG.x, y = DRAG.y, w = DRAG.w, h = DRAG.h, ow = DRAG.w + 2 * BW, oh = DRAG.h + th_of(c) + BW, tbh = th_of(c) - BW, mw = (int)lround(200 * Z), mh = (int)lround(120 * Z);
 	if (DRAG.edge & 1) { int nw = MAX(mw, ow - dx); w = nw; x = DRAG.x + (ow - nw); }
 	if (DRAG.edge & 2) w = MAX(mw, ow + dx);
 	if (DRAG.edge & 4) { int nh = MAX(mh, oh - dy), nt = MAX(desk_top(), DRAG.y + (oh - nh)); h = oh + DRAG.y - nt - tbh; y = nt; }
@@ -1551,7 +1774,7 @@ static void drag_motion(int rx, int ry)
 static void frame_release(Client *c, XButtonEvent *e)
 {
 	if (pn_release(e)) return;   /* (1.6.1 Part 2) */
-	if (DRAG.c) { XUngrabPointer(DPY, e->time); if (DRAG.c == c) tell_geom(c); DRAG.c = NULL; desk_shadows(); state_write(); return; }
+	if (DRAG.c) { drag_end(e->time, 0); return; }
 	int b = c->press; c->press = 0; frame_draw(c);
 	if (b && b == btn_at(c, e->x, e->y)) { if (b == 1) wm_minimise(c); else if (b == 2) wm_maximise(c, !c->max); else wm_close(c); }
 }
@@ -1563,10 +1786,12 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 	(void)ev; (void)d; XEvent *e = xev; Client *c;
 	switch (e->type) {
 	case KeyPress:   /* (the page's global shortcuts: item 5, sc_key) */
+		if (DRAG.c && DRAG.kbd) { drag_key(&e->xkey); return GDK_FILTER_REMOVE; }   /* (1.6.1 Part 15: an app's own Move or Size) */
 		if ((c = client_of(e->xkey.window)) && c->ak[0] && e->xkey.window == c->w && oracle_key(&e->xkey)) return GDK_FILTER_REMOVE;   /* (Oracle's keys, as on Standard: 12.3c) */
 		if (sc_key(&e->xkey)) return GDK_FILTER_REMOVE;
 		break;
 	case KeyRelease:
+		if (DRAG.c && DRAG.kbd) return GDK_FILTER_REMOVE;
 		if (sc_key(&e->xkey)) return GDK_FILTER_REMOVE;
 		break;
 	case GenericEvent:   /* (XInput 2's raw keys: Super alone, 1.6.0) */
@@ -1582,7 +1807,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 		if (c->w == r->window && !c->full && !c->max) {
 			int dw = c->clip ? c->il + c->ir : 0, dh = c->clip ? c->it + c->ib : 0;   /* (Oracle's Chromium asks with its own edges) */
 			if (r->value_mask & CWWidth) c->cw = r->width - dw; if (r->value_mask & CWHeight) c->ch = r->height - dh;
-			if (r->value_mask & CWX) c->x = r->x + (c->clip ? c->il : 0) - BW; if (r->value_mask & CWY) c->y = r->y + (c->clip ? c->it : 0) - TH;
+			if (r->value_mask & CWX) c->x = r->x + (c->clip ? c->il : 0) - BW; if (r->value_mask & CWY) c->y = r->y + (c->clip ? c->it : 0) - th_of(c);
 			/* (a window making itself the screen's size is a game going full screen: as rudolf-display does) */
 			if (c->cw >= SW && c->ch >= SH) { wm_fullscreen(c, 1); return GDK_FILTER_REMOVE; }
 			place(c); frame_draw(c);
@@ -1604,11 +1829,13 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 		return GDK_FILTER_CONTINUE;
 	case PropertyNotify:
 		if ((c = client_of(e->xproperty.window)) && c->w == e->xproperty.window && (e->xproperty.atom == XA_WM_NAME || e->xproperty.atom == A_NNAME)) { wm_title(c); frame_draw(c); bar_redraw(); state_write(); }
+		if (c && c->w == e->xproperty.window && A_MOTIF && (e->xproperty.atom == A_MOTIF || e->xproperty.atom == A_GTKFE)) csd_update(c);   /* (1.6.1 Part 15) */
 		return GDK_FILTER_CONTINUE;
 	case Expose:
 		if ((c = client_of(e->xexpose.window)) && c->frame == e->xexpose.window) { if (!e->xexpose.count) frame_draw(c); return GDK_FILTER_REMOVE; }
 		return GDK_FILTER_CONTINUE;
 	case ButtonPress:
+		if (DRAG.c && DRAG.kbd) { drag_end(e->xbutton.time, 0); return GDK_FILTER_REMOVE; }   /* (a click ends the keyboard's move: 1.6.1 Part 15) */
 		if ((c = client_of(e->xbutton.window))) { fl_outside();
 			int ri = rz_of(c, e->xbutton.window); if (ri >= 0) { XButtonEvent b = e->xbutton; rz_to_frame(c, ri, &b.x, &b.y); frame_press(c, &b); return GDK_FILTER_REMOVE; }
 			if (c->frame == e->xbutton.window) frame_press(c, &e->xbutton);
@@ -1617,6 +1844,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 		}
 		return GDK_FILTER_CONTINUE;
 	case ButtonRelease:
+		if (DRAG.c && DRAG.kbd) return GDK_FILTER_REMOVE;
 		if ((c = client_of(e->xbutton.window)) && (c->frame == e->xbutton.window || rz_of(c, e->xbutton.window) >= 0)) { frame_release(c, &e->xbutton); return GDK_FILTER_REMOVE; }
 		return GDK_FILTER_CONTINUE;
 	case MotionNotify:
@@ -1633,7 +1861,8 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 		if ((c = client_of(e->xcrossing.window)) && c->frame == e->xcrossing.window) { if (c->hover) { c->hover = 0; frame_draw(c); } return GDK_FILTER_REMOVE; }
 		return GDK_FILTER_CONTINUE;
 	case ClientMessage: {
-		XClientMessageEvent *m = &e->xclient; c = client_of(m->window);
+		XClientMessageEvent *m = &e->xclient; if (csd_message(m)) return GDK_FILTER_REMOVE;   /* (1.6.1 Part 15: _NET_WM_MOVERESIZE, maximize, the frame's extents) */
+		c = client_of(m->window);
 		if (m->message_type == A_NSTATE && c) { long act = m->data.l[0];
 			if ((Atom)m->data.l[1] == A_NFULL || (Atom)m->data.l[2] == A_NFULL) wm_fullscreen(c, act == 1 ? 1 : act == 0 ? 0 : !c->full);
 			if ((Atom)m->data.l[1] == A_NHIDDEN && act == 1) wm_minimise(c);
@@ -1661,8 +1890,9 @@ static void wm_init(void)
 	A_NHIDDEN = XInternAtom(DPY, "_NET_WM_STATE_HIDDEN", False); A_NACTIVE = XInternAtom(DPY, "_NET_ACTIVE_WINDOW", False); A_NLIST = XInternAtom(DPY, "_NET_CLIENT_LIST", False);
 	A_NNAME = XInternAtom(DPY, "_NET_WM_NAME", False); A_UTF8 = XInternAtom(DPY, "UTF8_STRING", False); A_NSUP = XInternAtom(DPY, "_NET_SUPPORTED", False);
 	A_NCHECK = XInternAtom(DPY, "_NET_SUPPORTING_WM_CHECK", False); A_CHANGE = XInternAtom(DPY, "WM_CHANGE_STATE", False);
-	/* what we do (not _NET_WM_MOVERESIZE: GTK then moves its own windows itself) */
-	Atom sup[] = {A_NSTATE, A_NFULL, A_NHIDDEN, A_NACTIVE, A_NLIST, A_NNAME, A_NCHECK};
+	/* what we do (1.6.1 Part 15: _NET_WM_MOVERESIZE too, for the apps drawing their own title bar; Rudolf's own windows never ask it) */
+	csd_atoms();
+	Atom sup[] = {A_NSTATE, A_NFULL, A_NHIDDEN, A_NACTIVE, A_NLIST, A_NNAME, A_NCHECK, A_NMOVERESIZE, A_NMAXV, A_NMAXH, A_NFE, A_NREQFE, A_GTKFE, A_GTKMENU};
 	XChangeProperty(DPY, ROOT, A_NSUP, XA_ATOM, 32, PropModeReplace, (unsigned char *)sup, sizeof sup / sizeof sup[0]);
 	Window chk = XCreateSimpleWindow(DPY, ROOT, -10, -10, 1, 1, 0, 0, 0);
 	XChangeProperty(DPY, ROOT, A_NCHECK, XA_WINDOW, 32, PropModeReplace, (unsigned char *)&chk, 1);
@@ -2530,6 +2760,7 @@ static int menu_dark(void);
 static void frame_draw(Client *c)
 {
 	if (!c->frame || c->full) return;
+	if (c->csd) { csd_frame_draw(c); return; }   /* (1.6.1 Part 15: the app's own title bar; Rudolf's frame its edge alone) */
 	int fw = fw_of(c), fh = fh_of(c), act = c == FOCUS; TwVars V = tw_vars(); const char *st = V.st; TwGeom G = tw_geom(); double eb = BW / Z, TB = (TH - BW) / Z;   /* (the edge and the bar on whole pixels of the screen, as Chromium snaps them under the display scaling) */
 	cairo_surface_t *sf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fw, fh); cairo_t *cr = cairo_create(sf);   /* (drawn aside, then filtered as the page is: cb_filter) */
 	cairo_scale(cr, Z, Z); double W = fw / Z, H = fh / Z, R = tw_rad();   /* (maximised too: the page's .win.max keeps its corners) */
@@ -2595,6 +2826,18 @@ static void frame_draw(Client *c)
 		cairo_surface_mark_dirty(g); cairo_save(cr); cairo_identity_matrix(cr); cairo_set_source_surface(cr, g, 0, 0); cairo_paint_with_alpha(cr, tbo); cairo_restore(cr); cairo_surface_destroy(g);
 	} else cairo_paint_with_alpha(cr, tbo);
 	cairo_destroy(cr); cb_filter(sf);
+	cairo_surface_t *xs = cairo_xlib_surface_create(DPY, c->frame, DefaultVisual(DPY, DefaultScreen(DPY)), fw, fh); cairo_t *xc = cairo_create(xs);
+	cairo_set_operator(xc, CAIRO_OPERATOR_SOURCE); cairo_set_source_surface(xc, sf, 0, 0); cairo_paint(xc); cairo_destroy(xc); cairo_surface_destroy(xs); cairo_surface_destroy(sf);
+}
+/* (1.6.1 Part 15) */
+/* the frame of a window drawing its own title bar: the window's edge alone (its white, or html.dark's, behind) */
+static void csd_frame_draw(Client *c)
+{
+	int fw = fw_of(c), fh = fh_of(c), dk = menu_dark(); double eb = BW / Z;
+	cairo_surface_t *sf = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, fw, fh); cairo_t *cr = cairo_create(sf); cairo_scale(cr, Z, Z);
+	srca(cr, cx(dk ? "#0f172a" : "#ffffff", 1)); cairo_paint(cr);
+	Box win; memset(&win, 0, sizeof win); win.bg = cx(dk ? "#0f172a" : "#ffffff", 1); win.bw = eb; win.bc = S.hc ? cx("#ffffff", 1) : cx(dk ? "#334155" : "#9ca3af", 1); win.rad = tw_rad();
+	box_paint(cr, 0, 0, fw / Z, fh / Z, &win); cairo_destroy(cr); cb_filter(sf);
 	cairo_surface_t *xs = cairo_xlib_surface_create(DPY, c->frame, DefaultVisual(DPY, DefaultScreen(DPY)), fw, fh); cairo_t *xc = cairo_create(xs);
 	cairo_set_operator(xc, CAIRO_OPERATOR_SOURCE); cairo_set_source_surface(xc, sf, 0, 0); cairo_paint(xc); cairo_destroy(xc); cairo_surface_destroy(xs); cairo_surface_destroy(sf);
 }
@@ -4979,6 +5222,7 @@ static void on_tb_act(const char *a)
 		else if (!strcmp(a, "wn:top")) { c->ontop = !c->ontop; wm_focus(c); }
 		else if (!strcmp(a, "wn:center")) { if (c->max) wm_maximise(c, 0); wm_focus(c); c->x = desk_left() + MAX(0, (desk_w() - fw_of(c)) / 2); c->y = work_top() + MAX(0, (work_h() - fh_of(c)) / 2); place(c); state_write(); }
 		else if (!strcmp(a, "wn:close")) { if (c->app) appwin_ask_close(c->app); else wm_close(c); }
+		else if (!strcmp(a, "wn:tbown") || !strcmp(a, "wn:tbrudolf")) tb_choose(c, a[5] == 'r');   /* (1.6.1 Part 15, item 3) */
 		else if (!strcmp(a, "wn:fq")) { if (c->app) { char k[KN]; snprintf(k, sizeof k, "%s", c->app->k); GList *L = g_list_copy(WINS);   /* (the page's: every window of the app, without asking) */
 				for (GList *l = L; l; l = l->next) { AppWin *w = l->data; if (g_list_find(WINS, w) && !w->hidden && !strcmp(w->k, k)) appwin_close_now(w); } g_list_free(L); } else XKillClient(DPY, c->w); }
 		else if (!strncmp(a, "wp:", 3) && c->app && c->app->view) { GString *js = g_string_new("window.__oaWinMenuDo&&__oaWinMenuDo("); json_esc(js, a + 3); g_string_append_c(js, ')');
@@ -5019,6 +5263,17 @@ static void ctx_msg(AppWin *a, JSCValue *v)
 	char rg[4] = ""; jsstr(v, "ring", rg, sizeof rg);   /* (the menu's focus ring as Chromium shows it after that click: the page says) */
 	CTX_A = a; CTX_GEN = atoi(gs); CM_RING = rg[0] == '1'; cm_open(cx + atof(xs), cy + atof(ys), title, m, n, ctx_chosen);
 }
+/* (win_menu_build) its rows, after the others: a window drawing its own title bar */
+static int tb_menu_rows(Client *c, CMI *m, int n, int max)
+{
+	if (c->app || c->ak[0] || !c->nodeco || n + 3 > max) return n;
+	memset(&m[n], 0, sizeof m[n]); m[n++].sep = 1;
+	if (tbcut_of(c)) {
+		CMI *a = &m[n++]; memset(a, 0, sizeof *a); snprintf(a->label, sizeof a->label, "Title bar: the app's own"); snprintf(a->act, sizeof a->act, "wn:tbown"); snprintf(a->icon, sizeof a->icon, "%s", c->tbcut ? "" : "✓");
+		CMI *b = &m[n++]; memset(b, 0, sizeof *b); snprintf(b->label, sizeof b->label, "Title bar: Rudolf's"); snprintf(b->act, sizeof b->act, "wn:tbrudolf"); snprintf(b->icon, sizeof b->icon, "%s", c->tbcut ? "✓" : "");
+	} else { CMI *a = &m[n++]; memset(a, 0, sizeof *a); a->dis = 1; snprintf(a->label, sizeof a->label, "Title bar: the app's own (Rudolf's would hide its menus and buttons)"); snprintf(a->act, sizeof a->act, "wn:tbno"); }
+	return n;
+}
 static void win_menu_build(Client *c, JV *pm)
 {
 	CMI m[24]; int n = 0; memset(m, 0, sizeof m); char title[256] = ""; jstr(pm, "title", title, sizeof title); if (!title[0]) snprintf(title, sizeof title, "%s", c->title);
@@ -5045,6 +5300,7 @@ static void win_menu_build(Client *c, JV *pm)
 		else if (c->app && jump_of(c->app->k, L) >= 0) snprintf(x->act, sizeof x->act, "jump:%.38s|%.50s", c->app->k, L);
 		else snprintf(x->act, sizeof x->act, "wp:%.90s", L); }
 	for (int i = 0; i < n; i++) if (!strcmp(m[i].label, "Print / Save as PDF…")) CM_LATE = 1;
+	n = tb_menu_rows(c, m, n, 24);   /* (1.6.1 Part 15, item 3) */
 	tb_menu_show(title, m, n, 0, "win");
 }
 static void win_menu_got(GObject *src, GAsyncResult *res, gpointer d)
@@ -7081,6 +7337,44 @@ static void toast_add(AppWin *from, JSCValue *v) { toast_addf(from, NULL, fget_j
 /* (a pop-up of the shell's own, as the page's notify(t, b, {quiet: true, toast: ms}): "Workspace N") */
 static void fget_tt(void *v, const char *k, char *o, size_t n) { const char *const *f = v; snprintf(o, n, "%s", !strcmp(k, "t") ? f[0] : !strcmp(k, "b") ? f[1] : !strcmp(k, "ms") ? f[2] : ""); }
 static void toast_text(const char *t, const char *b, int ms) { char m[16]; snprintf(m, sizeof m, "%d", ms); const char *f[3] = {t, b, m}; toast_addf(NULL, NULL, fget_tt, (void *)f); }
+/* ------------------------------------------------------------------ game mode (1.6.1, docs/plan-1.6.1.md Part 19)
+   The native desktop is the window manager, so it is what sees a game full screen (a Linux window, Oracle's window, one of
+   its own app windows: a page's full screen): it tells rudolfd every 2 s while one is (game/on?src=native: root raises the
+   processor's preference and, for a Linux game, lowers the desktop's own processor time; a source that stops saying so
+   counts 6 s at most, so a crash of the native desktop leaves nothing behind), and game/off when none is. The pages hear
+   of it from rudolfd (gamemode61.js): they hold their notifications and background work, as Standard's page does. The
+   shell's own pop-ups (the cellular notices, its own messages) are held here too, but errors, and once the game is over
+   one pop-up says how many came, as the page's does (game51.js). Not with Game mode off (rudolfd says so). */
+static int GM61_ON, GM61_HELD;
+static Atom A_NPID;
+static Client *gm61_full(void)
+{
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data;
+		if (!c->full || c->hidden || c->off || c->min || (c->app && !strcmp(c->app->k, "do-saver"))) continue;
+		return c; }
+	return NULL;
+}
+static long gm61_pid(Window w)
+{
+	if (!A_NPID) A_NPID = XInternAtom(DPY, "_NET_WM_PID", False);
+	Atom type; int fmt; unsigned long n, after; unsigned char *d = NULL; long p = 0;
+	if (XGetWindowProperty(DPY, w, A_NPID, 0, 1, False, XA_CARDINAL, &type, &fmt, &n, &after, &d) == Success && d) { if (n == 1 && fmt == 32) p = (long)*(unsigned long *)d; XFree(d); }
+	return p;
+}
+static gboolean gm61_tick(gpointer d)
+{
+	(void)d; Client *c = USER_ID[0] && DPY ? gm61_full() : NULL; int on = 0;
+	if (c) { char p[160]; GByteArray *b = NULL; long pid = gm61_pid(c->w);
+		snprintf(p, sizeof p, "/api/game/on?src=native&kind=%s&pid=%ld", c->app ? "page" : c->ak[0] ? "oracle" : "linux", pid > 1 ? pid : 0);
+		if (http("POST", p, NULL, 0, &b) == 200 && b) { g_byte_array_append(b, (const guint8 *)"", 1); JV *v = jparse((char *)b->data); on = v && jbool(v, "enabled"); jfree(v); }
+		if (b) g_byte_array_free(b, TRUE); }
+	else if (GM61_ON) http("POST", "/api/game/off?src=native", NULL, 0, NULL);
+	int was = GM61_ON; GM61_ON = on;
+	if (was && !on && GM61_HELD) { char t[160]; snprintf(t, sizeof t, "%d notification%s came in. They are in the notification centre.", GM61_HELD, GM61_HELD == 1 ? "" : "s"); GM61_HELD = 0; toast_text("While you were playing", t, 6000); }
+	return TRUE;
+}
+/* a pop-up held while a game is full screen (kept in the centre by whoever sent it, as with Do not disturb) */
+static int gm61_hold(const char *kind) { if (!GM61_ON || !strcmp(kind, "error")) return 0; GM61_HELD++; return 1; }
 static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 {
 	if (!USER_ID[0]) return; if (NTST == 8) { memmove(&TST[0], &TST[1], 7 * sizeof TST[0]); NTST--; }
@@ -7093,6 +7387,7 @@ static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 	/* (1.6.0) Do not disturb: no pop-up, from any window or the shell, but an error's (shell25.js __notifCentre.add: !S.dnd||n.k=='error'), as on
 	   Standard where one page decides; a window whose page had not heard of the switch yet no longer shows one */
 	if (S.dnd && strcmp(t->k, "error")) { NTST--; return; }
+	if (gm61_hold(t->k)) { NTST--; return; }   /* (1.6.1 Part 19: game mode) */
 	toast_place(); if (!g_signal_handler_find(TWIN, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, toast_press, NULL)) { g_signal_connect(TWIN, "button-press-event", G_CALLBACK(toast_press), NULL); g_signal_connect(TWIN, "motion-notify-event", G_CALLBACK(toast_motion), NULL); }
 	toast_anim();
 }
@@ -7244,7 +7539,8 @@ static void state_write(void)
 		if (c->wait == 1) { g_string_append_printf(s, "clientwait %lx %lx app=%s\n", (unsigned long)c->w, (unsigned long)c->frame, c->app ? c->app->k : "-"); continue; }
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
-		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);   /* (item 4: its workspace, shown or not) */
+		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);
+		if (c->csd || c->clip) g_string_append_printf(s, "clientcsd %lx %d %d %d %d %d %d\n", (unsigned long)c->w, c->csd, c->il, c->it, c->ir, c->ib, c->tbcut);   /* (1.6.1 Part 15: its own title bar, its cut) */   /* (item 4: its workspace, shown or not) */
 		if (c->ontop) g_string_append_printf(s, "clienttop %lx\n", (unsigned long)c->w);   /* (Always on top: the title bars' test) */
 		if (c->hidden) g_string_append_printf(s, "clienthidden %lx\n", (unsigned long)c->w);   /* (1.6.0: out of sight, as the portal's page between its dialogs) */
 		if (c->app && c->app->win && c->app->view && GTK_IS_WIDGET(c->app->view)) { GtkAllocation al; gtk_widget_get_allocation(c->app->view, &al); g_string_append_printf(s, "view %lx %d %d\n", (unsigned long)c->w, al.width, al.height); } }   /* (the page's own size: its window's) */
@@ -7525,6 +7821,7 @@ int main(int argc, char **argv)
 	bri_load(); bar_redraw(); BL_LAST = bl_read(); g_timeout_add(300, bl_tick, NULL);
 	g_thread_unref(g_thread_new("events", ev_thread, NULL));
 	g_thread_unref(g_thread_new("portal", pt_thread, NULL));   /* (1.6.0: the portal's requests, collected here) */
+	g_timeout_add_seconds(2, gm61_tick, NULL);   /* (1.6.1 Part 19: game mode) */
 	g_timeout_add_seconds(2, svc_tick, NULL);   /* (1.6.0 Part 12, item 12: the desktop's service page, kept open while an account is signed in) */
 	g_timeout_add_seconds(2, rest_tick, NULL);   /* (1.6.1 Part 23 C: idle windows give their memory back) */
 	teval_init(); clip_init();

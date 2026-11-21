@@ -200,6 +200,14 @@ static int safe_word(const char *s, size_t max)
 	for (; *s; s++) if (!isalnum((unsigned char)*s) && !strchr("-_.:", *s)) return 0;
 	return 1;
 }
+/* 1.6.1 (plan Part 1): the monitors' arrangement, "NAME=WS,NAME=WS[,NAME=WS]" from the left (screenctl arrange checks the rest:
+   each workspace once, the monitors plugged in now) */
+static int monitors_spec_ok(const char *s)
+{
+	if (!s || !*s || strlen(s) > 140) return 0;
+	for (const char *c = s; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("-_.:=,", *c)) return 0;
+	return 1;
+}
 
 /* 1.6.0: a link of a Linux app's own scheme (claude://, discord://, steam://...) that Oracle or another app hands to
    it: launched with it as its one argument (never through a shell). Printable ASCII without spaces, a scheme of two or
@@ -1534,6 +1542,16 @@ static void api_shell(struct req *r, const char *what, int post)
 
 /* the text on the clipboard (the X CLIPBOARD selection, shared with Linux apps): the desktop inside the shell
    cannot read the clipboard itself */
+/* 1.6.1 (plan Part 1): POST screen/arrange?set=NAME=WS,..: Settings › Display › Displays, kept for this set of monitors (screenctl
+   arrange: /etc/rudolf-monitors); rudolf-display arranges the monitors anew and rewrites /run/rudolf/monitors */
+static void api_monitors_arrange(struct req *r)
+{
+	char *v = qparam(r->query, "set"), cmd[220];
+	if (!monitors_spec_ok(v)) { reply_err(r->fd, 400, "which monitor shows which workspace?"); return; }
+	snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/screenctl arrange '%s' 2>/dev/null", v);
+	if (run(cmd)) { reply_err(r->fd, 400, "that arrangement is not for the monitors plugged in now"); return; }
+	reply_ok(r->fd, "the displays are arranged anew");
+}
 static void api_clipboard(struct req *r)
 {
 	char *o = run_out("su -s /bin/sh rudolf -c 'DISPLAY=:0 timeout 3 rudolf-display --clip-get' 2>/dev/null");
@@ -4371,6 +4389,8 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-drop.inc"      /* 1.6.1: files dropped from outside onto the native desktop (plan-1.6.1 Part 13) */
 #include "rudolfd-know.inc"      /* 1.6.0: Blitzen knows the system (plan Part 18) */
 #include "rudolfd-dev.inc"       /* 1.6.0: Blitzen as a developer's agent (plan Part 19) */
+#include "rudolfd-game.inc"      /* 1.6.1: game mode (plan-1.6.1 Part 19) */
+#include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
@@ -4854,6 +4874,7 @@ static void api(struct req *r)
 		}
 		if (!strcmp(a, "/keep")) { run("/usr/lib/rudolf/screenctl keep"); reply_ok(r->fd, "kept"); return; }
 		if (!strcmp(a, "/revert")) { run("/usr/lib/rudolf/screenctl revert"); reply_ok(r->fd, "the previous setting comes back"); return; }
+		if (!strcmp(a, "/arrange")) { api_monitors_arrange(r); return; }   /* (1.6.1 Part 1: Settings › Display › Displays) */
 		reply_err(r->fd, 404, "unknown screen action"); return;
 	}
 	if (!strncmp(p, "idbm/", 5)) { api_idbm(r, p + 5, post); return; }
@@ -5048,9 +5069,11 @@ static void api(struct req *r)
 	if (!strncmp(p, "print/", 6)) { api_print(r, p + 6); return; }
 	if (!strncmp(p, "keyring/", 8)) { api_keyring(r, p + 8, post); return; }   /* 1.6.0 (plan Part 14) */
 	if (!strncmp(p, "sysext/", 7)) { api_sysext(r, p + 7, post); return; }   /* 1.6.0 (plan Part 13) */
+	if (!strcmp(p, "gpu/driver") || !strncmp(p, "gpu/driver/", 11)) { api_gpudriver(r, p[10] ? p + 11 : "", post); return; }   /* 1.6.1 (plan-1.6.1 Part 19) */
 	if (!strncmp(p, "apps/", 5)) { api_apps(r, p + 5); return; }
 	if (!strncmp(p, "debian/", 7)) { api_debian(r, p + 7); return; }
 	if (!strncmp(p, "ai/", 3)) { api_ai(r, p + 3); return; }
+	if (!strncmp(p, "game/", 5)) { api_game(r, p + 5, post); return; }   /* 1.6.1 (plan-1.6.1 Part 19) */
 	if (!strncmp(p, "games/", 6)) { api_games(r, p + 6); return; }
 	if (!strncmp(p, "term/", 5)) { api_term(r, p + 5); return; }
 	if (!strncmp(p, "portal/", 7)) { api_portal(r, p + 7); return; }
