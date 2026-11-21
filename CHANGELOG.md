@@ -13,6 +13,8 @@ Summary: In progress.
 - Security: the accounts' own Linux users (made and removed with the accounts, written into the system's user list,
   their folders given to them) and Settings › Privacy › Saved passwords for apps are handled by a helper of their
   own, no longer by rudolfd; it is asked only when an account comes or goes. Nothing changes on screen.
+- Security: restart, shut down, sleep, the power settings, brightness, Task Manager's "Clear cache" and the desktop's
+  priority, and setting the clock are done by a power helper of its own, no longer by rudolfd. Nothing changes on screen.
 - Fixed: the release build no longer stops when linux-firmware updates a file: it takes linux-firmware at the commit the firmware list was made from (the list's new "R" line), and a check runs that fetch on every change to the list.
 - Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
   follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at

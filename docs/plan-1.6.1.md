@@ -428,7 +428,27 @@ rudolfd runs as root today (they keep running as root, from the helper).
   Not moved: the administrator's check (left as it is: the page asks the password for Developer mode and Return to
   official; moving it into the helpers would change who asks, for the owner to decide); the home/* files API (the file
   service run as the account's user: needed only for the drop).
-- Next: power; network; packages; display; other; then the drop (with the accounts' file service of 11.2).
+- **Power (2026-11-21, branch root-helpers-power, after root-helpers-accounts):** the power helper (iso/sys/rudolf-power.c,
+  /usr/lib/rudolf/root/power, a small program of its own): restart and shut down (`power off|reboot [T]`: the shutdown
+  script with the desktop's times, its output in shutdown.out, then as before 1.4.5: Chromium stopped, sync, umount -a
+  -r, reboot(2)), `wakealarm N` (1-60), `sleep` (/sys/power/state; the kernel's refusal said back for sleep.json),
+  `status`, `set KEY=VALUE...` (lower-case letters, digits, "_" and "=", at most 30), `apply` (at start),
+  `brightness-step up|down` (hotkey), `backlight VALUE` (0 to max_brightness of the backlight rudolfd also finds: an
+  intel or amdgpu one first), `dropcache`, `priority on|off`, `clock-set MS`, `clock-sync` (BusyBox ntpd, pool.ntp.org
+  then time.google.com, the hardware clock, RUN/time-sync as before). The commands it runs are looked for in the
+  system's folders only, with no environment but PATH. rudolfd keeps each old line beside the call for when the helper
+  does not start (rudolfd-rootpower.inc, -2): restart and shut down always work. Part 20: no "power" line in
+  HELPER_CAPS yet (with confine=on rudolfd does it itself, as with accounts); the line to add: CAP_SYS_BOOT,
+  CAP_SYS_TIME, CAP_SYS_ADMIN (umount -a -r, the backlight and /sys), CAP_DAC_OVERRIDE, CAP_KILL, CAP_WAKE_ALARM, and
+  reboot, settimeofday and clock_settime taken out of its deny list for this helper. Found and kept as they were:
+  POST time takes any epoch rudolfd's atoll reads (garbage set the clock to 1970); through the helper only digits are
+  taken, so a malformed epoch is now 500 "could not set the clock" (the page sends Date.now()); POST power/set with
+  more than 30 settings, or a setting with an empty part between two "&", now answers 500 instead of the script's 400
+  (the page sends a few). Tests: roothelpers161_t.sh P1-P5 (the arguments, stand-ins for every script and command, so
+  a host test never restarts the computer or sets its clock) and check 24 (the API through the helper, with and without
+  rudolf-rootd; rudolfd built there so that it could not restart or set the clock even if it did the work itself).
+  Not in QEMU yet: the t160 checks do not restart through the API; for the owner on the Vivobook (below in the PR).
+- Next: network; packages; display; other; then the drop (with the accounts' file service of 11.2).
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).

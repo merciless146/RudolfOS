@@ -339,11 +339,13 @@ static void sleep_now(int asked)
 {
 	char mode[24]; mem_sleep_now(mode, sizeof mode);
 	long long seq = clk_ms(CLOCK_BOOTTIME), d0 = seq - clk_ms(CLOCK_MONOTONIC), ok0 = sus_stat("success"), f0 = sus_stat("fail");
-	errno = 0; int w = write_str("/sys/power/state", "mem"); int er = w ? errno : 0;
+	errno = 0; char et[160] = ""; int w = -2, er = 0;
+	if (root_have("power")) { const char *av[] = { "power", "sleep", NULL }; w = root_power(av, et, sizeof et); }   /* (1.6.1 Part 11: rudolfd-rootpower.inc) */
+	if (w == -2) { w = write_str("/sys/power/state", "mem"); er = w ? errno : 0; snprintf(et, sizeof et, "%s", er ? strerror(er) : ""); }
 	long long d1 = clk_ms(CLOCK_BOOTTIME) - clk_ms(CLOCK_MONOTONIC), ok1 = sus_stat("success"), f1 = sus_stat("fail"), hw = sus_stat("last_hw_sleep");
 	str j = {0};
 	sadd(&j, "{\"seq\":%lld,\"at\":%lld,\"asked\":%d,\"slept_ms\":%lld,\"ok\":%s,\"error\":", seq, (long long)time(NULL), asked, d1 - d0, w ? "false" : "true");
-	sjson(&j, er ? strerror(er) : ""); sadd(&j, ",\"success\":%lld,\"fail\":%lld,\"hw_us\":%lld,\"mode\":", ok0 >= 0 && ok1 >= 0 ? ok1 - ok0 : -1, f0 >= 0 && f1 >= 0 ? f1 - f0 : -1, hw);
+	sjson(&j, w ? et : ""); (void)er; sadd(&j, ",\"success\":%lld,\"fail\":%lld,\"hw_us\":%lld,\"mode\":", ok0 >= 0 && ok1 >= 0 ? ok1 - ok0 : -1, f0 >= 0 && f1 >= 0 ? f1 - f0 : -1, hw);
 	sjson(&j, mode); sadd(&j, "}\n");
 	FILE *f = fopen(RUN "/sleep.json.new", "w"); if (f) { fwrite(j.b, 1, j.n, f); fclose(f); rename(RUN "/sleep.json.new", RUN "/sleep.json"); }
 	fprintf(stderr, "rudolfd: sleep (%s, %d s asked): %s", mode, asked, j.b); free(j.b);
@@ -1036,6 +1038,12 @@ static int default_route(void)
 }
 /* at start once the network is up (again every minute until a server answers), when the network comes up again
    (Wi-Fi joined, a cable plugged in), and every 12 hours; in a child, so nothing waits for it */
+/* (1.6.1 Part 11) the clock from the internet: by the power helper, or as before */
+static int time_sync(void)
+{
+	const char *av[] = { "power", "clock-sync", NULL }; int st = root_have("power") ? root_power(av, NULL, 0) : -2;
+	return st == -2 ? run(TIME_SYNC_CMD) : st;
+}
 static void time_tick(void)
 {
 	static time_t last_try, last_ok, last_check; static int had_route, ok_since_up;
@@ -1051,7 +1059,7 @@ static void time_tick(void)
 	if (!due) return;
 	last_try = t;
 	pid_t p = fork();
-	if (p == 0) { setsid(); _exit(run(TIME_SYNC_CMD) ? 1 : 0); }
+	if (p == 0) { setsid(); _exit(time_sync() ? 1 : 0); }
 }
 /* 1.3.0: crashes of Rudolf OS's own programs, from the kernel's log ("rudolf-apps[9979]: segfault at 0 ip ... in
  * libc.so.6[18badd,...]"): program, seconds after start-up, and where (library + offset). after: only lines that come
@@ -2785,7 +2793,8 @@ static void api_memory_dropcache(struct req *r)
 	last = now;
 	long long before = meminfo_kb("MemFree"), cache0 = meminfo_kb("Cached");
 	sync();
-	int f = open("/proc/sys/vm/drop_caches", O_WRONLY | O_CLOEXEC); int ok = f >= 0 && write(f, "1", 1) == 1; if (f >= 0) close(f);
+	const char *av[] = { "power", "dropcache", NULL }; int pst = root_have("power") ? root_power(av, NULL, 0) : -2, ok = !pst;   /* (1.6.1 Part 11) */
+	if (pst == -2) { int f = open("/proc/sys/vm/drop_caches", O_WRONLY | O_CLOEXEC); ok = f >= 0 && write(f, "1", 1) == 1; if (f >= 0) close(f); }
 	if (!ok) { reply_err(r->fd, 500, "the cache could not be cleared"); return; }
 	long long after = meminfo_kb("MemFree"), cache1 = meminfo_kb("Cached");
 	str s = {0}; sadd(&s, "{\"ok\":true,\"freed\":%lld,\"cacheBefore\":%lld,\"cacheAfter\":%lld}", after > before ? after - before : 0, cache0, cache1);
@@ -4741,7 +4750,8 @@ static void api(struct req *r)
 		if (!post) { str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s}", access(RUN "/desktop-priority", F_OK) ? "false" : "true"); reply_json(r->fd, &s); return; }
 		const char *o = qparam(r->query, "on");
 		if (access("/usr/lib/rudolf/desktop-priority", X_OK)) { reply_err(r->fd, 404, "this Rudolf OS has no desktop priority"); return; }
-		char *t = run_out(o && !strcmp(o, "1") ? "/usr/lib/rudolf/desktop-priority on 2>&1" : "/usr/lib/rudolf/desktop-priority off 2>&1");
+		char *t = NULL; if (root_have("power")) { const char *av[] = { "power", "priority", o && !strcmp(o, "1") ? "on" : "off", NULL }; int st; t = root_power_out(av, 1, &st); if (st == -2) { free(t); t = NULL; } }   /* (1.6.1 Part 11) */
+		if (!t) t = run_out(o && !strcmp(o, "1") ? "/usr/lib/rudolf/desktop-priority on 2>&1" : "/usr/lib/rudolf/desktop-priority off 2>&1");
 		str s = {0}; sadd(&s, "{\"ok\":true,\"text\":"); sjson(&s, t ? t : ""); sadd(&s, "}"); free(t); reply_json(r->fd, &s); return;
 	}
 	/* 1.5.8: the last starts (/usr/lib/rudolf/starts: from var/log/starts), for System health › Last starts */
@@ -4910,7 +4920,13 @@ static void api(struct req *r)
 			for (const char *c = q; *c; c++) { size_t l = strlen(cmd); if (l + 2 >= sizeof cmd) break; cmd[l] = *c == '&' ? ' ' : *c; cmd[l + 1] = 0; }
 			strncat(cmd, " 2>/dev/null", sizeof cmd - strlen(cmd) - 1);
 		}
-		char *o = run_out(cmd); trim(o);
+		char *o = NULL;
+		if (root_have("power")) {   /* (1.6.1 Part 11: the same settings as arguments, one each) */
+			const char *av[40] = { "power", strcmp(p, "power/set") ? "status" : "set" }; int k = 2; char qq[420];
+			if (!strcmp(p, "power/set")) { snprintf(qq, sizeof qq, "%s", r->query ? r->query : ""); char *sv = NULL; for (char *w = strtok_r(qq, "&", &sv); w && k < 39; w = strtok_r(NULL, "&", &sv)) av[k++] = w; }
+			av[k] = NULL; int st; o = root_power_out(av, 0, &st); if (st == -2) { free(o); o = NULL; }
+		}
+		if (!o) o = run_out(cmd); trim(o);
 		if (!o || o[0] != '{') { reply_err(r->fd, 500, "the power settings could not be read"); free(o); return; }
 		if (strstr(o, "\"ok\":false")) { reply(r->fd, 400, "application/json", o, strlen(o), NULL); free(o); return; }
 		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
@@ -4920,7 +4936,8 @@ static void api(struct req *r)
 		const char *d = qparam(r->query, "d");
 		if (!post || !d || (strcmp(d, "up") && strcmp(d, "down"))) { reply_err(r->fd, 400, "POST with d=up or down"); return; }
 		char cmd[96]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey brightness %s 2>/dev/null", d);
-		char *o = run_out(cmd); trim(o); int lv = atoi(o);
+		char *o = NULL; if (root_have("power")) { const char *av[] = { "power", "brightness-step", d, NULL }; int st; o = root_power_out(av, 0, &st); if (st == -2) { free(o); o = NULL; } }   /* (1.6.1 Part 11) */
+		if (!o) o = run_out(cmd); trim(o); int lv = atoi(o);
 		if (!strcmp(o, "none") || !*o) { free(o); reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
 		str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%d}", lv); free(o); reply_json(r->fd, &js); return;
 	}
@@ -4956,7 +4973,9 @@ static void api(struct req *r)
 		if (val < mx / 20) val = mx / 20;
 		char b[32]; snprintf(b, sizeof b, "%lld", val);
 		snprintf(f, sizeof f, "%s/brightness", bl);
-		if (write_str(f, b)) reply_err(r->fd, 500, "could not set brightness"); else reply_ok(r->fd, "ok");
+		{ const char *av[] = { "power", "backlight", b, NULL }; int st = root_have("power") ? root_power(av, NULL, 0) : -2;   /* (1.6.1 Part 11) */
+		  if (st == -2) st = write_str(f, b);
+		  if (st) reply_err(r->fd, 500, "could not set brightness"); else reply_ok(r->fd, "ok"); }
 		return;
 	}
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
@@ -4984,7 +5003,9 @@ static void api(struct req *r)
 		if (!strcmp(a, "suspend")) {
 			/* wake=N (1-60, 1.2.5's hardware check): the real-time clock wakes the computer after N seconds */
 			char *w = qparam(r->query, "wake"); int ws = w ? atoi(w) : 0;
-			if (ws > 0 && ws <= 60) { char b[24]; write_str("/sys/class/rtc/rtc0/wakealarm", "0"); snprintf(b, sizeof b, "+%d", ws); if (write_str("/sys/class/rtc/rtc0/wakealarm", b)) { reply_err(r->fd, 409, "this computer cannot wake itself (no wake alarm)"); return; } }
+			if (ws > 0 && ws <= 60) { char b[24]; snprintf(b, sizeof b, "%d", ws); const char *av[] = { "power", "wakealarm", b, NULL }; int wr = root_have("power") ? root_power(av, NULL, 0) : -2;   /* (1.6.1 Part 11) */
+				if (wr == -2) { write_str("/sys/class/rtc/rtc0/wakealarm", "0"); snprintf(b, sizeof b, "+%d", ws); wr = write_str("/sys/class/rtc/rtc0/wakealarm", b); }
+				if (wr) { reply_err(r->fd, 409, "this computer cannot wake itself (no wake alarm)"); return; } }
 			reply_ok(r->fd, "suspending"); sync(); sleep_now(ws); return;
 		}
 		if (strcmp(a, "poweroff") && strcmp(a, "reboot")) { reply_err(r->fd, 400, "unknown action"); return; }
@@ -4992,6 +5013,10 @@ static void api(struct req *r)
 		/* 1.4.5: /usr/lib/rudolf/shutdown closes every app at once (the desktop's Chromium gets up to 5 s, not 25),
 		   makes the data partition read-only and logs each step's time (t: the desktop's own steps) */
 		char *t = qparam(r->query, "t"), cmd[400];
+		/* (1.6.1 Part 11: by the power helper, which does all of what follows; it returns only if it could not start) */
+		{ int tok = t && strspn(t, "abcdefghijklmnopqrstuvwxyz0123456789=,") == strlen(t) && strlen(t) <= 200;
+		  const char *av[] = { "power", strcmp(a, "reboot") ? "off" : "reboot", tok ? t : NULL, NULL };
+		  if (root_have("power") && root_power(av, NULL, 0) != -2) return; }
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/shutdown %s '%.200s' >" RUN "/shutdown.out 2>&1", a, t && strspn(t, "abcdefghijklmnopqrstuvwxyz0123456789=,") == strlen(t) ? t : "");
 		if (!access("/usr/lib/rudolf/shutdown", X_OK)) run(cmd);
 		/* if it could not finish (or is missing): as before 1.4.5 */
@@ -5256,6 +5281,8 @@ static void api(struct req *r)
 		char *e = qparam(r->query, "epoch");
 		if (!e) { reply_err(r->fd, 400, "epoch?"); return; }
 		struct timeval tv = { atoll(e) / 1000, (atoll(e) % 1000) * 1000 };
+		{ const char *av[] = { "power", "clock-set", e, NULL }; int st = root_have("power") ? root_power(av, NULL, 0) : -2;   /* (1.6.1 Part 11) */
+		  if (st != -2) { if (st) { reply_err(r->fd, 500, "could not set the clock"); return; } reply_ok(r->fd, "clock set"); return; } }
 		if (settimeofday(&tv, NULL)) { reply_err(r->fd, 500, "could not set the clock"); return; }
 		run("hwclock -w -u >/dev/null 2>&1"); reply_ok(r->fd, "clock set"); return;
 	}
@@ -5289,7 +5316,7 @@ static void api(struct req *r)
 		reply(r->fd, 200, "audio/wav", w.b, w.n, NULL); free(w.b); return;
 	}
 	if (!strcmp(p, "time/sync")) {
-		if (run(TIME_SYNC_CMD)) { reply_err(r->fd, 500, "no time server answered (offline?)"); return; }
+		if (time_sync()) { reply_err(r->fd, 500, "no time server answered (offline?)"); return; }
 		reply_ok(r->fd, "clock set from the internet"); return;
 	}
 	if (!strcmp(p, "restart-browser")) { reply_ok(r->fd, "restarting"); restart_browser(); return; }
@@ -5537,7 +5564,10 @@ int main(int argc, char **argv)
 	}
 	boot_entry_ensure();
 	/* 1.4.4: the power settings (System Settings › Power and battery) hold from the start, signed in or not */
-	if (!access("/usr/lib/rudolf/power", X_OK) && system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}
+	if (!access("/usr/lib/rudolf/power", X_OK)) {
+		if (root_have("power")) { pid_t pp = fork(); if (pp == 0) { const char *av[] = { "power", "apply", NULL }; int nul = root_null(); if (root_call(av, nul, nul, nul) < 0 && system("/usr/lib/rudolf/power apply >/dev/null 2>&1") != 0) {} _exit(0); } }   /* (1.6.1 Part 11) */
+		else if (system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}
+	}
 	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0), one = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 	struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(8080), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
