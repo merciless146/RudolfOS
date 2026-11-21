@@ -119,7 +119,7 @@ if [ "$FILES" = 1 ]; then
 	chown 1000:1000 /mnt/newstick/home/rudolf
 	# the settings rudolf-init restores from RUDOLFDATA (not machine-id: the new stick is a computer of its own)
 	E=/etc; mountpoint -q /persist && [ -d /persist/etc ] && E=/persist/etc
-	for f in asound.conf rudolf-display rudolf-screen rudolf-shell; do [ -f $E/$f ] && cp $E/$f /mnt/newstick/etc/; done
+	for f in asound.conf rudolf-display rudolf-screen rudolf-monitors rudolf-shell; do [ -f $E/$f ] && cp $E/$f /mnt/newstick/etc/; done
 	W=/run/rudolf/wifi.conf; [ -f /persist/etc/wifi.conf ] && W=/persist/etc/wifi.conf
 	[ -f $W ] && cp $W /mnt/newstick/etc/wifi.conf && chmod 600 /mnt/newstick/etc/wifi.conf
 fi

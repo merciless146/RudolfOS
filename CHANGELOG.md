@@ -116,6 +116,11 @@ Summary: In progress.
   Downloads goes to the Trash with it; otherwise the notification "File removed from list: Not in Downloads. Ask Blitzen
   if you need help finding this file." has a "⚡ Ask Blitzen" button. Blitzen reads the download's record, the Trash and
   where files of that name are, and says whether the file was moved, put in the Trash, deleted or never downloaded.
+- New: reopen a closed tab in Oracle. Ctrl+Shift+T (also inside a website) or ☰ › Reopen closed tab brings back the last
+  tab you closed, at its place and with its back and forward pages; again, the one before. ☰ › Recently closed… lists the
+  last 25; a closed window is one entry that brings its tabs back in a window of their own. The list is kept in memory
+  only, never written anywhere: it is forgotten when Oracle's last window closes and when you sign out. Private and Tor
+  windows keep their own list, which goes with the window. On Standard, Native and Lite.
 - Fixed: Make a Rudolf OS USB stick on an older Rudolf OS stick said "/dev/sdb is in use (mounted at
   /run/rudolf/stkinfo-sdb/i). Unmount it first." Settings' look at what such a stick holds left its image mounted
   when the stick had no third partition. It now always unmounts, never looks while a stick is being made, and Make the
@@ -184,6 +189,9 @@ Summary: In progress.
   Secure Boot, in place of the browser's built-in key: the drive taken out of the computer, or another system started on
   it, cannot read the sign-ins, saved site passwords and cards. Without a TPM, as before. Turning Secure Boot off or on
   makes a new key once: websites ask you to sign in again. Settings › Oracle › Website data says which way it is kept.
+- Lite: the desktop's menus and windows now open over Oracle's tabs instead of behind their pages. While something covers
+  part of a tab, a still picture of the page is shown there (taken again every 2 seconds); the page itself goes on running
+  and is back as soon as nothing covers it.
 
 - New (docs/plan-1.6.1.md Part 19): NVIDIA's own graphics driver, by choice, for GeForce 16 and newer: Settings › Display ›
   Graphics driver, "Open (NVK)" (the default) or "NVIDIA's driver" (NVIDIA's open kernel modules and its OpenGL and Vulkan
@@ -191,6 +199,10 @@ Summary: In progress.
   Secure Boot like the kernel's own, checked by the kernel). If it cannot be used (a module refused, Xorg not starting, the
   desktop not coming up), the computer goes back to the open driver by itself and says so. Recovery mode always uses the
   open driver.
+- Several monitors, the system's part (plan Part 1): every monitor plugged in, up to three, is lit side by side, the main one
+  at the left, as Settings › Display › Displays arranged them for that set of monitors (kept per set); plugged in or out,
+  they are arranged again within a second. Linux apps and games open on the main monitor. (rudolf-display --arrange and
+  --monitors, screenctl arrange, rudolfd's screen/arrange; the software display still shows one monitor.)
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.
