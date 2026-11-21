@@ -137,6 +137,7 @@ static void dl_store_tidy(const char *acct);
 static int au_keep;
 static int home_bind(const char *acct, char *err, size_t en)
 {
+	if (root_home_fwd()) return root_home_bind(acct, home_uid, err, en);   /* (1.6.1 Part 11) */
 	/* 1.5.9 (15.3): the account already signed in (rudolfd started again): its own Linux user's programs go on */
 	{ char *was = slurp(HOME_SESSION, NULL); if (was) trim(was); au_keep = was && !strcmp(was, acct); free(was); }
 	home_unbind();
@@ -230,6 +231,7 @@ static int owenc_set(const char *acct, int on)
 /* 0 ok; otherwise an HTTP status and err */
 static int home_unlock(const char *acct, const unsigned char *key, int session, char *err, size_t en, int *made)
 {
+	if (root_home_fwd()) return root_home_unlock(acct, key, session, home_uid, err, en, made);   /* (1.6.1 Part 11: rudolfd-roothome.inc) */
 	if (made) *made = 0;
 	if (!home_acct_ok(acct) || !strcmp(acct, "guest") || !strcmp(acct, "shared")) { snprintf(err, en, "bad account"); return 400; }
 	mkdir(home_root, 0711);
@@ -279,6 +281,7 @@ static int home_unlock(const char *acct, const unsigned char *key, int session, 
 }
 static int home_lock(const char *acct, int *busy)
 {
+	if (root_home_fwd()) return root_home_lock(acct, busy);   /* (1.6.1 Part 11) */
 	if (!home_acct_ok(acct)) return 400;
 	char *cur = slurp(HOME_SESSION, NULL); if (cur) { trim(cur); if (!strcmp(cur, acct)) home_unbind(); free(cur); }
 	int d = home_root_fd(acct); if (d < 0) return 404;

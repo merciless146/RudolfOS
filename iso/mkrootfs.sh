@@ -128,6 +128,8 @@ gcc -O2 $HARD -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 gcc -O2 $HARD -o usr/bin/rudolf-rootd "$SYS/rudolf-rootd.c"
 mkdir -p usr/lib/rudolf/root && chmod 755 usr/lib/rudolf/root
 for h in drives updates; do gcc -O2 $HARD -o usr/lib/rudolf/root/$h "$SYS/rudolf-$h.c" && chmod 700 usr/lib/rudolf/root/$h; done   # (root's: mklayers.sh makes the layer with -all-root)
+# (1.6.1 drives part 2: the accounts' folders and sessions, rudolfd's own functions run by the drives helper only)
+gcc -O2 $HARD -o usr/lib/rudolf/root/drives-home "$SYS/rudolf-drives-home.c" -Wl,-Bstatic -lz -Wl,-Bdynamic && chmod 700 usr/lib/rudolf/root/drives-home
 gcc -O2 $HARD -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 $HARD -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl

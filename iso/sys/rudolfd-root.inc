@@ -96,3 +96,4 @@ static void root_job(const char *name, const char *const argv[])
 	}
 	if (p > 0) while (waitpid(p, NULL, 0) < 0 && errno == EINTR) {}
 }
+#include "rudolfd-roothome.inc"   /* (drives part 2: the accounts' folders and sessions) */

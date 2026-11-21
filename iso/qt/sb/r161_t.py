@@ -89,7 +89,9 @@ try:
         # layer will have them (root's, 0700), and rudolfd started again through rudolf-rootd as rudolf-init will
         g.put(os.path.join(HERE, 'fix161.sh'), '/tmp/fix161.sh', '644'); o = sh("sh /tmp/fix161.sh", 240)
         ok('0b. this tree\'s rudolfd started again through rudolf-rootd', 'through rudolf-rootd' in o, o)
-    o = sh("R=$(pidof rudolf-rootd); P=$(for p in $(pidof rudolfd); do [ \"$(awk '{print $4}' /proc/$p/stat)\" = \"$R\" ] && echo $p; done | head -1); echo rootd=$R rudolfd=$P; "
+    # (the newest rudolf-rootd: on a release that has one, the one rudolf-init started stays until every process of its
+    # rudolfd that holds its descriptor has ended)
+    o = sh("R=$(pidof rudolf-rootd | tr ' ' '\\n' | sort -n | tail -1); P=$(for p in $(pidof rudolfd); do [ \"$(awk '{print $4}' /proc/$p/stat)\" = \"$R\" ] && echo $p; done | head -1); echo rootd=$R rudolfd=$P; "
            "echo uids $(awk '/^Uid/{print $2}' /proc/$R/status) $(awk '/^Uid/{print $2}' /proc/$P/status); stat -c '%u:%g %a %n' /usr/bin/rudolf-rootd /usr/lib/rudolf/root /usr/lib/rudolf/root/*; "
            "grep -c rootd /proc/net/unix; ls -l /proc/$R/fd | grep -c socket")
     ok('1. rudolfd is rudolf-rootd\'s child; the helpers are root\'s, 0700; rudolf-rootd has no socket in the file system', re.search(r'rootd=\d+ rudolfd=\d+', o) and '0:0 700 /usr/lib/rudolf/root/drives' in o and re.search(r'^0$', o, re.M), o)
