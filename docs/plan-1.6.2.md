@@ -433,7 +433,7 @@ weight (20) is one line in /usr/lib/rudolf/gamemode.
   on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
   Native; calls; a real CAC only when the owner asks.
 
-### 26. Bring your files: personal files kept from the old system when installing (added on 2026-11-21)
+### 27. Bring your files: personal files kept from the old system when installing (added on 2026-11-21)
 The owner asked on 2026-11-21: "Would it be possible for someone downloading and installing Rudolf to be able to
 save/transfer their personal files (documents, pictures, videos, music, etc.) from their old operating system?", then
 "Go ahead" (for 1.6.2, after 1.6.1 is promoted). Unlike the rest of this plan it does not wait on the owner's hardware;
@@ -484,4 +484,4 @@ a cancelled copy erasing nothing, the files in the right folders after the first
 2. Part 12's checklist and 19b's measurements with the owner, after the 1.6.1 beta.
 3. Part 8 with the MiFi, then Part 7; then the phone: Part 4, Part 6's items measured, 9b, Part 5 when the hardware is there.
 4. 21b after each beta.
-5. Part 26 (Bring your files) after 1.6.1 is promoted: 1-4 in one or two PRs, 5 only by the owner's decision.
+5. Part 27 (Bring your files) after 1.6.1 is promoted: 1-4 in one or two PRs, 5 only by the owner's decision.
