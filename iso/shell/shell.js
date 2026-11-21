@@ -183,28 +183,6 @@ const C=${JSON.stringify(Object.assign({unmuteOverlay: 'visible', warnOnUnsuppor
 const cfg=document.createElement('script');cfg.textContent='window.RufflePlayer=window.RufflePlayer||{};window.RufflePlayer.config=Object.assign('+JSON.stringify(C)+',window.RufflePlayer.config||{});';(document.head||document.documentElement).appendChild(cfg);cfg.remove();
 let i=0;const next=()=>{if(i>=U.length)return;const s=document.createElement('script');s.src=U[i++];s.onerror=()=>{s.remove();next()};(document.head||document.documentElement).appendChild(s)};next()})()`;
 
-/* 1.6.1 (docs/plan-1.6.1.md Part 10): ad and tracker blocking (desktop/orablock61.js). The desktop sends the lists {on, b, tp, ex, off}
-   (op block): whole domains blocked (b), blocked from other sites only (tp), never blocked (ex), and the sites the person turned it off
-   for. A request of a tab's page (never the page itself) to such a domain is cancelled here, in the firewall's interceptor, and
-   counted: tabev adblock {n}, the count of the page in the tab. Nothing leaves this computer: the lists are checked here. A private
-   window's tabs ("priv-" partitions: private and Tor windows) always block. */
-let BLOCK = {on: false, b: new Set(), tp: new Set(), ex: new Set(), off: new Set()};
-const SLD2 = new Set(['co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'net.au', 'org.au', 'co.nz', 'co.jp', 'ne.jp', 'or.jp', 'co.kr', 'com.br', 'com.mx', 'com.ar', 'com.cn', 'com.tw', 'com.tr', 'co.in', 'co.za', 'com.sg', 'com.hk', 'co.il']);
-const siteOf = h => { const p = String(h || '').split('.'); if (p.length <= 2 || /^\d+$/.test(p[p.length - 1])) return h; const l2 = p.slice(-2).join('.'); return SLD2.has(l2) ? p.slice(-3).join('.') : l2 };
-const inSet = (h, S) => { if (!h || !S.size) return false; for (let x = h; ;) { if (S.has(x)) return true; const i = x.indexOf('.'); if (i < 0) return false; x = x.slice(i + 1) } };
-function blockWhy(t, u, ty) {
-  if (/main/i.test(ty) || !/^(https?|wss?):/i.test(u)) return false;
-  const priv = /^priv-/.test(String(t.part || '')); if (!BLOCK.on && !priv) return false;
-  const top = hostOf(t.url); if (!priv && top && inSet(top, BLOCK.off)) return false;
-  const h = hostOf(u); if (!h || inSet(h, BLOCK.ex)) return false;
-  return inSet(h, BLOCK.b) || (inSet(h, BLOCK.tp) && siteOf(h) !== siteOf(top));
-}
-function tabBlock(t, e, u) {
-  if (!blockWhy(t, u, String(e.request.type || e.request.resourceType || ''))) return false;
-  e.preventDefault(); t.bn = (t.bn || 0) + 1;
-  if (!t.bnT) t.bnT = setTimeout(() => { t.bnT = 0; toTab(t.tid, 'adblock', {n: t.bn}) }, 250);
-  return true;
-}
 function tabEvents(t) {
   const f = t.f;
   const navState = async () => {
@@ -293,6 +271,28 @@ const darkJS = on => `(()=>{const id='rudolf-dark';let s=document.getElementById
   const sh=s.sheet;if(sh)sh.disabled=true;let l=document.body?L(getComputedStyle(document.body).backgroundColor):null;if(l==null)l=L(getComputedStyle(document.documentElement).backgroundColor);if(sh)sh.disabled=false;if(l!=null&&l<.4&&s.isConnected)s.remove()}catch(e){}};
  if(document.readyState=='loading')document.addEventListener('DOMContentLoaded',chk,{once:true});else chk()})()`;
 const darken = t => { if (DARK) t.f.executeScript({code: darkJS(true)}).catch(() => {}) };
+/* 1.6.1 (docs/plan-1.6.1.md Part 10): ad and tracker blocking (desktop/orablock61.js). The desktop sends the lists {on, b, tp, ex, off}
+   (op block): whole domains blocked (b), blocked from other sites only (tp), never blocked (ex), and the sites the person turned it off
+   for. A request of a tab's page (never the page itself) to such a domain is cancelled here, in the firewall's interceptor, and
+   counted: tabev adblock {n}, the count of the page in the tab. Nothing leaves this computer: the lists are checked here. A private
+   window's tabs ("priv-" partitions: private and Tor windows) always block. */
+let BLOCK = {on: false, b: new Set(), tp: new Set(), ex: new Set(), off: new Set()};
+const SLD2 = new Set(['co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'net.au', 'org.au', 'co.nz', 'co.jp', 'ne.jp', 'or.jp', 'co.kr', 'com.br', 'com.mx', 'com.ar', 'com.cn', 'com.tw', 'com.tr', 'co.in', 'co.za', 'com.sg', 'com.hk', 'co.il']);
+const siteOf = h => { const p = String(h || '').split('.'); if (p.length <= 2 || /^\d+$/.test(p[p.length - 1])) return h; const l2 = p.slice(-2).join('.'); return SLD2.has(l2) ? p.slice(-3).join('.') : l2 };
+const inSet = (h, S) => { if (!h || !S.size) return false; for (let x = h; ;) { if (S.has(x)) return true; const i = x.indexOf('.'); if (i < 0) return false; x = x.slice(i + 1) } };
+function blockWhy(t, u, ty) {
+  if (/main/i.test(ty) || !/^(https?|wss?):/i.test(u)) return false;
+  const priv = /^priv-/.test(String(t.part || '')); if (!BLOCK.on && !priv) return false;
+  const top = hostOf(t.url); if (!priv && top && inSet(top, BLOCK.off)) return false;
+  const h = hostOf(u); if (!h || inSet(h, BLOCK.ex)) return false;
+  return inSet(h, BLOCK.b) || (inSet(h, BLOCK.tp) && siteOf(h) !== siteOf(top));
+}
+function tabBlock(t, e, u) {
+  if (!blockWhy(t, u, String(e.request.type || e.request.resourceType || ''))) return false;
+  e.preventDefault(); t.bn = (t.bn || 0) + 1;
+  if (!t.bnT) t.bnT = setTimeout(() => { t.bnT = 0; toTab(t.tid, 'adblock', {n: t.bn}) }, 250);
+  return true;
+}
 /* whose cookies and site storage: an account's are kept on the disk (persist:); a private window's (1.5.9, "priv-…")
    are in memory only, and a new private session gets a new name, so nothing of an earlier one is seen again */
 const partName = p => { const n = 'web-' + String(p || 'x').replace(/[^a-z0-9_-]/gi, '').slice(0, 40); return /^priv-/.test(String(p || '')) ? n : 'persist:' + n };
