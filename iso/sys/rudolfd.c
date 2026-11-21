@@ -1832,8 +1832,45 @@ static int print_tmp(char *d)
 	strcpy(d, "/tmp/rprint-XXXXXX"); if (!mkdtemp(d)) return -1;
 	char cmd[200]; snprintf(cmd, sizeof cmd, "chown rudolf:rudolf %s 2>/dev/null; chmod 700 %s", d, d); run(cmd); return 0;
 }
+/* 1.6.1 (docs/plan-1.6.1.md Part 9): the print queue (rudolf-printq, /run/cups/cups.sock), which the desktop's jobs go
+   through as the Linux apps' do: GET print/jobs (Settings › Devices: every job, another account's without its name),
+   POST print/cancel?id=N (only the signed-in account's own), and print/job queued there for the account's own Linux
+   user (au_app_user: the signed-in account's, or the desktop's). Without the queue (an older base layer, the host
+   tests) print/job sends the job itself as before. */
+#ifndef PRINTQ_BIN
+#define PRINTQ_BIN "/usr/bin/rudolf-printq"
+#endif
+#ifndef PRINTQ_SOCK
+#define PRINTQ_SOCK "/run/cups/cups.sock"
+#endif
+static int printq_up(void) { struct stat st; return !access(PRINTQ_BIN, X_OK) && !stat(PRINTQ_SOCK, &st) && S_ISSOCK(st.st_mode); }
+static void printq_user(char *u, size_t n) { char env[300]; au_app_user(u, n, env, sizeof env); if (!safe_word(u, 60)) snprintf(u, n, "rudolf"); }
+static int api_printq(struct req *r, const char *what)
+{
+	if (strcmp(what, "jobs") && strcmp(what, "cancel")) return 0;
+	if (!printq_up()) { if (!strcmp(what, "jobs")) { static const char J0[] = "{\"ok\":true,\"queue\":false,\"printers\":[],\"jobs\":[]}"; reply(r->fd, 200, "application/json", J0, sizeof J0 - 1, NULL); } else reply_err(r->fd, 404, "the print queue is not running"); return 1; }
+	char u[64], cmd[300]; printq_user(u, sizeof u);
+	if (!strcmp(what, "cancel")) {
+		if (strcmp(r->method, "POST")) { reply_err(r->fd, 405, "use POST"); return 1; }
+		const char *id = qparam(r->query, "id"); if (!id || !*id || strspn(id, "0123456789") != strlen(id) || strlen(id) > 9) { reply_err(r->fd, 400, "which job"); return 1; }
+		snprintf(cmd, sizeof cmd, PRINTQ_BIN " cancel %s --as %s 2>/dev/null", id, u);
+	} else snprintf(cmd, sizeof cmd, PRINTQ_BIN " jobs --as %s 2>/dev/null", u);
+	char *o = run_out(cmd);
+	if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "the print queue did not answer"); return 1; }
+	reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return 1;
+}
+/* a desktop job into the queue (the document already in D/doc, its title in D/title.txt): its answer, or NULL without the queue */
+static char *printq_submit(const char *uri, const char *d, const char *fmt, const char *opt, const char *pname)
+{
+	if (!printq_up()) return NULL;
+	char u[64], cmd[1600], nf[64]; printq_user(u, sizeof u); snprintf(nf, sizeof nf, "%s/name.txt", d);
+	{ char t[160]; snprintf(t, sizeof t, "%s", pname && *pname ? pname : ""); for (char *c = t; *c; c++) if ((unsigned char)*c < 32) *c = ' '; write_str(nf, t); }
+	snprintf(cmd, sizeof cmd, PRINTQ_BIN " submit '%s' %s/doc %s%s title-file=%s/title.txt name-file=%s --as %s 2>/dev/null", uri, d, fmt, opt, d, nf, u);
+	return run_out(cmd);
+}
 static void api_print(struct req *r, const char *what)
 {
+	if (api_printq(r, what)) return;
 	char cmd[2000], d[32], f[96];
 	if (!strcmp(what, "pdf")) {
 		if (r->blen < 16 || r->blen > (64u << 20)) { reply_err(r->fd, 400, "no document"); return; }
@@ -1885,8 +1922,8 @@ static void api_print(struct req *r, const char *what)
 		int fd = open(f, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
 		if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not store the print job (is the memory full?)"); return; }
 		close(fd);
-		snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-print send '%s' %s/doc %s%s title-file=%s/title.txt 2>/dev/null", uri, d, fmt, opt, d);
-		char *o = run_out(cmd); snprintf(cmd, sizeof cmd, "rm -rf %s", d); run(cmd);
+		char *o = printq_submit(uri, d, fmt, opt, qparam(r->query, "name"));   /* (1.6.1 Part 9: through the queue) */
+		if (!o) { snprintf(cmd, sizeof cmd, "/usr/bin/rudolf-print send '%s' %s/doc %s%s title-file=%s/title.txt 2>/dev/null", uri, d, fmt, opt, d); o = run_out(cmd); } snprintf(cmd, sizeof cmd, "rm -rf %s", d); run(cmd);
 		if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, "sending to the printer failed"); return; }
 		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
 	}

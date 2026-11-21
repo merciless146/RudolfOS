@@ -132,7 +132,7 @@ async function prDialog(W,html,o){
   if(d=='pdf'){close();savePdf(title.slice(0,40).toUpperCase()+'.PDF',pdf);return}
   if(!info)return;const plan=prPlan(info,q('.pcol').value=='color');if(!plan)return;
   const all=q('.pall').checked,from=all?1:Math.max(1,+q('.pfrom').value||1),to=all?pages:Math.min(pages,Math.max(from,+q('.pto').value||pages));
-  const sides=q('.psid').value,args=new URLSearchParams({uri:d,format:plan.format,copies:String(Math.max(1,Math.min(99,+q('.pcop').value||1))),color:q('.pcol').value,title,media:PR_MEDIA[o.size]||''});
+  const sides=q('.psid').value,args=new URLSearchParams({uri:d,format:plan.format,copies:String(Math.max(1,Math.min(99,+q('.pcop').value||1))),color:q('.pcol').value,title,media:PR_MEDIA[o.size]||'',name:infos[d].name||''});   /* (1.6.1 Part 9: the printer's name, for the print queue) */
   if(sides!='one-sided')args.set('sides',sides);
   busy=true;q('.pgo').disabled=q('.pcan').disabled=q('.pfind').disabled=true;
   try{let doc=pdf;

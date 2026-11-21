@@ -155,6 +155,58 @@ self-test's usb-printer line, /run/rudolf/usbprint.log in a system report) and t
   publish it for the release's base ABI; Settings › Devices; then the HP desktop user's printer. 1.6.0 prints to network
   printers (IPP Everywhere, AirPrint) and to PDF.
 - **ARM64:** Moved to docs/plan-1.6.2.md (the owner, 2026-11-21: "Move everything waiting on my own hardware to 1.6.2").
+#### 9.1 Status: USB printers and the print queue (2026-11-21, branch usb-printers-161; print-check.yml)
+The choice: no CUPS. 1.6.0's driverless printing (rudolf-print: IPP Everywhere, AirPrint, ipp-usb's IPP over USB, plain
+USB printers reading PDF or PostScript) stays; what 1.6.1 adds is a print queue of Rudolf OS's own in front of it,
+**rudolf-printq** (iso/sys/rudolf-printq.c), so that the Linux apps print too and Settings shows the queue:
+- **One socket, no network listener:** /run/cups/cups.sock, where CUPS's own clients look. It speaks the part of IPP over
+  HTTP that CUPS's client library uses (the printers: CUPS-Get-Printers, CUPS-Get-Default, Get-Printer-Attributes; jobs:
+  Print-Job, Create-Job with Send-Document, Validate-Job; the queue: Get-Jobs, Get-Job-Attributes; cancelling: Cancel-Job,
+  Cancel-Jobs, Cancel-My-Jobs, Purge-Jobs as one's own), so lp, lpstat, cancel, GTK's and Qt's print dialogs and
+  LibreOffice print as on any Linux. Debian's /run/cups is this folder (rudolf-debian's print_bind), and Flatpak's cups
+  socket finds it at /var/run/cups (rudolf-init makes /var/run). PDF only (what CUPS's clients send when a printer's
+  formats are PDF; PostScript and others are refused, saying so).
+- **Each job its sender's:** the kernel says who is at the other end (SO_PEERCRED; a Debian program's user is the
+  account's own Linux user, as Debian's user namespace maps it). Only that user cancels a job; the queue lists other
+  users' jobs as "Another account's document", without their names, users or messages. Root (rudolfd) says for whom it
+  asks (X-Rudolf-As: the signed-in account's Linux user, au_app_user, or rudolf) and is held to that user's jobs the same
+  way; anyone else saying so is ignored. (For Part 11's drop: once rudolfd runs as uid 1000 it is no longer root to
+  the queue, so its jobs would be the desktop user's; the account must then come another way, such as a helper of
+  rudolf-rootd's that hands the queue rudolfd's word, never by trusting uid 1000, which the browser has too.)
+- **Its own user:** started by rudolf-init as root (again if it ends), it makes the socket (0666) and its folders, then
+  becomes "print" (952, in group lp for /dev/usb/lpN, which udev and mdev now give to lp) with no_new_privs. mkrootfs.sh
+  and ci_release.sh build it and add the user; the list of listeners names the socket (and ipp-usb's port, missing in
+  1.6.0: the self-test's listeners line would have failed with an IPP over USB printer plugged in).
+- **Sending:** one job at a time per printer, by rudolf-print send: a PDF as it is to a printer that takes PDF (and to the
+  USB kinds, which rudolf-print handles as in 1.6.0); to one that takes only raster, PWG or Apple raster made in the queue
+  from Poppler's pdftocairo pages (the USB printers extension's, or the system's); a busy printer asked again every 5 s
+  for up to 10 minutes; one that does not answer: the job fails, saying so. Finished jobs stay listed for an hour.
+- **The desktop:** rudolfd's print/job goes through the queue (for the signed-in account's user) when it runs, as
+  before when it does not; new print/jobs and print/cancel (POST, as the other print requests); Settings › Devices ›
+  Print queue (desktop/printq61.js: each job, its printer and state, Cancel on one's own, every 3 s while one waits); the
+  print dialog sends the printer's name with the job. Standard, Lite and Native print through the same page code
+  (Native's app windows and Lite are WebKit's network process to rudolfd: the confinement's window list has the new
+  requests).
+- **ipp-usb's ports:** kept to 60000-60099 (the extension's settings say up to 65535) and, in nftables' table inet
+  rudolfprint that usbprint loads with ipp-usb (it stays when the firewall is switched off), a new connection to them
+  only from root, the queue's user and the desktop's: an account's Linux user prints through the queue, which holds it
+  to its own jobs, not to the printer directly. A network printer still answers any program on this computer, as it
+  answers anyone on its network.
+- **The self-test:** a print-queue line (running: the printers it knows, the jobs waiting), beside 1.6.0's usb-printer.
+- **Tests:** iso/qt/host/printq161_t.sh (32 checks: CUPS's ippeveprinter, a PDF printer and a raster-only one; lp, lpstat,
+  cancel and GTK's Gtk.PrintOperation as two accounts' users; the printers' files read back: the PDF's text, the PWG
+  raster decoded; the users' rules; rudolfd's submit; refusals; the self-test's line; ipp-usb's ports in a network
+  namespace of its own); iso/qt/host/printqapi161_t.sh (7: rudolfd's requests through the queue and without it);
+  iso/qt/shell2/printq61_t.js (14: Settings' queue and the dialog); in QEMU on the 1.6.0 stable release (2026112014)
+  with this tree's files put in place (iso/qt/sb/fix161p.sh), iso/qt/sb/p161_t.py (23): Standard and Native print a PDF
+  and a page to the host's ippeveprinter printers through QEMU's user network (the PDF printer's files read back, the
+  raster printer's PWG decoded), the queue's users, lp in the guest as the account's user, the queue's own user and
+  socket, the self-test: 23/23 (2026-11-21, run without KVM in the session; print-check.yml runs it on GitHub). QEMU
+  has no USB printer to emulate: the IPP path only there.
+- **For the owner (the Vivobook):** a real USB printer: plugged in, Settings › Devices lists it and the queue; a page
+  from WordPro and a PDF from the PDF Viewer printed, on Standard and on Native; from a Linux app (LibreOffice or a GTK
+  app in Debian); a job cancelled from Settings; a second account's job shown without its name.
+
 ### 10. Oracle: find, closed tabs, reader mode and blocking (added on 2026-11-16)
 docs/plan-oracle.md, asked for by the owner on 2026-11-16. Suggested for 1.6.1: item 1 (find in page), item 2 (reopen a
 closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracker blocking) here or in 2.0. Item 4

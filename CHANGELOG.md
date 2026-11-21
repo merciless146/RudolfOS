@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Printing: a print queue for the whole computer. Linux apps print too (LibreOffice, GTK and Qt apps, lp in Debian and
+  Flatpak apps: through the queue, as on any Linux), and Settings › Devices › Print queue shows what is printing, with
+  Cancel for your own documents; another account's are listed without their names and cannot be cancelled by you.
+  Printers that take only pictures of the pages get them from the queue too. USB printers' devices belong to the queue
+  alone, and an IPP over USB printer can be reached only through it.
 - Native: an app's window loads the desktop page without 11 modules no app of its own uses (WordPro's additions, Notey for
   the office apps, the Wi-Fi panel, the computer check, the SNES core's loader, the weather, Settings' search and a few
   more); each is read the moment something of it is needed. Settings, Task Manager, Oracle, the App Store, Blitzen and

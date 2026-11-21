@@ -312,5 +312,14 @@ else upl=$(awk -F'\t' '{printf "%s (%s), ", $2, $1}' "$UP"); upb=
 	else for u in $(awk -F'\t' '$1=="ipp"{print $3}' "$UP"); do [ -x "$RPR" ] && ! timeout 10 "$RPR" info "$u" >/dev/null 2>&1 && upb="ipp-usb does not answer at $u ($RUN/ipp-usb.log)"; done; fi
 	if [ -n "$upb" ]; then fail usb-printer "$upb; found: ${upl%, }"; else pass usb-printer "${upl%, }"; fi; fi
 
+# 1.6.1 (docs/plan-1.6.1.md Part 9): the print queue (rudolf-printq, the desktop's and the Linux apps'): its socket
+# there and answering
+PQS=${ST_PRINTQ_SOCK:-/run/cups/cups.sock}; PQB=${ST_PRINTQ:-/usr/bin/rudolf-printq}
+if [ ! -x "$PQB" ]; then skip print-queue "this system has no print queue"
+elif [ ! -S "$PQS" ]; then fail print-queue "not running: no socket at $PQS ($RUN/printq.log)"
+else pqo=$(RPQ_SOCK="$PQS" timeout 10 "$PQB" jobs 2>/dev/null)
+	case "$pqo" in *'"ok":true'*) pass print-queue "running: $(printf '%s' "$pqo" | grep -o '"q":' | wc -l) printers known, $(printf '%s' "$pqo" | grep -o '"state":"\(waiting\|printing\)"' | wc -l) jobs waiting or printing";;
+	*) fail print-queue "its socket is there but it does not answer ($RUN/printq.log)";; esac; fi
+
 echo "$NP passed, $NF failed, $NS skipped"
 [ $NF = 0 ]
