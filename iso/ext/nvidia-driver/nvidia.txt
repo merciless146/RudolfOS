@@ -1,0 +1,6 @@
+# NVIDIA's driver for the system extension nvidia-driver (docs/plan-1.6.1.md Part 19): the version (a production branch
+# release: download.nvidia.com/XFree86/Linux-x86_64/VERSION/) and the SHA-256 of its NVIDIA-Linux-x86_64-VERSION.run,
+# checked before anything is taken from it. A new version: change both, run the NVIDIA driver check
+# (.github/workflows/nvidia-check.yml) and read its licence step.
+V 595.112.07
+S 

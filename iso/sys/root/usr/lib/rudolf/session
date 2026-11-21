@@ -70,7 +70,9 @@ start_soft() {
 start_gpu() {
 	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
 	x_auth
-	Xorg :0 vt1 -config /usr/lib/rudolf/xorg.conf -nolisten tcp $XAUTH -noreset -novtswitch -dpi 96 \
+	# 1.6.1 (plan Part 19): NVIDIA's own Xorg driver when it is in use (gpudriver), else the modesetting driver
+	XCONF=/usr/lib/rudolf/xorg.conf; [ -x /usr/lib/rudolf/gpudriver ] && XCONF=$(/usr/lib/rudolf/gpudriver xorg 2>/dev/null); [ -s "$XCONF" ] || XCONF=/usr/lib/rudolf/xorg.conf
+	Xorg :0 vt1 -config $XCONF -nolisten tcp $XAUTH -noreset -novtswitch -dpi 96 \
 		-logfile /run/rudolf/Xorg.log -verbose 3 &
 	XPID=$!
 	for i in $(seq 150); do [ -e /tmp/.X11-unix/X0 ] && break; kill -0 $XPID 2>/dev/null || break; sleep 0.1; done
@@ -90,10 +92,13 @@ start_gpu() {
 		[ $RC = 0 ] || echo "$(date) could not set the screen mode $RES at $FPS Hz"
 		S=$(rudolf-display --xsize 2>/dev/null); set -- $S; W=$1; H=$2; DISPARGS=--input; MODE=gpu; keys_evdev
 		unset RUDOLF_FPS
-		grep -q 'glamor X acceleration enabled\|glamor initialized' /run/rudolf/Xorg.log || REASON="Xorg is running but without glamor acceleration (see Xorg.log)"
+		if [ "$XCONF" != /usr/lib/rudolf/xorg.conf ]; then grep -q 'NVIDIA(0)' /run/rudolf/Xorg.log || REASON="Xorg is running but NVIDIA's driver did not take the card (see Xorg.log)"
+		else grep -q 'glamor X acceleration enabled\|glamor initialized' /run/rudolf/Xorg.log || REASON="Xorg is running but without glamor acceleration (see Xorg.log)"; fi
 		return 0
 	fi
 	REASON="Xorg did not start (see /run/rudolf/Xorg.log)"
+	# (1.6.1, plan Part 19) with NVIDIA's driver: back to the open driver from the next start; this one goes on in software
+	[ "$XCONF" != /usr/lib/rudolf/xorg.conf ] && { /usr/lib/rudolf/gpudriver failed "Xorg did not start with NVIDIA's driver" >/dev/null 2>&1; REASON="Xorg did not start with NVIDIA's driver: the open driver is used from the next start"; }
 	kill $XPID 2>/dev/null; sleep 0.5; kill -9 $XPID 2>/dev/null
 	rm -f /tmp/.X11-unix/X0 /tmp/.X0-lock
 	return 1
@@ -341,6 +346,8 @@ webkit_trial_mark() { [ $ENGINE = webkit ] && [ -e /run/rudolf/persistent ] && [
 # 1.5.8: this start's desktop answered: when (seconds after the computer started) and with which engine, beside the
 # start's logs (rudolf-init: var/log/starts/0), for System health's "Last starts"
 # 1.6.0 (plan Part 13): the desktop answered: this start's system extensions are good (those on trial are kept)
+# 1.6.1 (plan Part 19): the desktop answered: NVIDIA's driver, when in use, worked (its trial is over)
+gpu_ok() { [ -e /run/rudolf/heartbeat ] && [ -e /run/rudolf/gpu-driver ] && [ ! -e /run/rudolf/gpu-driver.good ] && { /usr/lib/rudolf/gpudriver good; : > /run/rudolf/gpu-driver.good; }; return 0; }
 sysext_ok() { [ -e /run/rudolf/heartbeat ] && [ -e /run/rudolf/ext/state ] && [ ! -e /run/rudolf/ext/.good ] && { /usr/lib/rudolf/sysext good >>/run/rudolf/sysext.log 2>&1; : > /run/rudolf/ext/.good; }; return 0; }
 # (1.6.1: the uptime of the desktop's first heartbeat, which rudolfd writes into /run/rudolf/bootok, rather than this loop's
 #  time, up to 10 s later; and the start-up's steps kept with the start's logs: plan-1.6.1.md Part 12)
@@ -456,7 +463,7 @@ while :; do
 		for i in 1 2 3 4 5; do sleep 2; [ -e /run/rudolf/screen-restart ] || [ -e /run/rudolf/shell-switch ] && break; done
 		W=$(date +%s); if [ $((W - LASTW)) -gt 40 ]; then echo "$(date) woke after $((W - LASTW)) s - the desktop has 90 s to answer"; GRACE=$((W + 90)); fi; LASTW=$W
 		if [ -e /run/rudolf/screen-restart ]; then rm -f /run/rudolf/screen-restart; display_restart; break; fi
-		webkit_trial_ok; native_trial_ok; desk_up_mark; sysext_ok; shell_switch_limit
+		webkit_trial_ok; native_trial_ok; desk_up_mark; sysext_ok; gpu_ok; shell_switch_limit
 		# the desktop has handed its data over (or Settings changed): start the browser again, with the shell if it can
 		if [ -e /run/rudolf/shell-switch ]; then rm -f /run/rudolf/shell-switch; echo "$(date) starting the browser again (shell)"
 			pkill -f '[-]-rudolf-kiosk'; for i in 1 2 3 4 5 6; do kill -0 $B 2>/dev/null || break; sleep 1; done; pkill -9 -f '[-]-rudolf-kiosk'; break; fi

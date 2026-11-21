@@ -1,0 +1,103 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 19): NVIDIA's own driver, by choice. Checks only: nothing is published or signed with a
+# Rudolf OS key, and no secret is read.
+#   host:      /usr/lib/rudolf/gpudriver on a stand-in /sys (qt/host/gpudriver161_t.sh), rudolfd built as the release builds it,
+#              Settings › Display › Graphics driver in Chromium (qt/shell2/gpudrv61_t.js)
+#   build:     the system extension nvidia-driver for the stable release's own kernel (its version from the stable channel,
+#              Rudolf OS's configuration, iso/kconfig.sh): NVIDIA's .run checked against iso/ext/nvidia-driver/nvidia.txt, its
+#              licence's redistribution clause checked, the open kernel modules built and their vermagic compared with the
+#              release's own modules, the user-space files copied unmodified, the list of cards offered; packed by mkext.sh as
+#              the release workflow packs it but signed with a throw-away key and the modules NOT signed (no Rudolf OS
+#              trusts either). The signed build is the owner's: .github/workflows/extensions.yml (Run workflow).
+#   qemu:      the newest beta in QEMU with that extension (qt/sb/t161n_t.py): no NVIDIA card (nothing offered), the extension's
+#              modules kept from loading, a stand-in card with NVIDIA's driver chosen: the kernel refuses the unsigned module and
+#              the computer goes back to the open driver by itself; Recovery mode untouched.
+name: NVIDIA driver check
+on:
+  workflow_dispatch:
+  push:
+    branches: ['nvidia-*']
+    paths: ['iso/ext/nvidia-driver/**', 'iso/sys/root/usr/lib/rudolf/gpudriver', 'iso/sys/rudolfd-gpu.inc', 'desktop/gpudrv61.js', 'iso/systools/mkext.sh',
+      'iso/qt/host/gpudriver161_t.sh', 'iso/qt/shell2/gpudrv61_t.js', 'iso/qt/sb/t161n_t.py', '.github/workflows/nvidia-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: gpudriver (stand-in /sys, modules and insmod)
+        run: sh iso/qt/host/gpudriver161_t.sh
+      - name: rudolfd builds (the release's flags)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq zlib1g-dev >/dev/null
+          . iso/systools/hardflags.sh; gcc -O2 $HARD -Wall -o /tmp/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic; python3 iso/systools/hardcheck.py /tmp/rudolfd
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: Settings › Display › Graphics driver
+        run: node iso/qt/shell2/gpudrv61_t.js
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools python3-cryptography binutils bc flex bison libelf-dev libssl-dev kmod >/dev/null
+      - name: The stable release's base and kernel
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^serial //p'); KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p')
+          mkdir -p rel && gh release download "r$S" -D rel -p base.sfs -p modules.sfs
+          sudo unsquashfs -q -d base rel/base.sfs >/dev/null
+          echo "KV=$KV" >> $GITHUB_ENV; echo "::notice title=Release::r$S, Linux $KV"
+      - name: Build the extension (unsigned modules, a throw-away package key)
+        run: |
+          mkdir -p k out; python3 iso/pkgtools/rpk-tool.py keygen k >/dev/null
+          S=$(date +%s); KVER=$KV MODULES_SFS=$PWD/rel/modules.sfs NV_UNPINNED=1 sh iso/systools/mkext.sh nvidia-driver base k/rpk-signing.key out 2>&1 | tee build.log
+          echo "built in $(( $(date +%s) - S )) s"; ls -l out
+          # the files, for the QEMU test (packed again there with its own TEST key), and the cards' list
+          mkdir -p tree && unsquashfs -q -f -d tree out/nvidia-driver.rpk >/dev/null 2>&1 || python3 - <<'EOF'
+          import os, subprocess
+          d = open('out/nvidia-driver.rpk', 'rb').read(); open('/tmp/nv.sfs', 'wb').write(d[:-72]); subprocess.run(['unsquashfs', '-q', '-f', '-d', 'tree', '/tmp/nv.sfs'], check=True)
+          EOF
+          rm -f tree/PKGINFO; rm -rf k
+          echo "::notice title=nvidia-driver::$(du -sm tree | cut -f1) MB of files, $(($(stat -c %s out/nvidia-driver.rpk) / 1048576)) MB to download; $(grep -c '^10de:' tree/usr/share/nvidia/rudolf-gpus.txt) cards offered"
+          grep 'SHA-256\|licence\|vermagic\|NOT signed' build.log | sed 's/^/  /'
+          cat tree/usr/share/nvidia/rudolf-gpus.txt
+          for f in tree/lib/modules/*/extra/nvidia/*.ko; do echo "$(basename $f): $(modinfo -F vermagic $f); signer: $(modinfo -F signer $f)"; done
+      - uses: actions/upload-artifact@v4
+        with: {name: nvidia-driver-tree, retention-days: 3, path: tree}
+      - uses: actions/upload-artifact@v4
+        with: {name: nvidia-gpus, retention-days: 7, path: "tree/usr/share/nvidia/rudolf-gpus.txt\nbuild.log"}
+  qemu:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with: {name: nvidia-driver-tree, path: nvtree}
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs squashfs-tools python3-cryptography libssl-dev bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The stable release (the kernel the extension was built for)
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs' -p boot.iso
+          git show origin/gh-pages:stable/manifest.txt > rel/manifest.txt; git show origin/gh-pages:stable/manifest.sig > rel/manifest.sig
+      - name: t161n (the graphics driver choice)
+        run: |
+          mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU FIX=1 NVTREE=$GITHUB_WORKSPACE/nvtree QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t161n_t.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: t161n, retention-days: 7, path: "run/t161n.txt\nrun/t161n*/qemu.log\nrun/t161n*/serial.txt"}

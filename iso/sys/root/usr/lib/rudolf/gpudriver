@@ -1,0 +1,150 @@
+#!/bin/sh
+# Rudolf OS 1.6.1 (docs/plan-1.6.1.md Part 19): Settings › Display › Graphics driver: "Open (NVK)" (nouveau and Mesa's NVK,
+# the default) or "NVIDIA's driver" (NVIDIA's open kernel modules and its own OpenGL and Vulkan libraries, from the signed
+# system extension nvidia-driver: iso/ext/nvidia-driver). Run as root by rudolf-init (boot), the session (xorg, failed, good) and
+# rudolfd (status, set, ack).
+#   gpudriver boot          before the graphics drivers are loaded: with "NVIDIA's driver" chosen, an eligible card and the
+#                           extension in use, nouveau's file is covered and NVIDIA's modules loaded; otherwise NVIDIA's
+#                           files are covered (so they never load by themselves) and nouveau loads as before
+#   gpudriver xorg          the Xorg configuration to start with (prints its path): NVIDIA's when its driver is in use
+#   gpudriver failed WHY    the session: Xorg did not start with NVIDIA's driver (this start goes on in software)
+#   gpudriver good          the session, at the desktop's first heartbeat: NVIDIA's driver worked (its trial is over)
+#   gpudriver status        JSON for Settings: the card, whether it is offered, the extension, the choice, what is in use,
+#                           and the last time it was switched back by itself (and why)
+#   gpudriver set open|nvidia     the choice, for the next start;   gpudriver ack   the switch-back's note was shown
+# Switched back to the open driver by itself, with a note the desktop shows once (a notification) and a health-log line,
+# when: the card is not eligible, the extension is missing or left out, a module does not load (one not signed by a key
+# the kernel trusts is refused: Secure Boot's module signing is never relaxed), Xorg does not start with it, or the
+# desktop never answered at the last start with it (its trial). Recovery mode, "nomodeset" and rudolf.nogpu=1 do nothing
+# here: they keep the firmware's screen, and the recovery system has no extensions (sysext), so it is always on the open
+# driver. Offered only for GeForce 16 and newer (Turing and later: the cards NVIDIA's open kernel modules support), by
+# PCI ID: /usr/share/rudolf/nvidia-gpus.txt (from the driver's own supported-gpus.json, iso/ext/nvidia-driver/build.sh; the
+# extension's own list, /usr/share/nvidia/rudolf-gpus.txt, adds a newer driver's cards), and
+# only when the NVIDIA card is the one the computer starts on (its boot_vga): two graphics chips (PRIME) are not yet.
+# Test overrides: GPU_SYS (a stand-in /sys), GPU_PERSIST, GPU_RUN, GPU_EXT (the extensions' state folder), GPU_LIST,
+# GPU_CMDLINE, GPU_MODROOT (the kernel modules), GPU_MODDIR (where the extension's modules are), GPU_NOMOUNT=1 (record the covers instead of mounting).
+# GPL-2.0-or-later.
+SYS=${GPU_SYS:-/sys}; RUN=${GPU_RUN:-/run/rudolf}; P=${GPU_PERSIST:-/persist/etc}
+EXT=${GPU_EXT:-/run/rudolf/ext}; LIST=${GPU_LIST:-/usr/share/rudolf/nvidia-gpus.txt}; LIST2=${GPU_LIST2:-/usr/share/nvidia/rudolf-gpus.txt}
+CMDL=${GPU_CMDLINE:-/etc/rudolf/cmdline}; [ -s "$CMDL" ] || CMDL=/proc/cmdline
+KV=$(uname -r); MR=${GPU_MODROOT:-/lib/modules/$KV}; MODDIR=${GPU_MODDIR:-$MR/extra/nvidia}
+CHOICE=$P/gpu-driver; NOTE=$P/gpu-driver.fallback; TRY=$P/gpu-driver.trying
+XCONF=$RUN/xorg-nvidia.conf; INUSE=$RUN/gpu-driver
+NVMODS="nvidia nvidia-modeset nvidia-drm nvidia-uvm"
+rd1() { [ -r "$1" ] && head -c 200 "$1" | head -1; }
+js() { printf '"%s"' "$(printf '%s' "$1" | tr -d '\000-\037' | sed 's/\\/\\\\/g; s/"/\\"/g')"; }
+choice() { case "$(rd1 $CHOICE)" in nvidia) echo nvidia;; *) echo open;; esac; }
+health() { [ -n "$GPU_NOMOUNT" ] && { echo "$1" >> "$RUN/gpu-health"; return 0; }; rudolfd --health fallback "$1" >/dev/null 2>&1; return 0; }
+# the NVIDIA display card (class 03xx, vendor 10de) the computer starts on: "PCIADDR DEVID"; with rudolf.debug=1 also
+# rudolf.gputest=10de:DEVID, for the QEMU test (its card is not NVIDIA's; all it does is try to load the signed modules)
+card() { for d in "$SYS"/bus/pci/devices/*; do case "$(rd1 $d/class)" in 0x03*) ;; *) continue;; esac
+		[ "$(rd1 $d/vendor)" = 0x10de ] || continue; dv=$(rd1 $d/device); echo "${d##*/} ${dv#0x} $(rd1 $d/boot_vga)"; return 0; done
+	if grep -q 'rudolf.debug=1' "$CMDL" 2>/dev/null; then t=$(tr ' ' '\n' < "$CMDL" | sed -n 's/^rudolf\.gputest=10de:\([0-9a-fA-F]\{4\}\)$/\1/p' | head -1)
+		[ -n "$t" ] && { echo "test $t 1"; return 0; }; fi; return 1; }
+# the number of display cards (two: a laptop's PRIME pair)
+ncards() { n=0; for d in "$SYS"/bus/pci/devices/*; do case "$(rd1 $d/class)" in 0x03*) n=$((n + 1));; esac; done; echo $n; }
+gpu_name() { cat "$LIST" "$LIST2" 2>/dev/null | awk -F'\t' -v id="10de:$(echo "$1" | tr A-F a-f)" 'tolower($1)==id{print $2; exit}'; }
+# why the card cannot have NVIDIA's driver (empty: it can)
+not_eligible() { c=$(card) || { echo "this computer has no NVIDIA graphics card"; return; }; set -- $c
+	[ -n "$(gpu_name $2)" ] || { echo "NVIDIA's driver is offered for GeForce 16 and newer; this card (10de:$2) is older or not on its list"; return; }
+	[ "$1" != test ] && [ "$(ncards)" -gt 1 ] && [ "$3" != 1 ] && { echo "the NVIDIA card is not the one this computer starts on (two graphics chips are not yet supported)"; return; }; :; }
+# the extension: in use this start (sysext's state), and its version
+ext_line() { awk -F'\t' '$1=="nvidia-driver"' "$EXT/state" 2>/dev/null | head -1; }
+ext_state() { ext_line | cut -f3; }
+nouveau_ko() { find $MR/ -name 'nouveau.ko*' 2>/dev/null | head -1; }
+# a module file covered by /dev/null, so modprobe (by modalias) cannot load it (busybox's modprobe takes no blacklist: as the
+# camera's switch does)
+cover() { [ -n "$1" ] && [ -e "$1" ] || return 0; if [ -n "$GPU_NOMOUNT" ]; then echo "$1" >> "$RUN/gpu-covered"; else f=$(readlink -f "$1"); mount --bind /dev/null "$f" 2>/dev/null; fi; }
+nv_files() { for m in $NVMODS; do ls "$MODDIR/$m.ko"* 2>/dev/null | head -1; done; }
+# back to the open driver: the note for the desktop, the health log, the choice reset
+fall_back() { mkdir -p "$P" 2>/dev/null; echo open > "$CHOICE"; rm -f "$TRY" "$XCONF" "$INUSE"
+	printf '%s\t%s\n' "$(date -u +%FT%TZ)" "$1" > "$NOTE"; sync
+	health "NVIDIA's driver was not used ($1): back on the open driver (Settings › Display › Graphics driver)"
+	echo "gpudriver: back to the open driver: $1"; }
+# NVIDIA's device files (its modules make no nodes of their own; nvidia-modprobe is not shipped: it is setuid root)
+nodes() { [ -n "$GPU_NOMOUNT" ] && return 0; maj=$(awk '$2=="nvidia-frontend"||$2=="nvidia"{print $1; exit}' /proc/devices)
+	if [ -n "$maj" ]; then [ -e /dev/nvidiactl ] || mknod -m 666 /dev/nvidiactl c "$maj" 255
+		i=0; for d in "$SYS"/bus/pci/drivers/nvidia/0000:*; do [ -e "$d" ] || continue; [ -e /dev/nvidia$i ] || mknod -m 666 /dev/nvidia$i c "$maj" $i; i=$((i + 1)); done
+		[ -e /dev/nvidia0 ] || mknod -m 666 /dev/nvidia0 c "$maj" 0; fi
+	maj=$(awk '$2=="nvidia-modeset"{print $1; exit}' /proc/devices); [ -n "$maj" ] && [ ! -e /dev/nvidia-modeset ] && mknod -m 666 /dev/nvidia-modeset c "$maj" 254
+	maj=$(awk '$2=="nvidia-uvm"{print $1; exit}' /proc/devices); [ -n "$maj" ] && { [ -e /dev/nvidia-uvm ] || mknod -m 666 /dev/nvidia-uvm c "$maj" 0; [ -e /dev/nvidia-uvm-tools ] || mknod -m 666 /dev/nvidia-uvm-tools c "$maj" 1; }
+	return 0; }
+# one module, by path (its dependencies are the ones before it, or in the base: drm, drm_kms_helper); the kernel checks its
+# signature (MODULE_SIG_FORCE): "Key was rejected by service" for one signed by any other key
+load() { f=$(ls "$MODDIR/$1.ko"* 2>/dev/null | head -1); [ -n "$f" ] || { echo "$1.ko is not in the extension"; return 1; }
+	m=$(echo "$1" | tr - _); grep -q "^$m " /proc/modules 2>/dev/null && return 0
+	shift; e=$(insmod "$f" "$@" 2>&1) || { echo "$m did not load: ${e##*: }"; return 1; }; return 0; }
+xconf() { cat > "$XCONF.t" <<'EOF'
+# Rudolf OS (gpudriver): Xorg on NVIDIA's driver. Input as in /usr/lib/rudolf/xorg.conf: rudolf-display passes it in.
+Section "ServerFlags"
+	Option "AutoAddDevices" "false"
+	Option "AutoEnableDevices" "false"
+	Option "DontVTSwitch" "true"
+	Option "DontZap" "true"
+	Option "BlankTime" "0"
+	Option "StandbyTime" "0"
+	Option "SuspendTime" "0"
+	Option "OffTime" "0"
+EndSection
+
+Section "Device"
+	Identifier "Graphics card"
+	Driver "nvidia"
+	Option "AllowEmptyInitialConfiguration" "true"
+	Option "NoLogo" "true"
+EndSection
+EOF
+	mv "$XCONF.t" "$XCONF"; }
+
+boot() {
+	mkdir -p "$RUN"; rm -f "$XCONF" "$INUSE"
+	grep -qE 'rudolf.recovery=1|rudolf.nogpu=1|nomodeset' "$CMDL" 2>/dev/null && { echo "gpudriver: recovery or safe graphics: nothing done"; return 0; }
+	nv=$(nv_files)
+	if [ "$(choice)" = nvidia ]; then
+		why=
+		[ -e "$TRY" ] && why="the desktop did not start with it at the last start"
+		[ -z "$why" ] && why=$(not_eligible)
+		[ -z "$why" ] && case "$(ext_state)" in in-use) ;; '') why="the NVIDIA driver extension is not installed";; *) why="the NVIDIA driver extension was left out ($(ext_line | cut -f4))";; esac
+		if [ -z "$why" ]; then
+			date -u +%FT%TZ > "$TRY"; sync
+			cover "$(nouveau_ko)"
+			# GSP firmware: in the extension's lib/firmware/nvidia/VERSION (laid over /lib/firmware by sysext)
+			if why=$(load nvidia) && why=$(load nvidia-modeset) && why=$(load nvidia-drm modeset=1 fbdev=1); then
+				load nvidia-uvm >/dev/null || echo "gpudriver: nvidia-uvm did not load (CUDA and some games' compute need it)"
+				nodes; xconf; echo nvidia > "$INUSE"; echo nvidia > "$RUN/gpu"
+				echo "gpudriver: NVIDIA's driver $(rd1 /sys/module/nvidia/version) for $(card)"; return 0
+			fi
+			# a module that did not load: whatever loaded is unloaded again, nouveau's file uncovered
+			for m in nvidia_uvm nvidia_drm nvidia_modeset nvidia; do rmmod $m 2>/dev/null; done
+			[ -z "$GPU_NOMOUNT" ] && { f=$(nouveau_ko); [ -n "$f" ] && umount "$(readlink -f "$f")" 2>/dev/null; }
+			[ -n "$GPU_NOMOUNT" ] && echo "uncover nouveau" >> "$RUN/gpu-covered"
+		fi
+		fall_back "$why"
+	fi
+	# the open driver: NVIDIA's modules (when the extension is installed) never load by themselves
+	for f in $nv; do cover "$f"; done
+	return 0
+}
+
+status() {
+	c=$(card); set -- $c; nm=$( [ -n "$2" ] && gpu_name "$2"); ne=$(not_eligible); el=false; [ -z "$ne" ] && el=true
+	es=$(ext_state); ev=$(ext_line | cut -f2); inst=false; [ -n "$es" ] && inst=true
+	printf '{"ok":true,"card":%s,"name":%s,"offered":%s,"why":%s,"extension":{"installed":%s,"version":%s,"state":%s},"choice":%s,"inUse":%s,"version":%s' \
+		"$( [ -n "$2" ] && js "10de:$2" || echo null)" "$(js "$nm")" "$el" "$(js "$ne")" "$inst" "$(js "$ev")" "$(js "$es")" \
+		"$(js "$(choice)")" "$(js "$( [ -e "$INUSE" ] && echo nvidia || echo open)")" "$(js "$(rd1 /sys/module/nvidia/version)")"
+	if [ -s "$NOTE" ]; then IFS="$(printf '\t')" read -r at why < "$NOTE"; printf ',"fellBack":{"at":%s,"why":%s}' "$(js "$at")" "$(js "$why")"; fi
+	printf '}\n'
+}
+
+case "$1" in
+boot) boot ;;
+status) status ;;
+set) case "$2" in open|nvidia) ;; *) echo '{"ok":false,"error":"open or nvidia"}'; exit 2;; esac
+	if [ "$2" = nvidia ]; then ne=$(not_eligible); [ -n "$ne" ] && { printf '{"ok":false,"error":%s}\n' "$(js "$ne")"; exit 1; }; fi
+	mkdir -p "$P" && echo "$2" > "$CHOICE" && rm -f "$TRY" && sync; status ;;
+ack) rm -f "$NOTE"; status ;;
+xorg) if [ -e "$INUSE" ] && [ -s "$XCONF" ]; then echo "$XCONF"; else echo /usr/lib/rudolf/xorg.conf; fi ;;
+failed) [ -e "$INUSE" ] || exit 0; fall_back "${2:-Xorg did not start with it}"; rm -f "$RUN/gpu" ;;
+good) [ -e "$INUSE" ] && rm -f "$TRY"; exit 0 ;;
+*) echo "usage: gpudriver boot | status | set open|nvidia | ack | xorg | failed WHY | good"; exit 2 ;;
+esac

@@ -1,0 +1,12 @@
+{
+ "name": "nvidia-driver",
+ "version": "595.112.07",
+ "title": "NVIDIA's graphics driver",
+ "summary": "NVIDIA's own driver for GeForce 16 and newer: its open kernel modules and its OpenGL and Vulkan libraries (Settings › Display › Graphics driver)",
+ "license": "MIT/GPL-2.0 (the open kernel modules), NVIDIA Software License (the other files, redistributed unmodified)",
+ "kernel": true,
+ "modsign": true,
+ "build": "build.sh",
+ "debs": [],
+ "need": ["usr/lib/xorg/modules/drivers/nvidia_drv.so", "usr/share/vulkan/icd.d/nvidia_icd.json", "usr/share/nvidia/rudolf-gpus.txt"]
+}
