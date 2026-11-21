@@ -87,6 +87,45 @@ closed tab, restore the session) and item 7 (reader mode); item 5 (ad and tracke
 (website passwords) and item 6 (extensions from the Library) are suggested for 2.0 (docs/plan-2.0.md); item 6's
 stage 1 could start here. The owner decides.
 
+**Built (2026-11-21, branch oracle-block): item 5, ad and tracker blocking: the mechanism, with Rudolf's own starter list**
+(desktop/orablock61.js, iso/systools/blocklist.py, iso/systools/blocklists/rudolf.txt). A shield 🛡 before the bookmark star with the
+page's count; its menu: "Blocking ads and trackers on SITE", the count, Turn off / on for this site (the page loaded again), Report a
+broken site (a note in System health, kind firewall: nothing sent), Settings…. Settings › Privacy › Ads and trackers in Oracle: on
+(the default) / off, the sites it is off for (✕ each), sites of your own to block (added by name or address). Private and Tor windows
+always block. Kept in the account's settings (S.oblock: the switch and site names, no browsing).
+- **The list: format, source and licence.** Adblock Plus filter syntax (EasyList's), compiled by iso/systools/blocklist.py into whole
+  domains: blocked (b), blocked from other sites only (tp, `$third-party`), never blocked (ex, `@@`); rules with other options, path
+  rules and element hiding are left out for now (a left-out rule can only block less). **Shipped: Rudolf OS's own starter list**
+  (iso/systools/blocklists/rudolf.txt, 49 well-known ad-serving and tracking services, written for Rudolf OS and under its own licence,
+  GPL-2.0-or-later: only domains whose one job is ads or tracking, so sites using them keep working). **EasyList and EasyPrivacy**, the
+  plan's source, are dual-licensed by their authors under the GNU GPL version 3 or later and Creative Commons Attribution-ShareAlike
+  3.0 (as their licence page, https://easylist.to/pages/licence.html, says; it could not be opened from this session, so
+  its exact words are for the owner to check there), which allows shipping them with Rudolf OS with their notice; they were not added here because easylist.to could not be reached from this session (its network refused the host), and
+  a copy from elsewhere is not a source to trust for a list that decides what loads. For the owner: download them, then
+  `python3 iso/systools/blocklist.py iso/systools/blocklists/rudolf.txt easylist.txt easyprivacy.txt > desktop/orablock61.json`, and
+  keep their licence notice beside them (a few tens of thousands of domains: the list should then become a file beside the page,
+  as Readability's, rather than inside it). Updates between releases through the Library's signed lists stay for later.
+- **Real tabs** (Standard, Native, the encrypted Oracle): the shell's request interceptor (the firewall's, every request of a tab)
+  asks `blockWhy` before the firewall's answer is acted on: never the page itself; a request to a blocked domain (or its
+  sub-domains), or to a "tp" domain from another site (the site judged by its last two labels, three for co.uk and the like), is
+  cancelled and counted (tabev `adblock` {n}, reset when a new page commits). The desktop sends the lists (op `block`) before the
+  first tab and again after a shell's hello.
+- **Lite:** rudolf-webkit compiles the same lists into WebKit's own content blocker (WebKitUserContentFilterStore, kept in the user's
+  cache: the lists only) for every tab, a private window's apart (always on, no "off" sites); the sites it is off for are
+  `ignore-previous-rules` with `if-domain`. WebKit does not say what it blocked, so its count is a script in the page's isolated
+  world counting what the page's elements asked for from those domains (a fetch or a beacon is blocked but not counted on Lite).
+- **Nothing sent anywhere:** the lists come with Rudolf OS; every check is on this computer; no list is fetched while browsing.
+- Websites in plain frames (no shell): the shield says blocking is not possible there.
+- Tests: iso/qt/shell2/orablock61_t.js (26: the shell's check on its cases, the page's list equal to blocklist.py's compile, the
+  shield, its menu, Turn off / on, Report, a private window, Settings, a new hello, a plain frame), iso/qt/webkit/block61_ci.py (7:
+  rudolf-webkit, by what reaches a test site), iso/qt/native/orablock61_t.sh (14: the real shell on Standard and Native, by what
+  reaches a test site); oracle58, private59, orahover61, oraacct60, tor59 unchanged; setsearch59_t.js --write run (two new
+  Settings labels). Workflow oracle-block-check.yml. Page-load times with and without: for the owner's check (CI's are not the
+  Vivobook's).
+- **The owner's checks (Vivobook):** on Standard, Native and Lite: a news site with ads: the shield's count, ads gone; Turn off for
+  that site; YouTube, a bank's site and Google sign-in still working; a private window; Settings › Privacy › Ads and trackers;
+  whether to add EasyList and EasyPrivacy (above); page loads feel no slower.
+
 **Built (the owner, 2026-11-20): "Goes To:" in the status line.** "Mousing over a hyperlink or an executable
 button/ad/clickable item ... should show the target URL at the bottom left of the screen where 'Done' shows. The displayed
 phrase should be 'Goes To: (insert URL here)'." Standard and Native: iso/shell/shell.js HOVER_JS in every frame (links,
