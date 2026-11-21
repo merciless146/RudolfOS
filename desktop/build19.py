@@ -37,6 +37,9 @@ for _g,(_fs,_fn,_nm) in LAZY.items():
 _lz='const LAZY_DONE={},LAZY_P={};let LAZY={};\n'
 _lz+="""function lazyApp(g){if(LAZY_DONE[g])return Promise.resolve();return LAZY_P[g]||(LAZY_P[g]=new Promise((res,rej)=>{const s=document.createElement('script');s.src=LAZY[g];s.async=false;
  s.onload=()=>LAZY_DONE[g]?res():(delete LAZY_P[g],rej(new Error('incomplete')));s.onerror=()=>{delete LAZY_P[g];s.remove();rej(new Error('not found'))};document.head.appendChild(s)}))}
+function aBytes(u){const x=new XMLHttpRequest();x.open('GET',u,false);x.overrideMimeType('text/plain; charset=x-user-defined');x.send();if(x.status!=200)throw new Error(u+': '+(x.status||'not found'));
+ const t=x.responseText,b=new Uint8Array(t.length);for(let i=0;i<t.length;i++)b[i]=t.charCodeAt(i)&255;return b}
+async function aFetch(u){const r=await fetch(u);if(!r.ok)throw new Error(u+': '+r.status);return r}
 function lazyFail(name,g,retry){try{notify(name+' could not be loaded','Its files could not be read ('+LAZY[g]+'). Try again, or restart if it keeps happening.',{kind:'error',action:retry})}catch(e){}}
 """
 for _g,(_fs,_fn,_nm) in LAZY.items():
@@ -153,6 +156,18 @@ s=re.sub(r"(@font-face\{[^}]*?src:url\()(data:font/[a-z0-9]+;base64,[A-Za-z0-9+/
 _EXT['application/wasm']='wasm'
 s=re.sub(r"const EMU_SNES_WASM='([A-Za-z0-9+/=]+)';",lambda m:"const EMU_SNES_URL='"+_out('data:application/wasm;base64,'+m.group(1))+"';",s)
 assert 'EMU_SNES_URL' in s
+# 1.6.1 (docs/plan-1.6.1.md Part 23 B, stage 1): the Quake engine (632 KB of WebAssembly as base64) and the Galaxy Map's universe (261 KB of
+# gzip as base64), the page's last big payloads: files beside it, read only when that app uses them (every window parsed them before).
+# aBytes reads one at once (a synchronous request: the Quake engine's checks are synchronous), aFetch when the caller waits anyway;
+# a file that is not there throws (the app says it could not be loaded), never an empty engine
+_EXT['application/gzip']='gz'
+_n=len(re.findall(r"const QWASM_B64='[A-Za-z0-9+/=]+';",s));assert _n==1,_n
+s=re.sub(r"const QWASM_B64='([A-Za-z0-9+/=]+)';",lambda m:"const QWASM_URL='"+_out('data:application/wasm;base64,'+m.group(1))+"';",s)
+rep("QWASM=Uint8Array.from(atob(QWASM_B64),c=>c.charCodeAt(0))","QWASM=aBytes(QWASM_URL)")
+_n=len(re.findall(r"const GM_UNI='[A-Za-z0-9+/=]+',",s));assert _n==1,_n
+s=re.sub(r"const GM_UNI='([A-Za-z0-9+/=]+)',",lambda m:"const GM_UNI_URL='"+_out('data:application/gzip;base64,'+m.group(1))+"',",s)
+rep("const bin=Uint8Array.from(atob(GM_UNI),c=>c.charCodeAt(0));","let bin;try{bin=new Uint8Array(await (await aFetch(GM_UNI_URL)).arrayBuffer())}catch(e){try{notify('Galaxy Map could not be loaded','Its files could not be read ('+GM_UNI_URL+'). Try again, or restart if it keeps happening.',{kind:'error'})}catch(x){}throw e}")
+assert 'QWASM_B64' not in s and 'GM_UNI\'' not in s and 'atob(GM_UNI)' not in s
 # the lazy groups' files (named by their contents, like the pictures)
 _EXT['text/javascript']='js'
 _LZ={_g:_out('data:text/javascript;base64,'+base64.b64encode(_c.encode()).decode()) for _g,_c in LAZY_CODE.items()}

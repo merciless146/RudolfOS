@@ -1057,12 +1057,32 @@ Three parts, one PR each, in this order:
   process (native59_t.sh test 21), so the Vivobook's count of six is checked there (the owner's checks). Tests:
   iso/qt/host/bgpage161_t.sh (one hidden page, the web processes counted, each action done there, its process killed, signing
   out and in), svc160_t.sh and nportal160_t.sh with the new name, native59_t.sh, native160_t.sh, xdrop161_t.sh.
-- **B. Each window loads only what it needs** (the owner: "Yes"): the shared core plus the window's app, not every app. Planned:
-  measure each window first (the desktop, Task Manager, Settings, File Explorer, Notepad, Oracle's frame, the hidden page), then
-  build19.py making a core and per-app files (named by their contents in www/a/, as 1.5.9's lazy groups), oneapp59.js loading
-  only the core and the window's app (its dependencies found by exercising each app; a missing function fails loudly), the big
-  payloads (the emulators, the office engines, Luau) as files of their own; the page's integrity checks extended to every new
-  file. In stages that each keep main releasable.
+- **B. Each window loads only what it needs** (the owner: "Yes"): the shared core plus the window's app, not every app.
+  **Measured first (2026-11-21, the host: Xvfb, WebKitGTK 2.52.6, --draw=soft, the stand-in rudolfd; each window in a web process
+  of its own, as on the Vivobook, PSS / RSS 25 s after it opened):** the hidden page 90 / 213 MB, Task Manager 87 / 214 MB
+  (shown after 873 ms), Settings 109 / 241 MB (1139 ms), File Explorer 85 / 219 MB (882 ms), Notepad 80 / 213 MB (1123 ms),
+  Oracle's page in WebKit 81 / 216 MB (1133 ms); 506 MB PSS for the six. What a window's process is made of (rudolf-webkit, one
+  process): a plain page 34 / 139 MB (WebKit itself), the desktop page's HTML and styles without its code 39 MB, its code parsed
+  but not run 51 MB, the page's own code before the modules run 67 MB, all of it 91 MB. The page's ~150 modules' code is not the
+  big part: a page built without 45 of them (the emulators, Blitzen, the office and phone apps, Oracle's extras, Task Manager,
+  about 600 KB) gave Notepad 78 MB instead of 80 and Settings 75 instead of 109 (noise of ±10 MB between runs); the JavaScript
+  heap is 6-8 MB in every window (JSC's GC log; Chromium's: 4.4 MB). Most of a window is WebKit's own process (34 MB PSS) and
+  what running the page builds (about 40 MB), so a window costs about 80 MB PSS however little of the page it loads.
+  **Stage 1, done (2026-11-21, PR "Native: the page's big payloads as files"):** the page's last big inline payloads are files
+  beside it (www/a/, named by their contents, read only by their app): the Quake engine (632 KB of WebAssembly as base64:
+  aBytes, synchronous as its checks are) and the Galaxy Map's universe (261 KB: aFetch). The page is 3.39 MB instead of 4.26 MB
+  (Standard's too: the same page). Every window 4-6 MB less (483 MB PSS for the six instead of 506). The files are in iso/www,
+  so in desktop.sfs with its dm-verity tree (systools/verity.py), whose root hash is in the signed release list (make_release.py),
+  as 1.5.9's a/ files are; a page installed by hand from Settings › Update (an .HTML file, not a release) reads them from the
+  release's own www/a/ (rudolfd's fallback), so such a page whose payloads differ says "could not be loaded" for that app.
+  Test: iso/qt/host/chunks161_t.sh (neither payload in the page; Notepad's window never reads them; the Galaxy Map and Quake in
+  native windows read and use theirs; a missing file is said; no error).
+  **Left (each its own PR, for the owner's decision with the numbers above):** stage 2, the modules each app needs found by
+  exercising every app (a page per app built from the core and its modules, loaded by oneapp59.js; Standard keeps the whole page):
+  measured potential 2-5 MB per window, because the modules mostly patch each other (win, termUI, appsPanel, startMenuApps...) and
+  the core is most of the code; stage 3, what the page builds at its start in an app's window (the desktop's icons, the start
+  menu, the widgets: about 16 MB before the modules and 24 MB with them at Lite's sign-in screen) left out where the window does
+  not show it. The bigger saving on the Vivobook is the number of processes (one shared on this host; six there) and Part C.
 - **C. Idle windows give their memory back** (the owner: "if it won't cause any issues with Oracle or other Rudolf/Debian/
   Flatpak/Wine apps, then add it"). Planned: a Rudolf app's window minimized or covered for a while (10 minutes; Settings ›
   System, on by default under 6 GB) has its web process ended and is loaded again where it was when shown; only apps that
@@ -1101,4 +1121,5 @@ Three parts, one PR each, in this order:
 10. Part 22 (File Explorer: dragging between windows, the selection box, the progress window): one PR, then the owner's
    checks on the Vivobook.
 11. Part 23 (the native desktop's memory): A (one hidden page), then B (each window only what it needs, in stages), then C
-   (idle windows give their memory back), one PR each, each checked on the Vivobook.
+   (idle windows give their memory back), one PR each, each checked on the Vivobook; B's stages 2 and 3 after the owner has
+   seen B's measurements.

@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- The desktop page is 870 KB smaller: the Quake engine and the Galaxy Map's universe are files of their own, read only when
+  Quake or the Galaxy Map opens (every window of the native desktop, and Standard's page, parsed them before). Each window
+  of the native desktop uses about 5 MB less memory.
 - Native: the shell's hidden pages are one. The desktop's service page, the portal's page (a Linux or Flatpak app's
   questions, file dialogs and links) and the start-up page (the notice after an update) were three pages each loading the
   whole desktop; now one page does what each did. The quick settings' switches, Do not disturb and Clear all, pinning,
