@@ -38,6 +38,8 @@ typedef struct _XRRCrtcInfo {
 Bool XRRQueryExtension(Display *, int *, int *);
 Status XRRQueryVersion(Display *, int *, int *);
 XRRScreenResources *XRRGetScreenResourcesCurrent(Display *, Window);
+XRRScreenResources *XRRGetScreenResources(Display *, Window);
+Status XRRGetScreenSizeRange(Display *, Window, int *, int *, int *, int *);
 void XRRFreeScreenResources(XRRScreenResources *);
 XRROutputInfo *XRRGetOutputInfo(Display *, XRRScreenResources *, RROutput);
 void XRRFreeOutputInfo(XRROutputInfo *);

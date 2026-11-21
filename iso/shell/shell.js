@@ -144,6 +144,8 @@ function fwWhy(u) {
 const PAGE_JS = `(()=>{const R=document.documentElement;if(window.__rudolfPJ||R&&R.hasAttribute('data-rudolf-pj'))return;window.__rudolfPJ=1;if(R)R.setAttribute('data-rudolf-pj','');
 const N=${JSON.stringify(NONCE)},say=o=>{try{console.debug(N+JSON.stringify(o))}catch(e){}};
 const SUB={F20:'w',F21:'t',F22:'n',F23:'q'};
+/* 1.6.1 (Part 10): Ctrl+Shift+T reopens Oracle's last closed tab (on Standard and Native it may come as Ctrl+Shift+F21: rudolf-display, rudolf-native) */
+addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.shiftKey&&!e.altKey&&(e.code=='KeyT'||e.code=='F21')){e.preventDefault();e.stopImmediatePropagation();say({k:'cst'})}},true);
 const UI=new Set(['CKeyH','CKeyJ','CKeyD','CKeyU','CKeyS','CKeyO','CSKeyN','CSKeyT','CSKeyW','CSKeyO','CSKeyB','CSDelete','CSKeyA','CSKeyM','ASKeyI','SEscape','F1','F7','AHome']);
 addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctrlKey?SUB[e.code]:e.key;let a='';
  if(c&&e.shiftKey&&!e.altKey&&e.code=='KeyN')a='cpn';else if(c&&!e.altKey&&!e.shiftKey&&/^[twlrn]$/i.test(k))a='c'+k.toLowerCase();else if(c&&k=='q')a='none';else if(k=='F5')a='f5';
