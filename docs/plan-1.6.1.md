@@ -257,10 +257,10 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Drives | eject (POST eject) | devplug eject: every partition unmounted, /sys/block/DEV/device/delete | **drives** (moved) |
 | Drives | stick/info | mkstick.sh --info: the stick's partitions mounted read-only for a moment | **drives** (moved) |
 | Drives | install, install bootonly=1, bootfiles, mkstick, keepfiles (jobs) | install.sh, bootfiles.sh write/stage, mkstick.sh, keepfiles.sh: whole disks partitioned and written, loop mounts, RUDOLFDATA made | **drives** (moved) |
-| Drives | `home_unlock`, `home_lock`, `home_key_*`, `home_policy_id` (sign-in's home/unlock, home/lock, desktop.inc) | fscrypt: FS_IOC_ADD/REMOVE_ENCRYPTION_KEY, SET_ENCRYPTION_POLICY on /persist/accounts/ID, the folder made and given to the account's user | drives (next) |
-| Drives | `home_bind`, `home_unbind`, `home_debian_rebind` | bind mounts of the account's folders over /home/rudolf/…; rudolf-debian rebind | drives (next) |
-| Drives | `dl_store_bind`, `dl_store_dirs`, `dl_acct_dir`, `dl_home_boot` | bind mount of the downloads' store; chown of its folders to 1000 | drives (next) |
-| Drives | the vault: `vault_add_key`, `vault_key_spec_remove`, `vault_feature` (POST vault/*), vault-move (job), the Flatpak bind at unlock | fscrypt on the encrypted folder (1.5.0), tune2fs -l, mount --bind of /var/lib/flatpak, vault-move | drives (next) |
+| Drives | `home_unlock`, `home_lock`, `home_key_*`, `home_policy_id` (sign-in's home/unlock, home/lock, desktop.inc) | fscrypt: FS_IOC_ADD/REMOVE_ENCRYPTION_KEY, SET_ENCRYPTION_POLICY on /persist/accounts/ID, the folder made and given to the account's user | **drives** (moved, part 2: with Oracle's /persist/oracle/ID) |
+| Drives | `home_bind`, `home_unbind`, `home_debian_rebind` | bind mounts of the account's folders over /home/rudolf/…; rudolf-debian rebind | **drives** (moved, part 2) |
+| Drives | `dl_store_bind`, `dl_store_dirs`, `dl_acct_dir`, `dl_home_boot` | bind mount of the downloads' store; chown of its folders to 1000 | **drives** (moved, part 2: dl_store_bind, dl_store_dirs, dl_store_tidy, dl_home_boot's binds); dl_acct_dir next |
+| Drives | the vault: `vault_add_key`, `vault_key_spec_remove`, `vault_feature` (POST vault/*), vault-move (job), the Flatpak bind at unlock | fscrypt on the encrypted folder (1.5.0), tune2fs -l, mount --bind of /var/lib/flatpak, vault-move | **drives** (moved, part 2; vault.json: the drop) |
 | Drives | `addpart` (rudolfd --addpart, run by the scripts) | BLKPG ioctl on a disk | stays (a separate run by root scripts, not a request) |
 | Drives | `api_disks`, `api_storage` (storage-measure) | blkid of every disk (needs read access to /dev), du of the whole system | drives (read-only actions) |
 | Updates | sys/check, sys/download, sys/tostable, sys/return (jobs) | rudolf-update: slots on RUDOLFDATA, the manifest's signature, the ESP | **updates** (moved) |
@@ -268,7 +268,7 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Updates | the desktop's page update (POST update, POST rollback: /persist/os/new, current, previous) | files of root's on RUDOLFDATA | **updates** (moved) |
 | Updates | bootmenu, secureboot (`efivar_write`, `unimmutable`, `boot_entry_ensure`), MokNew/MokAuth | EFI variables (/sys/firmware/efi/efivars: chattr -i, writes) | updates (the boot entries, next) |
 | Accounts | `au_start`, `au_install`, `au_sync`, `au_migrate`, `au_mv_one` | /etc/passwd, group, shadow written (the per-account Linux users of 1.5.9 15.3 / 1.6.0 Part 10), lchown of the moved folders | accounts |
-| Accounts | `au_session_start`, `au_session_stop`, `au_kill_user`, `au_xaccess` | /home/acctUID bind mount, /run/user/UID made and chowned, the session D-Bus and portal started as the account's user (setuid), its processes killed, X's localuser access | accounts |
+| Accounts | `au_session_start`, `au_session_stop`, `au_kill_user`, `au_xaccess` | /home/acctUID bind mount, /run/user/UID made and chowned, the session D-Bus and portal started as the account's user (setuid), its processes killed, X's localuser access | **drives** (moved with the sign-in's chain, part 2); au_kill_user for a removed account (au_sync): accounts |
 | Accounts | `api_keyring` (keyring/*) | /usr/lib/rudolf/keyring as root for the account's key files | accounts |
 | Accounts | home/* (the files API: tree, list, read, write, rename, copy, delete, recovered) | reads and writes inside /persist/accounts/ID, which is the account's user's, 0700 (root's DAC override) | accounts: a file service run as the account's own user (not root), 11.2 |
 | Accounts | desk_* (desktop.inc: the page's storage, dwp_ensure, dput) | chown of the desktop's folders to desk_uid | none needed after the drop (rudolfd is that user) |
@@ -383,11 +383,44 @@ rudolfd runs as root today (they keep running as root, from the helper).
   (any holder of the token can replace the desktop's page until a restart) and Developer mode and Return to official
   are asked an administrator's password by the page only, not by rudolfd: for the owner (the accounts step can move the
   administrator's check into the helpers, the password on standard input).
-- Next: drives, part 2 with the accounts' sessions (the encrypted folders' unlock and lock, the binds,
-  the downloads' store, the vault: at sign-in home_unlock, home_bind, dl_store_bind and au_session_start are one chain,
-  so they move as one helper action, "drives home-unlock ACCT [session]", the account checked against the account list
-  and its key on standard input, never an argument; sign-out the same with home-lock); accounts; power; network;
-  packages; display; other; then the drop.
+- **Drives, part 2: the accounts' folders and sessions (2026-11-21, branch root-helpers-home):** the sign-in's chain as
+  drives helper actions: `drives home-unlock ACCT 0|1 UID` (the key on standard input, 128 hex digits, never an
+  argument; 1: with the session), `home-lock ACCT`, `home-bind ACCT UID` (rudolfd started again in a session),
+  `home-store` (the downloads' store at start). The drives helper checks the account (letters, digits and "-", at most
+  64; the guest and the shared folder 400 "bad account" as before; an account the account list says was removed
+  refused) and UID (1000 or that account's own uid from the list: the owner of what the sign-in makes outside the new
+  folder, which 1.6.0 took from the request: the account's user for the page's home/unlock, the desktop's for the
+  native sign-in), then runs /usr/lib/rudolf/root/drives-home (root's 0700; not one of rudolf-rootd's helpers, so it
+  refuses the name): rudolfd's own functions for this (home_unlock, home_lock, home_bind, dl_store_bind and what they
+  call: the key and policy, Oracle's /persist/oracle/ID of 1.6.0 Part 22 under the same key, the binds, the downloads'
+  store and its tidying, au_session_start and au_session_stop with the D-Bus, the portal, the keyring and the
+  display's access) built from rudolfd.c as a program of their own (iso/sys/rudolf-drives-home.c, main renamed as the
+  host tests do), so they do line for line what rudolfd did as root; nothing in it reads a request of the page. rudolfd
+  asks it from home_unlock, home_lock, home_bind and dl_store_bind (rudolfd-roothome.inc, one line in each), so the
+  page's home/unlock and home/lock, the native sign-in and sign-out and rudolfd's start go through it; without
+  drives-home (rudolfd built for the host tests) and as root, rudolfd does it itself as before. Part 20 (rudolfd
+  confined, branch rudolfd-confine): drives-home runs inside the drives helper's process (exec), so it gets the drives
+  helper's capabilities and system-call list; what it needs (CAP_SYS_ADMIN for the mounts and the key, CAP_CHOWN,
+  CAP_SETUID/SETGID for su, CAP_KILL for sign-out, CAP_DAC_OVERRIDE) is in that list already.
+  Found and kept as they were: the folders made at sign-in outside the account's folder (the binds' mount points in
+  /home/rudolf, the downloads moved into its Downloads) are the account's user's after the page's home/unlock and the
+  desktop's user's after the native sign-in (home_uid differs between the two requests); an account that is not in
+  the account list at all (no Linux user yet) is still opened, its folder the desktop's user's; for the owner.
+  Changed (the one difference): an account the list says was removed is refused at the drives helper, where rudolfd
+  alone made it a new folder. Tests: roothelpers161_t.sh H1-H7, 14b, 22, 23 (49 checks: the arguments, the key on
+  standard input only, removed accounts, drives-home refused by name by rudolf-rootd, and the whole chain on an
+  encrypted ext4 with the accounts' users in a copy of /etc: the same answers and the same state through the helper,
+  with and without rudolf-rootd, as rudolfd doing it itself); homeapi_t.sh with HAT_VIA=helper (its 69 checks through
+  the helper, and 2 more); in QEMU t160_t.py with R161_FIX (roothelpers-check.yml).
+  The vault (1.5.0's encrypted folder) with it: `drives vault-unlock` (its key on standard input: vault_add_key, from
+  POST vault/unlock and the native sign-in; with the Flatpak bind and the downloads' store again), `vault-feature`
+  (tune2fs -l of the drive: GET vault, GET home), `vault-prepare` (tune2fs -O encrypt at setup, its output in
+  RUN/vault.err as before; now said in the health log, Disk), `vault-move` (the job); vaultnative60_t.sh with
+  VN_VIA=helper. Not moved yet: vault/setup's and vault/store's vault.json in /persist/etc (rudolfd's own files: the
+  drop's step), dl_acct_dir's chown of the downloads' folders.
+- Next: accounts (au_start, au_sync, au_install: /etc, au_move_folder, au_kill_user of a removed
+  account; the keyring's su; the administrator's check, if the owner wants it in the helpers, with the password on
+  standard input); power; network; packages; display; other; then the drop.
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).

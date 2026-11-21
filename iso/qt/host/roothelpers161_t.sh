@@ -10,11 +10,13 @@ HERE=$(cd "$(dirname "$0")" && pwd); SYS=$HERE/../../sys; T=$(mktemp -d /tmp/rh1
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 700)"; F=$((F+1)); fi; }
 w8() { i=0; while [ $i -lt ${2:-80} ]; do eval "$1" && return 0; timeout 0.25 tail -f /dev/null; i=$((i+1)); done; return 1; }
 RDP=; BKP=
-trap 'for p in $RDP $BKP; do kill $p 2>/dev/null; done; umount -l $T/media/sdb1 /usr/share/rudolf/www /home/rudolf /persist /run 2>/dev/null; rm -rf $T' EXIT
+# (uid 47103 and 47105: the accounts' users of the API's checks below, made in this namespace's copy of /etc; only
+# their programs, which this test started, are stopped)
+trap 'for p in $RDP $BKP; do kill $p 2>/dev/null; done; pkill -KILL -U 47103 2>/dev/null; pkill -KILL -U 47105 2>/dev/null; umount -l $T/media/sdb1 /usr/share/rudolf/www /home/rudolf /run/rudolf/dl /home $T/oldhome /persist /etc /run 2>/dev/null; rm -rf $T' EXIT
 
 # ---- the stand-in tree
 mkdir -p $T/sys/class/block/sdb $T/sys/class/block/sdb1 $T/sys/block/sdb $T/lib $T/home/rudolf/Downloads $T/home/rudolf/Documents $T/media $T/run/drives $T/root $T/etc
-for s in devplug install.sh bootfiles.sh mkstick.sh keepfiles.sh; do
+for s in devplug install.sh bootfiles.sh mkstick.sh keepfiles.sh vault-move; do
 	printf '#!/bin/sh\necho "%s $*|sha=$RUDOLF_IMG_SHA|path=$PATH|leak=$LEAKME|uid=$(id -u)" >> %s/calls\n[ "$1" = --info ] || echo "ran %s $*"\n[ "$1" = --info ] && echo "{\\"rudolf\\":true,\\"info\\":{\\"disk\\":\\"$2\\"}}"\n[ "$1" = eject ] && [ "$2" = sdb ] && { echo "a file on the drive is still open" >&2; exit 1; }\nexit 0\n' "$s" $T "$s" > $T/lib/$s
 	chmod 755 $T/lib/$s
 done
@@ -40,7 +42,11 @@ RR_TEST_PERSIST=$T/persist
 EOF
 CF="-O2 -Wall -Wno-format-truncation -DRR_TEST -DRR_TEST_CONF=\"$T/rr.conf\""
 gcc $CF -o $T/root/drives $SYS/rudolf-drives.c && gcc $CF -o $T/root/updates $SYS/rudolf-updates.c && gcc $CF -o $T/rudolf-rootd $SYS/rudolf-rootd.c || { echo "FAIL build"; exit 1; }
-chmod 700 $T/root/drives $T/root/updates
+gcc $CF -w -o $T/drives-home.real $SYS/rudolf-drives-home.c -lz || { echo "FAIL build drives-home"; exit 1; }
+chmod 700 $T/root/drives $T/root/updates $T/drives-home.real
+# (first a stand-in for drives-home, which says how the drives helper called it: its arguments, what came on its
+# standard input, its environment)
+printf '#!/bin/sh\nk=$(cat | md5sum | cut -c1-8)\necho "dh $*|in=$k|path=$PATH|leak=$LEAKME|uid=$(id -u)" >> %s/calls\necho made\nexit 0\n' $T > $T/root/drives-home; chmod 700 $T/root/drives-home
 D=$T/root/drives
 calls() { cat $T/calls 2>/dev/null; : > $T/calls; }
 logged() { c=$(grep -c "$1" $T/health.log 2>/dev/null); echo ${c:-0}; }
@@ -83,6 +89,33 @@ mkdir -p $T/media/sdb1; ln -s / $T/media/sdb1/x 2>/dev/null; $D umount sdb1 >/de
 ok "...nothing mounted there: as before (its status 0, the shell's rm -f's), nothing else touched" "$([ $r = 0 ] && [ -d $T/media/sdb1 ] && echo 1)" "$r"
 rm -rf $T/media/sdb1
 
+OIFS=$IFS
+# ---- 1.6.1 drives part 2: the accounts' folders and sessions (drives home-*): the account checked, the key on standard
+# input only, then drives-home (rudolfd's own functions) with exactly those arguments
+printf 'uABCdef12 1003 moved\nuOTHER999 1005\n-uGONE1234 1007\n' > $T/aumap
+K=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n'); KS=$(printf %s "$K" | md5sum | cut -c1-8)
+o=$(printf %s "$K" | env -i LEAKME=1 $D home-unlock uABCdef12 1 1003 2>&1); r=$?; c=$(calls)
+ok "H1. home-unlock: drives-home unlock ACCT 1 UID, the key on its standard input, nothing of the caller's environment" "$([ $r = 0 ] && [ "$o" = made ] && [ "$c" = "dh unlock uABCdef12 1 1003|in=$KS|path=/usr/sbin:/usr/bin:/sbin:/bin|leak=|uid=0" ] && echo 1)" "$r $o $c"
+printf %s "$K" | $D home-unlock uABCdef12 0 1000 >/dev/null 2>&1; r=$?; $D home-lock uOTHER999 >/dev/null 2>&1; r2=$?; $D home-bind uABCdef12 1003 >/dev/null 2>&1; r3=$?; $D home-store >/dev/null 2>&1; r4=$?; c=$(calls)
+ok "H2. ...without the session and with the desktop's user as the owner; home-lock, home-bind (rudolfd's start), home-store" "$([ $r$r2$r3$r4 = 0000 ] && echo "$c" | grep -q '^dh unlock uABCdef12 0 1000|' && echo "$c" | grep -q '^dh lock uOTHER999|' && echo "$c" | grep -q '^dh bind uABCdef12 1003|' && echo "$c" | grep -q '^dh store|' && echo 1)" "$r$r2$r3$r4 $c"
+b=0; for x in .. ../uABCdef12 uABC/def a.b 'uABC def' '' 'u;id' "$(printf 'uA\nb')" uABCdef12x_ "$(printf 'u%.0s' $(seq 65))" '*' '$(id)'; do $D home-lock "$x" >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $x)"; }; printf %s "$K" | $D home-unlock "$x" 1 1000 >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $x)"; }; done; c=$(calls)
+ok "H3. an account name that is not one (.., /, spaces, a newline, odd characters, too long, empty): refused, drives-home not run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
+ok "...said in the health log (Security)" "$([ "$(logged 'drives helper refused an account name that is not one')" -ge 24 ] && echo 1)" "$(logged 'drives helper refused an account name')"
+h=$(logged refused); o=$(printf %s "$K" | $D home-unlock guest 1 1000); r=$?; o2=$($D home-lock shared); r2=$?
+ok "H4. the guest and the shared folder: 400 bad account, as rudolfd answered, not said as an attack" "$([ $r = 100 ] && [ $r2 = 100 ] && [ "$o" = 'bad account' ] && [ "$(logged refused)" = $h ] && [ -z "$(calls)" ] && echo 1)" "$r $r2 $o"
+printf %s "$K" | $D home-unlock uGONE1234 1 1000 >/dev/null 2>&1; r=$?; $D home-lock uGONE1234 >/dev/null 2>&1; r2=$?
+ok "H5. an account the account list says was removed: refused, said" "$([ $r = 2 ] && [ $r2 = 2 ] && [ -z "$(calls)" ] && [ "$(logged 'refused a removed account')" = 2 ] && echo 1)" "$r $r2"
+b=0; for a in "home-unlock|uABCdef12|1" "home-unlock|uABCdef12|1|1000|$K" "home-unlock|uABCdef12|2|1000" "home-unlock|uABCdef12|1|1005" "home-unlock|uABCdef12|1|0" "home-unlock|uABCdef12|1|1003x" "home-unlock|uABCdef12|1|" "home-unlock|uOTHER999|1|1003" "home-bind|uABCdef12" "home-bind|uABCdef12|1005" "home-bind|uGONE1234|1007" "home-lock" "home-lock|uABCdef12|x" "home-store|now" "home-lock|uABCdef12|--sha=$SHA" "home-frob|uABCdef12"; do
+	IFS='|'; set -- $a; IFS=$OIFS; printf %s "$K" | $D "$@" >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $a)"; }; done; c=$(calls)
+ok "H6. the wrong arguments: the key as an argument, a session that is not 0 or 1, an owner that is another account's or root's, a removed account's, a checksum, an unknown action: refused, nothing run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
+mv $T/root/drives-home $T/dh.standin; o=$($D home-lock uABCdef12 2>/dev/null); r=$?; mv $T/dh.standin $T/root/drives-home
+ok "H7. drives-home missing: 500 (status 200), said" "$([ $r = 200 ] && echo "$o" | grep -q 'could not be opened' && echo 1)" "$r $o"
+o=$(printf %s "$K" | $D vault-unlock 2>&1); r=$?; $D vault-feature </dev/null >/dev/null 2>&1; r2=$?; $D vault-prepare </dev/null >/dev/null 2>&1; r3=$?; $D vault-move </dev/null >/dev/null 2>&1; r4=$?; c=$(calls)
+ok "H8. the vault (1.5.0's encrypted folder): vault-unlock with its key on standard input, vault-feature, vault-prepare to drives-home; vault-move the script" "$([ $r$r2$r3$r4 = 0000 ] && echo "$c" | grep -q "^dh vault-unlock|in=$KS|path=/usr/sbin:/usr/bin:/sbin:/bin|leak=|uid=0" && echo "$c" | grep -q '^dh vault-feature|' && echo "$c" | grep -q '^dh vault-prepare|' && echo "$c" | grep -q '^vault-move |' && echo 1)" "$r$r2$r3$r4 $c"
+b=0; for a in "vault-unlock|$K" "vault-feature|/dev/sda" "vault-prepare|/dev/sda" "vault-move|now" "vault-unlock|--sha=$SHA"; do IFS='|'; set -- $a; IFS=$OIFS; $D "$@" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $a)"; }; done
+ok "...any argument for them (a key, a device, a checksum): refused, nothing run" "$([ $b = 0 ] && [ -z "$(calls)" ] && echo 1)" "$b"
+printf 'uABCdef12 1003 moved\nuOTHER999 1005\n' > $T/aumap
+
 # ---- the updates helper's checks
 U=$T/root/updates
 for c in check download rollback stable-info to-stable status speedtest boot-ok; do env -i $U $c >/dev/null 2>&1 || echo "rc $c"; done > $T/u.rc; c=$(calls)
@@ -118,6 +151,7 @@ int main(int argc, char **argv)
 	if (m < 3) { puts("nofd"); return 3; }
 	if (!strcmp(argv[1], "ok")) { const char *a[] = { "drives", "mount", "sdb1", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 3)); }
 	else if (!strcmp(argv[1], "shell")) { const char *a[] = { "sh", "-c", "id > /tmp/rh-pwned", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 3)); }
+	else if (!strcmp(argv[1], "dh")) { const char *a[] = { "drives-home", "lock", "uABCdef12", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 3)); }
 	else if (!strcmp(argv[1], "dots")) { const char *a[] = { "../drives", "mount", "sdb1", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 3)); }
 	else if (!strcmp(argv[1], "magic")) { const char *a[] = { "drives", "mount", "sdb1", NULL }; n = req(b, a); b[0] = 'X'; printf("%d\n", ask(m, b, n, 3)); }
 	else if (!strcmp(argv[1], "fds")) { const char *a[] = { "drives", "mount", "sdb1", NULL }; n = req(b, a); printf("%d\n", ask(m, b, n, 2)); }
@@ -144,6 +178,8 @@ rm -f /tmp/rh-pwned; h=$(logged 'rootd refused'); o=$(RD shell)
 ok "13. a helper that is not one of the list (sh -c ...): refused (254), nothing run, said in the health log" "$([ "$(echo "$o" | tail -1)" = 254 ] && [ ! -e /tmp/rh-pwned ] && [ "$(logged 'rootd refused')" -gt $h ] && echo 1)" "$o"
 o1=$(RD dots); o2=$(RD magic); o3=$(RD fds); o4=$(RD long)
 ok "14. a name with \"..\", a malformed request, one without its three descriptors, an argument over 4096 bytes: refused" "$([ "$(echo "$o1" | tail -1)" = 254 ] && [ "$(echo "$o2" | tail -1)" = 254 ] && [ "$(echo "$o3" | tail -1)" = 254 ] && [ "$(echo "$o4" | tail -1)" = 254 ] && [ -z "$(calls)" ] && echo 1)" "$o1 $o2 $o3 $o4"
+o=$(RD dh)
+ok "14b. drives-home asked for by its own name (it is the drives helper's only): refused (254), nothing run" "$([ "$(echo "$o" | tail -1)" = 254 ] && [ -z "$(calls)" ] && echo 1)" "$o"
 o=$(RD uid)
 ok "15. a request whose socket pair another user (uid 65534) made: refused, nothing run" "$([ "$(echo "$o" | tail -1)" = 254 ] && [ -z "$(calls)" ] && grep -q 'request from uid 65534' $T/health.log && echo 1)" "$o"
 o=$(RD other $T/cl2)
@@ -154,11 +190,22 @@ o=$($T/cl ok 2>&1); s=$(nm -D $T/rudolf-rootd 2>/dev/null | grep -cwE 'bind|list
 ok "18. nothing to connect to: without the descriptor a program has no way in (rudolf-rootd never binds, listens or accepts)" "$(echo "$o" | grep -q nofd && [ "$s" = 0 ] && nm -D $T/rudolf-rootd | grep -qw socketpair && echo 1)" "$o $s"
 
 # ---- rudolfd's API for drives: the helper run by rudolfd itself (root, no rudolf-rootd), and through rudolf-rootd
-mount -t tmpfs none /run; mkdir -p /run/rudolf /usr/share/rudolf/www /home/rudolf /persist
-mount --bind $HERE/../../www /usr/share/rudolf/www; mount -t tmpfs none /home/rudolf; mount -t tmpfs none /persist
+# (1.6.1 drives part 2: /persist an ext4 drive with the encrypt feature, as RUDOLFDATA is, for the accounts' encrypted
+# folders; /home and /etc this namespace's own, for the accounts' Linux users and their homes)
+truncate -s 96M $T/pimg; mkfs.ext4 -q -F -O encrypt $T/pimg; mkdir -p $T/etc.copy; cp -a /etc/. $T/etc.copy/; mount --bind $T/etc.copy /etc
+# (this tree may be under /home itself, as on GitHub's runner: kept in view at its place)
+TOP=$(cd $HERE/../../.. && pwd -P); mkdir -p $T/oldhome; mount --bind /home $T/oldhome
+mount -t tmpfs none /run; mkdir -p /run/rudolf /usr/share/rudolf/www /persist; mount -t tmpfs none /home; mkdir -p /home/rudolf
+case "$TOP" in /home/*) mkdir -p "$TOP"; mount --bind "$T/oldhome/${TOP#/home/}" "$TOP";; esac
+mount --bind $HERE/../../www /usr/share/rudolf/www; mount -t tmpfs none /home/rudolf; mount -o loop $T/pimg /persist || { echo "FAIL no loop device"; exit 1; }
 gcc -O2 -w -DRD_ROOT_DIR="\"$T/root\"" -DRU_BIN="\"$T/ru\"" -o $T/rudolfd $SYS/rudolfd.c -lz || { echo "FAIL build rudolfd"; exit 1; }
+mkdir -p $T/none; gcc -O2 -w -DRD_ROOT_DIR="\"$T/none\"" -DRU_BIN="\"$T/ru\"" -o $T/rudolfd-inproc $SYS/rudolfd.c -lz || { echo "FAIL build rudolfd"; exit 1; }
+cp $T/drives-home.real $T/root/drives-home; chmod 700 $T/root/drives-home
 # (the stand-in home for the helper is the real /home/rudolf here, a tmpfs, as rudolfd's API checks the image's place)
-sed -i "s|^RR_TEST_HOME=.*|RR_TEST_HOME=/home/rudolf|; s|^RR_TEST_PERSIST=.*|RR_TEST_PERSIST=/persist|" $T/rr.conf; : > /run/rudolf/persistent; mkdir -p /home/rudolf/Downloads; echo iso > /home/rudolf/Downloads/r.iso; chown -R 1000:1000 /home/rudolf
+sed -i "s|^RR_TEST_HOME=.*|RR_TEST_HOME=/home/rudolf|; s|^RR_TEST_PERSIST=.*|RR_TEST_PERSIST=/persist|; s|^RR_TEST_AUMAP=.*|RR_TEST_AUMAP=/persist/etc/rudolf/account-users|" $T/rr.conf
+printf 'RR_TEST_HOMEROOT=/persist/accounts\nRR_TEST_NOBIND=0\nRR_TEST_AUON=1\nRR_TEST_AUHOMES=/home\nRR_TEST_RUNUSER=/run/user\nRR_TEST_DISPLAY=%s/nodisplay\n' $T >> $T/rr.conf
+mkdir -p /persist/etc/rudolf; printf 'uABCdef12 47103 moved\nuOTHER999 47105 moved\n-uGONE1234 47107\n' > /persist/etc/rudolf/account-users
+: > /run/rudolf/persistent; mkdir -p /home/rudolf/Downloads /home/rudolf/Documents; echo iso > /home/rudolf/Downloads/r.iso; echo before > /home/rudolf/Documents/before.txt; chown -R 1000:1000 /home/rudolf
 api() { m=$1; p=$2; curl -s -X $m -H "X-Rudolf-Token: $TOK" "http://127.0.0.1:8080/api/$p"; echo; }
 jobwait() { w8 'curl -s -H "X-Rudolf-Token: $TOK" http://127.0.0.1:8080/api/job | grep -q "\"running\":false"' 40; api GET job | sed 's/"log":"[^"]*"/"log":LOG/'; }
 probe() {
@@ -175,12 +222,31 @@ probe() {
 	{ printf '<html>'; head -c 120000 /dev/zero | tr '\0' x; } > $T/page.html; curl -s -X POST -H "X-Rudolf-Token: $TOK" --data-binary @$T/page.html http://127.0.0.1:8080/api/update; echo
 	api POST rollback; ls /persist/os 2>&1 | tr '\n' ' '; echo
 }
+# the accounts' folders: sign-in with the session, the state it leaves (owners, the binds, the session's files), a
+# second account, another's key, a link planted in place of a folder, sign-out; each run from a fresh start
+K1=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n'); K2=$(head -c 64 /dev/urandom | od -An -tx1 | tr -d ' \n')
+hpost() { printf %s "$2" | curl -s -X POST -H "X-Rudolf-Token: $TOK" --data-binary @- "http://127.0.0.1:8080/api/$1"; echo; }
+hstate() {
+	stat -c '%n %u:%g %a' /persist/accounts/uABCdef12 /persist/accounts/uABCdef12/Documents /persist/oracle/uABCdef12 /persist/accounts/uOTHER999 /home/acct47103 /run/user/47103 2>&1 | sed 's/^stat: //'
+	awk '$5 ~ "^/home/rudolf|^/run/rudolf/dl|^/home/acct" {print $5, $4}' /proc/self/mountinfo | sort
+	cat /run/rudolf/home-session 2>&1; sed 's/^DBUS_SESSION_BUS_ADDRESS=.*/DBUS (a bus)/' /run/rudolf/acct-session.env 2>&1; ls /home/rudolf/Documents; ls -A /run/rudolf/home-keys 2>&1
+}
+hprobe() {
+	hpost 'home/unlock?acct=uABCdef12&session=1' "$K1"; hstate
+	api GET home; hpost 'home/unlock?acct=uOTHER999' "$K2"; hpost 'home/unlock?acct=uOTHER999' "$K1"; hpost 'home/unlock?acct=uLINKed01' "$K1"
+	hpost 'home/unlock?acct=guest' "$K1"; hpost 'home/unlock?acct=uABCdef12&session=1' "$K1"
+	hpost 'home/lock?acct=uABCdef12'; hstate; hpost 'home/lock?acct=uOTHER999'; hpost 'home/lock?acct=uNOTHERE1'; api GET home
+	api GET vault; hpost vault/unlock "$K1"; hpost vault/move
+	ls -ld /persist/accounts/uLINKed01 | cut -c1; ls /etc/home-keys /etc/Documents 2>&1 | grep -c "No such"
+}
+hreset() { rm -rf /persist/accounts /persist/oracle /run/rudolf/home-session /run/rudolf/home-keys /run/rudolf/acct-session.env; mkdir -p /persist/accounts; ln -s /etc /persist/accounts/uLINKed01; }
 start() { : > $T/rd.log; $1 > $T/rd.log 2>&1 & RDP=$!; w8 'curl -s http://127.0.0.1:8080/favicon.png -o /dev/null' 60
 	TOK=$(curl -s http://127.0.0.1:8080/ | sed -n 's/.*RUDOLFD={token:"\([0-9a-f]*\)".*/\1/p' | head -1); }
 stop() { kill $RDP 2>/dev/null; wait $RDP 2>/dev/null; RDP=; w8 '! curl -s -o /dev/null http://127.0.0.1:8080/favicon.png' 40; }
-start $T/rudolfd; A=$(probe); CA=$(calls); stop
+hreset; start $T/rudolfd; A=$(probe); CA=$(calls); HA=$(hprobe); stop
 grep -q 'run by rudolfd itself' $T/rd.log; d1=$?
-start "$T/rudolf-rootd $T/rudolfd"; B=$(probe); CB=$(calls)
+hreset; start $T/rudolfd-inproc; HC=$(hprobe); stop
+hreset; start "$T/rudolf-rootd $T/rudolfd"; B=$(probe); CB=$(calls); HB=$(hprobe)
 RPID=$(pgrep -f "^$T/rudolfd" | head -1); RFD=$(tr '\0' '\n' < /proc/$RPID/environ | sed -n 's/^RUDOLF_ROOTD_FD=//p'); FDS="fd $RFD: $(cat /proc/$RPID/fdinfo/$RFD 2>&1 | grep flags) $(readlink /proc/$RPID/fd/$RFD)"
 grep -q 'through rudolf-rootd' $T/rd.log; d2=$?; stop
 ok "19. rudolfd says how it runs the helpers (by itself as root; through rudolf-rootd)" "$([ $d1 = 0 ] && [ $d2 = 0 ] && echo 1)" "$(cat $T/rd.log | head -5)"
@@ -188,5 +254,8 @@ ok "20. the API for drives answers the same, byte for byte, either way (mount, u
 ok "...and the helper ran the same scripts the same way" "$([ -n "$CA" ] && [ "$CA" = "$CB" ] && echo "$CA" | grep -q "^install.sh /dev/sdb /home/rudolf/Downloads/r.iso|sha=$(echo $SHA | tr A-F a-f)|" && echo "$CA" | grep -q '^bootfiles.sh write /dev/sdb |' && echo "$CA" | grep -q '^mkstick.sh /dev/sdb  1|' && echo 1)" "$(printf '%s\n---\n%s' "$CA" "$CB")"
 ok "...the answers as before 1.6.1: mounted, a bad device refused by rudolfd, safe to remove, eject's own error, the stick's information, the jobs ended 0" "$(echo "$A" | sed -n 1p | grep -q '"mounted"' && echo "$A" | sed -n 2p | grep -q 'bad device' && echo "$A" | sed -n 3p | grep -q 'safe to remove' && echo "$A" | sed -n 5p | grep -q 'still open' && echo "$A" | sed -n 6p | grep -q '"disk":"/dev/sdb"' && echo "$A" | sed -n 8p | grep -q '"rudolf":false' && [ "$(echo "$A" | grep -c '"status":0')" = 6 ] && echo 1)" "$A"
 ok "20b. ...and for updates: status, a check (a job), roll back, the settings, Developer mode, Return to official, the speed test, beta off, the desktop's page and its roll back" "$(echo "$A" | grep -q '"slot":"a"' && echo "$A" | grep -q 'rolled back to slot b' && echo "$A" | grep -q 'no such value' && echo "$A" | grep -q 'Developer mode is on' && echo "$A" | grep -q 'update installed; restart to use it' && echo "$A" | grep -q 'returned to the previous version' && echo "$CA" | grep -q '^ru check|' && echo "$CA" | grep -q '^ru return-official keep|' && echo "$CA" | grep -q '^ru set channel stable|' && echo "$CA" | grep -q '^ru boot-ok|' && echo 1)" "$A $CA"
+ok "22. the accounts' folders (sign-in with the session, the binds, a second account, another's key, a planted link, the guest, sign-out): the same answers and the same state through the helper (rudolfd as root, and through rudolf-rootd) as rudolfd doing it itself" "$([ -n "$HA" ] && [ "$HA" = "$HB" ] && [ "$HA" = "$HC" ] && echo 1)" "$(printf '%s\n---\n%s\n---\n%s' "$HA" "$HB" "$HC" | head -80)"
+ok "...and they are 1.6.0's: made, the folder the account's user's (0700), its Oracle folder the desktop's, the binds, the session's home, unlocked, another's key 403, the link 500 with /etc untouched, the guest 400, locked: the binds gone, the folder before them back" "$(echo "$HA" | sed -n 1p | grep -q '"message":"made"' && echo "$HA" | grep -q '^/persist/accounts/uABCdef12 47103:47103 700' && echo "$HA" | grep -q '^/persist/oracle/uABCdef12 1000:1000 700' && echo "$HA" | grep -q '^/home/rudolf/Documents /accounts/uABCdef12/Documents' && echo "$HA" | grep -q '^/home/acct47103 /accounts/uABCdef12' && echo "$HA" | grep -q '^HOME=/home/acct47103' && echo "$HA" | grep -q 'that key does not open' && echo "$HA" | grep -q 'bad account' && echo "$HA" | grep -q '"message":"locked"' && echo "$HA" | grep -q '^before.txt' && echo "$HA" | tail -2 | head -1 | grep -qx l && [ "$(echo "$HA" | tail -1)" = 2 ] && echo 1)" "$HA"
+ok "23. a removed account (in the account list as removed): refused through the helper (the one change: rudolfd alone made its folder)" "$(hreset; start $T/rudolfd; o=$(hpost 'home/unlock?acct=uGONE1234' "$K1"); stop; echo "$o" | grep -q 'bad account' && [ ! -e /persist/accounts/uGONE1234 ] && echo 1)" ""
 ok "21. rudolfd keeps rudolf-rootd's descriptor close-on-exec (nothing it starts has it)" "$(echo "$FDS" | python3 -c 'import sys,re; t=sys.stdin.read(); m=re.search(r"flags:\s*([0-7]+)", t); print(1 if m and int(m.group(1), 8) & 0o2000000 and "socket:" in t else 0)')" "$FDS"
 echo "$((N-F))/$N passed"; [ $F = 0 ]
