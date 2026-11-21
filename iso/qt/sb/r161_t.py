@@ -151,6 +151,11 @@ try:
     ok('24. ...DHCP on a network with no server: udhcpc asked and gave up ("no DHCP answer")', 'no DHCP answer' in o, o[-400:])
     o = api(sh, 'wifi/status') + api(sh, 'net/metered') + api(sh, 'net/hotspot')
     ok('25. ...Wi-Fi (no adapter here), metered connections, the hotspot: the scripts answer as before', '"raw":' in o and '"connected"' in o and ('HTTP404' in o or '"on"' in o), o[-800:])
+    # Bluetooth and Thunderbolt (1.6.1 Part 11, the devices helper): QEMU has neither, so the scripts' own answers
+    o = api(sh, 'bt') + api(sh, 'tb') + api(sh, 'bt/pair?mac=AA:BB:CC:DD:EE:01', True, 90) + api(sh, 'tb/allow?id=0-1', True)
+    ok('27. devices: GET bt and GET tb through the helper (no adapter, no bus here), a pairing and an approval that cannot work said as before', ('"adapter"' in o or 'Bluetooth is not available' in o) and '"present":false' in o and o.count('HTTP409') + o.count('HTTP500') >= 2, o[-900:])
+    o = sh("grep -c 'the devices helper did not start' /run/rudolf/rudolfd.log", 20)
+    ok('28. the devices helper ran each time', re.search(r'^0$', o, re.M), o)
     o = sh("grep -c 'the network helper did not start' /run/rudolf/rudolfd.log", 20)
     ok('26. the network helper ran each time (rudolfd never did it itself)', re.search(r'^0$', o, re.M), o)
     o = sh("tail -20 /run/rudolf/rudolfd.log | grep -i 'rootd\\|refused' ; cat /persist/var/log/health.log 2>/dev/null | grep 'rootd refused' | tail -3; echo done")

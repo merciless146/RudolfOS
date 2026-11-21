@@ -57,6 +57,7 @@ printf 'RR_TEST_PROC=%s/proc\nRR_TEST_BIN=%s/bin\n' $T $T >> $T/rr.conf
 # (1.6.1 network: the network helper; stand-ins for wifi.sh, the firewall, the hotspot and netplug, and for ip, udhcpc
 # and wpa_cli in $T/bin: none of them touches this computer's network, each only says how it was called)
 gcc $CF -o $T/root/network $SYS/rudolf-network.c || { echo "FAIL build network"; exit 1; }; chmod 700 $T/root/network
+gcc $CF -o $T/root/devices $SYS/rudolf-devices.c || { echo "FAIL build devices"; exit 1; }; chmod 700 $T/root/devices   # (1.6.1 devices: Bluetooth, Thunderbolt)
 cat > $T/netstand <<'NS'
 #!/bin/sh
 T=@T@; n=${0##*/}; rq=; [ "$n $1" = "wifi.sh connect" ] || [ "$n $1" = "wifi.sh forget" ] && rq="|req=$(md5sum < "$3" | cut -c1-8) $(stat -c %a:%u "$3") ${3##*/}" && rm -f "$3"
@@ -75,12 +76,17 @@ case "$n $1" in
 "netplug state") echo '{"ok":true,"connected":true,"metered":false}';; "netplug set") [ "$2" = rtest0 ] || echo "no such adapter";;
 "ip "*) [ -e $T/ip-fail ] && [ "$2" = add ] && { echo "RTNETLINK answers: File exists" >&2; exit 2; };;
 "udhcpc "*) [ -e $T/nodhcp ] && exit 1;;
+"bluetooth status") echo '{"ok":true,"adapter":"hci0","powered":true,"devices":[{"mac":"AA:BB:CC:DD:EE:01","name":"Pad","paired":true,"connected":false}]}';;
+"bluetooth answer") [ -e $T/bt-noq ] && exit 1;; "bluetooth pair") echo "Pairing successful";; "bluetooth disconnect") echo "Successful disconnected";;
+"bluetooth remove") echo "Device has been removed";; "bluetooth "*) ;;
+"thunderbolt json") echo '{"ok":true,"present":true,"dma":false,"devices":[]}';; "thunderbolt allow") [ "$2" = 0-1 ] && echo approved || { echo "no such device"; exit 2; };;
+"thunderbolt deny") echo "not approved";; "thunderbolt forget") echo forgotten;;
 "wpa_cli "*) case "$5" in status) printf 'bssid=aa:bb:cc:dd:ee:ff\nssid=Home Net  \nwpa_state=COMPLETED\n';; signal_poll) printf 'RSSI=-55\nLINKSPEED=433\n';; esac;;
 esac
 exit 0
 NS
 sed -i "s|@T@|$T|" $T/netstand; chmod 755 $T/netstand
-for s in wifi.sh firewall hotspot netplug udhcpc.sh; do cp $T/netstand $T/lib/$s; done; for c in ip udhcpc wpa_cli; do cp $T/netstand $T/bin/$c; done
+for s in wifi.sh firewall hotspot netplug udhcpc.sh bluetooth thunderbolt; do cp $T/netstand $T/lib/$s; done; for c in ip udhcpc wpa_cli; do cp $T/netstand $T/bin/$c; done
 mkdir -p $T/sys/class/net/rtest0 $T/etc; printf 'RR_TEST_ETC=%s/etc\n' $T >> $T/rr.conf
 # (first a stand-in for drives-home, which says how the drives helper called it: its arguments, what came on its
 # standard input, its environment)
@@ -215,6 +221,17 @@ o=$($NW firewall status </dev/null); $NW firewall remote on </dev/null; touch $T
 ok "N6. the firewall (its count, remote access's port, a refusal's words and status), the hotspot (the request on standard input into a file of root's), metered connections: the scripts' own answers" "$([ "$o" = 'on 7' ] && [ $r = 1 ] && [ "$o2" = 'nft: no such table' ] && [ "$o3" = '{"on":false,"can":true}' ] && [ "$o4" = 'Sharing Phone Net (2.4 GHz)' ] && echo "$o5" | grep -q '"metered":false' && [ "$o6" = 'no such adapter' ] && echo "$c" | grep -q "^firewall remote on|$PE" && echo "$c" | grep -q "^hotspot start $T/run/hotspot.req|req=$(printf 'Phone Net\npassword1\n2.4\n' | md5sum | cut -c1-8) 600:0 hotspot.req|" && echo "$c" | grep -q "^netplug set wlan9 on|" && echo 1)" "$o $o2 $o3 $o4 $o5 $o6 $c"
 rm -f $T/run/hotspot.req
 
+# ---- 1.6.1 devices: the devices helper's checks (Bluetooth, Thunderbolt)
+DV=$T/root/devices
+o=$(env -i LEAKME=1 $DV bt status </dev/null); $DV bt on </dev/null; $DV bt scan 15 </dev/null; o2=$($DV bt pair AA:BB:CC:DD:EE:01 </dev/null); touch $T/bt-noq; $DV bt answer yes </dev/null; r=$?; rm -f $T/bt-noq
+o3=$($DV tb json </dev/null); o4=$($DV tb allow 0-1 </dev/null); o5=$($DV tb allow 9-9 </dev/null); r2=$?; $DV tb forget 00ab-cd12 </dev/null >/dev/null; c=$(calls)
+ok "D1. devices: Bluetooth's and Thunderbolt's actions are the scripts' with their arguments as they are, their answers and status, nothing of the caller's environment" "$([ $r$r2 = 12 ] && echo "$o" | grep -q '"mac":"AA:BB:CC:DD:EE:01"' && [ "$o2" = 'Pairing successful' ] && echo "$o3" | grep -q '"present":true' && [ "$o4" = approved ] && [ "$o5" = 'no such device' ] && [ "$(echo "$c" | tr '\n' '#')" = "bluetooth status|$PE#bluetooth on|$PE#bluetooth scan 15|$PE#bluetooth pair AA:BB:CC:DD:EE:01|$PE#bluetooth answer yes|$PE#thunderbolt json|$PE#thunderbolt allow 0-1|$PE#thunderbolt allow 9-9|$PE#thunderbolt forget 00ab-cd12|$PE#" ] && echo 1)" "$r$r2 $o2 $o4 $o5 $c"
+b=0; for a in "bt" "bt|status|x" "bt|on|now" "bt|scan" "bt|scan|2" "bt|scan|61" "bt|scan|1e1" "bt|scan|-5" "bt|answer|maybe" "bt|answer" "bt|pair|aa:bb:cc:dd:ee:01" "bt|pair|AA:BB:CC:DD:EE" "bt|pair|AA:BB:CC:DD:EE:0G" "bt|connect|AA-BB-CC-DD-EE-01" 'bt|remove|$(id)' "bt|pair" "bt|pair|AA:BB:CC:DD:EE:01|x" "bt|frob" "bt|start" "bt|agent-run" \
+	"tb" "tb|json|x" "tb|allow|01" "tb|allow|0/1" "tb|allow|../1" "tb|deny|0-1;x" "tb|forget|zz" "tb|forget|$(printf 'a%.0s' $(seq 65))" "tb|forget" "tb|plug" "tb|boot" "frob|status"; do
+	IFS='|'; set -- $a; IFS=$OIFS; $DV "$@" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $a)"; }; done; c=$(calls)
+ok "D2. devices: a device's address or ID that is not one, a search that is not 3 to 60 seconds, an answer that is not yes or no, the scripts' own start-up actions, extra arguments, unknown actions: refused, nothing run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
+ok "...said in the health log (Security)" "$([ "$(logged 'devices helper refused')" -ge 30 ] && echo 1)" "$(logged 'devices helper refused')"
+
 # ---- the updates helper's checks
 U=$T/root/updates
 for c in check download rollback stable-info to-stable status speedtest boot-ok; do env -i $U $c >/dev/null 2>&1 || echo "rc $c"; done > $T/u.rc; c=$(calls)
@@ -308,7 +325,7 @@ mkdir -p $T/none; gcc -O2 -w -include $T/noreboot.h -DRD_ROOT_DIR="\"$T/none\"" 
 # (rudolfd looks for the power settings, the desktop's priority and the shutdown script in /usr/lib/rudolf before it
 # asks: stand-ins there, in this namespace; the folder made only if this computer has none, and removed again)
 ULR_MADE=; [ -d /usr/lib/rudolf ] || { mkdir -p /usr/lib/rudolf && ULR_MADE=1; }
-mkdir -p $T/ulr; for s in power desktop-priority shutdown wifi.sh firewall hotspot netplug udhcpc.sh; do cp $T/lib/$s $T/ulr/$s; done; mount --bind $T/ulr /usr/lib/rudolf
+mkdir -p $T/ulr; for s in power desktop-priority shutdown wifi.sh firewall hotspot netplug udhcpc.sh bluetooth thunderbolt; do cp $T/lib/$s $T/ulr/$s; done; mount --bind $T/ulr /usr/lib/rudolf
 cp $T/drives-home.real $T/root/drives-home; chmod 700 $T/root/drives-home
 # (the stand-in home for the helper is the real /home/rudolf here, a tmpfs, as rudolfd's API checks the image's place)
 sed -i "s|^RR_TEST_HOME=.*|RR_TEST_HOME=/home/rudolf|; s|^RR_TEST_PERSIST=.*|RR_TEST_PERSIST=/persist|; s|^RR_TEST_AUMAP=.*|RR_TEST_AUMAP=/persist/etc/rudolf/account-users|; s|^RR_TEST_ETC=.*|RR_TEST_ETC=/etc|" $T/rr.conf
@@ -348,6 +365,10 @@ nprobe() {
 	api GET firewall; api POST 'firewall?on=0'; touch $T/fw-fail; api POST 'firewall?on=1'; rm -f $T/fw-fail
 	api GET net/hotspot; hpost net/hotspot "$(printf 'Phone Net\npassword1\n2.4')"; api POST 'net/hotspot?on=0'; rm -f $T/run/hotspot.req /run/rudolf/hotspot.req
 	api GET net/metered; api POST 'net/metered?if=rtest0&v=on'; api POST 'net/metered?if=wlan9&v=off'
+	# (1.6.1 devices: Bluetooth, Thunderbolt)
+	api GET bt; api POST 'bt/power?on=0'; api POST bt/visible; api POST 'bt/scan?s=5'; api POST 'bt/answer?ok=1'; touch $T/bt-noq; api POST 'bt/answer?ok=0'; rm -f $T/bt-noq
+	api POST 'bt/pair?mac=AA:BB:CC:DD:EE:01'; api POST 'bt/disconnect?mac=AA:BB:CC:DD:EE:01'; api POST 'bt/remove?mac=AA:BB:CC:DD:EE:01'; api POST 'bt/pair?mac=aa:bb:cc:dd:ee:01'
+	api GET tb; api POST 'tb/allow?id=0-1'; api POST 'tb/deny?id=0-1'; api POST 'tb/forget?uid=00ab-cd12'; api POST 'tb/allow?id=9-9'
 }
 nnorm() { grep -v '^ntpd \|^hwclock \|^firewall status|' | sed "s|$T/run/|/run/rudolf/|g; s|$T/lib/|/usr/lib/rudolf/|g; s/|path=[^|]*//"; }
 # the accounts' folders: sign-in with the session, the state it leaves (owners, the binds, the session's files), a
@@ -391,5 +412,6 @@ ok "24. power through the helper: the settings, the desktop's priority, the cach
 ok "25. the network through the helper (Wi-Fi's actions, a join (a job) and a forget with the request on standard input, the service's reconnect, DHCP, a fixed address and the name server, the firewall, the hotspot, metered connections): the same answers, byte for byte, with and without rudolf-rootd, and as rudolfd doing it itself" "$([ -n "$NA" ] && [ "$NA" = "$NB" ] && [ "$NA" = "$NC" ] && echo 1)" "$(printf '%s\n---\n%s\n---\n%s' "$NA" "$NB" "$NC" | head -90)"
 ok "...the scripts and commands asked the same things (the requests' files root's 0600, removed by wifi.sh as before)" "$([ -n "$NCA" ] && [ "$NCA" = "$NCB" ] && [ "$NCA" = "$NCC" ] && echo "$NCA" | grep -q '^wifi.sh connect rtest0 /run/rudolf/wifi.req|req=[0-9a-f]* 600:0 wifi.req|leak=$' && echo "$NCA" | grep -q '^udhcpc -i rtest0 -n -q -t 5 -O 43 -s /usr/lib/rudolf/udhcpc.sh|' && echo 1)" "$(printf '%s\n---\n%s\n---\n%s' "$NCA" "$NCB" "$NCC" | head -90)"
 ok "...and they are 1.6.0's answers: the status's raw text, the radio and band turned off, the adapter refused, connecting then the job ended 0, forgotten, connected, no DHCP answer 500, applied, the address refused 500 with the name server written, the firewall's count, its refusal's words, sharing, the hotspot off, metered refused" "$(echo "$NA" | grep -q '"raw":"adapter=rtest0' && echo "$NA" | grep -q 'Radio aa:bb:cc:dd:ee:ff turned off' && echo "$NA" | grep -q "5 GHz radio turned off" && echo "$NA" | grep -q 'No such adapter: wlan9' && echo "$NA" | grep -q '"message":"connecting"' && echo "$NA" | grep -q '"message":"Forgotten"' && echo "$NA" | grep -q '"message":"connected"' && echo "$NA" | grep -q 'no DHCP answer' && echo "$NA" | grep -q '"message":"applied"' && echo "$NA" | grep -q 'could not apply the address' && echo "$NA" | grep -q '^nameserver 8.8.4.4$' && echo "$NA" | grep -q '"blocked":7' && echo "$NA" | grep -q 'nft: no such table' && echo "$NA" | grep -q 'Sharing Phone Net' && echo "$NA" | grep -q 'The hotspot is off' && echo "$NA" | grep -q 'no such adapter' && ! grep -q 'network helper did not start' $T/rd.log && echo 1)" "$NA"
+ok "26. Bluetooth and Thunderbolt through the devices helper (in check 25's comparison): 1.6.0's answers: the status, answered, already answered 409, paired, disconnected, removed (the device still there: 409 as before), a lower-case address 400, the devices, approved, not approved, forgotten, no such device 500" "$(echo "$NA" | grep -q '"adapter":"hci0"' && echo "$NA" | grep -q '"message":"answered"' && echo "$NA" | grep -q 'already answered' && echo "$NA" | grep -q '"ok":true,"message":"Pairing successful"' && echo "$NA" | grep -q '"ok":true,"message":"Successful disconnected"' && echo "$NA" | grep -q '"ok":false,"message":"Device has been removed"' && echo "$NA" | grep -q 'bad device' && echo "$NA" | grep -q '"present":true' && echo "$NA" | grep -q '"message":"approved"' && echo "$NA" | grep -q '"message":"not approved"' && echo "$NA" | grep -q '"message":"forgotten"' && echo "$NA" | grep -q '"error":"no such device"' && echo "$NCA" | grep -q '^bluetooth scan 5|' && echo "$NCA" | grep -q '^thunderbolt forget 00ab-cd12|' && ! grep -q 'devices helper did not start' $T/rd.log && echo 1)" "$(echo "$NA" | tail -16)"
 ok "21. rudolfd keeps rudolf-rootd's descriptor close-on-exec (nothing it starts has it)" "$(echo "$FDS" | python3 -c 'import sys,re; t=sys.stdin.read(); m=re.search(r"flags:\s*([0-7]+)", t); print(1 if m and int(m.group(1), 8) & 0o2000000 and "socket:" in t else 0)')" "$FDS"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

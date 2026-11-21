@@ -28,7 +28,7 @@ static char *root_net_out(const char *const argv[], const char *in, size_t inl, 
 	int ws = 0; if (p > 0) while (waitpid(p, &ws, 0) < 0 && errno == EINTR) {}
 	int c = p > 0 && WIFEXITED(ws) ? WEXITSTATUS(ws) : 255;
 	*st = (c == 255 || c == RR_NOSTART) && geteuid() == 0 ? -2 : c;
-	if (*st == -2) fprintf(stderr, "rudolfd: the network helper did not start (%s): rudolfd does it itself\n", argv[1]);
+	if (*st == -2) fprintf(stderr, "rudolfd: the %s helper did not start (%s): rudolfd does it itself\n", argv[0], argv[1]);
 	return s.b;
 }
 /* as run() of the old command: the helper's status (-2 as above); its output into rudolfd's log, or with quiet nowhere */
@@ -36,7 +36,7 @@ static int root_net(const char *const argv[], int quiet)
 {
 	int nul = root_null(), st = root_call(argv, nul >= 0 ? nul : 0, quiet && nul >= 0 ? nul : 1, quiet && nul >= 0 ? nul : 2);
 	if (nul >= 0) close(nul);
-	if ((st < 0 || st == RR_NOSTART) && geteuid() == 0) { fprintf(stderr, "rudolfd: the network helper did not start (%s): rudolfd does it itself\n", argv[1]); return -2; }
+	if ((st < 0 || st == RR_NOSTART) && geteuid() == 0) { fprintf(stderr, "rudolfd: the %s helper did not start (%s): rudolfd does it itself\n", argv[0], argv[1]); return -2; }
 	return st;
 }
 /* the output of a request the helper may do (NULL when it did not start, or there is no helper: the caller then runs

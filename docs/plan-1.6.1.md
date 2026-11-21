@@ -281,7 +281,7 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Network | firewall (GET/POST), remote access's firewall holes, health_tick's firewall status | /usr/lib/rudolf/firewall (nft) | **network** (moved) |
 | Network | hotspot, netplug, mobile/* (rudolfd-mobile.inc: modem, SMS, airplane mode) | hostapd, dnsmasq, ModemManager through /usr/lib/rudolf/hotspot, netplug, modem | **network** (moved: hotspot, netplug); modem next |
 | Network | tor (`tor_start`, `tor_kill`), torwin (`torwin_start`) | Tor started as its own user (setuid in the child), its folder made and chowned; Chromium for Tor windows as the desktop's user with a cgroup write | network |
-| Network | bt/* (bluetooth), tb/* (thunderbolt) | /usr/lib/rudolf/bluetooth, thunderbolt (sysfs authorize) | network (devices) |
+| Network | bt/* (bluetooth), tb/* (thunderbolt) | /usr/lib/rudolf/bluetooth, thunderbolt (sysfs authorize) | **devices** (moved) |
 | Network | remote/* (`remote_start`, `remote_stop`) | rudolf-remote started (as root today), its certificate and settings in /persist/etc | network |
 | Network | time sync (`time_tick`, POST time, time/sync) | settimeofday, ntpd, hwclock -w | **power** (moved, the clock) |
 | Packages | pkg/* (rpk refresh, update, install, remove, install-file: jobs), pkg/exec (`api_pkg_exec`: setuid to the account's user) | rpk on the system's package folders; a Library program run as the account's user | packages |
@@ -501,8 +501,21 @@ rudolfd runs as root today (they keep running as root, from the helper).
   byte); in QEMU r161_t.py 22-26 (the firewall off and on with nft, a fixed address, DHCP with no server, Wi-Fi without
   an adapter, the helper never skipped). Not moved yet: the modem (mobile/*), Tor, remote access's own start
   (rudolf-remote), Bluetooth and Thunderbolt (the devices: next).
-- Next: devices (Bluetooth, Thunderbolt); the modem, Tor and remote access; packages; display; other; then the drop
-  (with the accounts' file service of 11.2).
+- **Devices (2026-11-21, branch root-helpers-devices, after root-helpers-network):** the devices helper
+  (iso/sys/rudolf-devices.c, /usr/lib/rudolf/root/devices; rudolfd-rootdev.inc, which asks it the network's way):
+  `devices bt status|on|off|visible`, `bt scan SECONDS` (3-60), `bt answer yes|no`, `bt pair|connect|disconnect|remove
+  MAC` (capital hex digits, as rudolfd's bt_mac_ok), `devices tb json`, `tb allow|deny ID`, `tb forget UID` (as
+  tb_arg_ok); the scripts' start-up actions (bluetooth start, stop, agent-run, boot; thunderbolt plug, boot) are refused:
+  only rudolf-init and mdev run them, as root. GET bt, every POST bt/..., GET tb, POST tb/... and System health's
+  Thunderbolt line go through it; each keeps its old command for when the helper does not start. Part 20: its line in
+  HELPER_CAPS (CAP_NET_ADMIN, CAP_NET_RAW, CAP_NET_BIND_SERVICE for bluetoothd and its D-Bus when "on" starts them
+  again, the DAC capabilities, CAP_FOWNER and CAP_CHOWN for the pairings in /persist/bluetooth, CAP_KILL, CAP_SETUID and
+  CAP_SETGID for headphones set up as the desktop's user); no CAP_SYS_ADMIN, so no_new_privs. For the owner (with the
+  confinement on only): whether the kernel asks more than the file's mode for a Thunderbolt device's "authorized" (the
+  test computers have no Thunderbolt). Tests: roothelpers161_t.sh D1-D2 and check 26 (in check 25's comparison: the same
+  answers and calls with and without rudolf-rootd and as rudolfd itself); r161_t.py 27-28 in QEMU (no adapter, no bus).
+- Next: the modem, Tor and remote access; packages; display; other; then the drop (with the accounts' file service of
+  11.2).
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).

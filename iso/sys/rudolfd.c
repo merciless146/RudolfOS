@@ -1226,6 +1226,12 @@ static void catalog_fresh(void)
  * Flatpak keeps the objects it already fetched, so each try continues where the last one stopped */
 #define FP_INSTALL "n=0; until flatpak install --system -y --noninteractive flathub %s; do n=$((n+1)); [ $n -lt 3 ] || exit 1; " \
 	"echo \"The download stopped. Trying again in 10 seconds; what was already downloaded is kept...\"; sleep 10; done; echo Done."
+/* (1.6.1 Part 11) as reply_cmd_json, for an output already had (rudolfd-rootdev.inc's root_dev_out); frees it */
+static void reply_out_json(struct req *r, char *o, const char *fail)
+{
+	if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, fail); return; }
+	reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o);
+}
 static void reply_cmd_json(struct req *r, const char *cmd, const char *fail)
 {
 	char *o = run_out(cmd);
@@ -2602,7 +2608,8 @@ static void api_system(struct req *r)
 	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
 	jtext(&s, "audio_pcm", slurp("/proc/asound/pcm", NULL));
 	/* 1.5.4: Thunderbolt and USB4: the protection and the devices, approved or not */
-	jtext(&s, "thunderbolt", run_out("[ -d /sys/bus/thunderbolt ] && /usr/lib/rudolf/thunderbolt json 2>/dev/null || true"));
+	{ const char *av[] = { "devices", "tb", "json", NULL };   /* (1.6.1 Part 11: as before, nothing without the bus) */
+	  jtext(&s, "thunderbolt", access("/sys/bus/thunderbolt", F_OK) ? strdup("") : root_dev_out(av, 0, "[ -d /sys/bus/thunderbolt ] && /usr/lib/rudolf/thunderbolt json 2>/dev/null || true")); }
 	/* 1.5.3: devices with no driver ("bus|id|kind|name" a line), so a report says what this computer is missing */
 	jtext(&s, "unsupported", run_out("/usr/lib/rudolf/devplug unsupported 2>/dev/null"));
 	jtext(&s, "input", run_out("sed -n 's/^N: Name=\"\\(.*\\)\"$/\\1/p' /proc/bus/input/devices 2>/dev/null"));
@@ -4495,7 +4502,7 @@ static int tb_arg_ok(const char *a, int uid)
 }
 static void api_tb(struct req *r, const char *what, int post)
 {
-	if (!post && !*what) { reply_cmd_json(r, "/usr/lib/rudolf/thunderbolt json 2>/dev/null", "Thunderbolt devices are not known"); return; }
+	if (!post && !*what) { const char *av[] = { "devices", "tb", "json", NULL }; reply_out_json(r, root_dev_out(av, 0, "/usr/lib/rudolf/thunderbolt json 2>/dev/null"), "Thunderbolt devices are not known"); return; }   /* (1.6.1 Part 11) */
 	if (!post && !strcmp(what, "ask")) {
 		char buf[512] = ""; FILE *f = fopen(RUN "/tb-ask", "r");
 		size_t n = f ? fread(buf, 1, sizeof buf - 1, f) : 0; if (f) fclose(f); buf[n] = 0; trim(buf);
@@ -4508,7 +4515,8 @@ static void api_tb(struct req *r, const char *what, int post)
 	const char *a = qparam(r->query, forget ? "uid" : "id");
 	if (!tb_arg_ok(a, forget)) { reply_err(r->fd, 400, "bad device"); return; }
 	char cmd[200]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/thunderbolt %s %s 2>&1", what, a);
-	char *o = run_out(cmd); trim(o);
+	const char *av[] = { "devices", "tb", what, a, NULL }; char *o = root_dev_out(av, 1, cmd);   /* (1.6.1 Part 11) */
+	trim(o);
 	if (!o || (strcmp(o, "approved") && strcmp(o, "not approved") && strcmp(o, "forgotten"))) { reply_err(r->fd, 500, o && *o ? o : "that did not work"); free(o); return; }
 	health_add("hardware", !strcmp(what, "allow") ? "a Thunderbolt or USB4 device was approved" : !strcmp(what, "deny") ? "a Thunderbolt or USB4 device was not approved" : "a Thunderbolt or USB4 device was forgotten");
 	reply_ok(r->fd, o); free(o);
@@ -4524,32 +4532,35 @@ static void api_bt(struct req *r, const char *what, int post)
 		str s = {0}; sadd(&s, "{\"ok\":true,\"ask\":%s}", buf[0] == '{' ? buf : "null");
 		reply(r->fd, 200, "application/json", s.b, s.n, NULL); free(s.b); return;
 	}
-	if (!post) { reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return; }
+	if (!post) { { const char *sav[] = { "devices", "bt", "status", NULL }; reply_out_json(r, root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null"), "Bluetooth is not available"); }; return; }
 	if (!strcmp(what, "answer")) {
 		char *ok = qparam(r->query, "ok"); if (!ok || (strcmp(ok, "1") && strcmp(ok, "0"))) { reply_err(r->fd, 400, "ok=1 or ok=0"); return; }
-		int rc = run(*ok == '1' ? "/usr/lib/rudolf/bluetooth answer yes >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth answer no >/dev/null 2>&1");
+		const char *av[] = { "devices", "bt", "answer", *ok == '1' ? "yes" : "no", NULL };   /* (1.6.1 Part 11: rudolfd-rootdev.inc) */
+		int rc = root_dev_run(av, *ok == '1' ? "/usr/lib/rudolf/bluetooth answer yes >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth answer no >/dev/null 2>&1");
 		if (rc) { reply_err(r->fd, 409, "The question was already answered or has run out of time"); return; }
 		reply_ok(r->fd, "answered"); return;
 	}
 	if (!strcmp(what, "power")) {
 		char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1 or on=0"); return; }
-		run(*on == '1' ? "/usr/lib/rudolf/bluetooth on >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth off >/dev/null 2>&1");
-		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
+		{ const char *av[] = { "devices", "bt", *on == '1' ? "on" : "off", NULL }; root_dev_run(av, *on == '1' ? "/usr/lib/rudolf/bluetooth on >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth off >/dev/null 2>&1"); }
+		{ const char *sav[] = { "devices", "bt", "status", NULL }; reply_out_json(r, root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null"), "Bluetooth is not available"); }; return;
 	}
 	if (!strcmp(what, "visible")) {
-		run("/usr/lib/rudolf/bluetooth visible >/dev/null 2>&1");
-		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
+		{ const char *av[] = { "devices", "bt", "visible", NULL }; root_dev_run(av, "/usr/lib/rudolf/bluetooth visible >/dev/null 2>&1"); }
+		{ const char *sav[] = { "devices", "bt", "status", NULL }; reply_out_json(r, root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null"), "Bluetooth is not available"); }; return;
 	}
 	if (!strcmp(what, "scan")) {
 		char *sv = qparam(r->query, "s"); int sec = sv ? atoi(sv) : 15; if (sec < 3 || sec > 60) sec = 15;
-		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/bluetooth scan %d >/dev/null 2>&1", sec); run(cmd);
-		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/bluetooth scan %d >/dev/null 2>&1", sec);
+		{ char sn[8]; snprintf(sn, sizeof sn, "%d", sec); const char *av[] = { "devices", "bt", "scan", sn, NULL }; root_dev_run(av, cmd); }
+		{ const char *sav[] = { "devices", "bt", "status", NULL }; reply_out_json(r, root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null"), "Bluetooth is not available"); }; return;
 	}
 	if (!strcmp(what, "pair") || !strcmp(what, "connect") || !strcmp(what, "disconnect") || !strcmp(what, "remove")) {
 		char *m = qparam(r->query, "mac"); if (!bt_mac_ok(m)) { reply_err(r->fd, 400, "bad device"); return; }
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/bluetooth %s %s 2>&1", what, m);
-		char *o = run_out(cmd); if (o) trim(o);
-		char *st = run_out("/usr/lib/rudolf/bluetooth status 2>/dev/null");
+		const char *av[] = { "devices", "bt", what, m, NULL }, *sav[] = { "devices", "bt", "status", NULL };   /* (1.6.1 Part 11) */
+		char *o = root_dev_out(av, 1, cmd); if (o) trim(o);
+		char *st = root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null");
 		/* did it work: the device's state now */
 		char key[40]; snprintf(key, sizeof key, "\"mac\":\"%s\"", m); char *d = st ? strstr(st, key) : NULL; char *de = d ? strchr(d, '}') : NULL;
 		int paired = d && de && strstr(d, "\"paired\":true") && strstr(d, "\"paired\":true") < de, conn = d && de && strstr(d, "\"connected\":true") && strstr(d, "\"connected\":true") < de;

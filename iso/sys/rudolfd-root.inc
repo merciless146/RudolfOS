@@ -99,3 +99,4 @@ static void root_job(const char *name, const char *const argv[])
 #include "rudolfd-roothome.inc"   /* (drives part 2: the accounts' folders and sessions) */
 #include "rudolfd-rootpower.inc"  /* (power and the clock) */
 #include "rudolfd-rootnet.inc"    /* (the network) */
+#include "rudolfd-rootdev.inc"    /* (Bluetooth and Thunderbolt) */

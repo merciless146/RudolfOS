@@ -24,6 +24,14 @@ static const struct { const char *name; uint64_t keep; } HELPER_CAPS[] = {
 	   dnsmasq run as its own user (CAP_SETUID, CAP_SETGID); no CAP_SYS_ADMIN, so no mount and no_new_privs */
 	{ "network", CB(CAP_NET_ADMIN) | CB(CAP_NET_RAW) | CB(CAP_NET_BIND_SERVICE) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH)
 	  | CB(CAP_FOWNER) | CB(CAP_CHOWN) | CB(CAP_KILL) | CB(CAP_SETUID) | CB(CAP_SETGID) },
+	/* Bluetooth and Thunderbolt (1.6.1 Part 11): BlueZ asked on the system D-Bus (bluetoothctl), bluetoothd, its
+	   system D-Bus and bluealsa started again when they are not running (CAP_NET_ADMIN and CAP_NET_RAW for the
+	   adapter's sockets, CAP_NET_BIND_SERVICE), rfkill under /sys, the pairings in /persist/bluetooth (root's 0700:
+	   CAP_DAC_OVERRIDE, CAP_DAC_READ_SEARCH, CAP_FOWNER, CAP_CHOWN), the old ones stopped (CAP_KILL), headphones set up in
+	   PulseAudio as the desktop's user and D-Bus's own user (CAP_SETUID, CAP_SETGID); a Thunderbolt device's
+	   "authorized" under /sys (root's file); no CAP_SYS_ADMIN, so no mount and no_new_privs */
+	{ "devices", CB(CAP_NET_ADMIN) | CB(CAP_NET_RAW) | CB(CAP_NET_BIND_SERVICE) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH)
+	  | CB(CAP_FOWNER) | CB(CAP_CHOWN) | CB(CAP_KILL) | CB(CAP_SETUID) | CB(CAP_SETGID) },
 	{ NULL, 0 }
 };
 /* the system calls of CF_HELPER_DENY a helper may still make, by name: the power helper restarts and sets the clock */
