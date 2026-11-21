@@ -127,10 +127,18 @@ def run(g, c, t=60, show=True):
     o = g.sh('sh /tmp/c161.sh 2>&1', t)
     if show: out('$', c[:160].replace('\n', ' ; ')); out(o.rstrip()[-2500:])
     return o
+def bigjs(g, e, t=90):
+    # (an expression longer than the serial console's line: through a file, as cdp-eval's argument from it)
+    f = os.path.join(W, 'x.js'); open(f, 'w').write(e); g.put(f, '/tmp/x.js', '644')
+    o = g.sh('cdp-eval "$(cat /tmp/x.js)" 2>&1', t); m = re.search(r'\{"id":1.*\}', o)
+    if not m: return ('ERR', o[-400:])
+    res = json.loads(m.group(0)).get('result', {})
+    if 'exceptionDetails' in res: return ('EXC', res['exceptionDetails'].get('exception', {}).get('description', '')[:300])
+    return res.get('result', {}).get('value')
 def jsfn(g):
     def js(e, t=90):
         for _ in range(5):
-            r = g.js(e, t)
+            r = g.js(e, t) if len(e) < 1500 else bigjs(g, e, t)
             if not (isinstance(r, tuple) and (r[0] == 'ERR' or (r[0] == 'EXC' and 'ReferenceError' in str(r[1])))): return r
             time.sleep(10)
         return r
@@ -178,15 +186,19 @@ try:
     if FIX:
         g.put(os.path.join(HERE, 'fix161.sh'), '/tmp/fix161.sh', '644'); g.put(os.path.join(HERE, 'fix161p.sh'), '/tmp/fix161p.sh', '644')
         o = sh("sh /tmp/fix161p.sh reload", 300)
-        ok('S0b. this tree\'s printing in place: rudolfd again, the queue running as "print", the page', 'through rudolf-rootd' in o and re.search(r'queue 666 \S+ as print', o), o)
+        ok('S0b. this tree\'s printing in place: rudolfd again, the queue running as "print", the page', 'through rudolf-rootd' in o and re.search(r'queue 666 as uid 952', o), o)
     o = sh(NETUP, 60); ok('S0c. the guest reaches the host\'s printers (QEMU\'s user network)', 'printer-reachable' in o, o)
-    end = time.time() + 600
-    while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'&&typeof prJSON=='function'", 20) is not True: time.sleep(5)
-    time.sleep(30); js(INIT_JS)
-    r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120); out('account', r)
-    r = js("(async()=>{try{const a=ACCTS.find(x=>x.n=='boss');if(USER)userLogout();USER=a;await userLogin(a,'b1');lastInput=Date.now();"
-           "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()", 300)
-    out('sign-in (Standard):', r); wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300); time.sleep(10)
+    # (the page started again by fix161p.sh's reload: signed in once it is up, again should it load once more meanwhile)
+    for attempt in range(3):
+        end = time.time() + 600
+        while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'&&typeof prJSON=='function'&&typeof ACCTS=='object'", 20) is not True: time.sleep(5)
+        time.sleep(30); js(INIT_JS)
+        r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120); out('account', r)
+        r = js("(async()=>{try{const a=ACCTS.find(x=>x.n=='boss');if(USER)userLogout();USER=a;await userLogin(a,'b1');lastInput=Date.now();"
+               "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()", 300)
+        out('sign-in (Standard):', r)
+        if wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300) is True: break
+    time.sleep(10)
     AU = sh("sed -n 's/^USER=//p' /run/rudolf/acct-session.env", 30, False).strip().split('\n')[-1]
     out('the account\'s Linux user:', AU)
     js(print_js('Standard', True)); r = wait_for(js, "window.__pq!='busy'", 300, 3); res = js("window.__pq"); out('printed:', res)
@@ -207,9 +219,11 @@ try:
     vm.shot('std-queue')
     # ------------------------------------------------------------------ U. users
     o = sh(f"cp /tmp/fx/doc.pdf /tmp/doc.pdf; chmod 644 /tmp/doc.pdf; su -s /bin/sh {AU} -c 'rudolf-printq submit {U1} /tmp/doc.pdf application/pdf' ; echo; "
-           f"su -s /bin/sh rudolf -c 'rudolf-printq submit {U3} /tmp/doc.pdf application/pdf; rudolf-printq submit {U3} /tmp/doc.pdf application/pdf'", 60)
-    ids = [int(x) for x in re.findall(r'"job":(\d+)', o)]; out('jobs', ids)
-    time.sleep(5); js(JOBS_JS); wait_for(js, "window.__pj!='busy'", 60, 2); jl = js("window.__pj"); J = {j['id']: j for j in jobs_of(jl)}
+           f"su -s /bin/sh rudolf -c 'for i in 1 2 3 4 5 6; do rudolf-printq submit {U3} /tmp/doc.pdf application/pdf; done'", 60)
+    # (the desktop user's six jobs to the printer that never answers: each waits for the one before it to give up, 15 s,
+    # so the last two are still waiting for a minute: those are the ones looked at)
+    ids = [int(x) for x in re.findall(r'"job":(\d+)', o)]; out('jobs', ids); ids = ids[:1] + ids[-2:]
+    time.sleep(3); js(JOBS_JS); wait_for(js, "window.__pj!='busy'", 60, 2); jl = js("window.__pj"); J = {j['id']: j for j in jobs_of(jl)}
     a = J.get(ids[0], {}) if ids else {}; d = [J.get(i, {}) for i in ids[1:3]]
     ok('U1. a program of the account\'s own Linux user prints through the queue: its job is the account\'s', a.get('mine') and a.get('user') == AU, (ids, a))
     ok('U2. the desktop user\'s jobs (another user): listed without their names, no Cancel', len(ids) == 3 and all(x.get('mine') is False and x.get('name') == '' and x.get('cancel') is False for x in d), d)
@@ -226,9 +240,9 @@ try:
     # ------------------------------------------------------------------ Q. the queue itself
     o = sh("P=$(pgrep -f 'rudolf-printq serve' | tail -1); grep -E '^(Uid|Gid|Groups|NoNewPrivs)' /proc/$P/status; stat -c '%a %U:%G' /run/cups/cups.sock /run/cups; "
            "for f in /proc/$P/fd/*; do readlink $f; done | sed -n 's/socket:\\[\\(.*\\)\\]/\\1/p' > /tmp/ino; for i in $(cat /tmp/ino); do grep -h \" $i \" /proc/net/tcp /proc/net/tcp6 /proc/net/udp /proc/net/udp6; done | wc -l | sed 's/^/tcp-sockets /'; "
-           "/usr/lib/rudolf/selftest 2>/dev/null | grep ' listeners '", 90)
-    ok('Q1. the queue: the "print" user with group lp, no_new_privs; its socket 0666; no network socket of its own', re.search(r'^Uid:\s+952\s', o, re.M) and re.search(r'^Groups:.*\b7\b', o, re.M) and re.search(r'NoNewPrivs:\s+1', o) and '666 print' in o and 'tcp-sockets 0' in o, o)
-    ok('Q2. the self-test\'s listeners line passes with the queue\'s socket named', re.search(r'^PASS listeners', o, re.M), o)
+           "/usr/lib/rudolf/selftest 2>/dev/null | grep -E ' (listeners|print-queue) '", 90)
+    ok('Q1. the queue: the "print" user with group lp, no_new_privs; its socket 0666 (made by root before it became "print"), its folder its own; no network socket of its own', re.search(r'^Uid:\s+952\s', o, re.M) and re.search(r'^Groups:.*\b7\b', o, re.M) and re.search(r'NoNewPrivs:\s+1', o) and '666 root:root' in o and '755 print:print' in o and 'tcp-sockets 0' in o, o)
+    ok('Q2. the self-test: its listeners line passes with the queue\'s socket named; its print-queue line, running', re.search(r'^PASS listeners', o, re.M) and re.search(r'^PASS print-queue - running', o, re.M), o)
     js("(async()=>{try{fsFlush()}catch(e){}try{await homeChain}catch(e){}try{await __rudolfLsFlush()}catch(e){}return 1})()", 60)
     sh("echo native > /persist/etc/rudolf-desktop-engine; rm -f /persist/etc/rudolf-desktop-engine.failed; sync", 60)
     time.sleep(5); vm.stop(); time.sleep(3)
@@ -286,10 +300,20 @@ try:
     ok('N3. ...the PDF printer has them (the page\'s text)', sum('Rudolf page print test' in t for t in tx) >= 2 and sum('Rudolf PDF Viewer print test' in t for t in tx) >= 2, tx)
     tev('notepad', JOBS_JS); jl = twait('notepad', "window.__pj", 60); J = jobs_of(jl)
     ok('N4. ...print/jobs from the app window: the Native jobs, the account\'s own, sent', sum(1 for j in J if j.get('mine') and j.get('name', '').startswith('Native') and j.get('state') == 'sent') >= 2, jl)
-    out('open settings', open_app('settings', 'settings')); time.sleep(12)
-    tev('settings', "(()=>{settings('devs');return 1})()"); time.sleep(6)
-    rows = tev('settings', "JSON.stringify([...document.querySelectorAll('.pq61 tr')].map(r=>r.textContent))"); out('Native Settings › Devices › Print queue:', rows)
-    ok('N5. Native\'s Settings › Devices › Print queue lists them as Standard\'s does', 'Native page' in rows and 'Standard page' in rows and 'Sent to the printer' in rows, rows)
+    # (Settings › Devices opened from the app's page, as its links open it: the shell opens Settings' own window there)
+    tev('notepad', "(()=>{settings('devs');return 1})()"); opened = False
+    for _ in range(90):
+        time.sleep(2)
+        if re.search(r'^client .* app=settings ', state(), re.M): opened = True; break
+    if not opened: out('open settings from the start menu', open_app('settings', 'settings', 120))
+    # (its page loads slowly without KVM: asked until the queue is drawn, Settings › Devices opened again if it is not there)
+    end = time.time() + 300; rows = ''
+    while time.time() < end:
+        time.sleep(8)
+        rows = tev('settings', "(()=>{if(typeof settings!='function'||typeof pqSection!='function')return 'loading';if(!document.querySelector('.pq61'))settings('devs');return JSON.stringify([...document.querySelectorAll('.pq61 tr')].map(r=>r.textContent))})()")
+        if 'Native page' in rows: break
+    out('Native Settings › Devices › Print queue:', rows)
+    ok('N5. Native\'s Settings › Devices › Print queue lists them as Standard\'s does (the queue starts empty at each start)', 'Native page' in rows and 'Native PDF' in rows and 'Sent to the printer' in rows, rows)
     vm.shot('nat-queue')
     out(sh("tail -20 /run/rudolf/printq.log; grep -iE 'refused|asked for' /persist/var/log/confine.log 2>/dev/null | tail -5", 30, False))
 except RuntimeError as e:

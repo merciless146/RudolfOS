@@ -69,7 +69,7 @@ jobs:
           gcc -O2 $HARD -o fix/rudolf-print iso/sys/rudolf-print.c -ldl
           gcc -O2 $HARD -o fix/rudolf-printq iso/sys/rudolf-printq.c -Wl,-Bstatic -lz -Wl,-Bdynamic
           python3 iso/systools/hardcheck.py fix/rudolfd fix/rudolf-rootd fix/root/* fix/rudolf-print fix/rudolf-printq
-          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..; cp iso/www/index.html fix/; cp iso/sys/root/usr/share/rudolf/listeners fix/
+          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..; cp iso/www/index.html fix/; cp iso/sys/root/usr/share/rudolf/listeners iso/sys/root/usr/lib/rudolf/selftest fix/
           for b in lp lpstat cancel; do cp /usr/bin/$b fix/cups/; for l in $(ldd /usr/bin/$b | awk '/=>/{print $3}'); do case "${l##*/}" in libc.so*|libm.so*|ld-linux*) ;; *) cp -L $l fix/cups/lib/;; esac; done; done
           ls -laR fix | head -60
       - name: p161

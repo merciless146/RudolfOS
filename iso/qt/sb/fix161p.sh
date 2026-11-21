@@ -11,10 +11,12 @@ grep -q '^print:' /etc/passwd || echo 'print:x:952:952:Printing (rudolf-printq):
 grep -q '^print:' /etc/group || echo 'print:x:952:' >> /etc/group
 grep -q '^lp:.*print' /etc/group || sed -i 's/^lp:x:7:$/lp:x:7:print/; s/^lp:x:7:\(..*\)$/lp:x:7:\1,print/' /etc/group
 [ -f /tmp/fx/listeners ] && { mountpoint -q /usr/share/rudolf/listeners || mount --bind /tmp/fx/listeners /usr/share/rudolf/listeners; }
+[ -f /tmp/fx/selftest ] && { mountpoint -q /usr/lib/rudolf/selftest || mount --bind /tmp/fx/selftest /usr/lib/rudolf/selftest; }
 [ -e /var/run ] || ln -s ../run /var/run
 pgrep -f 'rudolf-printq serve' >/dev/null || (setsid sh -c 'while :; do rudolf-printq serve >> /run/rudolf/printq.log 2>&1; sleep 5; done' </dev/null >/dev/null 2>&1 &)
 for i in $(seq 1 30); do [ -S /run/cups/cups.sock ] && break; sleep 0.5; done
-echo "queue $(stat -c '%a %U' /run/cups/cups.sock 2>&1) as $(ps -o user= -p $(pgrep -f 'rudolf-printq serve' | tail -1) 2>/dev/null)"; tail -2 /run/rudolf/printq.log
+QP=$(pgrep -f 'rudolf-printq serve' | grep -v "^$$\$" | while read p; do [ "$(sed -n 's/^Name:\t*//p' /proc/$p/status)" = rudolf-printq ] && echo $p; done | tail -1)
+echo "queue $(stat -c '%a' /run/cups/cups.sock 2>&1) as uid $(awk '/^Uid/{print $2}' /proc/$QP/status 2>/dev/null)"; tail -2 /run/rudolf/printq.log
 if [ -f /tmp/fx/index.html ]; then
 	WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current
 	cp /tmp/fx/index.html /tmp/page.html && chmod 644 /tmp/page.html; mountpoint -q $WWW/index.html || mount --bind /tmp/page.html $WWW/index.html

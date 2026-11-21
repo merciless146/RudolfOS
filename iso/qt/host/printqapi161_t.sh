@@ -32,7 +32,7 @@ if ! w8 "$T/rudolf-print info ipp://localhost:8771/ipp/print | grep -q '\"ok\":t
 	echo "NOTE ippeveprinter did not answer ($(tail -1 $T/ipp.log)): the repository's fakeprinter.py stands in"
 	python3 $HERE/../fakeprinter.py $T/jobs 8771 pdf > $T/ipp.log 2>&1 & PIDS="$PIDS $!"; w8 "$T/rudolf-print info ipp://localhost:8771/ipp/print | grep -q '\"ok\":true'" 40
 fi
-export RPQ_SPOOL=$T/spool RPQ_PRINT=$T/rudolf-print RPQ_KNOWN=$T/known RPQ_USER=-
+export RPQ_PRINT=$T/rudolf-print RPQ_USER=-   # (its spool and printers' file where Rudolf OS has them: /run/rudolf-printq, in this /run)
 qstart() { $T/rudolf-printq serve > $T/q.log 2>&1 & QP=$!; PIDS="$PIDS $QP"; w8 '[ -S /run/cups/cups.sock ]' 40; }
 qstart
 $T/rudolfd > $T/rd.log 2>&1 & PIDS="$PIDS $!"; w8 'curl -s http://127.0.0.1:8080/favicon.png -o /dev/null' 60

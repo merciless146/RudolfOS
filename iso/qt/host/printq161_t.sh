@@ -160,7 +160,11 @@ ok "...and the next job prints" "$(has "$s" '"state":"sent"')" "$s"
 L=$(as rpqa lpstat -W completed -o 2>&1)
 ok "12. finished jobs stay listed (lpstat -W completed)" "$(has "$L" "Office_PDF_printer-$J1")$(has "$L" "Hall_raster_printer-$J2")" "$L"
 ok "...the spool keeps no document of a finished job" "$([ -z "$(ls $T/spool | grep -v '^body-')" ] && echo 1)" "$(ls -la $T/spool)"
+o=$(ST_PRINTQ_SOCK=$RPQ_SOCK ST_PRINTQ=$T/rudolf-printq ST_RUN=$T/urun sh $I/sys/root/usr/lib/rudolf/selftest 2>/dev/null | grep ' print-queue ')
+ok "...the self-test's print-queue line: running, the printers it knows" "$(echo "$o" | grep -q '^PASS print-queue - running: [1-9][0-9]* printers known' && echo 1)" "$o"
 kill $QP 2>/dev/null; for i in $(seq 1 20); do [ -S $RPQ_SOCK ] || break; timeout 0.1 tail -f /dev/null; done
+o=$(ST_PRINTQ_SOCK=$RPQ_SOCK ST_PRINTQ=$T/rudolf-printq ST_RUN=$T/urun sh $I/sys/root/usr/lib/rudolf/selftest 2>/dev/null | grep ' print-queue ')
+ok "...and once it stopped: not running, said" "$(echo "$o" | grep -q '^FAIL print-queue - not running' && echo 1)" "$o"
 ok "13. the queue stopped: its socket gone" "$([ -S $RPQ_SOCK ] && echo 0 || echo 1)" "$(tail -3 $T/q.log)"
 # ipp-usb's ports (usbprint): kept to 60000-60099, and only root, the queue's user and the desktop's may connect to them
 U=$I/sys/root/usr/lib/rudolf/usbprint; S=$T/sys/bus/usb; mkdir -p $S/devices/1-1/1-1:1.0 $S/drivers/usblp $T/urun $T/ust $T/ubin

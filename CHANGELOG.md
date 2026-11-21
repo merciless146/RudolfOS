@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Printing: a print queue for the whole computer. Linux apps print too (LibreOffice, GTK and Qt apps, lp in Debian and
+  Flatpak apps: through the queue, as on any Linux), and Settings › Devices › Print queue shows what is printing, with
+  Cancel for your own documents; another account's are listed without their names and cannot be cancelled by you.
+  Printers that take only pictures of the pages get them from the queue too. USB printers' devices belong to the queue
+  alone, and an IPP over USB printer can be reached only through it.
 - Native: idle windows give their memory back. Notepad or File Explorer minimized, or hidden behind another window, for a
   while (Settings › System › Idle windows: on by default on computers with under 6 GB of memory, after 10 minutes) is closed
   behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size

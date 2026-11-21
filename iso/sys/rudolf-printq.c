@@ -827,6 +827,7 @@ static int cmd_serve(void)
 	unlink(SOCK); mode_t um = umask(0); int b = bind(ls, (struct sockaddr *)&sa, sizeof sa); umask(um);
 	if (ls < 0 || b || listen(ls, 32)) { logm("cannot open the socket %s: %s", SOCK, strerror(errno)); return 1; }
 	chmod(SOCK, 0666);
+	{ char t[300]; snprintf(t, sizeof t, "%s", SPOOL); for (char *c = t + 1; *c; c++) if (*c == '/') { *c = 0; mkdir(t, 0755); *c = '/'; } }   /* (its folder's parents too: /run/rudolf-printq) */
 	mkdir(SPOOL, 0700);
 	const char *user = ENVOR("RPQ_USER", "print");
 	if (strcmp(user, "-")) {
