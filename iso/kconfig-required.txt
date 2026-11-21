@@ -43,9 +43,13 @@ MODULE_SIG      y   security: module signatures
 MODULE_SIG_FORCE y  security: unsigned modules refused
 KEXEC_SIG       y   security: only signed kernels started by an update's handover
 SECURITY_YAMA   y   security: Yama (ptrace limited to a process's parent: the desktop's token)
+SECURITY_LANDLOCK y security: Landlock (rudolfd's narrow confinement: the folders a request may write, docs/plan-1.6.1.md Part 20)
 KEYS            y   security: the kernel's keyrings (fscrypt, trusted keys)
 SYSTEM_TRUSTED_KEYRING y security: Rudolf OS's Secure Boot certificate built in
 DM_VERITY       y   security: the system layers checked as they are read (dm-verity)
+TCG_TPM         y   security: the TPM 2.0 (the website data's key, rudolf-webkey: docs/website-data-key.md)
+TCG_CRB         y   security: firmware TPMs (AMD's, Intel's PTT: the owner's Vivobook)
+TCG_TIS         y   security: discrete TPM chips, and QEMU's
 FS_ENCRYPTION   y   security: the accounts' encrypted folders (fscrypt on ext4)
 CRYPTO_XTS      y   security: fscrypt's file contents (AES-256-XTS)
 CRYPTO_CTS      y   security: fscrypt's file names (AES-256-CTS)

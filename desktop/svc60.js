@@ -8,7 +8,8 @@
    (#app=NAME in rudolf-native's WebKit or Oracle's Chromium) the timers the modules start while the page loads are held back:
    - an app's window starts only those it needs: the short ones that finish the page's own start (under a second), the theme's and the
      icons' minute ticks (a11y25.js, the drawn backgrounds' light or dark), and its own app's (APPMOD: Oracle's tabs);
-   - the shell's one hidden page for the whole desktop (#app=do-svc: started by rudolf-native at sign-in, never shown) starts every one,
+   - the shell's one hidden page for the whole desktop (#app=do-bg since 1.6.1, before it #app=do-svc: started by rudolf-native at
+     sign-in, never shown) starts every one,
      once it is signed in, as Standard's page has them (oneapp59.js "svc");
    On Standard and Lite (no #app=), in Standard's Tor windows and in a page opened by hand (no native desktop) nothing here does anything:
    setTimeout and setInterval are the browser's own.
@@ -17,7 +18,7 @@ const SVC=(()=>{let k='';try{const h=String(location.hash||'').replace(/^#/,'');
  /* (only on the native desktop: rudolfd says so, or the shell's WebKit handler or Oracle's binding is there; a Tor window on Standard, a
     page of one app in Chromium, and a page opened by hand are left as they were) */
  let nat=false;try{nat=!!(window.RUDOLFD&&window.RUDOLFD.engine=='native')||!!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative)||typeof window.rudolfNativeOracle=='function'}catch(e){}
- return{on:nat&&!!k&&/^[a-z0-9_:.+-]{1,127}$/i.test(k),k,svc:k=='do-svc',mod:'base',held:[],ended:false,ran:false,fake:new Map(),n:0}})();
+ return{on:nat&&!!k&&/^[a-z0-9_:.+-]{1,127}$/i.test(k),k,svc:k=='do-svc'||k=='do-bg',mod:'base',held:[],ended:false,ran:false,fake:new Map(),n:0}})();
 function __svcMod(m){SVC.mod=m}
 /* (a held timer one of the list's: a module's, or a function's of the page's own code by its words) */
 function svcIs(h,L){for(const x of L){if(typeof x=='string'){if(x==h.mod)return true}else{let s='';try{s=String(h.fn)}catch(e){}if(x.test(s))return true}}return false}

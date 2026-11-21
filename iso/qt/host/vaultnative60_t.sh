@@ -13,7 +13,14 @@ trap 'umount $T/m 2>/dev/null; rm -rf $T' EXIT
 mount --make-rprivate / 2>/dev/null; mount -t tmpfs none /run; mkdir -p /run/rudolf
 truncate -s 64M $T/img; mkfs.ext4 -q -F -O encrypt $T/img; mkdir $T/m; mount -o loop $T/img $T/m || { echo "SKIP: no loop device"; exit 0; }
 P=$T/m; mkdir -p $P/etc $P/var/log $P/accounts; touch /run/rudolf/persistent
-gcc -O2 -w -DPERSIST="\"$P\"" -o $T/t $HERE/fixtures/deskapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
+# 1.6.1 (docs/plan-1.6.1.md Part 11, drives part 2): VN_VIA=helper: the encrypted folder opened by the drives helper and
+# drives-home (built with -DRR_TEST and this drive as PERSIST), as rudolfd does on the system: every check the same
+RDIR=; if [ "$VN_VIA" = helper ]; then RDIR="-DRD_ROOT_DIR=\"$T/root\""; mkdir -p $T/root; echo "(through the drives helper and drives-home)"
+	printf 'RR_TEST_DIR=%s\nRR_TEST_HOMEROOT=%s\nRR_TEST_NOBIND=1\nRR_TEST_AUON=0\nRR_TEST_AUMAP=%s/none\nRR_TEST_HEALTH=%s/rrhealth\n' $T/root $P/accounts $T $T > $T/rr.conf
+	CF="-O2 -w -DRR_TEST -DRR_TEST_CONF=\"$T/rr.conf\""
+	gcc $CF -o $T/root/drives $HERE/../../sys/rudolf-drives.c && gcc $CF -DPERSIST="\"$P\"" -o $T/root/drives-home $HERE/../../sys/rudolf-drives-home.c -lz || { echo "FAIL build the helpers"; exit 1; }
+	chmod 700 $T/root/drives $T/root/drives-home; fi
+gcc -O2 -w $RDIR -DPERSIST="\"$P\"" -o $T/t $HERE/fixtures/deskapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 node $HERE/fixtures/deskls.js $T/ls.json $T/keys.json || { echo "FAIL node"; exit 1; }
 D=$T/home; mkdir -p $D
 N=0; F=0
@@ -43,4 +50,9 @@ echo secret > $P/vault/f.txt 2>/dev/null; ok "4. ...it can be written to" "$(gre
 ID=$(cat $P/etc/vault.id); n0=$(grep -c . $P/var/log/health.log)
 t "POST logout" >/dev/null; o=$(login Ann 'pw-ann ü')
 ok "5. ...signing in again with it open does nothing more" "$(echo "$o" | grep -q '"ok":true' && [ "$(cat $P/etc/vault.id)" = "$ID" ] && [ "$(grep -c . $P/var/log/health.log)" = "$n0" ] && echo 1)" "$(tail -3 $P/var/log/health.log)"
+if [ "$VN_VIA" = helper ]; then
+	mv $T/root/drives $T/root/drives.real; printf '#!/bin/sh\necho "the stand-in helper"\nexit 200\n' > $T/root/drives; chmod 700 $T/root/drives
+	rm -f /run/rudolf/vault-unlocked; t "POST logout" >/dev/null; o=$(login Ann 'pw-ann ü'); mv $T/root/drives.real $T/root/drives
+	ok "6. (through the helper) a failing drives helper: the folder stays locked, the sign-in said so in the health log (so the checks above went through it)" "$([ ! -e /run/rudolf/vault-unlocked ] && tail -2 $P/var/log/health.log | grep -q 'the stand-in helper' && echo 1)" "$o $(tail -2 $P/var/log/health.log)"
+fi
 echo "$((N-F))/$N passed"; [ $F = 0 ]

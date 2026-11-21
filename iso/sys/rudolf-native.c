@@ -75,6 +75,7 @@ typedef struct {
 	int nlv, nlsched; double magz;   /* (1.6.0: Night light's strength and hours, the magnifier's zoom: the shell does them for the whole screen) */
 	int aur, rmotion; char aurm[12], lnm[12];   /* (the dynamic backgrounds' moving parts: test findings N11, N12) */
 	int fs; char tx[16], cb[12];   /* (the title bars: the Font size, the Window text colour, the colour vision filter) */
+	int idlerest, idlemin;   /* (1.6.1 Part 23 C: idle windows give their memory back: -1 not chosen (on under 6 GB), 0, 1; after how many minutes, 0: 10) */
 	int lpac, lpbr; char lpacm[12];   /* (1.6.0 Part 17: the window transitions' colour, its shade, their light 0 to 100) */
 } Settings;
 static Settings S;
@@ -432,7 +433,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready, s2s; gint64 close_t, born; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready, s2s; gint64 close_t, born; GdkPixbuf *pix; guint wait_t; int rest, rasking; gint64 idle_t; char *rurl; char rwhy[80]; } AppWin;   /* (rest: 1.6.1 Part 23 C, resting: its page unloaded; rurl: its address to load again, with &rest=; rwhy: why it may not rest now) */   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
@@ -440,6 +441,7 @@ static WebKitWebContext *CTX; static WebKitUserContentManager *UCM; static int N
 static void bar_redraw(void);
 static void app_open(const char *k, const char *file);
 static void app_open_ex(const char *k, const char *file, const char *extra, int hidden);
+static AppWin *bg_page(void); static int is_bg(const AppWin *a); static int bg_route(const char *k, const char *file, const char *extra); static gint64 BG_OPEN_T;   /* (1.6.1: the shell's one hidden page, do-bg) */
 static void appwin_show(AppWin *a);
 static void srch_ready(AppWin *a);
 static void pt_msg(AppWin *a, JSCValue *v); static void pt_reset(void);   /* (1.6.0: the portal's requests, below) */
@@ -642,7 +644,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "svc")) svc_msg(a, v);   /* (1.6.0 Part 12, item 12: the desktop's service page is signed in and runs the background work) */   /* (1.6.0, the owner's Vivobook: the portal's page is ready, or a request opens an app's window) */
 	else if (!strcmp(op, "prev")) prev_msg(a, v);   /* (Display Properties' choices, previewed on the whole screen: the owner's Vivobook, 2026-11-16) */
 	else if (!strcmp(op, "saver")) { jsstr(v, "style", x, sizeof x); sav_preview(x); }   /* (Display Properties' screen saver Preview: full screen, as Standard's) */
-	else if (!strcmp(op, "ready")) appwin_reveal(a);   /* (its page has drawn the app at its window's size: shown) */
+	else if (!strcmp(op, "ready")) { if (!a->rest) appwin_reveal(a); }   /* (its page has drawn the app at its window's size: shown; 1.6.1: not the resting page's) */
 	else if (!strcmp(op, "login")) appwin_reveal(a);   /* (no native session: the page's own sign-in screen, which this window does need) */
 	else if (!strcmp(op, "srch")) srch_ready(a);   /* (2026-11-16: the start menu's search, Standard's: its page is ready) */
 	else if (!strcmp(op, "cat")) g_idle_add(apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12; read at once, as the page gave it before it said so: the owner's Vivobook, 2026-11-16) */
@@ -653,12 +655,14 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "size") && !a->sized) { a->sized = 1; ev_flush(a);
 		/* (a page doing something for the shell (#app=do-NAME) that made an app's window is that app's window now: the taskbar's
 		   button and what is dropped on it are the app's) */
-		jsstr(v, "app", x, sizeof x); if (!strncmp(a->k, "do-", 3) && key_ok(x)) { snprintf(a->k, sizeof a->k, "%s", x); bar_redraw(); } jsstr(v, "ww", x, sizeof x); int ww = atoi(x); jsstr(v, "wh", x, sizeof x); int wh = atoi(x); appwin_size(a, ww, wh); }
+		jsstr(v, "app", x, sizeof x); if (!strncmp(a->k, "do-", 3) && !is_bg(a) && key_ok(x)) { snprintf(a->k, sizeof a->k, "%s", x); bar_redraw(); } jsstr(v, "ww", x, sizeof x); int ww = atoi(x); jsstr(v, "wh", x, sizeof x); int wh = atoi(x); appwin_size(a, ww, wh); }
 }
 static gboolean on_crash_reload(gpointer v) { webkit_web_view_reload(WEBKIT_WEB_VIEW(v)); return G_SOURCE_REMOVE; }
 static void on_crash(WebKitWebView *v, WebKitWebProcessTerminationReason r, gpointer d)
 {
-	fprintf(stderr, "rudolf-native: an app's page stopped (%d): loading it again\n", (int)r); if (d) ((AppWin *)d)->sready = 0; g_timeout_add_seconds(1, on_crash_reload, v);
+	fprintf(stderr, "rudolf-native: an app's page stopped (%d): loading it again\n", (int)r); if (d) ((AppWin *)d)->sready = 0;
+	if (d && is_bg(d)) { ((AppWin *)d)->pready = 0; BG_OPEN_T = g_get_monotonic_time(); }   /* (1.6.1: the hidden page loaded again) */
+	g_timeout_add_seconds(1, on_crash_reload, v);
 }
 static void clients_forget(AppWin *a); static void kbcap_gone(AppWin *a); static void srch_gone(AppWin *a);
 static void on_win_destroy(GtkWidget *w, gpointer d)
@@ -667,12 +671,13 @@ static void on_win_destroy(GtkWidget *w, gpointer d)
 	if (PREV_S && PREV_W == a->id) prev_end();   /* (Settings closed with its choices not applied: the saved ones again) */
 	kbcap_gone(a); srch_gone(a); if (a->pix) { g_object_unref(a->pix); a->pix = NULL; }
 	clients_forget(a);   /* (its frame goes when X says so: not this window's any more) */
-	g_free(a); bar_redraw(); state_write();
+	g_free(a->rurl); g_free(a); bar_redraw(); state_write();
 }
 static gboolean on_win_focus(GtkWidget *w, GdkEvent *e, gpointer d) { (void)w; (void)e; ACTIVE = d; bar_redraw(); return FALSE; }
 /* ask the app to close, as its ✕ does (it may ask about unsaved work); a second ask after 5 s closes it anyway */
 static void appwin_ask_close(AppWin *a)
 {
+	if (a->rest) { appwin_close_now(a); return; }   /* (1.6.1: a resting window has no page to ask, and nothing unsaved: it rested only so) */
 	gint64 now = g_get_monotonic_time();
 	if (a->closing && now - a->close_t > 5000000) { appwin_close_now(a); return; }
 	a->closing = 1; a->close_t = now;
@@ -683,14 +688,13 @@ static gboolean on_delete(GtkWidget *w, GdkEvent *e, gpointer d) { (void)w; (voi
 static GtkWidget *on_create(WebKitWebView *v, WebKitNavigationAction *na, gpointer d);
 /* (1.6.0 Part 17) a window another window opened (a dialog, Settings at a page) opens side to side: an app window's page asked for it
    within the last 3 s (File Explorer opening a file: corner to corner, as from the desktop): LP_S2S_T */
-static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
+/* an app window's view, its page's settings and the shell's signals on it (1.6.1 Part 23 C: also a resting window's empty one, and the
+   view its page comes back in) */
+static GtkWidget *view_make(AppWin *a, WebKitWebView *rel)
 {
-	AppWin *a = g_new0(AppWin, 1); snprintf(a->k, sizeof a->k, "%s", k); a->id = id; a->born = g_get_monotonic_time();
-	if (LP_S2S_T && g_get_monotonic_time() - LP_S2S_T < 3000000) { a->s2s = 1; LP_S2S_T = 0; }
-	const App *ap = app_find(k); snprintf(a->title, sizeof a->title, "%s", ap ? ap->name : k); snprintf(a->icon, sizeof a->icon, "%s", ap ? ap->icon : "");
-	a->view = rel ? GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "related-view", rel, "user-content-manager", UCM, NULL))
+	GtkWidget *view = rel ? GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "related-view", rel, "user-content-manager", UCM, NULL))
 		: GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", CTX, "user-content-manager", UCM, NULL));
-	WebKitSettings *st = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(a->view));
+	WebKitSettings *st = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(view));
 	g_object_set(st, "enable-javascript", TRUE, "javascript-can-access-clipboard", TRUE, "enable-webaudio", TRUE, "enable-media-stream", TRUE,
 		"enable-webgl", TRUE, "media-playback-requires-user-gesture", FALSE, "enable-page-cache", FALSE, "enable-write-console-messages-to-stdout", TRUE,
 		"javascript-can-open-windows-automatically", TRUE, NULL);
@@ -703,14 +707,22 @@ static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 		if (!strcmp(id, "StorageAPI") || !strcmp(id, "StorageAPIEstimate")) webkit_settings_set_feature_enabled(st, ft, TRUE); }
 	  webkit_feature_list_unref(fl); }
 #endif
-	g_signal_connect(a->view, "decide-policy", G_CALLBACK(on_decide), NULL);
-	g_signal_connect(a->view, "permission-request", G_CALLBACK(on_perm), NULL);
-	g_signal_connect(a->view, "notify::title", G_CALLBACK(on_title), a);
-	g_signal_connect(a->view, "close", G_CALLBACK(on_view_close), a);
-	g_signal_connect(a->view, "web-process-terminated", G_CALLBACK(on_crash), a);
-	g_signal_connect(a->view, "create", G_CALLBACK(on_create), a);
-	g_signal_connect(a->view, "size-allocate", G_CALLBACK(on_view_alloc), a);
-	g_signal_connect(a->view, "load-changed", G_CALLBACK(on_load_ready), a);
+	g_signal_connect(view, "decide-policy", G_CALLBACK(on_decide), NULL);
+	g_signal_connect(view, "permission-request", G_CALLBACK(on_perm), NULL);
+	g_signal_connect(view, "notify::title", G_CALLBACK(on_title), a);
+	g_signal_connect(view, "close", G_CALLBACK(on_view_close), a);
+	g_signal_connect(view, "web-process-terminated", G_CALLBACK(on_crash), a);
+	g_signal_connect(view, "create", G_CALLBACK(on_create), a);
+	g_signal_connect(view, "size-allocate", G_CALLBACK(on_view_alloc), a);
+	g_signal_connect(view, "load-changed", G_CALLBACK(on_load_ready), a);
+	return view;
+}
+static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
+{
+	AppWin *a = g_new0(AppWin, 1); snprintf(a->k, sizeof a->k, "%s", k); a->id = id; a->born = g_get_monotonic_time();
+	if (LP_S2S_T && g_get_monotonic_time() - LP_S2S_T < 3000000) { a->s2s = 1; LP_S2S_T = 0; }
+	const App *ap = app_find(k); snprintf(a->title, sizeof a->title, "%s", ap ? ap->name : k); snprintf(a->icon, sizeof a->icon, "%s", ap ? ap->icon : "");
+	a->view = view_make(a, rel);
 	a->win = gtk_window_new(GTK_WINDOW_TOPLEVEL);
 	gtk_window_set_title(GTK_WINDOW(a->win), a->title); gtk_window_set_decorated(GTK_WINDOW(a->win), FALSE);
 	int n = g_list_length(WINS), w = SW * 7 / 10, h = work_h() * 8 / 10; if (w < 640) w = SW; if (h < 400) h = work_h();
@@ -732,13 +744,17 @@ static char *app_url(const char *k, const char *file, int id, const char *extra)
 	char *u = g_strdup_printf("http://%s:%d/#app=%s&w=%d&sw=%d&sh=%d%s%s%s", HOST, PORT, ke, id, SW, SH, fe ? "&file=" : "", fe ? fe : "", extra ? extra : ""); g_free(fe); g_free(ke); return u;
 }
 /* windows asked for and not made yet (made through an open window's window.open: see app_open) */
-typedef struct { char k[KN]; int id, hidden, reveal; } Pending;
+typedef struct { char k[KN]; int id, hidden, reveal; AppWin *into; } Pending;   /* (into: a resting window's page coming back, 1.6.1) */
 static GQueue PENDING = G_QUEUE_INIT;
 static GtkWidget *on_create(WebKitWebView *v, WebKitNavigationAction *na, gpointer d)
 {
 	(void)na; (void)d; Pending *p = g_queue_pop_head(&PENDING);
 	if (!p) return NULL;
 	if (!USER_ID[0]) { g_free(p); return NULL; }   /* (asked for before signing out, as the start menu's search page: not made after) */   /* (a page's own window.open: the desktop page sends websites to the browser itself) */
+	/* (1.6.1 Part 23 C: a resting window's page, back in its own window: a view of the opener's process, as every window's) */
+	if (p->into) { AppWin *a = g_list_find(WINS, p->into) ? p->into : NULL; g_free(p); if (!a || !a->win) return NULL;
+		GtkWidget *nv = view_make(a, v), *old = a->view; a->view = nv; if (old) gtk_container_remove(GTK_CONTAINER(a->win), old);
+		gtk_container_add(GTK_CONTAINER(a->win), nv); gtk_widget_show(nv); gtk_widget_grab_focus(nv); return nv; }   /* (the keyboard's in its window: to its page) */
 	AppWin *a = appwin_new(p->k, v, p->id); a->hidden = p->hidden; a->reveal = p->reveal; g_free(p);
 	g_signal_connect(a->view, "ready-to-show", G_CALLBACK(on_ready), a);
 	return a->view;
@@ -751,6 +767,10 @@ static void app_open(const char *k, const char *file) { app_open_ex(k, file, NUL
 static void app_open_ex(const char *k, const char *file, const char *extra, int hidden)
 {
 	if (!USER_ID[0] || LOCKED || !key_ok(k)) return;
+	/* 1.6.1 (the owner's Vivobook, 2026-11-20: a web process of the whole desktop page for each) a single action the shell has a page do
+	   unseen (do-qs, do-nc, do-pin, do-mute, do-desk, do-fs, do-short) goes to its one hidden page, signed in already (bg_route); a
+	   page of its own only while that one is not there yet, or does not take it */
+	if (hidden == 1 && bg_route(k, file, extra)) return;
 	/* (2026-11-16, the owner's Vivobook) a Linux or Windows program, or a Library app rudolfd runs (the catalogue's "x"): its page opens it unseen,
 	   as Standard's launch() starts it, and is shown only if it makes a window of the page's after all (a question, a download's dialog) */
 	int reveal = hidden == 2; if (reveal) hidden = 1;   /* (2: the same for a page of the shell's: a file opened from the start menu's search) */
@@ -894,11 +914,13 @@ static int WSC = 1;   /* (the workspace shown: item 4) */
 static void toast_text(const char *t, const char *b, int ms); static void fget_tt(void *v, const char *k, char *o, size_t n);
 static char TLOG[32][200]; static int TLOG_N;   /* (the last toasts, for the tests' view) */
 static int ws_of(Client *c); static void ws_apply(void); static gboolean ws_said(gpointer d);
+static void appwin_wake(AppWin *a);
 static void wm_focus(Client *c)
 {
 	if (c && !c->ws) c = NULL;   /* (a window going, in no workspace: 12.3c) */
 	if (c && c->off && ws_of(c) != WSC) { WSC = ws_of(c); ws_apply(); bar_redraw(); g_timeout_add(80, ws_said, GINT_TO_POINTER(WSC)); }   /* (W.focus: wsGo(W.ws) first) */
 	Client *old = FOCUS; FOCUS = c;
+	if (c && c->app && c->app->rest) appwin_wake(c->app);   /* (1.6.1 Part 23 C: its page loaded again, back where it was) */
 	if (c) {
 		c->used = g_get_monotonic_time();   /* (the page's MRU: item 5) */
 		if (c->min) { c->min = 0; if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); lp_unmin(c); }   /* (Part 17: the drop backward) */
@@ -1712,7 +1734,7 @@ static gint64 PT_SHOWN;   /* (1.6.0, tests: when the portal's page last showed a
 static void modal_cover(AppWin *a)
 {
 	Client *c = WM_OK ? client_of_app(a) : NULL; if (!c || !a->modal) return;
-	if (!strcmp(a->k, "do-portal")) PT_SHOWN = g_get_real_time() / 1000;
+	if (is_bg(a)) PT_SHOWN = g_get_real_time() / 1000;
 	GdkPixbuf *pb = screen_copy(0, 0, SW, SH);
 	if (!c->full) a->wasontop = c->ontop; c->ontop = 1;
 	if (c->hidden) { c->hidden = 0; if (!c->off && !c->min) XMapWindow(DPY, c->frame); }
@@ -2644,7 +2666,7 @@ static void menu_sb_draw(cairo_t *cr)
    writing at most 100 px wide at the right; the chosen row (and the one under the pointer) in the accent colour, its writing --acfg.
    The menu is as tall as what it shows (#ssres at most 55 % of the screen, scrolling), from the taskbar up, as the page's #menu. */
 typedef struct { char g[16], t[200], i[48], sub[200], a[8], arg[1024]; double y, h, tw, sw; int nl; } SItem;   /* (tw, sw: its words' and its place's widths; nl: its words' lines) */
-static SItem SRI[24]; static int NSRI, SRCUR, SRHOV = -1, SRPG_OK; static double SRSCROLL, SRRH, SRCH, MBH0, MBY0; static AppWin *SRPG; static gint64 SRPG_T; static guint SRCLOSE_T;
+static SItem SRI[24]; static int NSRI, SRCUR, SRHOV = -1, SRPG_OK; static double SRSCROLL, SRRH, SRCH, MBH0, MBY0; static AppWin *SRPG, *BG_SRCH; static gint64 SRPG_T; static guint SRCLOSE_T;   /* (BG_SRCH: the hidden page, once it can search: 1.6.1) */
 static double srch_l11(void) { static double v; if (!v) { cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *c = cairo_create(t); double d, a = css_ascent(c, UIFAM, 400, 11, &d); v = a + d; cairo_destroy(c); cairo_surface_destroy(t); } return v; }
 static double srch_l13(void) { static double v; if (!v) { cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *c = cairo_create(t); double d, a = css_ascent(c, UIFAM, 400, 13, &d); v = a + d; cairo_destroy(c); cairo_surface_destroy(t); } return v; }
 static cairo_t *srch_cr(void) { static cairo_t *c; if (!c) { cairo_surface_t *t = cairo_image_surface_create(CAIRO_FORMAT_A8, 4, 4); c = cairo_create(t); cairo_surface_destroy(t); } return c; }
@@ -2698,12 +2720,14 @@ static void srch_page(void)
 {
 	if (SRCLOSE_T) { g_source_remove(SRCLOSE_T); SRCLOSE_T = 0; }
 	if (SRPG && g_list_find(WINS, SRPG)) return; SRPG = NULL; SRPG_OK = 0;
+	/* (1.6.1: the shell's hidden page searches, once it has said it can, op "srch") */
+	{ AppWin *b = bg_page(); if (b && BG_SRCH == b) { SRPG = b; SRPG_OK = 1; SRPG_T = 0; return; } }
 	if (SRPG_T && g_get_monotonic_time() - SRPG_T < 30 * G_USEC_PER_SEC) return;   /* (asked for already, coming) */
 	SRPG_T = g_get_monotonic_time(); app_open_ex("do-srch", NULL, NULL, 1);
 }
-static void srch_gone(AppWin *a) { if (a == SRPG) { SRPG = NULL; SRPG_OK = 0; } }
-static void srch_ready(AppWin *a) { SRPG = a; SRPG_OK = 1; SRPG_T = 0; if (MENU && gtk_widget_get_visible(MENU) && MQ[0]) srch_ask(); }
-static gboolean srch_close(gpointer d) { (void)d; SRCLOSE_T = 0; if (MENU && gtk_widget_get_visible(MENU)) return G_SOURCE_REMOVE; if (SRPG && g_list_find(WINS, SRPG)) appwin_close_now(SRPG); SRPG = NULL; SRPG_OK = 0; return G_SOURCE_REMOVE; }
+static void srch_gone(AppWin *a) { if (a == SRPG) { SRPG = NULL; SRPG_OK = 0; } if (a == BG_SRCH) BG_SRCH = NULL; }
+static void srch_ready(AppWin *a) { if (is_bg(a)) { BG_SRCH = a; if (SRPG && SRPG != a && g_list_find(WINS, SRPG)) return; } SRPG = a; SRPG_OK = 1; SRPG_T = 0; if (MENU && gtk_widget_get_visible(MENU) && MQ[0]) srch_ask(); }
+static gboolean srch_close(gpointer d) { (void)d; SRCLOSE_T = 0; if (MENU && gtk_widget_get_visible(MENU)) return G_SOURCE_REMOVE; if (SRPG && g_list_find(WINS, SRPG) && !is_bg(SRPG)) appwin_close_now(SRPG); SRPG = NULL; SRPG_OK = 0; return G_SOURCE_REMOVE; }
 static void srch_later(void) { if (SRCLOSE_T) g_source_remove(SRCLOSE_T); SRCLOSE_T = SRPG || SRPG_T ? g_timeout_add_seconds(90, srch_close, NULL) : 0; }
 static void srch_update(void)
 {
@@ -3092,8 +3116,10 @@ static gboolean signin_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	return TRUE;
 }
 /* (1.6.0, the owner's report 5) what Standard's desktop page does once at each sign-in (the notice after an update), done by a page
-   unseen (#app=do-start, oneapp59.js), not by every app window that opens */
-static void start_page(void) { if (USER_ID[0] && strcmp(USER_R, "guest")) app_open_ex("do-start", NULL, NULL, 1); }
+   unseen, not by every app window that opens: (1.6.1) the shell's one hidden page with &start=1 (oneapp59.js oaStartRun; #app=do-start
+   before), opened now, at the sign-in, as the start-up page was; for a guest it opens as the service page did (bg_tick) */
+static int BG_START; static void bg_open(void);
+static void start_page(void) { if (USER_ID[0] && strcmp(USER_R, "guest")) { BG_START = 1; if (!bg_page()) bg_open(); } }
 typedef struct { char *body, *path; int code; char *reply; } Job;
 /* 1.6.1 (plan-1.6.1 Part 18): the password was right and the account has security keys: the password kept for the next
    request, the screen says to touch the key (in the page's words, fido61.js) and that request (with "k") waits for the
@@ -3116,7 +3142,7 @@ static gboolean signin_done(gpointer p)
 		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); sn_code_off(); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
 		if (!SIGN_LOCK) ICONS_SINCE = g_get_monotonic_time();
 		settings_load(); apps_load(); if (BAR) gtk_widget_show_all(BAR); wm_restack();
-		if (!SIGN_LOCK) { start_page(); svc_reset(); SVC_SIGNIN = g_get_real_time() / 1000; }
+		if (!SIGN_LOCK) { svc_reset(); SVC_SIGNIN = g_get_real_time() / 1000; start_page(); }   /* (1.6.1: the time first: the hidden page's since=) */
 		if (WM_OK) wm_hide_all(0); else for (GList *l = WINS; l; l = l->next) gtk_widget_show(((AppWin *)l->data)->win);
 	} else {
 		char m[300] = "", nd[16] = ""; jstr(v, "error", m, sizeof m); jstr(v, "need", nd, sizeof nd);
@@ -3248,6 +3274,7 @@ static void settings_load(void)
 	{ JV *dk = jprop(s, "darkui"); n.darkui = !(dk && dk->t == 1 && !dk->n); }   /* (S.darkui!==false) */
 	{ JV *au = jprop(s, "aur"); n.aur = !(au && au->t == 1 && !au->n); } n.rmotion = jbool(s, "rmotion"); jstr(s, "aurm", n.aurm, sizeof n.aurm); jstr(s, "lnm", n.lnm, sizeof n.lnm);   /* (DEFS.disp aur:true) */
 	n.tbac = jbool(s, "tbac"); n.tbbac = jbool(s, "tbbac"); n.h24 = jbool(s, "h24"); n.doff = jnum(s, "doff", 0); n.lat = jnum(s, "lat", NAN);
+	{ JV *ir = jprop(s, "idlerest"); n.idlerest = ir && ir->t == 1 ? (ir->n ? 1 : 0) : -1; } n.idlemin = (int)jnum(s, "idlemin", 0); if (n.idlemin < 1 || n.idlemin > 240) n.idlemin = 0;
 	n.fs = (int)jnum(s, "fs", 13); jstr(s, "tx", n.tx, sizeof n.tx); jstr(s, "cb", n.cb, sizeof n.cb);   /* (the title bars' writing: the page's body font size and colour) */
 	if (!n.bs[0]) snprintf(n.bs, sizeof n.bs, "solid"); if (!n.b1[0]) snprintf(n.b1, sizeof n.b1, "#008080"); if (!n.b2[0]) snprintf(n.b2, sizeof n.b2, "#000080");
 	if (!n.tb[0]) snprintf(n.tb, sizeof n.tb, "bottom"); if (!n.wpfit[0]) snprintf(n.wpfit, sizeof n.wpfit, "fill"); if (!n.dm[0]) snprintf(n.dm, sizeof n.dm, "auto");
@@ -4836,7 +4863,7 @@ static void wins_send(WinsReq *q)
 			char id[24]; snprintf(id, sizeof id, "%lx", (unsigned long)c->frame);
 			g_string_append_printf(s, "%s{\"id\":\"%s\",\"w\":%d,\"app\":", k++ ? "," : "", id, a ? a->id : 0); json_esc(s, a ? a->k : c->ak);
 			g_string_append(s, ",\"title\":"); json_esc(s, c->title); g_string_append(s, ",\"icon\":"); json_esc(s, a ? a->icon : "");
-			g_string_append_printf(s, ",\"min\":%d,\"ws\":%d,\"act\":%d,\"me\":%s}", c->min, c->ws, c == FOCUS, q->me[i] && q->me[i][0] == '{' ? q->me[i] : "null"); }
+			g_string_append_printf(s, ",\"min\":%d,\"ws\":%d,\"act\":%d,\"rest\":%d,\"me\":%s}", c->min, c->ws, c == FOCUS, a ? a->rest : 0, q->me[i] && q->me[i][0] == '{' && !(a && a->rest) ? q->me[i] : "null"); }
 		g_string_append(s, "]"); GString *js = g_string_new("window.__oaWinsIn&&__oaWinsIn("); json_esc(js, s->str); g_string_append(js, ")");
 		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(q->to->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); g_string_free(s, TRUE); }
 	if (q->left <= 0) wins_free(q);   /* (else the last answer frees it) */
@@ -4856,7 +4883,7 @@ static void wins_ask(AppWin *to)
 	WinsReq *q = g_new0(WinsReq, 1); q->to = to; int n = g_list_length(CLIENTS); q->me = g_new0(char *, n + 1); q->cl = g_new0(Client *, n + 1);
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!tb_win(c) || !c->ws || (!c->app && !c->ak[0])) continue; q->cl[q->n++] = c; }
 	q->left = 1;   /* (until every page is asked) */
-	for (int i = 0; i < q->n; i++) { AppWin *a = q->cl[i]->app; if (!a || !a->view) continue; WinsAns *w = g_new0(WinsAns, 1); w->q = q; w->i = i; q->left++;
+	for (int i = 0; i < q->n; i++) { AppWin *a = q->cl[i]->app; if (!a || !a->view || a->rest) continue; WinsAns *w = g_new0(WinsAns, 1); w->q = q; w->i = i; q->left++;
 		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), "window.__oaMe?JSON.stringify(__oaMe()):''", -1, NULL, NULL, NULL, wins_got, w); }
 	q->left--; if (q->left <= 0) wins_send(q); else q->t = g_timeout_add(400, wins_late, q);
 }
@@ -6053,7 +6080,7 @@ static void osd_show(const char *k, const char *lv, const char *label, const cha
 static GString *EVQ; static gint64 EVQ_T;
 static void tm_urgent(void);
 static void bri_seen(int lv);
-static int ev_page_ok(AppWin *a) { return a && a->view && !a->closing && !a->hidden && strncmp(a->k, "do-", 3); }
+static int ev_page_ok(AppWin *a) { return a && a->view && !a->closing && !a->hidden && !a->rest && strncmp(a->k, "do-", 3); }
 static void ev_to(AppWin *a, const char *t)
 {
 	char *e = g_uri_escape_string(t, NULL, FALSE), *js = g_strdup_printf("window.__oaEv&&__oaEv(decodeURIComponent('%s'))", e);
@@ -6144,7 +6171,14 @@ static gpointer ev_thread(gpointer d)
    becomes that window (#app=do-portalapp), as Standard opens it. The app windows no longer collect anything (linux26.js). */
 static GHashTable *PT_GIVEN;   /* the requests handed out: id -> 1 (the portal's page) or 2 (a page of its own) */
 static char *PT_IDS;           /* the requests rudolfd listed last: id,id,... */
-static gint64 PT_OPEN_T;       /* when the portal's page was asked for */
+/* 1.6.1 (the owner's Vivobook, 2026-11-20: six web processes, about 1 GB of a 3.3 GB laptop) the portal's page, the desktop's service
+   page and the start-up page are one page (#app=do-bg, oneapp59.js), a web process of the whole desktop page less: opened at sign-in
+   (the start-up page's moment), or once nothing else is starting (page_starting, up to 10 s), again if it ends, or does not say both
+   "svc ready" and "portal ready" within 90 s; closed with the other windows at sign-out. The shell's single actions go to it too
+   (bg_route), and the start menu's search (srch_page). */
+#define BG_K "do-bg"
+static gint64 BG_OPEN_T;   /* (when it was asked for, or its process stopped and it loads again) */
+static gint64 BG_BUSY_T;   /* (since when another page has been starting, while it is not there) */
 /* 1.6.1 (the owner's Vivobook, 2026-11-20: the memory rose at the start, every page loading the whole desktop at once, 400-470 MB
    each at its peak): a page still loading, or opened in the last 4 s (its scripts still starting after the load), keeps the
    hidden pages the shell opens by itself (the portal's, the desktop's service page) waiting, so their peaks do not come together */
@@ -6155,7 +6189,47 @@ static int page_starting(gint64 now)
 	return 0;
 }
 static int pt_id_ok(const char *s) { size_t n = strlen(s); return n && n <= 40 && strspn(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == n; }
-static AppWin *pt_page(void) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, "do-portal") && !a->closing) return a; } return NULL; }
+static AppWin *bg_page(void) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, BG_K) && !a->closing) return a; } return NULL; }
+static int is_bg(const AppWin *a) { return a && !strcmp(a->k, BG_K); }
+static AppWin *pt_page(void) { return bg_page(); }
+static int SVC_N;   /* (how many times the hidden page was opened, for the tests) */
+static void bg_open(void)
+{
+	char ex[96]; snprintf(ex, sizeof ex, "&since=%lld%s", (long long)SVC_SIGNIN, BG_START ? "&start=1" : ""); BG_START = 0;
+	BG_OPEN_T = g_get_monotonic_time(); BG_BUSY_T = 0; SVC_N++;
+	fprintf(stderr, "rudolf-native: the shell's hidden page is opened\n"); app_open_ex(BG_K, NULL, ex, 2); state_write();
+}
+/* (the hidden page there, or opened: once no other page is starting, or after 10 s of them; again 10 s after it was asked for) */
+static void bg_tick(void)
+{
+	if (!USER_ID[0] || LOCKED) return;
+	AppWin *p = bg_page(); gint64 now = g_get_monotonic_time(); int busy = page_starting(now);
+	if (p || !busy) BG_BUSY_T = 0; else if (!BG_BUSY_T) BG_BUSY_T = now;
+	if (!p) { if ((!BG_OPEN_T || now - BG_OPEN_T > 10 * G_USEC_PER_SEC) && (!busy || now - BG_BUSY_T >= 10 * G_USEC_PER_SEC)) bg_open(); }
+	else if ((!p->sready || !p->pready) && BG_OPEN_T && now - BG_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the shell's hidden page did not start: again\n"); appwin_close_now(p); BG_OPEN_T = 0; }
+}
+/* a single action for the hidden page: K, the rest of its address and its file as its own page (#app=K) would have had them, run there
+   (oneapp59.js __oaDo, which tells the shell when it is done, op "done", as that page did); a page of its own when the hidden page is
+   not ready yet or did not take it */
+static const char *const BG_DO[] = {"do-qs", "do-nc", "do-pin", "do-mute", "do-desk", "do-fs", "do-short", NULL};
+typedef struct { char k[KN]; char *file, *extra; } BgJob;
+static int BG_NOROUTE;
+static void bg_done(GObject *src, GAsyncResult *res, gpointer d)
+{
+	BgJob *j = d; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(src), res, NULL); int ok = v && jsc_value_is_number(v) && jsc_value_to_int32(v) == 1; if (v) g_object_unref(v);
+	if (!ok) { fprintf(stderr, "rudolf-native: the hidden page did not take %s: a page of its own\n", j->k); BG_NOROUTE = 1; app_open_ex(j->k, j->file, j->extra, 1); BG_NOROUTE = 0; }
+	g_free(j->file); g_free(j->extra); g_free(j);
+}
+static void json_esc(GString *s, const char *v);
+static int bg_route(const char *k, const char *file, const char *extra)
+{
+	if (BG_NOROUTE) return 0; int known = 0; for (int i = 0; BG_DO[i]; i++) if (!strcmp(k, BG_DO[i])) known = 1; if (!known) return 0;
+	AppWin *p = bg_page(); if (!p || !p->view || !p->sready) return 0;
+	/* (the address's rest as the page's own would have it: decoded there by URLSearchParams, as from location.hash) */
+	GString *js = g_string_new("window.__oaDo?__oaDo("); json_esc(js, k); g_string_append_c(js, ','); json_esc(js, extra ? extra : ""); g_string_append_c(js, ','); json_esc(js, file ? file : ""); g_string_append(js, "):0");
+	BgJob *j = g_new0(BgJob, 1); snprintf(j->k, sizeof j->k, "%s", k); j->file = g_strdup(file); j->extra = g_strdup(extra);
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(p->view), js->str, -1, NULL, NULL, NULL, bg_done, j); g_string_free(js, TRUE); return 1;
+}
 static void pt_tick(void)
 {
 	if (!USER_ID[0] || LOCKED) return;
@@ -6164,14 +6238,9 @@ static void pt_tick(void)
 	/* (answered or withdrawn: forgotten) */
 	GHashTableIter it; gpointer k; g_hash_table_iter_init(&it, PT_GIVEN);
 	while (g_hash_table_iter_next(&it, &k, NULL)) if (!g_strv_contains((const char *const *)L, k)) g_hash_table_iter_remove(&it);
-	AppWin *p = pt_page(); gint64 now = g_get_monotonic_time();
-	/* (opened through a window whose page is ready: one still loading, as the start-up page just after signing in, may not open it;
-	   waited for up to 10 s) */
-	static int waited; int busy = page_starting(now);
-	if (!busy || p) waited = 0; else if (waited < 20) waited++;
-	if (!p) { if ((!PT_OPEN_T || now - PT_OPEN_T > 20 * G_USEC_PER_SEC) && (!busy || waited >= 20)) { waited = 0; PT_OPEN_T = now; fprintf(stderr, "rudolf-native: the portal's page is opened\n"); app_open_ex("do-portal", NULL, NULL, 2); } }
-	else if (!p->pready) { if (now - PT_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the portal's page did not start: again\n"); appwin_close_now(p); PT_OPEN_T = 0; } }
-	else {
+	/* (1.6.1: the portal's page is the shell's hidden page: opened, and opened again, by bg_tick) */
+	bg_tick(); AppWin *p = pt_page();
+	if (p && p->pready) {
 		GString *give = g_string_new(NULL);
 		for (int i = 0; L[i]; i++) if (pt_id_ok(L[i]) && !g_hash_table_contains(PT_GIVEN, L[i])) {
 			g_hash_table_insert(PT_GIVEN, g_strdup(L[i]), GINT_TO_POINTER(1)); if (give->len) g_string_append_c(give, ','); g_string_append(give, L[i]); }
@@ -6184,7 +6253,7 @@ static void pt_tick(void)
 	}
 	g_strfreev(L);
 }
-static void pt_reset(void) { if (PT_GIVEN) g_hash_table_remove_all(PT_GIVEN); PT_OPEN_T = 0; }
+static void pt_reset(void) { if (PT_GIVEN) g_hash_table_remove_all(PT_GIVEN); BG_OPEN_T = 0; }
 static gboolean pt_got(gpointer d) { g_free(PT_IDS); PT_IDS = d; pt_tick(); return G_SOURCE_REMOVE; }
 static gpointer pt_thread(gpointer d)
 {
@@ -6205,7 +6274,7 @@ static gpointer pt_thread(gpointer d)
 static void pt_msg(AppWin *a, JSCValue *v)
 {
 	char rq[64] = "", rd[4] = ""; jsstr(v, "req", rq, sizeof rq); jsstr(v, "ready", rd, sizeof rd);
-	if (strcmp(a->k, "do-portal")) return;   /* (only the portal's own page) */
+	if (!is_bg(a)) return;   /* (only the portal's own page: the shell's hidden page) */
 	if (!PT_GIVEN) PT_GIVEN = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
 	if (rd[0] == '1') {
 		/* (ready; or loaded again after its page stopped: what it had been handed, once more) */
@@ -6228,24 +6297,16 @@ static void pt_msg(AppWin *a, JSCValue *v)
    only for a dialog); an app it opens (a reminder's click) is a window of its own. What the shell does itself for the whole desktop
    (the heartbeat, the microphone's 🎙️, the cellular notices, the development link) it does not do again. rudolfd's events that are a
    page's go to the app window in front, else the first one, else this page. */
-static gint64 SVC_OPEN_T; static int SVC_N;   /* (when it was asked for; how many times it was opened, for the tests) */
-static AppWin *svc_page(void) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, "do-svc") && !a->closing) return a; } return NULL; }
-static void svc_reset(void) { SVC_OPEN_T = 0; }
+static AppWin *svc_page(void) { return bg_page(); }   /* (1.6.1: the shell's hidden page) */
+static void svc_reset(void) { BG_OPEN_T = 0; }
 static gboolean svc_tick(gpointer d)
 {
-	(void)d; if (!USER_ID[0] || LOCKED) return G_SOURCE_CONTINUE;
-	AppWin *p = svc_page(); gint64 now = g_get_monotonic_time();
-	/* (opened through a window whose page is ready, as the portal's: one still loading may not open it; waited for up to 10 s) */
-	static int waited; int busy = page_starting(now);
-	if (!busy || p) waited = 0; else if (waited < 8) waited++;
-	if (!p) { if ((!SVC_OPEN_T || now - SVC_OPEN_T > 10 * G_USEC_PER_SEC) && (!busy || waited >= 8)) { waited = 0; SVC_OPEN_T = now; SVC_N++;
-			char ex[64]; snprintf(ex, sizeof ex, "&since=%lld", (long long)SVC_SIGNIN); fprintf(stderr, "rudolf-native: the desktop's service page is opened\n"); app_open_ex("do-svc", NULL, ex, 2); state_write(); } }
-	else if (!p->sready && now - SVC_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the desktop's service page did not start: again\n"); appwin_close_now(p); SVC_OPEN_T = 0; }
+	(void)d; bg_tick();   /* (1.6.1: the shell's hidden page, which runs the service page's part) */
 	return G_SOURCE_CONTINUE;
 }
 static void svc_msg(AppWin *a, JSCValue *v)
 {
-	char rd[4] = ""; jsstr(v, "ready", rd, sizeof rd); if (strcmp(a->k, "do-svc") || rd[0] != '1') return;
+	char rd[4] = ""; jsstr(v, "ready", rd, sizeof rd); if (!is_bg(a) || rd[0] != '1') return;
 	/* (ready; or loaded again after its page stopped) */
 	a->sready = 1; fprintf(stderr, "rudolf-native: the desktop's service page is ready\n"); if (!ev_page_ok(ACTIVE)) { int any = 0; for (GList *l = WINS; l; l = l->next) if (ev_page_ok(l->data)) any = 1; if (!any) ev_flush(a); }
 	state_write();
@@ -7167,7 +7228,8 @@ static void state_write(void)
 		Client *c = WM_OK ? client_of_app(a) : NULL;
 		if (a->hidden) { g_string_append_printf(s, "page %s\n", a->k); continue; }   /* (2026-11-16: a page doing something unseen is no window: page KEY) */
 		if (c && c->wait == 1) { g_string_append_printf(s, "appwait %s\n", a->k); continue; }   /* (2026-11-17: a window not shown yet, its page still drawing: not a window yet) */
-		g_string_append_printf(s, "app %s %lx %d %s\n", a->k, g ? (unsigned long)GDK_WINDOW_XID(g) : 0UL, c ? c == FOCUS : a == ACTIVE, a->title); }
+		g_string_append_printf(s, "app %s %lx %d %s\n", a->k, g ? (unsigned long)GDK_WINDOW_XID(g) : 0UL, c ? c == FOCUS : a == ACTIVE, a->title);
+		g_string_append_printf(s, "rest %s %d %d %s\n", a->k, a->rest, a->idle_t ? 1 : 0, a->rwhy[0] ? a->rwhy : "-"); }   /* (1.6.1 Part 23 C: resting, idle, why it may not rest) */
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!c->ws) continue;   /* (no workspace: going, 12.3c) */
 		if (c->wait == 1) { g_string_append_printf(s, "clientwait %lx %lx app=%s\n", (unsigned long)c->w, (unsigned long)c->frame, c->app ? c->app->k : "-"); continue; }
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
@@ -7202,6 +7264,113 @@ static void state_write(void)
 	char tmp[600]; snprintf(tmp, sizeof tmp, "%s.tmp", STATEF); g_file_set_contents(tmp, s->str, s->len, NULL); rename(tmp, STATEF); g_string_free(s, TRUE);
 }
 
+/* ------------------------------------------------------------------ idle windows give their memory back (1.6.1, docs/plan-1.6.1.md Part 23 C)
+   The owner, 2026-11-20 ("if it won't cause any issues with Oracle or other Rudolf/Debian/Flatpak/Wine apps, then add it"): a Rudolf
+   app's window minimized, or covered by one other window, for a while (Settings › System, Idle windows: on by default under 6 GB of
+   memory, after 10 minutes) has its page unloaded (an empty page in its view: WebKit frees the page's memory, and a web process of its
+   own, if it has one, keeps only WebKit's), and the page loaded again when the window is shown (focused, its taskbar button, no longer
+   covered), back where it was: the page gives its state first (oneapp59.js __oaRest: its file, folder, tabs, scroll), which comes back
+   as &rest= in its address. Only apps whose page says it can (REST_APPS: Notepad, File Explorer), and only when it says so now: not with
+   unsaved changes, a dialog, sound or video playing, a recording, a call, a transfer or a download, a job running. Never: Oracle
+   ("browser"), a program rudolfd runs (Linux, Debian, Flatpak, Wine, the Library's: separate X windows, their pages unseen), the shell's
+   hidden pages, a page doing something for the shell (do-*), a window full screen, on top or in a dialog over the screen; and WebKit
+   itself says when a page is playing sound or using the camera, the microphone or the screen. Task Manager shows it as "Resting (no
+   memory used)". (The tests set the time in seconds: RUDOLF_NATIVE_REST_SECS.) */
+static int mem_small(void)
+{
+	static int v = -1; if (v >= 0) return v; long long kb = 0; char ln[128]; FILE *f = fopen("/proc/meminfo", "r");
+	while (f && fgets(ln, sizeof ln, f)) if (sscanf(ln, "MemTotal: %lld kB", &kb) == 1) break; if (f) fclose(f);
+	return v = kb > 0 && kb < 6LL * 1024 * 1024;
+}
+static int rest_on(void) { return S.idlerest < 0 ? mem_small() : S.idlerest; }
+static gint64 rest_after(void) { const char *e = getenv("RUDOLF_NATIVE_REST_SECS"); if (e && atoi(e) > 0) return (gint64)atoi(e) * G_USEC_PER_SEC; return (gint64)(S.idlemin > 0 ? S.idlemin : 10) * 60 * G_USEC_PER_SEC; }
+/* (covered: one window above it, shown, holding all of its frame; or one full screen) */
+static int covered(Client *c)
+{
+	if (!WM_OK || !c || c->min || c->off) return 0;
+	Window r, p, *k = NULL; unsigned n = 0; int above = 0, cov = 0;
+	if (XQueryTree(DPY, ROOT, &r, &p, &k, &n)) for (unsigned i = 0; i < n && !cov; i++) {
+		if (k[i] == c->frame) { above = 1; continue; } if (!above) continue;
+		Client *d = client_of(k[i]); if (!d || d == c || d->frame != k[i] || d->min || d->hidden || d->off) continue;
+		if (d->full || (d->x <= c->x && d->y <= c->y && d->x + fw_of(d) >= c->x + fw_of(c) && d->y + fh_of(d) >= c->y + fh_of(c))) cov = 1; }
+	if (k) XFree(k); return cov;
+}
+/* (what keeps a window from resting, as the shell sees it; NULL: nothing) */
+static const char *rest_no(AppWin *a, Client *c)
+{
+	if (!a->view || a->closing || a->hidden || !a->sized) return "not an app's window";
+	if (!strncmp(a->k, "do-", 3) || is_bg(a)) return "the shell's page";
+	if (!strcmp(a->k, "browser")) return "Oracle";
+	{ const App *ap = app_find(a->k); if ((ap && ap->x) || strchr(a->k, ':')) return "a program of its own"; }
+	if (a->modal) return "a dialog"; if (c->full) return "full screen"; if (c->ontop) return "always on top";
+	if (webkit_web_view_is_playing_audio(WEBKIT_WEB_VIEW(a->view))) return "playing sound";
+#if WEBKIT_CHECK_VERSION(2, 34, 0)
+	{ WebKitWebView *v = WEBKIT_WEB_VIEW(a->view); if (webkit_web_view_get_camera_capture_state(v) != WEBKIT_MEDIA_CAPTURE_STATE_NONE || webkit_web_view_get_microphone_capture_state(v) != WEBKIT_MEDIA_CAPTURE_STATE_NONE
+		|| webkit_web_view_get_display_capture_state(v) != WEBKIT_MEDIA_CAPTURE_STATE_NONE) return "recording"; }
+#endif
+	return NULL;
+}
+static void rest_cover(Client *c)
+{
+	if (!c || c->cover) return; XSetWindowAttributes at = {0}; at.background_pixel = app_bg_pixel();
+	c->cover = XCreateWindow(DPY, c->frame, BW, TH, c->cw, c->ch, 0, CopyFromParent, InputOutput, CopyFromParent, CWBackPixel, &at); XMapRaised(DPY, c->cover);
+}
+static void appwin_rest(AppWin *a, const char *st)
+{
+	Client *c = client_of_app(a); const char *u = webkit_web_view_get_uri(WEBKIT_WEB_VIEW(a->view)); if (!c || !u || strncmp(u, "http", 4)) return;
+	GString *g = g_string_new(u); char *r = strstr(g->str, "&rest="); if (r) g_string_truncate(g, r - g->str);
+	/* (not the file it was opened with: what it has open now is in its state) */
+	{ char *f = strstr(g->str, "&file="); if (f) { char *e = strchr(f + 1, '&'); g_string_erase(g, f - g->str, e ? e - f : (gssize)strlen(f)); } }
+	char *e = g_uri_escape_string(st, NULL, FALSE); g_string_append(g, "&rest="); g_string_append(g, e); g_free(e);
+	g_free(a->rurl); a->rurl = g_string_free(g, FALSE); a->rest = 1; a->sready = 0;
+	rest_cover(c); if (a->wait_t) { g_source_remove(a->wait_t); a->wait_t = 0; } c->wait = 2;
+	fprintf(stderr, "rudolf-native: %s's window rests (its page closed)\n", a->k);
+	/* (its view closed, and so its page, and its web process when it has one of its own (WebKit ends a process that has no page left:
+	   the cache model keeps none); a view never loaded in its place, which has no process at all, so that a->view stays a view) */
+	GtkWidget *old = a->view, *nv = view_make(a, NULL); a->view = nv; gtk_container_remove(GTK_CONTAINER(a->win), old);
+	gtk_container_add(GTK_CONTAINER(a->win), nv); gtk_widget_show(nv); gtk_widget_grab_focus(nv); bar_redraw(); state_write();
+}
+static void appwin_wake(AppWin *a)
+{
+	if (!a || !a->rest || !a->rurl) return; a->rest = 0; a->idle_t = 0; Client *c = WM_OK ? client_of_app(a) : NULL;
+	if (c) { rest_cover(c); c->wait = 2; }   /* (the app's colour until its page is ready, as a window opening: appwin_reveal) */
+	if (a->wait_t) g_source_remove(a->wait_t); a->wait_t = g_timeout_add(10000, appwin_wait_last, a);
+	fprintf(stderr, "rudolf-native: %s's window wakes (its page loaded again)\n", a->k);
+	char *u = a->rurl; a->rurl = NULL;
+	/* (opened as every window is, by another window's page (window.open: the same web process), into this window: on_create's into) */
+	AppWin *rel = NULL; for (GList *l = WINS; l; l = l->next) { AppWin *x = l->data; if (x != a && x->view && !x->rest && webkit_web_view_get_uri(WEBKIT_WEB_VIEW(x->view)) && !x->closing) { rel = x; break; } }
+	if (rel) { Pending *p = g_new0(Pending, 1); snprintf(p->k, sizeof p->k, "%s", a->k); p->id = a->id; p->into = a; g_queue_push_tail(&PENDING, p);
+		char *ue = g_uri_escape_string(u, NULL, FALSE), *js = g_strdup_printf("(typeof webNativeOpen=='function'?webNativeOpen:window.open)(decodeURIComponent('%s'),'_blank')", ue);
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(rel->view), js, -1, NULL, NULL, NULL, NULL, NULL); g_free(js); g_free(ue); }
+	else webkit_web_view_load_uri(WEBKIT_WEB_VIEW(a->view), u);
+	g_free(u); state_write();
+}
+static void rest_got(GObject *src, GAsyncResult *res, gpointer d)
+{
+	int id = GPOINTER_TO_INT(d); JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(src), res, NULL); char *t = v && jsc_value_is_string(v) ? jsc_value_to_string(v) : NULL; if (v) g_object_unref(v);
+	AppWin *a = NULL; for (GList *l = WINS; l; l = l->next) if (((AppWin *)l->data)->id == id) a = l->data;
+	if (!a) { g_free(t); return; } a->rasking = 0; Client *c = WM_OK ? client_of_app(a) : NULL;
+	JV *j = t && t[0] == '{' ? jparse(t) : NULL; char st[6000] = "", why[80] = "";
+	int ok = j && jbool(j, "ok"); if (j) { jstr(j, "st", st, sizeof st); jstr(j, "why", why, sizeof why); jfree(j); } g_free(t);
+	if (!ok) { snprintf(a->rwhy, sizeof a->rwhy, "%s", why[0] ? why : "its page cannot be restored"); a->idle_t = g_get_monotonic_time(); state_write(); return; }   /* (asked again after the same time) */
+	if (!c || a->rest || !rest_on() || rest_no(a, c) || !(c->min || covered(c))) return;
+	a->rwhy[0] = 0; appwin_rest(a, st);
+}
+static gboolean rest_tick(gpointer d)
+{
+	(void)d; if (!USER_ID[0] || LOCKED || !WM_OK) return G_SOURCE_CONTINUE;
+	gint64 now = g_get_monotonic_time(); int on = rest_on(), ch = 0;
+	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; Client *c = client_of_app(a); if (!c) continue;
+		if (a->rest) { if (!c->min && !c->off && !covered(c)) appwin_wake(a); continue; }
+		const char *no = on ? rest_no(a, c) : "off"; int idle = c->min || covered(c);
+		if (no || !idle) { if (a->idle_t || (no && strcmp(a->rwhy, no))) ch = 1; a->idle_t = 0; snprintf(a->rwhy, sizeof a->rwhy, "%s", no ? no : ""); continue; }
+		if (!a->idle_t) { a->idle_t = now; ch = 1; continue; }
+		if (now - a->idle_t >= rest_after() && !a->rasking) { a->rasking = 1;
+			webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), "window.__oaRest?__oaRest():''", -1, NULL, NULL, NULL, rest_got, GINT_TO_POINTER(a->id)); } }
+	if (ch) state_write();
+	return G_SOURCE_CONTINUE;
+}
+
 /* ------------------------------------------------------------------ start */
 /* (tests only: RUDOLF_NATIVE_TEST_EVAL=FIFO, never set by the session) each line "KEY JS" runs JS in the shown app window of that
    app and appends "KEY RESULT" to FIFO.out: the host tests read the WebKit windows' pages with it, as DevTools reads Chromium's */
@@ -7221,7 +7390,7 @@ static gboolean teval_line(GIOChannel *ch, GIOCondition c, gpointer d)
 	if (st == G_IO_STATUS_EOF || st == G_IO_STATUS_ERROR) { g_free(l); return G_SOURCE_REMOVE; }
 	if (st == G_IO_STATUS_AGAIN || !l) { g_free(l); break; }
 	char *sp = strchr(l, ' ');
-	if (sp) { *sp = 0; g_strchomp(sp + 1); AppWin *a = NULL; for (GList *w = WINS; w; w = w->next) { AppWin *x = w->data; if (!strcmp(x->k, l) && (!x->hidden || !strcmp(l, "do-svc")) && x->view) { a = x; break; } }   /* (and the desktop's service page, never shown: item 12) */
+	if (sp) { *sp = 0; g_strchomp(sp + 1); AppWin *a = NULL; for (GList *w = WINS; w; w = w->next) { AppWin *x = w->data; if ((!strcmp(x->k, l) || (is_bg(x) && (!strcmp(l, "do-svc") || !strcmp(l, "do-portal")))) && (!x->hidden || is_bg(x)) && x->view) { a = x; break; } }   /* (and the desktop's service page, never shown: item 12; 1.6.1: the shell's hidden page, do-bg, also by the names of the pages it replaced) */
 		if (a) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), sp + 1, -1, NULL, NULL, NULL, teval_got, g_strdup(l));
 		else { FILE *f = fopen(TEVAL_OUT, "a"); if (f) { fprintf(f, "%s NO WINDOW\n", l); fclose(f); } } }
 	g_free(l); } while (g_io_channel_get_buffer_condition(ch) & G_IO_IN);
@@ -7347,6 +7516,7 @@ int main(int argc, char **argv)
 	g_thread_unref(g_thread_new("portal", pt_thread, NULL));   /* (1.6.0: the portal's requests, collected here) */
 	g_timeout_add_seconds(2, gm61_tick, NULL);   /* (1.6.1 Part 19: game mode) */
 	g_timeout_add_seconds(2, svc_tick, NULL);   /* (1.6.0 Part 12, item 12: the desktop's service page, kept open while an account is signed in) */
+	g_timeout_add_seconds(2, rest_tick, NULL);   /* (1.6.1 Part 23 C: idle windows give their memory back) */
 	teval_init(); clip_init();
 	state_write();
 	gtk_main();

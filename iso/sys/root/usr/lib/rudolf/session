@@ -251,6 +251,43 @@ shell_usable() {
 	[ -e /home/rudolf/.rudolf-shell-ready ] || return 1
 	grep -lqs "$SHELLID" $PROFILE/Default/iwa/*/main.swbn || return 1
 }
+# 1.6.1 (docs/plan-1.6.1.md Part 20; docs/website-data-key.md): the shared profile's website data (cookies, saved site
+# passwords, payment cards) under a key sealed in this computer's TPM, in place of Chromium's built-in one (the same on
+# every computer: a drive taken out read them as plain). rudolf-webkey unseal gives the key (root only: /dev/tpmrm0),
+# migrate encrypts again what the built-in key had, and wallet is Chromium's key store (KWallet's D-Bus, on the
+# desktop's session bus: only the desktop's own user reaches it) for --password-store=kwallet6. Without a TPM, or when it
+# will not give the key, Chromium's built-in key as before (and Settings says so). Every Chromium of this profile uses
+# the same store (PWSTORE): Standard's desktop, Native's Oracle, rudolf-shellfix: one with the other store would drop
+# what it cannot read. Once per start; the wallet started again if it ended.
+PWSTORE=basic
+webkey_note() { printf '{"state":"%s","why":"%s","t":%s}\n' "$1" "$(printf '%s' "$2" | tr -d '"\\' | head -c 300)" "$(date +%s)" > /run/rudolf/webkey.json.t && chmod 644 /run/rudolf/webkey.json.t && mv /run/rudolf/webkey.json.t /run/rudolf/webkey.json; }
+webkey_start() {
+	[ "$PWSTORE" = kwallet6 ] && [ -n "$WKPID" ] && kill -0 $WKPID 2>/dev/null && return 0
+	# (this script started again during this start: the key store it started before is still there; another would find
+	# its names taken and the desktop would fall back to the built-in key, which drops what it cannot read)
+	if [ -z "$WKPID" ] && grep -qs '"state":"tpm"' /run/rudolf/webkey.json && W0=$(pgrep -f '^/usr/bin/rudolf-webkey wallet$' | head -1) && [ -n "$W0" ]; then
+		WKDONE=1; WKPID=$W0; PWSTORE=kwallet6; return 0; fi
+	PWSTORE=basic
+	[ -n "$WKDONE" ] && [ -z "$WKPID" ] && return 0   # (no TPM key this start: as it was)
+	WKDONE=1; WKPID=
+	[ -x /usr/bin/rudolf-webkey ] || return 0
+	[ -n "$DBUS_SESSION_BUS_ADDRESS" ] || { webkey_note failed "the desktop has no session bus"; return 0; }
+	K=$(/usr/bin/rudolf-webkey unseal 2>/run/rudolf/webkey.err); RC=$?; WHY=$(tail -1 /run/rudolf/webkey.err 2>/dev/null)
+	case $RC in
+	0|3) ;;
+	1) K=; webkey_note none "$WHY"; rudolfd --health security "website data: this computer has no TPM 2.0 (or it is off in its firmware's settings), so Chromium's built-in key keeps them, as before"; return 0;;
+	*) K=; webkey_note failed "$WHY"; rudolfd --health security "website data: the TPM would not give its key ($WHY), so Chromium's built-in key is used for this start"; return 0;;
+	esac
+	[ $RC = 3 ] && rudolfd --health security "website data: a new key sealed in this computer's TPM ($WHY); what Chromium kept under the previous key cannot be read, so websites sign in again"
+	printf '%s\n' "$K" | su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-webkey migrate $PROFILE" >>/run/rudolf/webkey.log 2>&1
+	: > /run/rudolf/webkey.ready; chmod 644 /run/rudolf/webkey.ready
+	printf '%s\n' "$K" | su -s /bin/sh rudolf -c "set -a; . /run/rudolf/session.env; set +a; exec setsid /usr/bin/rudolf-webkey wallet" >/run/rudolf/webkey.ready 2>>/run/rudolf/webkey.log &
+	WKPID=$!; K=
+	i=0; while [ $i -lt 50 ] && ! grep -q ready /run/rudolf/webkey.ready 2>/dev/null && kill -0 $WKPID 2>/dev/null; do sleep 0.1; i=$((i+1)); done
+	if grep -q ready /run/rudolf/webkey.ready 2>/dev/null; then PWSTORE=kwallet6; webkey_note tpm "$([ $RC = 3 ] && echo "$WHY")"
+	else WKPID=; webkey_note failed "the key store did not start"; rudolfd --health security "website data: the key store did not start, so Chromium's built-in key is used for this start"; fi
+	return 0
+}
 # 1.5.8: Chromium 157 never replaces the installed shell from its file ("App is already installed"), so a release's
 # changes to Oracle's tabs never arrived. Once per start, when the profile's copy is not the system's, rudolf-shellfix
 # puts the system's in (Chromium's DevTools over a pipe: removed and installed again; the shell's storage goes with
@@ -262,7 +299,7 @@ shell_fix() {
 		for f in $PROFILE/Default/iwa/*/main.swbn; do [ -f "$f" ] || continue; HAVE=1; cmp -s "$f" /usr/share/rudolf/www/iwa/shell.swbn && SAME=1; done
 		if [ $HAVE = 1 ] && [ $SAME = 0 ]; then
 			echo "$(date) the shell in the profile is not the system's: replacing it"
-			if su -s /bin/sh rudolf -c "exec /usr/bin/rudolf-shellfix /opt/chromium/chrome $PROFILE /usr/share/rudolf/www/iwa/shell.swbn $SHELLID" >>/run/rudolf/shellfix.log 2>&1; then
+			if su -s /bin/sh rudolf -c "exec env RUDOLF_PASSWORD_STORE=$PWSTORE /usr/bin/rudolf-shellfix /opt/chromium/chrome $PROFILE /usr/share/rudolf/www/iwa/shell.swbn $SHELLID" >>/run/rudolf/shellfix.log 2>&1; then
 				echo "$(date) shell replaced"; echo "shell 1" >> /run/rudolf/events
 			else echo "$(date) the shell was not replaced (see /run/rudolf/shellfix.log)"; fi
 		fi
@@ -275,10 +312,10 @@ shell_fix() {
 oracle_chrome() {
 	rm -f /run/rudolf/oracle-chrome
 	[ ${#SHELLID} = 56 ] && [ -n "$SHELLINST" ] && [ -x /opt/chromium/chrome ] && [ -x /usr/bin/rudolf-launch ] || return 0
-	shell_fix
+	webkey_start; shell_fix
 	{ echo "$SHELLID"; for a in /opt/chromium/chrome --class=RudolfOracle --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
-		--disable-session-crashed-bubble --disable-translate --password-store=basic \
+		--disable-session-crashed-bubble --disable-translate --password-store=$PWSTORE \
 		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel$FEDCM_OFF --disable-vulkan-surface \
 		$GLFLAGS --autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \
 		--auto-select-desktop-capture-source=Entire --enable-features=SharedArrayBuffer,IsolatedWebApps$SHELLFEAT $SHELLINST \
@@ -431,11 +468,11 @@ while :; do
 	elif [ $ENGINE = webkit ]; then
 		su -s /bin/sh rudolf -c "exec env $VLOG /usr/bin/rudolf-webkit --rudolf-kiosk --size=${SCW}x$SCH $WKSOFT $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
 	else
-	shell_fix
+	webkey_start; shell_fix
 	su -s /bin/sh rudolf -c "exec $LAUNCH /opt/chromium/chrome --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen \
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
-		--disable-session-crashed-bubble --disable-translate --password-store=basic \
+		--disable-session-crashed-bubble --disable-translate --password-store=$PWSTORE \
 		--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,PrivacySandboxSettings4,Vulkan,WebGPUService,SkiaGraphite,OptimizationGuideOnDeviceModel$FEDCM_OFF --disable-vulkan-surface \
 		$GLFLAGS \
 		--autoplay-policy=no-user-gesture-required --use-fake-ui-for-media-stream \

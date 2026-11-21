@@ -75,6 +75,13 @@ EXTRA = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,driv
          '-device', 'e1000,netdev=n1,mac=52:54:00:12:34:99',
          '-netdev', f'dgram,id=n1,local.type=inet,local.host=127.0.0.1,local.port={PG},remote.type=inet,remote.host=127.0.0.1,remote.port={PH}',
          '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
+# 1.6.1 (docs/plan-1.6.1.md Part 11): R161_FIX=DIR puts this tree's rudolfd, rudolf-rootd and root helpers in place after
+# the start (iso/qt/sb/fix161.sh, as t160_t.py does): the encrypted folder's checks through the drives helper
+FIX = os.environ.get('R161_FIX', '')
+if FIX:
+    import tempfile; FW = tempfile.mkdtemp(); shutil.copytree(FIX, f'{FW}/fix'); FIXIMG = os.path.abspath('t150fix.img'); subprocess.run(['truncate', '-s', '64M', FIXIMG], check=True)
+    subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'R161FIX', '-d', f'{FW}/fix', FIXIMG], check=True)
+    EXTRA += ['-drive', f'file={FIXIMG},format=raw,if=none,id=fx,readonly=on', '-device', 'nvme,drive=fx,serial=r161fix']
 def boot(tag):
     vm = sbvm.VM('t150' + tag, PARTS, [], secure=False, mem=MEM, extra=EXTRA)
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
@@ -84,6 +91,9 @@ def boot(tag):
             if 'ready' in g.sh('echo ready', 8): up = True; break
         except OSError: pass
         time.sleep(4)
+    if up and FIX:
+        g.put(os.path.join(HERE, 'fix161.sh'), '/tmp/fix161.sh', '644'); o = g.sh('sh /tmp/fix161.sh reload 2>&1', 240)
+        out('R161_FIX:', o.strip()[-600:])
     def js(e, t=60):
         for _ in range(4):
             r = g.js(e, t)

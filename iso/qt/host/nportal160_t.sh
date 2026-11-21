@@ -2,7 +2,7 @@
 # 1.6.0 (the owner's Vivobook, 2026-11-16: Sober's sign-in spun for ever on the Native desktop): the Rudolf portal's requests on
 # Native. rudolf-native on a virtual screen (Xvfb) with the stand-in rudolfd (fixtures/native_rd.py, its portal/poll and
 # portal/answer from DIR/portal) serving this tree's page; requests written as rudolf-portal writes them:
-#   1. after signing in the shell's portal page starts unseen (do-portal), before any request
+#   1. after signing in the shell's portal page starts unseen (do-bg), before any request
 #   2. the keyring's "new keyring" prompt with no app window open: on the screen, above everything, within 2 s; typed into as a
 #      person would (the keyboard is the page's), answered once with the password; the page is out of sight again
 #   3. with two app windows open (Notepad, Calculator): a file Save dialog, drawn once, by the portal's page only (no app
@@ -44,31 +44,31 @@ w8 '[ "$(st signin)" = 1 ]' 160 || { echo "FAIL no sign-in screen: $(tail -5 $T/
 for a in 1 2 3 4; do timeout 3 tail -f /dev/null; xdotool key ctrl+a BackSpace; LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
 	w8 '[ "$(st user)" = Ann ] && [ "$(st signin)" = 0 ]' 120 && break; echo "(not signed in yet: $(st signmsg))"; done
 w8 '[ "$(st portal | cut -d" " -f1)" = ready ]' 400
-ok "1. after signing in the shell's portal page is ready, unseen, with no request yet" "$([ "$(st portal | cut -d' ' -f1)" = ready ] && grep -q '^page do-portal$' $D/state && ! grep -q 'app=do-portal' $D/state && echo 1)" "$(st portal) $(head -5 $D/state) $(st signmsg) $(grep -E '^(page|app|client) ' $D/state) $(tail -5 $T/native.log) $(tail -5 $D/calls)"
+ok "1. after signing in the shell's portal page is ready, unseen, with no request yet" "$([ "$(st portal | cut -d' ' -f1)" = ready ] && grep -q '^page do-bg$' $D/state && ! grep -q 'app=do-bg' $D/state && echo 1)" "$(st portal) $(head -5 $D/state) $(st signmsg) $(grep -E '^(page|app|client) ' $D/state) $(tail -5 $T/native.log) $(tail -5 $D/calls)"
 # ---- 2. the keyring's prompt, no app window open
 ok "2a. no app window is open" "$(! grep -q '^app ' $D/state && echo 1)" "$(grep '^app ' $D/state)"
 t0=$(now); req k100-1 '{"app":"org.vinegarhq.Sober","proc":"sober","kind":"keyring","type":"password","title":"","message":"Choose password for new keyring","description":"An application wants to create a new keyring called “Sober”. Choose the password you want to use for it.","warning":"","choice":"","cont":"Continue","cancel":"Cancel","newpass":true,"chosen":false}'
-w8 'grep -q "^ontop do-portal$" $D/state && grep -q "full=1 focus=1 app=do-portal " $D/state' 40; t1=$(now)
+w8 'grep -q "^ontop do-bg$" $D/state && grep -q "full=1 focus=1 app=do-bg " $D/state' 40; t1=$(now)
 timeout 0.6 tail -f /dev/null
-k=$(ev do-portal "(()=>{const o=document.querySelector('.krp60');return o?[o.querySelector('.kra').textContent,o.querySelector('.krm').textContent,document.activeElement&&document.activeElement.className].join('|'):'none'})()")
-ok "2b. the keyring's prompt is on the screen, above everything, focused, within 2 s ($((t1-t0)) ms)" "$([ $((t1-t0)) -le 2000 ] && grep -q '^ontop do-portal$' $D/state && echo "$k" | grep -q '^Sober|Choose password for new keyring|kp1' && echo 1)" "$((t1-t0)) ms; $k; $(grep -E '^(ontop|client|page|app|portal) ' $D/state)"
+k=$(ev do-bg "(()=>{const o=document.querySelector('.krp60');return o?[o.querySelector('.kra').textContent,o.querySelector('.krm').textContent,document.activeElement&&document.activeElement.className].join('|'):'none'})()")
+ok "2b. the keyring's prompt is on the screen, above everything, focused, within 2 s ($((t1-t0)) ms)" "$([ $((t1-t0)) -le 2000 ] && grep -q '^ontop do-bg$' $D/state && echo "$k" | grep -q '^Sober|Choose password for new keyring|kp1' && echo 1)" "$((t1-t0)) ms; $k; $(grep -E '^(ontop|client|page|app|portal) ' $D/state)"
 import -window root $T/k.png 2>/dev/null
 xdotool type --delay 30 'pw-new1'; xdotool key Tab; xdotool type --delay 30 'pw-new1'; xdotool key Return
 w8 '[ "$(answers k100-1)" -ge 1 ]' 40; timeout 2 tail -f /dev/null
 ok "2c. typed in as a person would: answered once, with the password" "$([ "$(answers k100-1)" = 1 ] && grep -q '^k100-1 {"response":0,"password":"pw-new1"' $D/portal/answers && [ ! -e $D/portal/req/k100-1.json ] && echo 1)" "$(cat $D/portal/answers 2>/dev/null)"
-w8 '! grep -q "^ontop do-portal$" $D/state' 20
-pw=$(grep ' app=do-portal ' $D/state | head -1 | cut -d' ' -f2)
-ok "2d. the prompt is gone from the screen (the portal's page out of sight, no taskbar button); the page stays for the next one" "$(! grep -q '^ontop do-portal$' $D/state && [ -n "$pw" ] && grep -q "^clienthidden $pw$" $D/state && ! grep -q '^hit task.*do-portal' $D/state && [ "$(st portal | cut -d' ' -f1)" = ready ] && echo 1)" "$(grep -E '^(ontop|client|page|app|portal) ' $D/state)"
+w8 '! grep -q "^ontop do-bg$" $D/state' 20
+pw=$(grep ' app=do-bg ' $D/state | head -1 | cut -d' ' -f2)
+ok "2d. the prompt is gone from the screen (the portal's page out of sight, no taskbar button); the page stays for the next one" "$(! grep -q '^ontop do-bg$' $D/state && [ -n "$pw" ] && grep -q "^clienthidden $pw$" $D/state && ! grep -q '^hit task.*do-bg' $D/state && [ "$(st portal | cut -d' ' -f1)" = ready ] && echo 1)" "$(grep -E '^(ontop|client|page|app|portal) ' $D/state)"
 # ---- 3. two app windows open: a file dialog, once, by the portal's page only
 click() { xdotool mousemove $1 $2 click 1; }
 click $(hit pin notepad); w8 'grep -q "^app notepad " $D/state' 120; click $(hit pin calc); w8 'grep -q "^app calc " $D/state' 120; timeout 4 tail -f /dev/null
 ok "3a. Notepad's and Calculator's windows are open" "$(grep -q '^app notepad ' $D/state && grep -q '^app calc ' $D/state && echo 1)" "$(grep '^app ' $D/state)"
 p0=$(polls); timeout 5 tail -f /dev/null; p1=$(polls)
 t0=$(now); req 900-7 '{"app":"org.rudolf.PortalStand","kind":"save","title":"Save the replay","multiple":false,"directory":false,"name":"replay.txt","folder":"","file":"","accept":"","patterns":[]}'
-w8 'grep -q "^ontop do-portal$" $D/state' 40; t1=$(now); timeout 1 tail -f /dev/null
-fd=$(ev do-portal "document.querySelectorAll('.lxfd').length+'|'+((document.querySelector('.lxfd h3')||{}).textContent||'')")
+w8 'grep -q "^ontop do-bg$" $D/state' 40; t1=$(now); timeout 1 tail -f /dev/null
+fd=$(ev do-bg "document.querySelectorAll('.lxfd').length+'|'+((document.querySelector('.lxfd h3')||{}).textContent||'')")
 inapp="$(ev notepad "document.querySelectorAll('.rmodal').length")|$(ev calc "document.querySelectorAll('.rmodal').length")"
-ok "3b. a file dialog: once, in the portal's page, above both windows ($((t1-t0)) ms), none in the app windows" "$(echo "$fd" | grep -q '^1|Save the replay — PortalStand' && [ "$inapp" = '0|0' ] && grep -q '^ontop do-portal$' $D/state && echo 1)" "$fd / $inapp / $(grep -E '^(ontop|client) ' $D/state)"
+ok "3b. a file dialog: once, in the portal's page, above both windows ($((t1-t0)) ms), none in the app windows" "$(echo "$fd" | grep -q '^1|Save the replay — PortalStand' && [ "$inapp" = '0|0' ] && grep -q '^ontop do-bg$' $D/state && echo 1)" "$fd / $inapp / $(grep -E '^(ontop|client) ' $D/state)"
 xdotool key Escape; w8 '[ "$(answers 900-7)" -ge 1 ]' 40; timeout 2 tail -f /dev/null
 ok "3c. cancelled: answered once (no file)" "$([ "$(answers 900-7)" = 1 ] && grep -q '^900-7 {"response":1}' $D/portal/answers && echo 1)" "$(cat $D/portal/answers)"
 ok "6. no app window collects the portal's requests: only the shell does (twice a second)" "$(n=$((p1-p0)); [ $n -ge 6 ] && [ $n -le 14 ] && echo 1)" "$((p1-p0)) polls in 5 s"
@@ -81,7 +81,7 @@ w8 'grep -q "^app browser " $D/state' 80
 ok "4b. a web link: Oracle's window opens (here WebKit's, no Chromium), answered once" "$(grep -q '^app browser ' $D/state && [ "$(answers 900-9)" = 1 ] && echo 1)" "$(grep '^app ' $D/state) $(cat $D/portal/answers) $(grep 'open\|browser' $D/calls | tail -3)"
 # ---- 5. withdrawn
 req 900-10 '{"app":"org.rudolf.PortalStand","kind":"open","title":"Open a level","multiple":false,"directory":false,"name":"","folder":"","file":"","accept":"","patterns":[]}'
-w8 'grep -q "^ontop do-portal$" $D/state' 40; timeout 1 tail -f /dev/null; a=$(ev do-portal "document.querySelectorAll('.lxfd').length")
-rm -f $D/portal/req/900-10.json; w8 '! grep -q "^ontop do-portal$" $D/state' 40; b=$(ev do-portal "document.querySelectorAll('.lxfd').length")
+w8 'grep -q "^ontop do-bg$" $D/state' 40; timeout 1 tail -f /dev/null; a=$(ev do-bg "document.querySelectorAll('.lxfd').length")
+rm -f $D/portal/req/900-10.json; w8 '! grep -q "^ontop do-bg$" $D/state' 40; b=$(ev do-bg "document.querySelectorAll('.lxfd').length")
 ok "5. a dialog whose app went away (its request withdrawn) closes, unanswered" "$([ "$a" = 1 ] && [ "$b" = 0 ] && [ "$(answers 900-10)" = 0 ] && echo 1)" "$a $b $(grep -E '^(ontop) ' $D/state)"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

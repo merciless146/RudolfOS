@@ -106,6 +106,8 @@ class H(http.server.BaseHTTPRequestHandler):
                 time.sleep(0.5)
             return self.j({'ok': True, 'events': ''})
         if w == 'test/plan': return self.send(200, rd('plan.json', b'{}'))
+        if w == 'test/slow':   # (1.6.1, rest161_t.sh: a request still going, as a download is)
+            import time, urllib.parse; time.sleep(min(60, int(urllib.parse.parse_qs(q).get('ms', ['1000'])[0] or 1000) / 1000)); return self.j({'ok': True})
         if w == 'test/list' and m == 'POST':
             import re, urllib.parse; k = urllib.parse.parse_qs(q).get('k', [''])[0]
             if re.fullmatch('[a-z0-9-]{1,40}', k): open(os.path.join(D, 'list-%s.json' % k), 'wb').write(b)

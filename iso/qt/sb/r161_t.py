@@ -89,7 +89,9 @@ try:
         # layer will have them (root's, 0700), and rudolfd started again through rudolf-rootd as rudolf-init will
         g.put(os.path.join(HERE, 'fix161.sh'), '/tmp/fix161.sh', '644'); o = sh("sh /tmp/fix161.sh", 240)
         ok('0b. this tree\'s rudolfd started again through rudolf-rootd', 'through rudolf-rootd' in o, o)
-    o = sh("R=$(pidof rudolf-rootd); P=$(for p in $(pidof rudolfd); do [ \"$(awk '{print $4}' /proc/$p/stat)\" = \"$R\" ] && echo $p; done | head -1); echo rootd=$R rudolfd=$P; "
+    # (the newest rudolf-rootd: on a release that has one, the one rudolf-init started stays until every process of its
+    # rudolfd that holds its descriptor has ended)
+    o = sh("R=$(pidof rudolf-rootd | tr ' ' '\\n' | sort -n | tail -1); P=$(for p in $(pidof rudolfd); do [ \"$(awk '{print $4}' /proc/$p/stat)\" = \"$R\" ] && echo $p; done | head -1); echo rootd=$R rudolfd=$P; "
            "echo uids $(awk '/^Uid/{print $2}' /proc/$R/status) $(awk '/^Uid/{print $2}' /proc/$P/status); stat -c '%u:%g %a %n' /usr/bin/rudolf-rootd /usr/lib/rudolf/root /usr/lib/rudolf/root/*; "
            "grep -c rootd /proc/net/unix; ls -l /proc/$R/fd | grep -c socket")
     ok('1. rudolfd is rudolf-rootd\'s child; the helpers are root\'s, 0700; rudolf-rootd has no socket in the file system', re.search(r'rootd=\d+ rudolfd=\d+', o) and '0:0 700 /usr/lib/rudolf/root/drives' in o and re.search(r'^0$', o, re.M), o)
@@ -129,8 +131,33 @@ try:
     ok('14. ...a setting (automatic updates off, then on) through the helper', o.count('"saved"') == 2 and '"auto":false' in o and '"auto":true' in o, [a0, o])
     o = sh("rm -f /run/rudolf/bootok; : > /run/rudolf/update.log", 20, False) + api(sh, 'heartbeat', True) + sh("sleep 3; cat /run/rudolf/update.log; ls -l /run/rudolf/bootok", 30)
     ok('15. ...the first heartbeat: rudolf-update boot-ok through the helper, its words in update.log', 'bootok' in o and len(o.strip()) > 0, o)
+    # power and the clock (1.6.1 Part 11, the power helper): the settings, the desktop's priority, the cache, the clock
+    o = api(sh, 'power/status')
+    ok('16. power: GET power/status through the helper is /usr/lib/rudolf/power status', re.search(r'^\{"ok":true', o.strip()) or '"ok":true' in o[:40], o[-400:])
+    o = api(sh, 'desktop/priority?on=1', True) + api(sh, 'desktop/priority') + api(sh, 'desktop/priority?on=0', True)
+    ok('17. ...the desktop\'s priority on and off (Task Manager)', '"on":true' in o and o.count('"text"') == 2, o[-600:])
+    o = api(sh, 'memory/dropcache', True)
+    ok('18. ...the file cache cleared', '"freed":' in o, o[-300:])
+    e0 = int(sh("date +%s", 20, False).strip().split()[-1])
+    o = api(sh, f'time?epoch={(e0 + 3600) * 1000}', True) + sh("date +%s", 20) ; e1 = re.findall(r'^(\d{10})$', o, re.M)
+    api(sh, f'time?epoch={(e0 + 5) * 1000}', True)
+    ok('19. ...the clock set (an hour on, then back)', 'clock set' in o and e1 and abs(int(e1[-1]) - e0 - 3600) < 120, o[-300:])
     o = sh("tail -20 /run/rudolf/rudolfd.log | grep -i 'rootd\\|refused' ; cat /persist/var/log/health.log 2>/dev/null | grep 'rootd refused' | tail -3; echo done")
     ok('11. nothing was refused by rudolf-rootd itself (every request came from rudolfd)', 'rudolf-rootd refused' not in o, o)
+    o = sh("grep -c 'the power helper did not start' /run/rudolf/rudolfd.log", 20)
+    ok('20. the power helper ran each time (rudolfd never did it itself)', re.search(r'^0$', o, re.M), o)
+    # last: restart through the API (the power helper: the shutdown script, then reboot(2)); the computer comes back
+    up0 = sh("cut -d. -f1 /proc/uptime", 20, False).strip().split()[-1]
+    api(sh, 'power?action=reboot', True, 30)
+    time.sleep(40); end = time.time() + 900; back = ''
+    while time.time() < end:
+        try:
+            r = g.sh('echo ready; cut -d. -f1 /proc/uptime', 8)
+            if 'ready' in r: back = r; break
+        except OSError: pass
+        time.sleep(4)
+    m = re.findall(r'^(\d+)$', back, re.M)
+    ok('21. Restart (the power helper): the computer restarted and came back', m and int(m[-1]) < int(up0), [up0, back])
 finally:
     try: vm and vm.stop()
     except Exception: pass
