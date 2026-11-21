@@ -237,7 +237,13 @@ function xEmptySpot(t,box){if(!t||!box.contains(t))return false;if(t.closest('[d
 /* something File Explorer can take: its own items (this window's or another's), a drive's, files from outside */
 const xDragOk=e=>!!(FC.drag||FC.dragR||(e&&e.dataTransfer&&[...e.dataTransfer.types].includes('Files')));
 /* the pointer: move, or copy with Ctrl (and always from a read-only folder; files from outside are copied) */
-function xMode(e,rr){return e&&e.ctrlKey||rr&&rr.r&&rr.r.ro?'copy':'cut'}
-function xDropFx(e){try{const dt=e.dataTransfer,ext=!FC.drag&&!FC.dragR;dt.dropEffect=ext||e.ctrlKey||(FC.dragR&&FC.dragR.r&&FC.dragR.r.ro)||[...dt.types].includes('text/x-rudolf-ro')?'copy':'move'}catch(x){}}
+/* Ctrl held: WebKit (Lite and Native) gives a drop no modifier keys (GitHub's WebKit check, real input): the keys are
+   followed here, and the drag's own action (copy, when the system's drag took Ctrl) is taken too */
+const XFK={ctrl:false,fx:''};
+addEventListener('keydown',e=>{if(e.key=='Control')XFK.ctrl=true},true);addEventListener('keyup',e=>{if(e.key=='Control')XFK.ctrl=false},true);addEventListener('blur',()=>{XFK.ctrl=false});
+['dragover','drag'].forEach(t=>document.addEventListener(t,e=>{if(e.ctrlKey)XFK.ctrl=true},true));document.addEventListener('dragend',()=>{XFK.fx=''},true);
+function xCopy(e){if(!e)return false;let os=false;try{os=e.type=='drop'&&XFK.fx=='move'&&e.dataTransfer&&e.dataTransfer.dropEffect=='copy'}catch(x){}return !!(e.ctrlKey||XFK.ctrl||os)}
+function xMode(e,rr){return xCopy(e)||rr&&rr.r&&rr.r.ro?'copy':'cut'}
+function xDropFx(e){try{const dt=e.dataTransfer,ext=!FC.drag&&!FC.dragR;dt.dropEffect=ext||e.ctrlKey||XFK.ctrl||(FC.dragR&&FC.dragR.r&&FC.dragR.r.ro)||[...dt.types].includes('text/x-rudolf-ro')?'copy':'move';XFK.fx=dt.dropEffect}catch(x){}}
 /* the targets' highlight goes when the drag ends, wherever it ends */
 ['dragend','drop'].forEach(t=>document.addEventListener(t,()=>setTimeout(()=>document.querySelectorAll('.xp25 .xdt,.xp25 .dt').forEach(x=>x.classList.remove('xdt','dt')),0)));

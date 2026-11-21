@@ -34,7 +34,7 @@ if(ONEAPP){
   try{if(typeof FC=='object'&&FC.dragR&&FC.dragR.items&&FC.dragR.items.length&&e.dataTransfer)e.dataTransfer.setData(TR,JSON.stringify(FC.dragR))}catch(x){}});
  const empty=()=>(!FC.drag||!FC.drag.length)&&(!FC.dragR||!FC.dragR.items||!FC.dragR.items.length);
  document.addEventListener('dragenter',e=>{if(!ours(e)||typeof FC!='object')return;if(!lent&&!FC.drag&&!FC.dragR){if(has(e,TR))FC.dragR={r:{ro:has(e,'text/x-rudolf-ro')},items:[]};else FC.drag=[];lent=1}else if(lent)lent++},true);
- document.addEventListener('dragover',e=>{if(lent&&ours(e))try{e.dataTransfer.dropEffect=e.ctrlKey||has(e,'text/x-rudolf-ro')?'copy':'move'}catch(x){}},true);   /* (WebKit gives a drag from another page none) */
+ document.addEventListener('dragover',e=>{if(lent&&ours(e))try{e.dataTransfer.dropEffect=e.ctrlKey||(typeof XFK=='object'&&XFK.ctrl)||has(e,'text/x-rudolf-ro')?'copy':'move'}catch(x){}},true);   /* (WebKit gives a drag from another page none) */
  document.addEventListener('dragleave',e=>{if(lent&&--lent==0&&empty()){FC.drag=null;FC.dragR=null}},true);
  document.addEventListener('drop',e=>{if(lent&&ours(e)){lent=0;FC.drag=null;FC.dragR=null;try{if(has(e,TR))FC.dragR=JSON.parse(e.dataTransfer.getData(TR));else FC.drag=JSON.parse(e.dataTransfer.getData(T))}catch(x){FC.drag=null;FC.dragR=null}}},true);
  document.addEventListener('dragend',()=>{if(lent){lent=0;if(empty()){FC.drag=null;FC.dragR=null}}});
