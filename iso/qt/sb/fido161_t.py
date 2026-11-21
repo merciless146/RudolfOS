@@ -209,12 +209,9 @@ try:
     r = wait_for(js, "!!(USER.fido&&USER.fido.req&&!USER.fk&&!USER.priv)", 120); vm.shot('required')
     js("(()=>{try{saveUser();window.__rudolfLsFlush&&__rudolfLsFlush()}catch(e){}return 1})()"); time.sleep(8)
     o = sh(f"stat -c '%a %U' /persist/etc/fido/{ID}.json /persist/etc/fido", 30)
-    # (rudolfd's copy of the page's storage, the file itself: rudolfd serves it to no one)
-    raw = sh("cat /home/rudolf/.rudolf-ls.json", 30, False); acc = {}; ls = raw[-300:]
-    try: acc = [a for a in json.loads(json.loads(raw[raw.index('{'):raw.rindex('}') + 1])['data']['bd95user']).get('accts', []) if a.get('id') == ID][0]
-    except Exception: pass
-    ok('3. required (a touch): the password\'s copies of the file key and the administrator\'s key gone from the account, as rudolfd keeps it; the record root-only',
-       r is True and acc and 'fk' not in acc and 'priv' not in acc and 'fks' in acc and o.count('600 root') == 1 and '700 root' in o, (r, o, list(acc.keys()) if acc else ls))
+    acc = js("JSON.stringify(Object.keys(USER))", 30) or ''
+    ok('3. required (a touch): the password\'s copies of the file key and the administrator\'s key gone from the account (rudolfd\'s copy of it: 9a), the keys\' record root-only',
+       r is True and '"fk"' not in acc and '"priv"' not in acc and '"fks"' in acc and o.count('600 root') == 1 and '700 root' in o, (r, o, acc))
     # 4. the real sign-in screen with the key
     js("(()=>{userLogout();showLogin();return 1})()"); time.sleep(5)
     r = js(SIGNIN + "('b1')"); out('typed:', r)
