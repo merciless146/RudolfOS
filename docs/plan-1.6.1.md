@@ -913,7 +913,8 @@ authenticator codes were built there (desktop/otp60.js, rudolfd's `desktop/secon
   stand-in rudolfd: the key asked at once after the password, a wrong key, Enter asking again); `iso/qt/sb/fido161_t.py` (QEMU, the newest beta with this tree's page, rudolfd and libfido2:
   the keys as real HID devices in the guest through uhid, `iso/qt/vfido_uhid.c`, their reports over a serial port to
   vfido.py on the host; the real Settings and sign-in screen, the lock screen, rudolfd's native sign-in, and the drive
-  image read on the host afterwards). **Not covered yet:** Native's and Lite's own screens with a key in QEMU (Native's
+  image read on the host afterwards; 2026-11-21, after #522: everything passes in CI but item 3's read of rudolfd's copy of the
+  page's storage, asked by wget, which rudolfd does not serve: the account is checked in the page now, and rudolfd's copy on the disk image, 9a). **Not covered yet:** Native's and Lite's own screens with a key in QEMU (Native's
   shows the request's message under the password field, not the page's dialog: a difference to fix in Native), a recovery
   code, the elevation prompts (an administrator's password only), "Encrypt my data"'s copy of its key (password only).
 
