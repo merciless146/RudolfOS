@@ -1684,6 +1684,78 @@ This loading feature is green by default but can be set to other colors." For wo
   Vivobook:** minimize Oracle while a big page loads; a download with Oracle minimized; a file copy (File Explorer minimized);
   change the colour (a preset, the accent colour, any colour); each on Standard and Native.
 
+### 27. Blitzen's code runs, links and actions sandboxed (added on 2026-11-21)
+The owner, 2026-11-21: "Add items 1, 2, and 3, as well as the 'learn from what I do' and 'developer mode's test-computer commands'
+options to the next beta". Blitzen's model writes what it is asked for, and it reads what it is given: a web page from Search the
+web, a file, a pasted text. Whatever such a text makes it write (a prompt injection) must not act with the desktop's rights. Read
+from the code on 2026-11-21 and each tried first with a test (iso/qt/host/blzbox161_t.sh against main's page: the exploits succeed
+there, and fail here). Part 26 (Blitzen's secret guards: a secret detector, the output and input guards) is another session's; this
+part keeps to its own functions (desktop/blzbox61.js) and uses a small secret check of its own until Part 26's detector lands.
+1. **JavaScript Blitzen writes reached the whole system (serious; confirmed).** blzRunJS ran it in a Web Worker made from a blob
+   URL, in the desktop's own origin: `WorkerGlobalScope.prototype.fetch` (left there when self.fetch was hidden) read "/", the desktop
+   page with rudolfd's token in it (test: "OK <!DOCTYPE html>…token…"); a worker it started had nothing hidden; the desktop's
+   IndexedDB and Cache storage were open to it. With "Check code by running it" on, check() ran model-written code with no click.
+   **Fixed:** the code runs in a frame with no origin (sandbox="allow-scripts", never allow-same-origin) whose policy is
+   `default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; worker-src blob:; form-action 'none'; base-uri 'none'`, and inside
+   it in a worker: no page, no window to post to or navigate, no storage of the desktop's, no request to anywhere (the policy goes with
+   any worker it starts). The frame sends back one message, its output; the desktop takes it only from that frame, with that run's
+   number. Output and the 10-second limit as before. On Native (WebKitGTK) the same, checked the same way.
+   The token in the page itself: a script of the page's origin could always read it; with Blitzen's code out of the origin, nothing
+   Blitzen writes can. Narrowing it (a token per window, kept out of the page's text) is for later, not this part.
+2. **Lua Blitzen writes changed the person's files (confirmed, and more):** it ran in the page with makeSys and the kernel's
+   `require('js')`: the page itself (rudolfd's token, the document), another account's files, opening apps. **Fixed:** it runs in the
+   same sandbox (Fengari's own copy, the kernel, a sys over a copy of the account's own folder, in memory; big files and anything past
+   8 MB left out). "Check code by running it" throws the copy away (the output says how many files it changed there). ▶ Run, started
+   on purpose: when the program changed files, the desktop's own dialog lists each one (new, changed, removed to the Recycle Bin, a new
+   folder) before anything of the person's changes, and refuses anything outside the account's own folder, a kind of file a program
+   may not write, or a file changed meanwhile; Keep these changes or Discard (Discard has the focus). A program that reads input gets
+   it asked for first (the sandbox cannot stop to ask). Graphics, Emu, Quake and opening apps are not there: Insert puts the program
+   in Code Editor, where they are. (This asks after the run, naming exactly what it did, rather than before, naming what it might.)
+   An HTML answer's preview (▶ Run, never by itself): a frame with no origin inside one that may load nothing (frame-src 'none'):
+   no image, style, form, link, navigation or request reaches any address; it no longer gets the app bridge (clipboard, files).
+   Luau and Pilot.lua run in WebAssembly with no access to the page (unchanged); Python and C++ in ai/run's sandbox (Part 26's check).
+3. **Links in answers (not clickable on main: answers were text; made safe as links now).** Only the addresses of the pages the web
+   search read (the numbered sources) and Rudolf OS's own documents (the official repository's pages, nothing after the path) open
+   with a click; any other address is shown whole and opens only after "Open this address?" (its site in bold, each thing it would
+   send listed, Cancel with the focus). Answers stay text (blzMd): no image, nothing that loads an address by itself.
+4. **"Learn from what I do" (confirmed: kept outside the encrypted homes).** The activity was in /persist/os/know/acct/ID.log and the
+   setting in ID.on (root's, but not encrypted, and kept when the account's folder was locked); the notes in the page's shared storage
+   (localStorage, and rudolfd's copy of it in /home/rudolf). **Fixed:** the activity, the notes and the setting itself are in the
+   account's own encrypted home folder (.rudolf/blitzen: its Linux user's, 0700; files 0600), and only while it is open (signed in);
+   rudolfd gives rudolf-know the folder (--home), never a name the page sends; 1.6.0's copies are moved in the first time and removed;
+   an account removed leaves nothing outside its folder (rudolfd-users.inc); turned off: asks whether to forget (as before); See what
+   Blitzen knows › Forget (as before); off at first (as before). A line or note with a password, token or key is not kept (rudolf-know's
+   rules, the logs' own; Part 26's detector when it lands). Without the account's folder (not on the disk, or locked) nothing is kept.
+   The model engine: --slot-save-path was set (to /persist/ai/cache, outside the encrypted homes) but nothing used it (rudolfd asks
+   only for /v1/chat/completions): taken out, so no conversation's state can be saved to disk; the engine's folder is emptied at its
+   start (anything an older one saved there); its prompt cache is in its memory only.
+5. **Developer mode's test-computer commands.** Every command Blitzen proposes is shown whole in the desktop's own dialog (long ones
+   scroll, nothing cut; the number of lines said), with what is risky in plain words (deleting or overwriting files, the firewall or
+   the network, installing or removing software, downloading and running something, Secure Boot or the boot entries, sending data
+   off the computer, restarting, stopping programs, as root, files with keys); Refuse has the focus; no "allow all", nothing
+   remembered. One command waits at a time (the page, and rudolfd: 429 while the last one is waited for, free once its result is read
+   or 2 minutes after nobody asked). A command carrying a password, token or key is refused, in the page and in rudolfd (never given
+   to rudolf-dev). A workflow to start: its file shown whole, publishing and the repository's secrets said; a pull request: the whole
+   change, a big removal said, a secret in what it adds refused. (The dialog is the desktop's: neither the model nor any page, the
+   sandboxes above included, can reach it.)
+- **Tests:** iso/qt/host/blzbox161_t.sh (Playwright on Standard, and rudolf-native's app window under Xvfb, with the stand-in
+  rudolfd and a scripted stand-in model, fixtures/blzbox161_inject.js): each exploit tried and failing, ordinary code still running,
+  Run and check still fixing code, a program that never ends stopped, the files' dialog, the preview, the links, Developer mode's
+  dialogs; no request of any exploit reaching the stand-in rudolfd. iso/qt/host/blzlearn161_t.sh (as root, an ext4 drive with the
+  encrypt feature: the files' owner, mode and place, the move from 1.6.0, another account refused, locked, off, forgotten, an account
+  removed; the engine's arguments). iso/qt/host/blzdev161_t.sh (rudolfd's dl-send: no secret, one at a time). aiindex60_t.sh changed
+  for --home. The Blitzen check workflow: .github/workflows/blitzen-sandbox-check.yml.
+- **For later:** the token in the page (a token per window); the HTML preview can still post a message to the desktop's window (it
+  does nothing: every listener checks where a message comes from; a sweep of them is worth doing); the Windows app's Blitzen
+  (windows/ui/blitzen.js) runs JavaScript the same old way (its webview's IPC is not reachable from a worker, but the same sandbox
+  should go there); switch the small secret checks (blzdSecret, dev_secretish, rudolf-know's) to Part 26's detector.
+- **Status (2026-11-21, branch blitzen-sandbox):** built, all five. **For the owner, on the Vivobook (Standard and Native):** with
+  "Check code by running it" on, ask Blitzen for a JavaScript program and a Lua program that writes a file (it runs and is checked;
+  the Lua's file is not written); ▶ Run the Lua one: the dialog lists the file; Keep, and it is there; a link in an answer (one
+  from Search the web opens; one Blitzen wrote asks first); Learn from what I do on, open a few apps, See what Blitzen knows lists
+  them; turn it off, Forget: nothing listed; Developer mode: a test-computer command proposed in the chat, shown whole with its
+  risks, refused, then allowed.
+
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
   1.6.0 instead"): docs/plan-1.6.0.md Part 22.
@@ -1718,3 +1790,5 @@ This loading feature is green by default but can be set to other colors." For wo
 11. Part 24 (Settings' pages built from one list), after every other 1.6.1 task's PR, before the final beta.
 12. Part 25 (progress on a minimized window's taskbar button): one PR (taskbar-progress), then the owner's checks on the Vivobook;
     Linux apps' progress (item 5) in docs/plan-1.6.2.md (25b).
+13. Part 27 (Blitzen's code runs, links and actions sandboxed): one PR (blitzen-sandbox), before the next beta (the owner, 2026-11-21),
+    then the owner's checks on the Vivobook; Part 26 (Blitzen's secret guards, another session's) beside it.

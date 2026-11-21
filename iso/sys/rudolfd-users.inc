@@ -173,6 +173,7 @@ static int au_page_ids(char (*ids)[80], int max)
 	}
 	free(list); return ni;
 }
+static void know_acct_gone(const char *acct);   /* rudolfd-know.inc (1.6.1 Part 27) */
 /* the users as those accounts are (1.6.1: in the accounts helper, rudolf-accounts.c; by rudolfd itself without it) */
 static int au_sync_ids(char (*ids)[80], int ni)
 {
@@ -196,6 +197,7 @@ static int au_sync_ids(char (*ids)[80], int ni)
 		if (still) continue;
 		au_kill_user(e[i].uid); au_uninstall(e[i].uid); e[i].retired = 1; changed = 1;
 		oweb_remove(e[i].id);   /* (1.6.0 Part 22) its encrypted Oracle folder too */
+		know_acct_gone(e[i].id);   /* (1.6.1 Part 27) and anything of Blitzen's of it left outside its folder */
 		health_add("account", "the account %.80s was removed, and its Linux user (acct%u) with it", e[i].id, e[i].uid);
 	}
 	if (changed && au_write(e, n)) health_add("account", "the list of the accounts' Linux users could not be kept");

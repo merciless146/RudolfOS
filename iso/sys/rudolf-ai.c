@@ -15,6 +15,7 @@
  */
 #define _GNU_SOURCE
 #include <ctype.h>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -214,6 +215,23 @@ static void quiet_fds(const char *log)
 }
 /* the engine sees the system but none of the user's files: in a mount namespace of its own, the home folder,
  * USB drives, /tmp, /run/rudolf and the data partition (all but /persist/ai) are covered by empty folders */
+/* 1.6.1 (docs/plan-1.6.1.md Part 27, item 4): the engine's arguments. No --slot-save-path: nothing asks the engine to save a
+   conversation's state (rudolfd sends only /v1/chat/completions), so none is ever written to disk; what it keeps between
+   questions (the prompt cache) is in its memory and ends with it. "rudolf-ai engine-args" prints them (the host test). */
+static void engine_argv(const char **av, const char *model, const char *port, const char *ctx, const char *th)
+{
+	const char *const a[] = { "llama-server", "-m", model, "--host", "127.0.0.1", "--port", port, "-c", ctx, "-t", th,
+		"-np", "1", "-n", "1536", "--cache-type-k", "q8_0", "--no-webui", "--jinja", NULL };
+	int i = 0; for (; a[i]; i++) av[i] = a[i]; av[i] = NULL;
+}
+/* (and anything an older engine saved there, before 1.6.1, removed: the engine's folder keeps no conversation) */
+static void cache_clear(void)
+{
+	DIR *d = opendir(CACHE); if (!d) return; struct dirent *e; int fd = dirfd(d);
+	while ((e = readdir(d))) { if (e->d_name[0] == '.' && (!e->d_name[1] || (e->d_name[1] == '.' && !e->d_name[2]))) continue;
+		struct stat st; if (!fstatat(fd, e->d_name, &st, AT_SYMLINK_NOFOLLOW) && !S_ISDIR(st.st_mode)) unlinkat(fd, e->d_name, 0); }
+	closedir(d);
+}
 static void hide_user_files(void)
 {
 	if (unshare(CLONE_NEWNS)) return;
@@ -260,6 +278,7 @@ static int cmd_load(void)
 	long need = conf_num("min_mem_mb", 1536);
 	if (mem_avail() < (long long)need << 20) die("not enough free memory to start Blitzen (%lld MB free, %ld MB needed); close some apps or games and try again", mem_avail() >> 20, need);
 	mkdirs(CACHE, 0755); if (chown(CACHE, AI_UID, AI_UID)) {}
+	cache_clear();
 	unsigned char rb[18]; char key[40]; int rf = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
 	if (rf < 0 || read(rf, rb, sizeof rb) != sizeof rb) die("no randomness"); close(rf);
 	for (int i = 0; i < 18; i++) sprintf(key + 2 * i, "%02x", rb[i]);
@@ -274,8 +293,7 @@ static int cmd_load(void)
 		if (chdir(CACHE)) if (chdir("/")) {}
 		clearenv(); setenv("PATH", "/usr/bin:/bin", 1); setenv("HOME", CACHE, 1);
 		setenv("LLAMA_API_KEY", key, 1);    /* not on the command line, where every user could read it */
-		execl(ENGINE, "llama-server", "-m", model, "--host", "127.0.0.1", "--port", port, "-c", ctx, "-t", th,
-		      "-np", "1", "-n", "1536", "--cache-type-k", "q8_0", "--slot-save-path", CACHE, "--no-webui", "--jinja", (char *)NULL);
+		const char *av[32]; engine_argv(av, model, port, ctx, th); execv(ENGINE, (char *const *)av);
 		_exit(127);
 	}
 	memset(key, 0, sizeof key);
@@ -317,6 +335,7 @@ int main(int argc, char **argv)
 	if (argc < 2) die("usage: rudolf-ai status|download|load|unload|remove");
 	const char *c = argv[1];
 	if (!strcmp(c, "status")) return cmd_status();
+	if (!strcmp(c, "engine-args")) { const char *av[32]; engine_argv(av, "MODEL", "PORT", "CTX", "THREADS"); for (int i = 0; av[i]; i++) say("%s", av[i]); return 0; }
 	if (!strcmp(c, "download")) return cmd_download();
 	if (!strcmp(c, "load")) return cmd_load();
 	if (!strcmp(c, "unload")) { if (getuid()) die("run as root"); stop_engine(); say("stopped"); return 0; }
