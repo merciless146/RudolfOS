@@ -66,6 +66,10 @@ Summary: In progress.
   the top of Downloads); only those at the top are renamed on the disk when renamed. Deleting them, the Trash and
   Downloads' own files work as before.
 - Fixed: the release build no longer stops when linux-firmware updates a file: it takes linux-firmware at the commit the firmware list was made from (the list's new "R" line), and a check runs that fetch on every change to the list.
+- Changed: Oracle › ☰ › Reopen my tabs next time now brings back every Oracle window you had, the tabs asleep (💤, loaded
+  when clicked) except the one in front, so Oracle starts quickly. After Oracle or the desktop ended unexpectedly, the next
+  Oracle window offers "Restore your tabs?" once, even with the setting off. Your tabs are kept in your own encrypted home
+  folder (locked when you sign out), no longer in the desktop's settings. Never for private or Tor windows, or Guest.
 - Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
   follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at
   start-up wait until the others have started, so their memory peaks no longer come all at once.

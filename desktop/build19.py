@@ -25,6 +25,7 @@ for _m in mods:
 # and a stub of the same name loads the file, then calls the real one (which the file defines anew). A file that
 # cannot load says so, with Try again. lazyApp(group) loads one by hand (WordPro's "Insert a spreadsheet table" and
 # "Make a presentation" need SpreadsheetPro's and PresentPro's code).
+mods.append('orasession61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's session in the account's folder
 LAZY={'sheet':(['spreng45.js','sprof45.js','spro45.js'],'sheetApp','SpreadsheetPro'),'deck':(['pprof45.js','ppro45.js'],'deckApp','PresentPro')}
 LAZY_CODE={};LAZY_REG={}
 for _g,(_fs,_fn,_nm) in LAZY.items():
