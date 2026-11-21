@@ -16,7 +16,7 @@
 #include <X11/XKBlib.h>
 static const struct { const char *n; int c; } NAMES[] = {
 	{"ctrl", KEY_LEFTCTRL}, {"shift", KEY_LEFTSHIFT}, {"alt", KEY_LEFTALT}, {"w", KEY_W}, {"t", KEY_T}, {"n", KEY_N}, {"q", KEY_Q},
-	{"a", KEY_A}, {"x", KEY_X}, {"F4", KEY_F4}, {"Tab", KEY_TAB}, {"Return", KEY_ENTER},
+	{"a", KEY_A}, {"x", KEY_X}, {"f", KEY_F}, {"g", KEY_G}, {"F3", KEY_F3}, {"F4", KEY_F4}, {"Tab", KEY_TAB}, {"Return", KEY_ENTER},
 	{"Left", KEY_LEFT}, {"Right", KEY_RIGHT}, {"Escape", KEY_ESC}, {NULL, 0} };
 static int code_of(const char *n) { for (int i = 0; NAMES[i].n; i++) if (!strcmp(NAMES[i].n, n)) return NAMES[i].c; return -1; }
 static struct dev KB = { .kind = 1 };
