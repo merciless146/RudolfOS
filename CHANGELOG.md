@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Apps that can use the system's title bar are asked to, once: the first time Rudolf OS starts Chromium, Brave, Edge, Vivaldi,
+  Chrome or ungoogled Chromium from Flathub, Debian's Chromium, VS Code or VSCodium, it turns on their "use the system title
+  bar" setting, so they get Rudolf's title bar with nothing lost. Only when you have not chosen otherwise in the app; your
+  other settings are kept.
 - Native: idle windows give their memory back. Notepad or File Explorer minimized, or hidden behind another window, for a
   while (Settings › System › Idle windows: on by default on computers with under 6 GB of memory, after 10 minutes) is closed
   behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size
