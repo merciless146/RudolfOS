@@ -184,6 +184,11 @@ Summary: In progress.
   Secure Boot, in place of the browser's built-in key: the drive taken out of the computer, or another system started on
   it, cannot read the sign-ins, saved site passwords and cards. Without a TPM, as before. Turning Secure Boot off or on
   makes a new key once: websites ask you to sign in again. Settings › Oracle › Website data says which way it is kept.
+- Lite: the desktop's menus and windows now open over Oracle's tabs instead of behind their pages. While something covers
+  part of a tab, a still picture of the page is shown there (taken again every 2 seconds); the page itself goes on running
+  and is back as soon as nothing covers it.
+- Lite: with the graphics card set to "Use it for games and Linux apps" (the default), Oracle's tabs are now drawn by the
+  graphics card while the desktop itself stays drawn by the processor, for smoother scrolling, games and videos in tabs.
 
 - New (docs/plan-1.6.1.md Part 19): NVIDIA's own graphics driver, by choice, for GeForce 16 and newer: Settings › Display ›
   Graphics driver, "Open (NVK)" (the default) or "NVIDIA's driver" (NVIDIA's open kernel modules and its OpenGL and Vulkan
@@ -191,6 +196,10 @@ Summary: In progress.
   Secure Boot like the kernel's own, checked by the kernel). If it cannot be used (a module refused, Xorg not starting, the
   desktop not coming up), the computer goes back to the open driver by itself and says so. Recovery mode always uses the
   open driver.
+- Several monitors, the system's part (plan Part 1): every monitor plugged in, up to three, is lit side by side, the main one
+  at the left, as Settings › Display › Displays arranged them for that set of monitors (kept per set); plugged in or out,
+  they are arranged again within a second. Linux apps and games open on the main monitor. (rudolf-display --arrange and
+  --monitors, screenctl arrange, rudolfd's screen/arrange; the software display still shows one monitor.)
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.
