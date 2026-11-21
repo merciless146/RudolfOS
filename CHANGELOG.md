@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- For the phone build to come (2.0): the groundwork of its home screen's three panels: on a build marked as the mobile
+  build, the three workspaces are panels shown full screen, switched with a swipe to the left or right on the desktop or
+  a title bar, on Standard and Native alike. Nothing changes on computers.
 - Native: idle windows give their memory back. Notepad or File Explorer minimized, or hidden behind another window, for a
   while (Settings › System › Idle windows: on by default on computers with under 6 GB of memory, after 10 minutes) is closed
   behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size

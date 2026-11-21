@@ -43,6 +43,35 @@ the groundwork: the workspaces' code from Part 1 written so a panel is a workspa
 swipe on a touch screen switching workspaces on both desktops (tested with a touch screen in QEMU and on the phone of
 Part 4). The phone's home screen itself, with its status bar, notification shade and app grid, is 2.0's phone build
 (stage 2).
+#### 2.1 Status: the groundwork (2026-11-21, branch panels-161; panels-check.yml)
+- **The mobile build's flag:** /etc/rudolf/build-kind holding "mobile" in the system layer (no build writes it yet: 2.0's
+  phone build will; a root shell writes it for the tests). rudolfd tells the page (RUDOLFD.mobile, beside the token),
+  rudolf-native reads it itself (pn_on; RUDOLF_NATIVE_BUILD_KIND names another file). Without it nothing below runs:
+  the desktop builds look and work as before (checked: no class, no style, a swipe switches nothing).
+- **The layout model (the page, desktop/panels61.js):** a panel is a workspace shown full screen: the three workspaces
+  (NWS, WS of shell25.js) are the panels, the tablet layout of 1.5.8 kept on (each window filling the screen);
+  pnSwipe(dx, dy, ms, width) decides from a finger's way: at least 48 px or 15 % of the width, mostly horizontal (1.5
+  times the vertical), within 0.9 s; to the left the next panel, to the right the one before; pnTarget never past the
+  first or the last. Native has the same decision in C (pn_swipe).
+- **Switching:** a horizontal swipe on the desktop or on a window's title bar (not from the right or bottom edge, the
+  tablet layout's own for the notifications and Start; never inside an app's page, which keeps its own touch), and the
+  workspace keys (Ctrl+Alt+arrows) as before; the panel slides in from the side it comes from. On Rudolf OS a touch
+  screen reaches X as the pointer (rudolf-display's XTest), so the swipe is taken from the pointer too; in a browser
+  with touch, from touch. Native (rudolf-native.c, in functions of their own beside the workspaces' ws_go): each window
+  maximised as it comes (pn_client), a press on a maximised window's title bar followed to its release (pn_press,
+  pn_release), the desktop's own presses watched before its icons' handlers (pn_desk_event).
+- **Kept small for Part 1** (several monitors, on the same workspaces, in its own session): the page wraps wsGo and
+  tabletOn from a file of its own; Native adds four one-line calls (wm_manage, frame_press, frame_release, the start).
+  An app's own page (#app=, the native desktop's windows) has no panels of its own: the native shell has them.
+- **Tests:** iso/qt/shell2/panels61_t.js (41 checks in Playwright's Chromium at phone sizes with touch: Pixel 7 portrait
+  and landscape, iPhone 13; swipes through DevTools' touch events and as the pointer; the model; the edges; a window
+  full screen and its title bar; the keys and the slide; nothing on the desktop builds, at a phone's size with touch
+  and on a computer; nothing in an app's own page); in QEMU on the 1.6.0 stable release with this tree's rudolfd, page
+  and rudolf-native put in place, iso/qt/sb/pn161_t.py: Standard and Native without the flag (nothing) and with it,
+  swiped on QEMU's tablet, which rudolf-display takes as a touch screen. QEMU's virtio-multitouch reports only the
+  multi-touch axes, which rudolf-display does not read (it reads ABS_X and ABS_Y, as real touch screens' drivers also
+  report them): noted for 2.0's Wayland input, not changed here.
+- **For the owner:** none needed now (nothing changes on the desktop builds); the phone of Part 4 when it is there.
 
 ### 3. Lite, refined as a compatibility option (from 1.6.0 Part 15)
 Decided by the owner on 2026-11-15: Native replaces Lite as the desktop; Lite stays in Settings › System health ›

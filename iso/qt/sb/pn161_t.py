@@ -102,21 +102,25 @@ try:
         return sh("sh /tmp/fix161.sh; WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; cp /tmp/fx/index.html /tmp/page.html; chmod 644 /tmp/page.html; mountpoint -q $WWW/index.html || mount --bind /tmp/page.html $WWW/index.html; "
                   + ("pkill -f '[-]-rudolf-kiosk'; echo reloaded" if reload else "echo placed"), 300)
     if FIX: o = fix(True); ok('S0b. this tree\'s rudolfd and page in place', 'through rudolf-rootd' in o and 'reloaded' in o, o)
-    end = time.time() + 600
-    while time.time() < end and js("typeof acctNew=='function'&&typeof wsGo=='function'&&typeof pnSwipe=='function'", 20) is not True: time.sleep(5)
-    time.sleep(20); js(INIT_JS)
-    js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120)
     LOGIN = ("(async()=>{try{const a=ACCTS.find(x=>x.n=='boss');if(USER)userLogout();USER=a;await userLogin(a,'b1');lastInput=Date.now();"
              "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()")
-    out('sign-in:', js(LOGIN, 300)); wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300); time.sleep(8)
+    def page_in(make, extra='true'):
+        # (the page may load once more after a reload: signed in once it is up, again if it loaded meanwhile)
+        for attempt in range(3):
+            end = time.time() + 600
+            while time.time() < end and js(f"typeof acctNew=='function'&&typeof wsGo=='function'&&typeof pnSwipe=='function'&&typeof ACCTS=='object'&&({extra})", 20) is not True: time.sleep(5)
+            time.sleep(20); js(INIT_JS)
+            if make or not js("ACCTS.some(x=>x.n=='boss')"): js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120)
+            out('sign-in:', js(LOGIN, 300))
+            if wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300) is True: break
+        time.sleep(8)
+    page_in(True)
     SW, SH = js("[innerWidth,innerHeight]") or [1280, 800]; my = SH // 3
     js("(()=>{wins.slice().forEach(w=>w.close());wsGo(1);return 1})()"); time.sleep(1)
     swipe(g.q, SW * 0.8, my, SW * 0.2, my, SW, SH)
     ok('S1. the desktop build (no flag): no panels, a swipe on the desktop switches nothing', js("!document.documentElement.classList.contains('panels')&&WS==1") is True, js("[document.documentElement.className,WS]"))
     o = sh(FLAG + "; pkill -f '[-]-rudolf-kiosk'; echo reloaded", 60)
-    end = time.time() + 300
-    while time.time() < end and js("typeof wsGo=='function'&&typeof RUDOLFD=='object'&&RUDOLFD.mobile==1", 20) is not True: time.sleep(5)
-    time.sleep(15); js(INIT_JS); out('sign-in again:', js(LOGIN, 300)); wait_for(js, "!!(USER&&USER.disk&&hdOn())", 300); time.sleep(8)
+    page_in(False, "typeof RUDOLFD=='object'&&RUDOLFD.mobile==1")
     ok('S2. the mobile build\'s flag: RUDOLFD.mobile, the panels on (each a workspace full screen: the tablet layout)', js("RUDOLFD.mobile==1&&document.documentElement.classList.contains('panels')&&document.documentElement.classList.contains('tablet')") is True, js("[document.documentElement.className,RUDOLFD.mobile]"))
     js("(()=>{wins.slice().forEach(w=>w.close());wsGo(1);return 1})()"); time.sleep(1)
     seq = []
@@ -142,7 +146,7 @@ try:
     def st_get(st, k):
         m = re.search(rf'^{k} (.*)$', st, re.M); return m.group(1) if m else None
     def restart_native(flag):
-        return sh((FLAG + "; " if flag else "rm -f /etc/rudolf/build-kind; ") + "rm -f /tmp/nstate; P0=$(pgrep -f 'rudolf-native [-]-rudolf-kiosk'); kill $P0; sleep 3; kill -9 $P0 2>/dev/null; for i in $(seq 1 90); do [ -s /tmp/nstate ] && break; sleep 2; done; head -2 /tmp/nstate", 300)
+        return sh((FLAG + "; " if flag else "rm -f /etc/rudolf/build-kind; ") + "rm -f /tmp/nstate; P0=$(pgrep -f 'rudolf-native [-]-rudolf-kiosk'); kill $P0; sleep 3; kill -9 $P0 2>/dev/null; for i in $(seq 1 90); do [ -s /tmp/nstate ] && break; sleep 2; done; grep -m1 '^screen ' /tmp/nstate", 300)
     if FIX:
         fix(False)
         o = sh("X=/run/r161x; cp /tmp/fx/rudolf-native $X/rudolf-native; chmod 755 $X/rudolf-native; rm -f /tmp/teval /tmp/teval.out; mkfifo -m 666 /tmp/teval; mountpoint -q /usr/bin/rudolf-native || mount --bind /tmp/fx/rn /usr/bin/rudolf-native; echo bound", 60)
@@ -183,7 +187,13 @@ try:
     swipe(g.q, SW * 0.2, my, SW * 0.8, my, SW, SH); seq.append(st_get(state(), 'ws'))
     ok('N4. Native: a swipe on the window\'s title bar, then on the desktop: the next workspace, the third, not past it, back', seq == ['2', '3', '3', '2'], seq)
     vm.shot('nat-panel')
-    g.q.key('ctrl', 'alt', 'left'); time.sleep(1.5); a = st_get(state(), 'ws'); g.q.key('ctrl', 'alt', 'right'); time.sleep(1.5); b = st_get(state(), 'ws')
+    def ws_after(keys, want):
+        g.q.key(*keys); v = None
+        for _ in range(8):
+            time.sleep(1.5); v = st_get(state(), 'ws')
+            if v == want: break
+        return v
+    a = ws_after(('ctrl', 'alt', 'left'), '1'); b = ws_after(('ctrl', 'alt', 'right'), '2')
     ok('N5. Native: the keys (Ctrl+Alt+arrows) as before', a == '1' and b == '2', (a, b))
     out(sh("grep -v 'dbus\\|Warning' /run/rudolf/native-desktop.log | tail -20", 30, False))
 except RuntimeError as e:
