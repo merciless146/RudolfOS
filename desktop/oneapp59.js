@@ -253,6 +253,10 @@ html.oamwait .rmodal,html.oamwait .natdlg,html.oamwait #oamodalbg{opacity:0!impo
  /* (the ✕ button, not W.close: apps that ask about unsaved work watch the button) */
  window.__oneAppClose=()=>{const m=OA.main;if(m&&m.el.isConnected){const c=m.el.querySelector('.tb .cl');if(c)c.click();else m.close()}else oaDone()};
 }
+/* (1.6.0) the sign-in screen is kept hidden from the start in an app's window (html.oaboot, base_v24.html's head): shown only when
+   this window really needs it (no native session: the page opened by hand), and never left hidden for more than 15 s */
+function oaShowLogin(f){document.documentElement.classList.remove('oaboot');return f()}
+setTimeout(()=>{if(!OA.opened)document.documentElement.classList.remove('oaboot')},15000);
 async function oaStart(showLogin0){
  let s=null;
  if(typeof RD!='undefined'&&RD){try{s=await rd('desktop/session')}catch(e){s=null}}
@@ -261,14 +265,14 @@ async function oaStart(showLogin0){
  if(!(s&&s.id)&&typeof RD!='undefined'&&RD&&ONEAPP&&ONEAPP.q.get('tor')=='1'){try{s=await rd('torwin/session')}catch(e){s=null}}
  let a=null;
  if(s&&s.id){a=s.r=='guest'?{n:'Guest',r:'guest',id:'guest',h:''}:ACCTS.find(x=>x.id==s.id)||null}
- if(!a){OA.login=1;return showLogin0()}
+ if(!a){OA.login=1;return oaShowLogin(showLogin0)}
  try{LG.style.display='none'}catch(e){}
  USER=a;
  try{const ks={pk:oaHex(s.pk),fk:oaHex(s.fk)};if(a.r!='guest'&&!ks.pk&&!ks.fk)throw new Error('no keys');await userLogin(a,null,a.r=='guest'?null:ks)}
- catch(e){console.warn('one-app sign-in',e);OA.login=1;USER=ACCTS[0]||null;return showLogin0()}
+ catch(e){console.warn('one-app sign-in',e);OA.login=1;USER=ACCTS[0]||null;return oaShowLogin(showLogin0)}
  try{userUI()}catch(e){}}
 function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
- try{LG.style.display='none'}catch(e){}
+ try{LG.style.display='none'}catch(e){}document.documentElement.classList.remove('oaboot');   /* (1.6.0: hidden now; a later sign-in screen shows as usual) */
  const da0=/^do-/.test(ONEAPP.k)?ONEAPP.k.slice(3):'';if(da0=='desk'||da0=='fs'){OA.want=1;(da0=='desk'?oaDesk:oaFs)();return}
  /* (1.6.0 Part 12, item 6) the native desktop's screen saver: the page's own (ssRun) in this window, which the shell shows full
     screen above everything and closes when the person is back (#app=do-saver&style=NAME&time=0|1) */
