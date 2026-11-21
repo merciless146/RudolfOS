@@ -51,6 +51,11 @@ rudolf-native never reads that copy itself, and never sees a password hash or a 
 
 `desktop/engine` and `desktop/priority` are older (1.5.7: Settings' desktop engine; Task Manager's priority).
 
+## The website data's key (1.6.1, docs/plan-1.6.1.md Part 20; rudolfd-webkey.inc)
+| Request | What it does |
+|---|---|
+| `GET webkey` | What keeps the shared browser profile's website data at this start (written by the session's webkey_start): `{"state","why","t"}`, state `tpm` (a key sealed in this computer's TPM; `why`: why it is a new one, if it is), `none` (no TPM 2.0: Chromium's built-in key), `failed` (the TPM would not give it at this start; `why`), `off` (not started: an older session, or Lite). Never the key. docs/website-data-key.md. |
+
 ## ZIP files kept on the disk (1.6.1; rudolfd-dlzip.inc, dlzip.sh)
 A download larger than 1.5 MB stays in the account's folder (/home/rudolf/Downloads/.accounts/ACCT/NAME) and Downloads holds
 a reference to it (dl27.js). For such a ZIP (dlzip61.js): `name` is its name on the disk (no `/`, not hidden, no control
