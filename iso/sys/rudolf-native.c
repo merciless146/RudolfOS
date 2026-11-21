@@ -432,7 +432,7 @@ static void wall_make(void)
 static gboolean desk_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (WALL) { cairo_set_source_surface(cr, WALL, 0, 0); cairo_paint(cr); } return TRUE; }
 
 /* ------------------------------------------------------------------ app windows (WebKit, one-app mode) */
-typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready, s2s; gint64 close_t; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
+typedef struct AppWin { GtkWidget *win, *view; char k[KN], title[256], icon[48]; int closing, id, sized, hidden, reveal, modal, pw, ph, wasontop, mfull, pready, sready, s2s; gint64 close_t, born; GdkPixbuf *pix; guint wait_t; } AppWin;   /* (wait_t: its window's upper bound before it is shown anyway, the owner's Vivobook report 1 of 2026-11-16) */   /* (pready: the portal's page (do-portal) is signed in and takes requests, 1.6.0) */   /* (hidden: a page doing something for the shell unseen; modal: a page's dialog over the screen, 2 when the page has no window of its own yet: test findings N2, N4) */
 static void ev_flush(AppWin *a);   /* (1.6.0: rudolfd's events that waited for a page) */
 static GList *WINS;   /* AppWin*, oldest first */
 static AppWin *ACTIVE;
@@ -472,8 +472,16 @@ static void ctx_make(void)
 #endif
 		NULL);
 	WebKitMemoryPressureSettings *mps = webkit_memory_pressure_settings_new();   /* as rudolf-webkit (1.5.8) */
-	webkit_memory_pressure_settings_set_memory_limit(mps, 768); webkit_memory_pressure_settings_set_conservative_threshold(mps, 0.33);
-	webkit_memory_pressure_settings_set_strict_threshold(mps, 0.5); webkit_memory_pressure_settings_set_kill_threshold(mps, 0); webkit_memory_pressure_settings_set_poll_interval(mps, 15);
+	/* 1.6.1 (the owner's Vivobook, 2026-11-20: six web processes of 250-380 MB, 400-470 MB at their start): each window's page
+	   frees its caches and collects its garbage sooner: the limit follows the computer's memory (a sixth of it, 384 to 768 MB; the
+	   Vivobook's 3.3 GB: 569 MB, so from about 190 MB it tidies and from about 285 MB it does so hard), looked at every 5 s, not 15
+	   (a page's start, where its peak is, takes a few seconds) */
+	{ unsigned lim = 768; FILE *mi = fopen("/proc/meminfo", "r"); char ln[128]; long long kb = 0;
+	  while (mi && fgets(ln, sizeof ln, mi)) if (sscanf(ln, "MemTotal: %lld kB", &kb) == 1) break; if (mi) fclose(mi);
+	  if (kb > 0) { long long m = kb / 1024 / 6; lim = (unsigned)(m < 384 ? 384 : m > 768 ? 768 : m); }
+	  webkit_memory_pressure_settings_set_memory_limit(mps, lim); }
+	webkit_memory_pressure_settings_set_conservative_threshold(mps, 0.33);
+	webkit_memory_pressure_settings_set_strict_threshold(mps, 0.5); webkit_memory_pressure_settings_set_kill_threshold(mps, 0); webkit_memory_pressure_settings_set_poll_interval(mps, 5);
 	CTX = WEBKIT_WEB_CONTEXT(g_object_new(WEBKIT_TYPE_WEB_CONTEXT, "website-data-manager", m, "memory-pressure-settings", mps, NULL));
 	webkit_memory_pressure_settings_free(mps); webkit_web_context_set_cache_model(CTX, WEBKIT_CACHE_MODEL_DOCUMENT_VIEWER);
 	g_free(home); g_free(data); g_free(cache); g_object_unref(m);
@@ -677,7 +685,7 @@ static GtkWidget *on_create(WebKitWebView *v, WebKitNavigationAction *na, gpoint
    within the last 3 s (File Explorer opening a file: corner to corner, as from the desktop): LP_S2S_T */
 static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 {
-	AppWin *a = g_new0(AppWin, 1); snprintf(a->k, sizeof a->k, "%s", k); a->id = id;
+	AppWin *a = g_new0(AppWin, 1); snprintf(a->k, sizeof a->k, "%s", k); a->id = id; a->born = g_get_monotonic_time();
 	if (LP_S2S_T && g_get_monotonic_time() - LP_S2S_T < 3000000) { a->s2s = 1; LP_S2S_T = 0; }
 	const App *ap = app_find(k); snprintf(a->title, sizeof a->title, "%s", ap ? ap->name : k); snprintf(a->icon, sizeof a->icon, "%s", ap ? ap->icon : "");
 	a->view = rel ? GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "related-view", rel, "user-content-manager", UCM, NULL))
@@ -5040,7 +5048,7 @@ static double fl_lh(cairo_t *cr, int wt, double px) { double d, a = css_ascent(c
    Settings and Power) and the notifications' centre (#ncp: Do not disturb, Clear all, each notification with its time,
    its ✕ and, for a failure, Blitzen's ⚡ Why?). A switch, Do not disturb, ✕ and Clear all are the page's own: done by a
    page unseen (#app=do-qs&item=WORDS, #app=do-nc&op=...), shown at once here and read back from rudolfd after. */
-typedef struct { char t[160], b[300], k[12]; double at; } Note;
+typedef struct { char t[160], b[300], k[12], wl[24]; double at; } Note;   /* (wl, 1.6.1: its Blitzen button's own words, "Ask Blitzen"; "": ⚡ Why? for a failure) */
 static Note NT[60]; static int NNT;
 /* (dismissed or cleared here: an answer of rudolfd's from before the page's own storage had them gone does not bring them back,
    for 15 s; told by a page (op "note") and not in rudolfd's answer yet: kept in the list 15 s) */
@@ -5054,7 +5062,7 @@ static void nt_load(JV *v)
 	NNT = 0; JV *a = jprop(v, "notif"); gint64 now = g_get_monotonic_time();
 	{ int k = 0; for (int i = 0; i < NNTX; i++) if (now - NTX[i].when < 15000000) NTX[k++] = NTX[i]; NNTX = k; }
 	for (int i = 0; a && a->t == 4 && i < a->len && NNT < 60; i++) { JV *o = jat(a, i); if (!o || o->t != 5) continue; Note *n = &NT[NNT++]; memset(n, 0, sizeof *n);
-		jstr(o, "t", n->t, sizeof n->t); jstr(o, "b", n->b, sizeof n->b); jstr(o, "k", n->k, sizeof n->k); n->at = jnum(o, "at", 0);
+		jstr(o, "t", n->t, sizeof n->t); jstr(o, "b", n->b, sizeof n->b); jstr(o, "k", n->k, sizeof n->k); jstr(o, "wl", n->wl, sizeof n->wl); n->at = jnum(o, "at", 0);
 		int gone = NT_CLRT && now - NT_CLRT < 15000000 && n->at <= NT_CLR; for (int j = 0; j < NNTX && !gone; j++) gone = NTX[j].at == n->at && !strcmp(NTX[j].t, n->t);
 		if (gone) NNT--; }
 	{ int k = 0; for (int i = 0; i < NNTP; i++) { int there = 0; for (int j = 0; j < NNT && !there; j++) there = NT[j].at == NTP[i].at && !strcmp(NT[j].t, NTP[i].t);
@@ -5069,13 +5077,14 @@ static void nt_note(JSCValue *v) { nt_notef(fget_js, v); }
 static void nt_notef(FGet g, void *v)
 {
 	if (NNT == 60) NNT--; memmove(&NT[1], &NT[0], NNT * sizeof NT[0]); NNT++; Note *n = &NT[0]; memset(n, 0, sizeof *n); char at[40] = "";
-	g(v, "t", n->t, sizeof n->t); g(v, "b", n->b, sizeof n->b); g(v, "k", n->k, sizeof n->k); g(v, "at", at, sizeof at); n->at = g_ascii_strtod(at, NULL);
+	g(v, "t", n->t, sizeof n->t); g(v, "b", n->b, sizeof n->b); g(v, "k", n->k, sizeof n->k); g(v, "wl", n->wl, sizeof n->wl); g(v, "at", at, sizeof at); n->at = g_ascii_strtod(at, NULL);
 	if (NNTP == 8) { memmove(&NTP[0], &NTP[1], 7 * sizeof NTP[0]); memmove(&NTPT[0], &NTPT[1], 7 * sizeof NTPT[0]); NNTP--; } NTP[NNTP] = *n; NTPT[NNTP++] = g_get_monotonic_time();
 	bar_redraw(); if (FLK == FL_NC && FLAREA) fl_resize();
 }
 /* (blitzdiag57.js bzIsError: a failure, which Blitzen can be asked about) */
 static int nt_why(const Note *n)
 {
+	if (n->wl[0]) return 1;   /* (1.6.1: a notification with its own Blitzen button) */
 	if (!strcmp(n->k, "error") || !strcmp(n->k, "Error") || !strcmp(n->k, "Warning")) return 1;
 	char t[480]; snprintf(t, sizeof t, "%s %s", n->t, n->b);
 	return g_regex_match_simple("could ?n[o']t|cannot|can't|failed|failure|error|not found|refused|denied|crash|stopped|timed out|timeout|no answer|did not|went wrong|not respond|white screen|restarted", t, G_REGEX_CASELESS, 0);
@@ -5188,9 +5197,10 @@ static void nc_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 		(void)base; css_text(cr, tm, UIFAM, 400, sm, tx, iy + (lb - (as + ds)) / 2, as + ds, fg, 0);
 		css_text(cr, "✕", UIFAM, 400, 13, xx + 4, iy, lb, cx(dark ? "#e2e8f0" : "#000000", 1), 0); { char k[16]; snprintf(k, sizeof k, "nx:%d", i); fl_btn(k, xx, iy, xw, lb); }
 		double by = iy + lb + 2; int why = nt_why(n); double bl = why ? fmax(l12, 2 + fl_lh(cr, 400, 11)) : l12;
-		double tw = css_text(cr, n->b, UIFAM, 400, 12, ix, by + floor((bl - l12) / 2), l12, mut, why ? iw - 70 : iw);
-		if (why) { double ww = css_width(cr, "⚡\uFE0E Why?", UIFAM, 400, 11) + 14, wx = ix + tw + 6; Box w; memset(&w, 0, sizeof w); w.bg = cx(dark ? "#1e293b" : "#ffffff", 1); w.bw = 1; w.bc = bd; w.rad = 4;
-			box_paint(cr, wx, by, ww, bl, &w); css_text(cr, "⚡\uFE0E Why?", UIFAM, 400, 11, wx + 7, by + 1, bl - 2, cx(dark ? "#e2e8f0" : "#000000", 1), 0); char k[16]; snprintf(k, sizeof k, "why:%d", i); fl_btn(k, wx, by, ww, bl); }
+		double tw = css_text(cr, n->b, UIFAM, 400, 12, ix, by + floor((bl - l12) / 2), l12, mut, why ? iw - (n->wl[0] ? 100 : 70) : iw);
+		char wlb[48]; snprintf(wlb, sizeof wlb, "⚡\uFE0E %s", n->wl[0] ? n->wl : "Why?");
+		if (why) { double ww = css_width(cr, wlb, UIFAM, 400, 11) + 14, wx = ix + tw + 6; Box w; memset(&w, 0, sizeof w); w.bg = cx(dark ? "#1e293b" : "#ffffff", 1); w.bw = 1; w.bc = bd; w.rad = 4;
+			box_paint(cr, wx, by, ww, bl, &w); css_text(cr, wlb, UIFAM, 400, 11, wx + 7, by + 1, bl - 2, cx(dark ? "#e2e8f0" : "#000000", 1), 0); char k[16]; snprintf(k, sizeof k, "why:%d", i); fl_btn(k, wx, by, ww, bl); }
 		y += h + 6; }
 	cairo_restore(cr);
 }
@@ -5647,7 +5657,7 @@ static void comp_release(GPtrArray *held) { for (guint k = 0; k < held->len; k++
    App windows' pages send theirs here (oneapp59.js, op "toast") rather than drawing them in their own window. A click
    does what the page's does: the notification's own action in its page, else the notifications' centre; ⚡ Why? asks
    Blitzen (as the centre's ⚡ Why?). Drawn in a window of its own over a copy of what is behind, as the pop-ups. */
-typedef struct { char t[200], b[600], k[12], nid[40], sid[80]; int why, act, win; gint64 born, ms; double h; } Toast;   /* (sid: Oracle's page in Chromium that sent it, 12.3c) */
+typedef struct { char t[200], b[600], k[12], nid[40], sid[80], wl[24]; int why, act, win; gint64 born, ms; double h; } Toast;   /* (sid: Oracle's page in Chromium that sent it, 12.3c) */
 static Toast TST[8]; static int NTST; static GtkWidget *TWIN, *TAREA; static GdkPixbuf *TBG; static int TWX, TWY, TWW, TWH; static guint TTICK;
 static GPtrArray *THELD; static guint TLIVE;   /* (the windows behind redirected for their pictures; the timer drawing them again) */
 static double TSX[8], TSY[8], TWHY[8][4];   /* (each one's place as drawn, the page's units on the screen; its ⚡ Why?) */
@@ -5690,9 +5700,10 @@ static void toast_paint(cairo_t *cr)
 		double tx = x + 16, ty = TSY[i] + 11;
 		for (int k = 0; k < ntl[i]; k++) css_text(cr, tl[i][k], UIFAM, 700, 13, tx, ty + k * l13, l13, fg, 0); ty += ntl[i] * l13;
 		{ ty += 2; for (int k = 0; k < nbl[i]; k++) css_text(cr, bl[i][k], UIFAM, 400, 13, tx, ty + k * l13, l13, mut, 0); ty += nbl[i] * l13; }
-		if (t->why) { double ww = css_width(cr, "⚡︎ Why?", UIFAM, 400, 11) + 14, wx = tx + 6, wy = ty + 1; Box k; memset(&k, 0, sizeof k); k.rad = 4; k.bw = 1;
+		char wlb[48]; snprintf(wlb, sizeof wlb, "⚡︎ %s", t->wl[0] ? t->wl : "Why?");
+		if (t->why) { double ww = css_width(cr, wlb, UIFAM, 400, 11) + 14, wx = tx + 6, wy = ty + 1; Box k; memset(&k, 0, sizeof k); k.rad = 4; k.bw = 1;
 			if (dark) { k.bg = cx("#1e293b", 1); k.bc = cx("#334155", 1); } else { k.bg = cx("#ffffff", 1); k.bc = cx("#d1d5db", 1); }
-			box_paint(cr, wx, wy, ww, l11 + 2, &k); css_text(cr, "⚡︎ Why?", UIFAM, 400, 11, wx + 7, wy + 1, l11, cx(dark ? "#e2e8f0" : "#000000", 1), 0);
+			box_paint(cr, wx, wy, ww, l11 + 2, &k); css_text(cr, wlb, UIFAM, 400, 11, wx + 7, wy + 1, l11, cx(dark ? "#e2e8f0" : "#000000", 1), 0);
 			TWHY[i][0] = wx; TWHY[i][1] = wy; TWHY[i][2] = ww; TWHY[i][3] = l11 + 2; }
 		cairo_pop_group_to_source(cr); cairo_paint_with_alpha(cr, a); }
 }
@@ -6134,6 +6145,15 @@ static gpointer ev_thread(gpointer d)
 static GHashTable *PT_GIVEN;   /* the requests handed out: id -> 1 (the portal's page) or 2 (a page of its own) */
 static char *PT_IDS;           /* the requests rudolfd listed last: id,id,... */
 static gint64 PT_OPEN_T;       /* when the portal's page was asked for */
+/* 1.6.1 (the owner's Vivobook, 2026-11-20: the memory rose at the start, every page loading the whole desktop at once, 400-470 MB
+   each at its peak): a page still loading, or opened in the last 4 s (its scripts still starting after the load), keeps the
+   hidden pages the shell opens by itself (the portal's, the desktop's service page) waiting, so their peaks do not come together */
+static int page_starting(gint64 now)
+{
+	for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (!w->view || w->closing) continue;
+		if (webkit_web_view_is_loading(WEBKIT_WEB_VIEW(w->view)) || now - w->born < 4 * G_USEC_PER_SEC) return 1; }
+	return 0;
+}
 static int pt_id_ok(const char *s) { size_t n = strlen(s); return n && n <= 40 && strspn(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == n; }
 static AppWin *pt_page(void) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!strcmp(a->k, "do-portal") && !a->closing) return a; } return NULL; }
 static void pt_tick(void)
@@ -6147,7 +6167,7 @@ static void pt_tick(void)
 	AppWin *p = pt_page(); gint64 now = g_get_monotonic_time();
 	/* (opened through a window whose page is ready: one still loading, as the start-up page just after signing in, may not open it;
 	   waited for up to 10 s) */
-	static int waited; int busy = 0; for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (w->view && !w->closing && webkit_web_view_is_loading(WEBKIT_WEB_VIEW(w->view))) busy = 1; }
+	static int waited; int busy = page_starting(now);
 	if (!busy || p) waited = 0; else if (waited < 20) waited++;
 	if (!p) { if ((!PT_OPEN_T || now - PT_OPEN_T > 20 * G_USEC_PER_SEC) && (!busy || waited >= 20)) { waited = 0; PT_OPEN_T = now; fprintf(stderr, "rudolf-native: the portal's page is opened\n"); app_open_ex("do-portal", NULL, NULL, 2); } }
 	else if (!p->pready) { if (now - PT_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the portal's page did not start: again\n"); appwin_close_now(p); PT_OPEN_T = 0; } }
@@ -6216,9 +6236,9 @@ static gboolean svc_tick(gpointer d)
 	(void)d; if (!USER_ID[0] || LOCKED) return G_SOURCE_CONTINUE;
 	AppWin *p = svc_page(); gint64 now = g_get_monotonic_time();
 	/* (opened through a window whose page is ready, as the portal's: one still loading may not open it; waited for up to 10 s) */
-	static int waited; int busy = 0; for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (w->view && !w->closing && webkit_web_view_is_loading(WEBKIT_WEB_VIEW(w->view))) busy = 1; }
-	if (!busy || p) waited = 0; else if (waited < 5) waited++;
-	if (!p) { if ((!SVC_OPEN_T || now - SVC_OPEN_T > 10 * G_USEC_PER_SEC) && (!busy || waited >= 5)) { waited = 0; SVC_OPEN_T = now; SVC_N++;
+	static int waited; int busy = page_starting(now);
+	if (!busy || p) waited = 0; else if (waited < 8) waited++;
+	if (!p) { if ((!SVC_OPEN_T || now - SVC_OPEN_T > 10 * G_USEC_PER_SEC) && (!busy || waited >= 8)) { waited = 0; SVC_OPEN_T = now; SVC_N++;
 			char ex[64]; snprintf(ex, sizeof ex, "&since=%lld", (long long)SVC_SIGNIN); fprintf(stderr, "rudolf-native: the desktop's service page is opened\n"); app_open_ex("do-svc", NULL, ex, 2); state_write(); } }
 	else if (!p->sready && now - SVC_OPEN_T > 90 * G_USEC_PER_SEC) { fprintf(stderr, "rudolf-native: the desktop's service page did not start: again\n"); appwin_close_now(p); SVC_OPEN_T = 0; }
 	return G_SOURCE_CONTINUE;
@@ -6956,7 +6976,7 @@ static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 	if (!USER_ID[0]) return; if (NTST == 8) { memmove(&TST[0], &TST[1], 7 * sizeof TST[0]); NTST--; }
 	Toast *t = &TST[NTST++]; memset(t, 0, sizeof *t); char x[32] = "";
 	g(v, "t", t->t, sizeof t->t); g(v, "b", t->b, sizeof t->b); g(v, "k", t->k, sizeof t->k); g(v, "id", t->nid, sizeof t->nid);
-	g(v, "ms", x, sizeof x); t->ms = atoi(x) > 0 ? atoi(x) : 5000; g(v, "why", x, sizeof x); t->why = !strcmp(x, "true") || !strcmp(x, "1"); g(v, "act", x, sizeof x); t->act = !strcmp(x, "true") || !strcmp(x, "1");
+	g(v, "ms", x, sizeof x); t->ms = atoi(x) > 0 ? atoi(x) : 5000; g(v, "why", x, sizeof x); t->why = !strcmp(x, "true") || !strcmp(x, "1"); g(v, "act", x, sizeof x); t->act = !strcmp(x, "true") || !strcmp(x, "1"); g(v, "wl", t->wl, sizeof t->wl);
 	if (sid) snprintf(t->sid, sizeof t->sid, "%s", sid);
 	if (!t->k[0]) snprintf(t->k, sizeof t->k, "info"); t->win = from ? from->id : 0; t->born = g_get_monotonic_time();
 	if (STATEF) { TLOG_N++; snprintf(TLOG[TLOG_N % 32], sizeof TLOG[0], "%s|%s", from ? from->k : "-", t->t); }   /* (the tests count them, item 12: only with RUDOLF_NATIVE_STATE) */

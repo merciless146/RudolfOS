@@ -31,8 +31,9 @@ let openPathDefault=openPath;
 function folderStats(v){let files=0,dirs=0,bytes=0;const w=n=>{for(const k in n){if(isDir(n[k])){dirs++;w(n[k])}else{files++;bytes+=Math.max(0,sizeOf(n[k]))}}};w(v);return{files,dirs,bytes}}
 function fileProps(path){const v=node(path);if(v==null)return;const W=win('Properties','ℹ️',380,360);const m=fileMeta(path)||{};const isD=isDir(v);const st=isD?folderStats(v):null;const prot=isProt(path)||!fsCanWrite(path);
  W.body.style.cssText='padding:14px;font-size:13px;overflow:auto';
- W.body.innerHTML=`<div style='display:flex;gap:12px;align-items:center'><div style='font-size:40px'></div><div><b class='pn'></b><div style='color:#6b7280' class='pt'></div></div></div><table class='ptab'></table><div class='pact' style='margin-top:10px;display:flex;gap:6px;flex-wrap:wrap'></div>`;
- W.body.querySelector('div div').textContent=fIcon(path.at(-1),v);W.body.querySelector('.pn').textContent=path.at(-1);W.body.querySelector('.pt').textContent=fType(path.at(-1),v);
+ W.body.innerHTML=`<div style='display:flex;gap:12px;align-items:center'><div class='pi' style='font-size:40px'></div><div><b class='pn'></b><div style='color:#6b7280' class='pt'></div></div></div><table class='ptab'></table><div class='pact' style='margin-top:10px;display:flex;gap:6px;flex-wrap:wrap'></div>`;
+ /* (1.6.1: by its class: "div div" was the outer box, whose text replaced the window's contents, and Properties stopped there) */
+ W.body.querySelector('.pi').textContent=fIcon(path.at(-1),v);W.body.querySelector('.pn').textContent=path.at(-1);W.body.querySelector('.pt').textContent=fType(path.at(-1),v);
  const rows=[['Location',path.slice(0,-1).join('\\')],['Size',isD?`${fmtB(st.bytes)} in ${st.files} files and ${st.dirs} folders`:fmtB(sizeOf(v))],['Created',m.c?new Date(m.c).toLocaleString():'—'],['Modified',m.m?new Date(m.m).toLocaleString():'—'],['Owner',m.o||(path[1]=='USERS'?path[2]:'system')],['Access',prot?'Read only for you (system or another user)':'You can read and change it']];
  if(!isD){const d=ld(defK(),{})[ext(path.at(-1))];rows.push(['Opens with',d?(OPENERS.find(x=>x[0]==d)||[,d])[1]:'Rudolf OS default'])}
  const t=W.body.querySelector('.ptab');rows.forEach(([a,b])=>{const r=t.insertRow();const c1=r.insertCell(),c2=r.insertCell();c1.textContent=a;c2.textContent=b});
@@ -75,15 +76,15 @@ function explorer(start){const W=win('File Explorer','📁',900,560);W.app='expl
  /* ---- sidebar ---- */
  function drawSide(){side.innerHTML='';const sec=t=>{const h=document.createElement('div');h.className='xsh';h.textContent=t;side.appendChild(h)};
   const item=(icon,label,on,act,drop)=>{const d=document.createElement('div');d.className='xsi'+(on?' on':'');d.tabIndex=0;d.setAttribute('role','link');d.innerHTML='<i></i><span></span>';d.querySelector('i').textContent=icon;d.querySelector('span').textContent=label;d.onclick=act;d.onkeydown=e=>{if(e.key=='Enter')act()};
-   if(drop){d.ondragover=e=>{e.preventDefault();d.classList.add('dt')};d.ondragleave=()=>d.classList.remove('dt');d.ondrop=e=>{e.preventDefault();d.classList.remove('dt');drop(e)}}side.appendChild(d);return d};
+   if(drop){d.ondragover=e=>{if(!xDragOk(e))return;e.preventDefault();xDropFx(e);d.classList.add('dt')};d.ondragleave=()=>d.classList.remove('dt');d.ondrop=e=>{e.preventDefault();d.classList.remove('dt');drop(e)}}side.appendChild(d);return d};
   const pn=P();const at=p=>!pn.remote&&!pn.special&&pkey(pn.path)==pkey(p);
-  if(USER){sec('Home');item('🏠',USER.n,at(homePath()),()=>go(pn,homePath()));[['🖥️','Desktop','DESKTOP'],['📄','Documents','DOCUMENTS'],['🖼️','Pictures','PICTURES'],['🎵','Music','MUSIC'],['🎬','Videos','VIDEOS'],['⬇️','Downloads','DOWNLOADS']].forEach(([i,l,s])=>{const p=s=='DOWNLOADS'?downloadsPath():homePath(s);if(isDir(node(p)))item(i,l,at(p),()=>go(pn,p),e=>dropTo(p,e.ctrlKey))});
+  if(USER){sec('Home');item('🏠',USER.n,at(homePath()),()=>go(pn,homePath()));[['🖥️','Desktop','DESKTOP'],['📄','Documents','DOCUMENTS'],['🖼️','Pictures','PICTURES'],['🎵','Music','MUSIC'],['🎬','Videos','VIDEOS'],['⬇️','Downloads','DOWNLOADS']].forEach(([i,l,s])=>{const p=s=='DOWNLOADS'?downloadsPath():homePath(s);if(isDir(node(p)))item(i,l,at(p),()=>go(pn,p),e=>dropTo(p,xCopy(e)))});
    item('🕘','Recent',pn.special=='recent',()=>{pn.back.push(pn.path);pn.special='recent';pn.remote=null;draw()});const fv=favAll();if(fv.length){sec('Favourites');fv.forEach(f=>{const p=f.p;
     /* 1.5.6: files too (opened in their app), and a favourite whose item is gone, greyed with "Remove from favourites" */
-    const d=f.dir?item('⭐',p.at(-1),at(p),()=>go(pn,p),e=>dropTo(p,e.ctrlKey)):item(f.ok?fIcon(p.at(-1),node(p)):'⭐',p.at(-1),false,()=>{if(f.ok)openPath(p);else say('“'+p.at(-1)+'” is not there any more: it was deleted or moved outside File Explorer.',true)});
+    const d=f.dir?item('⭐',p.at(-1),at(p),()=>go(pn,p),e=>dropTo(p,xCopy(e))):item(f.ok?fIcon(p.at(-1),node(p)):'⭐',p.at(-1),false,()=>{if(f.ok)openPath(p);else say('“'+p.at(-1)+'” is not there any more: it was deleted or moved outside File Explorer.',true)});
     d.title=p.join('\\')+(f.ok?'':' (not there any more)');if(!f.ok){d.classList.add('xgone');d.style.opacity='.5'}
     d.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();cmenu(e.clientX,e.clientY,[f.ok?['Open',()=>f.dir?go(pn,p):openPath(p),true,{icon:'↗'}]:null,f.ok&&!f.dir?['Open file location',()=>{go(pn,p.slice(0,-1));pn.sel=new Set([pkey(p)]);draw()},true,{icon:'📂'}]:null,['Remove from favourites',()=>favToggle(p),true,{icon:'☆'}]],{title:p.at(-1)})}})}}
-  sec('This computer');item('💽','Rudolf OS (C:)',at(['C:']),()=>go(pn,['C:']),e=>dropTo(['C:'],e.ctrlKey));item('📦','Programs',at(['C:','PROGRAMS']),()=>go(pn,['C:','PROGRAMS']));item('🗑️','Trash',false,()=>trash(),e=>{const it=FC.drag||[];FC.drag=null;if(it.length){trashPut(it);EXPL.forEach(f=>f())}});
+  sec('This computer');item('💽','Rudolf OS (C:)',at(['C:']),()=>go(pn,['C:']),e=>dropTo(['C:'],xCopy(e)));item('📦','Programs',at(['C:','PROGRAMS']),()=>go(pn,['C:','PROGRAMS']));item('🗑️','Trash',false,()=>trash(),e=>{const it=FC.drag||[];FC.drag=null;if(it.length){trashPut(it);EXPL.forEach(f=>f())}});
   if(RD){sec('Drives');const box=document.createElement('div');side.appendChild(box);item('🎮','Games (Emu library)',pn.remote&&pn.remote.dev=='games',()=>openRemote(pn,{dev:'games',root:'/home/rudolf/Games',path:'/home/rudolf/Games',label:'Games'}));rd('disks').then(r=>{r.disks.forEach(dk=>{/* (1.6.0, the Vivobook 2026-11-17: as devplug does, only the disk Rudolf OS runs from is left out, a partition of it in use outside /media; another Rudolf OS stick shows, its start-up parts not, its RUDOLFDATA read-only) */if(/^dm-/.test(dk.name)||dk.partitions.some(x=>x.mount&&!/^\/media\//.test(x.mount)))return;dk.partitions.filter(x=>x.fs&&!/^(swap|iso9660|crypto_LUKS|LVM2_member|linux_raid_member)$/.test(x.fs)&&x.label!='RUDOLF EFI'&&!/^RUDOLF_BOOT/.test(x.label||'')).forEach(pt=>{const lab=(pt.label=='RUDOLFDATA'?'Rudolf OS data (another Rudolf OS, read-only)':(pt.label||pt.name))+' ('+fmtB(pt.bytes)+')';const d=item(dk.removable?'🔌':'💽',lab,pn.remote&&pn.remote.dev==pt.name,async()=>{try{if(!pt.mount){await rdPost('mount?dev='+pt.name);pt.mount='/media/'+pt.name}openRemote(pn,{dev:pt.name,root:pt.mount,path:pt.mount,label:lab})}catch(e){say(e.message,true)}});if(dk.model)d.title=dk.model;
      if(dk.removable&&pt.mount){const ej=document.createElement('button');ej.className='xej';ej.textContent='⏏';ej.title='Eject '+(pt.label||pt.name)+' (safe to remove)';ej.setAttribute('aria-label',ej.title);ej.style.cssText='margin-left:auto;border:0;background:none;cursor:pointer;padding:0 4px';ej.onclick=async e=>{e.stopPropagation();try{await rdPost('eject?dev='+dk.name);say((pt.label||pt.name)+' can be removed now.')}catch(er){say(er.message,true)}};d.style.display='flex';d.appendChild(ej)}
      box.appendChild(d)})})}).catch(()=>{})}
@@ -134,7 +135,13 @@ function explorer(start){const W=win('File Explorer','📁',900,560);W.app='expl
   const pn=P();ad.value=pn.remote?pn.remote.path:pn.special=='recent'?'Recent files':pn.path.join('\\')+(pn.path.length==1?'\\':'');W.setTitle('File Explorer - '+ad.value);q('.sr').value=pn.filt;q('.deep').checked=pn.deep;q('.dty').value=pn.dtype||'';q('.dmo').value=pn.dmod||'';q('.dty').hidden=q('.dmo').hidden=!pn.deep;q('.vw').value=pn.view;sortSync(pn);q('.so').value=pn.sk;const sod=q('.sod');sod.textContent=pn.sd>0?'↑':'↓';sod.title=pn.sd>0?'Ascending (A to Z, oldest, smallest first): click for descending':'Descending (Z to A, newest, largest first): click for ascending';q('.so').disabled=sod.disabled=!!(pn.remote||pn.special);q('.pv').setAttribute('aria-pressed',preview);
   prevEl.style.display=preview?'':'none';drawSide();panesEl.innerHTML='';T().panes.forEach((pp,i)=>panesEl.appendChild(drawPane(pp,i)));panesEl.classList.toggle('split',T().panes.length>1);updPrev();updStat()}
  function drawPane(pn,idx){const box=document.createElement('div');box.className='xc'+(T().panes.length>1&&idx==T().act?' act':'');box.tabIndex=0;box.setAttribute('role','grid');box.setAttribute('aria-label','Files');
-  box.onfocus=box.onpointerdown=()=>{if(T().act!=idx){T().act=idx;draw();panesEl.children[idx]&&panesEl.children[idx].focus()}};
+  box.onfocus=()=>{if(T().act!=idx){T().act=idx;draw();panesEl.children[idx]&&panesEl.children[idx].focus()}};
+  /* 1.6.1: pressed on an empty spot and dragged: the selection box (the mouse only; Ctrl or Shift adds to the selection) */
+  box.onpointerdown=e=>{if(T().act!=idx){T().act=idx;draw();const nb=panesEl.children[idx];nb&&nb.focus();return}
+   if(!xEmptySpot(e.target,box))return;
+   const cur=()=>{const b=panesEl.children[T().panes.indexOf(pn)];return b&&b.isConnected?b:box};
+   if(xfMarquee(box,e,{box:cur,items:()=>cur().querySelectorAll('[data-k]'),get:()=>pn.sel,keep:e.ctrlKey||e.metaKey||e.shiftKey,
+     set:S=>{pn.sel=S;if(pn.remote)rMark(pn,cur());else markSel()},end:()=>{const f=[...cur().querySelectorAll('[data-k]')].find(x=>pn.sel.has(x.dataset.k));if(f)pn.anchor=f.dataset.k}})){e.preventDefault();box.focus({preventScroll:true})}};
   if(pn.remote){drawRemote(pn,box);return box}
   sortSync(pn);const rows=rowsFor(pn);
   if(pn.filt&&pn.deep&&pn.ds){const ds=pn.ds,b=document.createElement('div');b.className='xsrch';b.setAttribute('role','status');b.style.cssText='display:flex;gap:8px;align-items:center;padding:4px 8px;font-size:12px;border-bottom:1px solid #0001';
@@ -151,9 +158,14 @@ function explorer(start){const W=win('File Explorer','📁',900,560);W.app='expl
   else{const g=document.createElement('div');g.className='xg'+(pn.view=='thumbs'?' thumbs':'');lnks.forEach(l=>{const c=document.createElement('div');c.className='xlnk';c.appendChild(lnkIcon(l));c.append(l.name);c.title=l.name+' — shortcut on the desktop';lnkWire(c,l);g.appendChild(c)});rows.forEach(r=>{const c=document.createElement('div');c.dataset.n=r.n;c.dataset.k=pkey(r.p);if(pn.sel.has(pkey(r.p)))c.classList.add('s');c.draggable=true;c.setAttribute('role','gridcell');
     if(pn.view=='thumbs'&&typeof r.v=='string'&&/^data:image\//.test(r.v)){const im=document.createElement('img');im.src=r.v;im.alt='';im.loading='lazy';c.appendChild(im)}else{const b=document.createElement('b');b.textContent=fIcon(r.n,r.v);c.appendChild(b)}c.append(r.n);c.title=r.n+(r.sub?' — '+r.sub:'');wire(pn,c,r);g.appendChild(c)});box.appendChild(g)}
   if(!rows.length&&!lnks.length){const e=document.createElement('div');e.className='xempty';e.textContent=pn.filt?'No matches.':pn.special=='recent'?'Files you open show up here.':'This folder is empty.';box.appendChild(e)}
-  box.onclick=e=>{if(e.target===box||e.target.classList.contains('xg')||e.target.classList.contains('xempty')){pn.sel=new Set();markSel()}};
+  box.onclick=e=>{if(box.__mq)return;if(e.target===box||e.target.classList.contains('xg')||e.target.classList.contains('xempty')){pn.sel=new Set();markSel()}};
   box.oncontextmenu=e=>{if(e.target.closest('[data-k]'))return;e.preventDefault();pn.sel=new Set();markSel();ctx(e.clientX,e.clientY,false)};
-  box.ondragover=e=>e.preventDefault();box.ondrop=e=>{e.preventDefault();if(e.dataTransfer.files&&e.dataTransfer.files.length&&!FC.drag)return uploadFiles([...e.dataTransfer.files]);if(pn.special)return;const it=FC.drag;FC.drag=null;if(it&&it.length&&pkey(it[0].slice(0,-1))!=pkey(pn.path))xfer(it,pn.path,e.ctrlKey?'copy':'cut')};
+  /* dropped on the list (not on a folder in it): into the folder this pane shows; 1.6.1: from a drive too, highlighted while over */
+  const into=()=>!pn.special&&!(pn.filt&&pn.deep);
+  box.ondragover=e=>{e.preventDefault();if(!into()||!xDragOk(e)){try{e.dataTransfer.dropEffect='none'}catch(x){}return}xDropFx(e);if(!e.target.closest('[data-dir]'))box.classList.add('xdt')};
+  box.ondragleave=e=>{if(!box.contains(e.relatedTarget))box.classList.remove('xdt')};
+  box.ondrop=e=>{e.preventDefault();box.classList.remove('xdt');if(e.dataTransfer.files&&e.dataTransfer.files.length&&!FC.drag&&!FC.dragR)return uploadFiles([...e.dataTransfer.files]);if(!into()){FC.drag=FC.dragR=null;return}
+   const rr=FC.dragR,it=FC.drag;FC.drag=null;FC.dragR=null;if(rr&&rr.items&&rr.items.length)return xferR(rr,{s:'C',p:pn.path},xMode(e,rr));if(it&&it.length&&pkey(it[0].slice(0,-1))!=pkey(pn.path))xfer(it,pn.path,xCopy(e)?'copy':'cut')};
   box.onkeydown=e=>keys(e,pn);return box}
  function markSel(){const pn=P();panesEl.querySelectorAll('.xc.act [data-k],.xpanes:not(.split) [data-k]').forEach(r=>r.classList.toggle('s',pn.sel.has(r.dataset.k)));updPrev();updStat()}
  function selPaths(pn){pn=pn||P();return[...pn.sel].map(k=>k.split('/')).filter(p=>node(p)!=null)}
@@ -177,20 +189,32 @@ function wire(pn,el,r){const k=pkey(r.p);
   el.onclick=e=>{e.stopPropagation();const all=rowsFor(pn).map(x=>pkey(x.p));if(e.shiftKey&&pn.anchor&&all.includes(pn.anchor)){const a=all.indexOf(pn.anchor),b=all.indexOf(k);pn.sel=new Set(all.slice(Math.min(a,b),Math.max(a,b)+1))}else if(e.ctrlKey||e.metaKey){pn.sel.has(k)?pn.sel.delete(k):pn.sel.add(k);pn.anchor=k}else{pn.sel=new Set([k]);pn.anchor=k}markSel()};
   el.ondblclick=e=>{e.stopPropagation();openIt(pn,r.p)};
   el.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();if(!pn.sel.has(k)){pn.sel=new Set([k]);pn.anchor=k;markSel()}ctx(e.clientX,e.clientY,true)};
-  el.ondragstart=e=>{if(!pn.sel.has(k)){pn.sel=new Set([k]);pn.anchor=k}e.dataTransfer.setData('text/plain','bd95');e.dataTransfer.effectAllowed='copyMove';FC.drag=selPaths(pn)};
+  el.ondragstart=e=>{if(!pn.sel.has(k)){pn.sel=new Set([k]);pn.anchor=k;markSel()}e.dataTransfer.setData('text/plain','bd95');e.dataTransfer.effectAllowed='copyMove';FC.dragR=null;FC.drag=selPaths(pn)};
   el.ondragend=()=>{setTimeout(()=>{FC.drag=null},100)};
-  if(isDir(r.v)){el.ondragover=e=>{e.preventDefault();el.classList.add('dt')};el.ondragleave=()=>el.classList.remove('dt');el.ondrop=e=>{e.preventDefault();e.stopPropagation();el.classList.remove('dt');dropTo(r.p,e.ctrlKey)}}}
+  if(isDir(r.v)){el.dataset.dir=1;el.ondragover=e=>{if(!xDragOk(e)||(FC.drag||[]).some(p=>pkey(p)==k))return;e.preventDefault();xDropFx(e);el.classList.add('dt');const b=el.closest('.xc');b&&b.classList.remove('xdt')};el.ondragleave=()=>el.classList.remove('dt');el.ondrop=e=>{e.preventDefault();e.stopPropagation();el.classList.remove('dt');dropTo(r.p,xCopy(e),e)}}}
  function openIt(pn,p){if(isDir(node(p)))go(pn,p);else openPath(p)}
- function dropTo(dest,copy){const items=FC.drag||[];FC.drag=null;if(items.length)xfer(items,dest,copy?'copy':'cut')}
+ /* 1.6.1: what is dragged (from this window or another, C: or a drive) put into a C: folder; a folder dropped on itself: nothing */
+ function dropTo(dest,copy,e){const items=FC.drag||[],rr=FC.dragR;FC.drag=null;FC.dragR=null;if(rr&&rr.items&&rr.items.length)return xferR(rr,{s:'C',p:dest},xMode(e||{ctrlKey:copy},rr));
+  if(items.length&&!items.some(i=>pkey(i)==pkey(dest)))xfer(items,dest,copy?'copy':'cut')}
+ /* within C:. 1.6.1: a file kept on the disk (a large download) is copied as a file of its own on the disk (xfRefCopy), not as
+    its reference; a copy that takes more than half a second shows the progress window */
  async function xfer(items,dest,mode){const dd=node(dest);if(!isDir(dd))return say('Destination not found.',true);if(!await needWrite(dest))return;let ok=0;const op={t:mode=='cut'?'move':'copy',items:[]};
-  for(const it of items){const src=node(it);if(src==null)continue;if(isDir(src)&&under(it,dest))return say('A folder cannot be moved or copied into itself.',true);const par=dirOf(it);
+  const j=xfJob(mode=='cut'?'move':'copy',items.length,{route:'To '+(dest.at(-1)||'C:')}),bad=[];let n=0;
+  for(const it of items){const src=node(it);j.set(it.at(-1),n++,items.length);if(j.cancel)break;if(src==null)continue;if(isDir(src)&&under(it,dest)){j.finish(true);return say('A folder cannot be moved or copied into itself.',true)}const par=dirOf(it);
    if(mode=='cut'){if(isProt(it)||!fsCanWrite(it)){say('System items cannot be moved.',true);continue}if(pkey(it.slice(0,-1))==pkey(dest))continue;const nm=uniq(dd,it.at(-1));dd[nm]=src;delete par[it.at(-1)];op.items.push({from:it,to:[...dest,nm]});favMoved(it,[...dest,nm]);ok++}
-   else{const nm=uniq(dd,it.at(-1));dd[nm]=clone(src);op.items.push({to:[...dest,nm]});ok++}}
-  if(ok){undo.push(op);fsSave();sfx('notify');say(`${ok} item(s) ${mode=='cut'?'moved':'copied'}.`)}if(mode=='cut'){FC.op=null;FC.items=[]}P().sel=new Set();EXPL.forEach(f=>f())}
- const doCut=()=>{const s=selPaths();if(!s.length)return say('Select something first.',true);FC.op='cut';FC.items=s;EXPL.forEach(f=>f());say(s.length+' item(s) cut — open a folder and press Paste.')};
- const doCopy=()=>{const s=selPaths();if(!s.length)return say('Select something first.',true);FC.op='copy';FC.items=s;say(s.length+' item(s) copied — open a folder and press Paste.');
+   else{const nm=uniq(dd,it.at(-1));let v;try{v=xHasRef(src)?await xCopyVal(src,nm):clone(src)}catch(e){bad.push(it.at(-1)+': '+e.message);continue}dd[nm]=v;op.items.push({to:[...dest,nm]});ok++}}
+  const msg=`${ok} item(s) ${mode=='cut'?'moved':'copied'}.`+(bad.length?` Not copied: ${bad.join('; ')}`:'');
+  if(ok){undo.push(op);fsSave();if(!bad.length)sfx('notify')}if(ok||bad.length)say(msg,!!bad.length);j.finish(!bad.length,msg,bad);if(mode=='cut'){FC.op=null;FC.items=[];FC.r=null;fcPut()}P().sel=new Set();EXPL.forEach(f=>f())}
+ const xHasRef=v=>isDlRef(v)||isDir(v)&&Object.values(v).some(xHasRef);
+ async function xCopyVal(v,nm){if(isDlRef(v)){try{return await xfRefCopy(v,nm)}catch(e){throw new Error(nm+' is kept on the disk and could not be copied ('+e.message+')')}}
+  if(isDir(v)){const o={};for(const k in v)o[k]=await xCopyVal(v[k],k);return o}return clone(v)}
+ /* 1.6.1: a drive's files too (FC.r: the place and its items), into any File Explorer window (on the native desktop too: fcPut) */
+ const rClip=(op,pn)=>{const c=rCur(pn);if(!c.length)return say('Select files on the drive first.',true);if(op=='cut'&&pn.remote.ro)return say(pn.remote.label+' is read-only: its files can be copied, not cut.',true);
+  FC.op=op;FC.items=[];FC.r={r:rInfo(pn.remote),items:c.map(i=>({name:i.name,dir:!!i.dir,size:i.size||0,mtime:i.mtime||0}))};fcPut();EXPL.forEach(f=>f());say(c.length+' item(s) '+(op=='cut'?'cut':'copied')+' — open a folder and press Paste.')};
+ const doCut=()=>{if(P().remote)return rClip('cut',P());const s=selPaths();if(!s.length)return say('Select something first.',true);FC.op='cut';FC.items=s;FC.r=null;fcPut();EXPL.forEach(f=>f());say(s.length+' item(s) cut — open a folder and press Paste.')};
+ const doCopy=()=>{if(P().remote)return rClip('copy',P());const s=selPaths();if(!s.length)return say('Select something first.',true);FC.op='copy';FC.items=s;FC.r=null;fcPut();EXPL.forEach(f=>f());say(s.length+' item(s) copied — open a folder and press Paste.');
   try{const txt=s.map(p=>node(p)).filter(v=>typeof v=='string'&&!v.startsWith('data:'));if(s.length==1&&txt.length==1&&txt[0].length<100000)navigator.clipboard.writeText(txt[0]).catch(()=>{})}catch(e){}};
- const doPaste=()=>{const pn=P();if(pn.remote)return remoteUpload(pn);if(!FC.op||!FC.items.length)return say('The clipboard is empty.',true);xfer(FC.items.filter(i=>node(i)!=null),pn.path,FC.op)};
+ const doPaste=()=>{const pn=P();fcTake();if(pn.remote)return remoteUpload(pn);if(FC.op&&FC.r&&FC.r.items.length)return xferR(FC.r,{s:'C',p:pn.path},FC.op);if(!FC.op||!FC.items.length)return say('The clipboard is empty.',true);xfer(FC.items.filter(i=>node(i)!=null),pn.path,FC.op)};
  async function doDelete(){const s=selPaths();if(!s.length)return say('Select something first.',true);if(s.some(p=>isProt(p)&&p.length<=2))return say('System folders cannot be deleted.',true);if(s.some(p=>!canWrite(p.slice(0,-1)))&&!await needWrite(s[0].slice(0,-1)))return;
   dlg(`Move ${s.length==1?'“'+esc2(s[0].at(-1))+'”':s.length+' items'} to the Trash?<br><small>You can restore it from the Trash, or press Undo.</small>`,[['Cancel'],['Move to Trash',()=>{const before=TR.length;const r=trashPut(s);if(r<0){say('The Trash is full. Empty it first.',true);return}undo.push({t:'trash',ents:TR.slice(before)});P().sel=new Set();sfx('notify');EXPL.forEach(f=>f())},1]])}
  function doUndo(){const op=undo.pop();if(!op)return say('Nothing to undo.',true);
@@ -216,7 +240,7 @@ function wire(pn,el,r){const k=pkey(r.p);
   try{if(navigator.canShare&&navigator.canShare({files})){await navigator.share({files,title:s[0].at(-1)});return}}catch(e){if(e.name=='AbortError')return}
   cmenu(innerWidth/2-100,innerHeight/3,[['Copy to my Desktop',()=>{const d=node(homePath('DESKTOP'));s.forEach(p=>d[uniq(d,p.at(-1))]=clone(node(p)));fsSave();EXPL.forEach(f=>f());say('Copied to the Desktop.')}],['Download / save to this device',()=>doDown()],['Send by e-mail…',()=>{const t=s.map(p=>mlText(node(p))).filter(Boolean).join('\n\n');emailCompose({subject:s.map(p=>p.at(-1)).join(', ').slice(0,120),body:t,files:s.map(p=>[p.at(-1),node(p)])})}],['Open with…',()=>openWith(s[0])]],{title:'Share'})}
  function doDeskCopy(){const s=selPaths(),d=node(homePath('DESKTOP'));if(!s.length||!isDir(d))return;s.forEach(p=>d[uniq(d,p.at(-1))]=clone(node(p)));fsSave();EXPL.forEach(f=>f());say(s.length==1?`Copied ${s[0].at(-1)} to the desktop.`:`Copied ${s.length} items to the desktop.`)}
- function ctx(x,y,onItem){const s=selPaths(),one=s.length==1?s[0]:null,v=one&&node(one),isFile=one&&!isDir(v),pn=P();
+ function ctx(x,y,onItem){fcTake();if(P().remote)return rCtx(x,y,onItem);const s=selPaths(),one=s.length==1?s[0]:null,v=one&&node(one),isFile=one&&!isDir(v),pn=P();
   const items=onItem?[['Open',()=>openIt(pn,one),!!one,{icon:'↗',key:'Enter'}],['Open with…',()=>openWith(one),!!isFile],['Open in new tab',()=>newTab(one),!!(one&&isDir(v))],['Edit in Notepad',()=>notepad(one),!!(isFile&&typeof v=='string'&&!v.startsWith('data:'))],'-',['Cut',doCut,true,{key:'Ctrl+X'}],['Copy',doCopy,true,{key:'Ctrl+C'}],['Paste',doPaste,!!FC.op,{key:'Ctrl+V'}],'-',[s.length>1?'Rename '+s.length+' items…':'Rename',doRename,s.length>0,{key:'F2'}],['Move to Trash',doDelete,true,{key:'Del'}],'-',
    ['Compress to ZIP',doZip],['Extract here',()=>doUnzip(one),!!(isFile&&ext(one.at(-1))=='ZIP')],['Download',doDown],['Share…',doShare,s.some(p=>!isDir(node(p)))],
    /* 1.5.5: a copy on the desktop (files and folders on the desktop live in the Desktop folder) */
@@ -231,7 +255,7 @@ function wire(pn,el,r){const k=pkey(r.p);
   if(k=='Enter'&&e.altKey){const s=selPaths();s[0]&&fileProps(s[0])}else if(k=='Enter'){const s=selPaths();if(s.length==1)openIt(pn,s[0])}else if(k=='Delete')doDelete();else if(k=='F2')doRename();else if(k=='F5')draw();else if(k=='F3')toggleSplit();
   else if(k=='Backspace'||(e.altKey&&k=='ArrowUp')){e.preventDefault();q('.up').click()}else if(e.altKey&&k=='ArrowLeft')q('.bk').click();else if(e.altKey&&k=='ArrowRight')q('.fw').click();else if(e.altKey&&k.toLowerCase()=='p'){preview=!preview;S.xprev=preview;draw()}
   else if(c&&k.toLowerCase()=='c')doCopy();else if(c&&k.toLowerCase()=='x')doCut();else if(c&&k.toLowerCase()=='v')doPaste();else if(c&&k.toLowerCase()=='z')doUndo();else if(c&&k.toLowerCase()=='t')newTab();else if(c&&k.toLowerCase()=='w')closeTab(ti);else if(c&&k.toLowerCase()=='f')q('.sr').focus();
-  else if(c&&k.toLowerCase()=='a'){e.preventDefault();pn.sel=new Set(rowsFor(pn).map(r=>pkey(r.p)));draw()}
+  else if(c&&k.toLowerCase()=='a'){e.preventDefault();pn.sel=new Set(rowsFor(pn).map(r=>pkey(r.p)));markSel()}   /* (1.6.1: not drawn again, so the list keeps the keys) */
   else if(k=='ArrowDown'||k=='ArrowUp'){e.preventDefault();const ns=rowsFor(pn).map(r=>pkey(r.p));if(!ns.length)return;let i=ns.indexOf([...pn.sel].pop());i=k=='ArrowDown'?Math.min(ns.length-1,i+1):Math.max(0,i<0?0:i-1);pn.sel=new Set([ns[i]]);pn.anchor=ns[i];markSel();const el=panesEl.querySelector(`[data-k="${CSS.escape(ns[i])}"]`);el&&el.scrollIntoView({block:'nearest'});try{S.sr&&speak(ns[i].split('/').at(-1))}catch(x){}}else return;e.preventDefault()}
  /* ---- tabs and split view ---- */
  function newTab(p){tabs.push({panes:[mkPane(p||P().path)],act:0});ti=tabs.length-1;draw()}
@@ -259,58 +283,93 @@ function wire(pn,el,r){const k=pkey(r.p);
  q('.fi').onchange=e=>{const fl=[...e.target.files];e.target.value='';uploadFiles(fl)};
  /* ---- drives (bootable build) ---- */
  function openRemote(pn,r){pn.back.push(pn.remote?{remote:pn.remote}:pn.path);pn.remote=r;pn.special=null;pn.sel=new Set();draw()}
- async function drawRemote(pn,box){box.innerHTML=`<div class='xempty'>Loading…</div>`;try{const r=await rd('fs/list?path='+encodeURIComponent(pn.remote.path));const items=r.items.sort((a,b)=>(b.dir-a.dir)||a.name.localeCompare(b.name));box.innerHTML='';
+ async function drawRemote(pn,box){box.innerHTML=`<div class='xempty'>Loading…</div>`;try{const r=await rd('fs/list?path='+encodeURIComponent(pn.remote.path));const items=r.items.sort((a,b)=>(b.dir-a.dir)||a.name.localeCompare(b.name));box.innerHTML='';pn.rItems=items;
    const bar=document.createElement('div');bar.className='xrb';bar.innerHTML=`<button class='rup'>⬆ Up</button><button class='rim'>⬇ Copy selected into Rudolf OS</button><button class='rpu'>⬆ Copy Rudolf OS clipboard here</button><button class='rmk'>📁 New folder</button><button class='rdl'>🗑 Delete</button><button class='rxc'>📋 Copy to another drive…</button><button class='rej'>⏏ Safely remove</button>`;box.appendChild(bar);
    const t=document.createElement('table');t.innerHTML='<thead><tr><th>Name</th><th>Modified</th><th style="text-align:right">Size</th></tr></thead><tbody></tbody>';const tb=t.querySelector('tbody');
-   items.forEach(it=>{const tr=document.createElement('tr');tr.dataset.k='R:'+it.name;tr.innerHTML=`<td></td><td>${it.bad?'':new Date(it.mtime).toLocaleDateString()}</td><td style='text-align:right'>${it.dir||it.bad?'':fmtB(it.size)}</td>`;tr.firstChild.textContent=(it.dir?'📁 ':fIcon(it.name,'')+' ')+it.name+(it.bad=='link'?' — a link (not followed)':it.bad?' — can’t be read here (online-only OneDrive file, or damaged)':'');if(it.bad){tr.style.opacity='.6';tr.title=it.bad=='link'?'A Windows link to another place: it is not opened or copied.':'Linux cannot read this one. A OneDrive file kept online only is like this: its contents are in the Microsoft account (onedrive.live.com), not on this drive.'}
-    tr.onclick=e=>{e.stopPropagation();if(!(e.ctrlKey||e.metaKey))pn.sel=new Set();pn.sel.has(tr.dataset.k)?pn.sel.delete(tr.dataset.k):pn.sel.add(tr.dataset.k);box.querySelectorAll('tr[data-k]').forEach(x=>x.classList.toggle('s',pn.sel.has(x.dataset.k)))};
+   const ro=!!pn.remote.ro,here=pn.remote.path,cutHere=FC.op=='cut'&&FC.r&&FC.r.r&&FC.r.r.path==here?new Set(FC.r.items.map(i=>i.name)):null;
+   items.forEach(it=>{const tr=document.createElement('tr');tr.dataset.k='R:'+it.name;if(pn.sel.has(tr.dataset.k))tr.classList.add('s');if(cutHere&&cutHere.has(it.name))tr.classList.add('cut');tr.innerHTML=`<td></td><td>${it.bad?'':new Date(it.mtime).toLocaleDateString()}</td><td style='text-align:right'>${it.dir||it.bad?'':fmtB(it.size)}</td>`;tr.firstChild.textContent=(it.dir?'📁 ':fIcon(it.name,'')+' ')+it.name+(it.bad=='link'?' — a link (not followed)':it.bad?' — can’t be read here (online-only OneDrive file, or damaged)':'');if(it.bad){tr.style.opacity='.6';tr.title=it.bad=='link'?'A Windows link to another place: it is not opened or copied.':'Linux cannot read this one. A OneDrive file kept online only is like this: its contents are in the Microsoft account (onedrive.live.com), not on this drive.'}
+    /* 1.6.1: as C:'s rows: a click selects it, Ctrl+click adds or takes away, Shift+click the rows between; dragged (the selection) into
+       another window or folder; a right-click menu */
+    tr.onclick=e=>{e.stopPropagation();const k=tr.dataset.k,all=items.map(i=>'R:'+i.name);
+     if(e.shiftKey&&pn.anchor&&all.includes(pn.anchor)){const a=all.indexOf(pn.anchor),b=all.indexOf(k);pn.sel=new Set(all.slice(Math.min(a,b),Math.max(a,b)+1))}
+     else if(e.ctrlKey||e.metaKey){pn.sel.has(k)?pn.sel.delete(k):pn.sel.add(k);pn.anchor=k}else{pn.sel=new Set([k]);pn.anchor=k}rMark(pn,box)};
+    tr.oncontextmenu=e=>{e.preventDefault();e.stopPropagation();if(!pn.sel.has(tr.dataset.k)){pn.sel=new Set([tr.dataset.k]);pn.anchor=tr.dataset.k;rMark(pn,box)}rCtx(e.clientX,e.clientY,true)};
+    if(!it.bad){tr.draggable=true;tr.ondragstart=e=>{if(!pn.sel.has(tr.dataset.k)){pn.sel=new Set([tr.dataset.k]);pn.anchor=tr.dataset.k;rMark(pn,box)}
+      e.dataTransfer.setData('text/plain','bd95');if(ro)e.dataTransfer.setData('text/x-rudolf-ro','1');e.dataTransfer.effectAllowed='copyMove';FC.drag=null;FC.dragR={r:rInfo(pn.remote),items:rCur(pn).map(i=>({name:i.name,dir:!!i.dir,size:i.size||0,mtime:i.mtime||0}))}};
+     tr.ondragend=()=>{setTimeout(()=>{FC.dragR=null},100)}}
+    if(it.dir&&!it.bad&&!ro){tr.dataset.dir=1;const to={s:'R',path:here+'/'+it.name,remote:pn.remote};
+     tr.ondragover=e=>{if(!xDragOk(e)||(FC.dragR&&FC.dragR.r&&FC.dragR.r.path==here&&FC.dragR.items.some(i=>i.name==it.name)))return;e.preventDefault();xDropFx(e);tr.classList.add('dt');box.classList.remove('xdt')};
+     tr.ondragleave=()=>tr.classList.remove('dt');tr.ondrop=e=>{e.preventDefault();e.stopPropagation();tr.classList.remove('dt');rDrop(e,to,pn)}}
     tr.ondblclick=async()=>{if(it.bad){say(tr.title,true);return}if(it.dir){pn.remote=Object.assign({},pn.remote,{path:pn.remote.path+'/'+it.name});pn.sel=new Set();draw()}else{if(window.emuOpenReal&&/\.(sfc|smc|nds|z64|n64|v64|gdi|cdi|chd|md|gen|smd|cue|pbp)$/i.test(it.name)){emuOpenReal(pn.remote.path+'/'+it.name);return}const p=await remoteImport(pn,[it]);p[0]&&openPath(p[0])}};tb.appendChild(tr)});box.appendChild(t);
-   const cur=()=>items.filter(i=>pn.sel.has('R:'+i.name)&&!i.bad);
+   if(!items.length){const e=document.createElement('div');e.className='xempty';e.textContent='This folder is empty.';box.appendChild(e)}
+   const cur=()=>rCur(pn);
    bar.querySelector('.rup').onclick=()=>{if(pn.remote.path==pn.remote.root)return;pn.remote.path=pn.remote.path.replace(/\/[^/]+$/,'');draw()};
    if(pn.remote.ro)['.rpu','.rmk','.rdl','.rxc','.rej'].forEach(c=>{const x=bar.querySelector(c);if(x)x.style.display='none'});   /* an app's folder: to look at only */
    bar.querySelector('.rim').onclick=()=>remoteImport(pn,cur());bar.querySelector('.rxc').onclick=()=>{if(typeof driveCopyDlg=='function')driveCopyDlg(pn.remote,cur())};   /* (1.6.0: drivecopy60.js) */bar.querySelector('.rpu').onclick=()=>remoteUpload(pn);bar.querySelector('.rmk').onclick=()=>remoteMkdir(pn);
-   bar.querySelector('.rdl').onclick=async()=>{const c=cur();if(!c.length)return say('Select files on the drive first.',true);for(const i of c){try{await rdPost('fs/delete?path='+encodeURIComponent(pn.remote.path+'/'+i.name))}catch(e){say(e.message,true)}}draw()};
+   bar.querySelector('.rdl').onclick=()=>rDelete(pn);
    bar.querySelector('.rej').onclick=async()=>{try{await rdPost('umount?dev='+pn.remote.dev);say('You can now remove the drive.');go(pn,homePath())}catch(e){say(e.message,true)}};
-   if(pn.msg){say(pn.msg,pn.msgBad);pn.msg=null}else say(items.length+' item(s) on '+pn.remote.label)}catch(e){box.innerHTML='';const d=document.createElement('div');d.className='xempty';d.textContent='Could not read the drive: '+e.message;box.appendChild(d)}}
+   /* the list itself: a click on an empty spot clears the selection; dropped on (not on a folder): into this folder */
+   box.onclick=e=>{if(box.__mq)return;if(!e.target.closest('tr[data-k],.xrb,thead')){pn.sel=new Set();rMark(pn,box)}};
+   box.oncontextmenu=e=>{if(e.target.closest('tr[data-k]')||e.target.closest('.xrb'))return;e.preventDefault();pn.sel=new Set();rMark(pn,box);rCtx(e.clientX,e.clientY,false)};
+   box.ondragover=e=>{e.preventDefault();if(ro||!xDragOk(e)){try{e.dataTransfer.dropEffect='none'}catch(x){}return}xDropFx(e);if(!e.target.closest('[data-dir]'))box.classList.add('xdt')};
+   box.ondragleave=e=>{if(!box.contains(e.relatedTarget))box.classList.remove('xdt')};
+   box.ondrop=e=>{e.preventDefault();box.classList.remove('xdt');if(ro){FC.drag=FC.dragR=null;return say(pn.remote.label+' is read-only: nothing can be put there.',true)}
+    if(e.dataTransfer.files&&e.dataTransfer.files.length&&!FC.drag&&!FC.dragR)return remoteUploadFiles(pn,[...e.dataTransfer.files]);rDrop(e,{s:'R',path:here,remote:pn.remote},pn)};
+   box.onkeydown=e=>rKeys(e,pn);
+   if(pn.msg){say(pn.msg,pn.msgBad);pn.msg=null}else rStat(pn)}catch(e){box.innerHTML='';const d=document.createElement('div');d.className='xempty';d.textContent='Could not read the drive: '+e.message;box.appendChild(d)}}
+ /* 1.6.1: a drive's pane, as C:'s: its selection, menu, keys, Delete, Properties */
+ const rInfo=r=>({dev:r.dev,root:r.root,path:r.path,label:r.label,ro:!!r.ro});
+ const rCur=pn=>(pn.rItems||[]).filter(i=>pn.sel.has('R:'+i.name)&&!i.bad);
+ const rStat=pn=>{const n=(pn.rItems||[]).length;say(n+' item(s) on '+pn.remote.label+(pn.sel.size?' · '+pn.sel.size+' selected':''))};
+ function rMark(pn,box){(box||panesEl.children[T().panes.indexOf(pn)]||panesEl).querySelectorAll('tr[data-k]').forEach(x=>x.classList.toggle('s',pn.sel.has(x.dataset.k)));rStat(pn)}
+ const rHere=pn=>({s:'R',path:pn.remote.path,remote:pn.remote});
+ const xcx=(extra)=>Object.assign({say,needWrite,result:res=>{tabs.forEach(t=>t.panes.forEach(p=>{if(p.remote&&res.msg){p.msg=res.msg;p.msgBad=!res.ok}}))}},extra||{});
+ /* what came from a drive (rr: {r: the place, items}) into dest (C: or a drive) */
+ function xferR(rr,dest,mode){const srcs=rr.items.map(i=>({s:'R',base:rr.r.path,name:i.name,dir:!!i.dir,size:i.size||0,mtime:i.mtime||0}));
+  return xfRun(srcs,dest,mode,xcx({srcR:rr.r,fromLabel:rr.r.label||rr.r.path})).then(r=>{P().sel=new Set();return r})}
+ /* C: items onto a drive */
+ function xferCR(paths,dest,mode){const srcs=paths.filter(p=>node(p)!=null).map(p=>({s:'C',p}));if(!srcs.length)return say('The clipboard is empty.',true);
+  return xfRun(srcs,dest,mode,xcx({fromLabel:(paths[0].slice(0,-1).at(-1)||'C:'),label:dest.remote&&dest.path==dest.remote.root?dest.remote.label:undefined}))}
+ function rDrop(e,dest,pn){const rr=FC.dragR,it=FC.drag;FC.drag=null;FC.dragR=null;
+  if(rr&&rr.items&&rr.items.length)return xferR(rr,dest,xMode(e,rr));if(it&&it.length)return xferCR(it,dest,xCopy(e)?'copy':'cut')}
+ function rCtx(x,y,onItem){const pn=P(),c=rCur(pn),one=c.length==1?c[0]:null,ro=!!pn.remote.ro,clip=!!(FC.op&&((FC.r&&FC.r.items.length)||(FC.items&&FC.items.length)));
+  const items=onItem?[['Open',()=>{const tr=panesEl.querySelector(`tr[data-k="${CSS.escape('R:'+one.name)}"]`);tr&&tr.ondblclick()},!!one,{icon:'↗',key:'Enter'}],'-',
+    ['Cut',doCut,!ro&&c.length>0,{key:'Ctrl+X'}],['Copy',doCopy,c.length>0,{key:'Ctrl+C'}],['Paste',doPaste,!ro&&clip,{key:'Ctrl+V'}],'-',['Delete',()=>rDelete(pn),!ro&&c.length>0,{key:'Del'}],'-',
+    ['Copy into Rudolf OS',()=>remoteImport(pn,c),c.length>0,{icon:'⬇'}],ro?null:['Copy to another drive…',()=>{if(typeof driveCopyDlg=='function')driveCopyDlg(pn.remote,c)},c.length>0,{icon:'📋'}],'-',['Properties',()=>rProps(pn,one),!!one,{key:'Alt+Enter'}]]
+   :[['Paste',doPaste,!ro&&clip,{key:'Ctrl+V'}],['New folder',()=>remoteMkdir(pn),!ro],'-',['Refresh',()=>draw(),true,{key:'F5'}],['Properties',()=>rProps(pn,null),true]];
+  cmenu(x,y,items,{title:onItem?(c.length>1?c.length+' items':(one||{}).name||''):pn.remote.label})}
+ function rKeys(e,pn){if(e.target.tagName=='INPUT')return;const k=e.key,cm=e.ctrlKey||e.metaKey,items=(pn.rItems||[]).filter(i=>!i.bad);
+  if(cm&&k.toLowerCase()=='a'){pn.sel=new Set(items.map(i=>'R:'+i.name));rMark(pn)}else if(cm&&k.toLowerCase()=='c')doCopy();else if(cm&&k.toLowerCase()=='x')doCut();else if(cm&&k.toLowerCase()=='v')doPaste();
+  else if(k=='Delete')rDelete(pn);else if(k=='F5')draw();else if(k=='Enter'&&e.altKey){const c=rCur(pn);c.length==1&&rProps(pn,c[0])}else if(k=='Enter'){const c=rCur(pn);if(c.length==1){const tr=panesEl.querySelector(`tr[data-k="${CSS.escape('R:'+c[0].name)}"]`);tr&&tr.ondblclick()}}
+  else if(k=='Backspace'){q('.up').click()}else if(k=='ArrowDown'||k=='ArrowUp'){const ns=items.map(i=>'R:'+i.name);if(!ns.length)return;let i=ns.indexOf([...pn.sel].pop());i=k=='ArrowDown'?Math.min(ns.length-1,i+1):Math.max(0,i<0?0:i-1);pn.sel=new Set([ns[i]]);pn.anchor=ns[i];rMark(pn);const el=panesEl.querySelector(`tr[data-k="${CSS.escape(ns[i])}"]`);el&&el.scrollIntoView({block:'nearest'})}
+  else return;e.preventDefault()}
+ /* Delete on a drive: asked first (a drive has no Trash); folders with everything in them */
+ function rDelete(pn){const c=rCur(pn);if(!c.length)return say('Select files on the drive first.',true);if(pn.remote.ro)return say(pn.remote.label+' is read-only.',true);
+  dlg(`Delete ${c.length==1?'“'+esc2(c[0].name)+'”':c.length+' items'} from ${esc2(pn.remote.label)}?<br><small>Files on a drive do not go to the Trash.</small>`,[['Cancel'],['Delete',async()=>{
+   const j=xfJob('delete',c.length,{route:pn.remote.label});const bad=[];let n=0;j.N=c.length;
+   for(const i of c){if(j.cancel)break;j.set(i.name,n++);try{await xfRDeleteTree(pn.remote.path+'/'+i.name,!!i.dir)}catch(e){bad.push(i.name+': '+e.message)}}
+   const msg=bad.length?'Not deleted: '+bad.join('; '):`Deleted ${n} item${n==1?'':'s'} from ${pn.remote.label}.`;j.finish(!bad.length,msg,bad);pn.sel=new Set();pn.msg=msg;pn.msgBad=!!bad.length;xfChanged()},1]])}
+ async function rProps(pn,it){const W=win('Properties','ℹ️',380,300);W.body.style.cssText='padding:14px;font-size:13px;overflow:auto';const p=it?pn.remote.path+'/'+it.name:pn.remote.path;
+  W.body.innerHTML=`<div style='display:flex;gap:12px;align-items:center'><div class='pi' style='font-size:40px'></div><div><b class='pn'></b><div style='color:#6b7280' class='pt'></div></div></div><table class='ptab'></table><div style='margin-top:10px;text-align:right'><button>Close</button></div>`;
+  W.body.querySelector('.pi').textContent=!it||it.dir?'📁':fIcon(it.name,'');W.body.querySelector('.pn').textContent=it?it.name:(pn.remote.path.split('/').pop()||pn.remote.label);W.body.querySelector('.pt').textContent=!it||it.dir?'Folder':fType(it.name.toUpperCase(),'');
+  W.body.querySelector('button').onclick=()=>W.close();const t=W.body.querySelector('.ptab');
+  const row=(a,b)=>{const r=t.insertRow();r.insertCell().textContent=a;const c=r.insertCell();c.textContent=b;return c};
+  row('Location',it?pn.remote.path:xfRParent(pn.remote.path));row('On',pn.remote.label);const sz=row('Size',it&&!it.dir?fmtB(it.size):'Counting…');if(it&&it.mtime)row('Modified',new Date(it.mtime).toLocaleString());row('Access',pn.remote.ro?'Read only':'You can read and change it');
+  if(!it||it.dir){try{const tr=await rd('fs/tree?path='+encodeURIComponent(p));const f=(tr.items||[]).filter(x=>!x.dir),d=(tr.items||[]).length-f.length;sz.textContent=`${fmtB(f.reduce((a,x)=>a+(x.size||0),0))} in ${f.length} files and ${d} folders`}catch(e){sz.textContent='—'}}}
  /* copy from a drive into Downloads: files, and (1.2.7) folders with everything in them (rudolfd's fs/tree). The whole
     copy is counted first: more than 5,000 files, or more than fits in this browser's storage, is refused before
-    anything is copied; files over 256 MB are left out and listed; Cancel keeps what was copied so far. */
- async function remoteImport(pn,list){const DP=downloadsPath(),dest=node(DP);const out=[],skip=[],FN=n=>n.toUpperCase().replace(/[\\:*?"<>|]/g,'_').slice(0,60);
-  const jobs=[];   // {src, parts: names below dest, size}; folders: {dir:true, parts}
-  try{for(const it of list){const base=pn.remote.path+'/'+it.name;
-    if(!it.dir){jobs.push({src:base,parts:[it.name],size:it.size});continue}
-    jobs.push({dir:true,parts:[it.name]});say('Counting what is in '+it.name+'…');
-    const tr=await rd('fs/tree?path='+encodeURIComponent(base));
-    for(const e of tr.items||[]){const parts=[it.name,...e.p.split('/')];if(e.dir)jobs.push({dir:true,parts});else jobs.push({src:base+'/'+e.p,parts,size:e.size})}}}
-  catch(e){say('Could not read the drive: '+e.message,true);return out}
-  const fl=jobs.filter(j=>!j.dir),big=fl.filter(j=>j.size>256*1048576),todo=fl.filter(j=>j.size<=256*1048576);
-  big.forEach(j=>skip.push(j.parts.join('/')+' (over 256 MB)'));
-  const total=todo.reduce((a,j)=>a+j.size,0);
-  if(todo.length>5000){say(`That is ${todo.length} files: copy at most 5,000 at a time (a folder further down, say).`,true);return out}
-  if(list.some(i=>i.dir)){const si=await storageInfo();if(si.quota&&total*1.4>(si.quota*0.9-si.used)){say(`That is ${fmtB(total)}: it does not fit in this computer's Rudolf OS storage (${fmtB(Math.max(0,si.quota*0.9-si.used))} free). Copy a smaller folder, or keep it on the drive.`,true);return out}}
-  // folders first, each name made unique once (at the top) and then followed down
-  const map=new Map();
-  const ensure=parts=>{const k=parts.join('/');if(map.has(k))return map.get(k);const par=parts.length>1?ensure(parts.slice(0,-1)):{d:dest,p:DP};
-   const nm=uniq(par.d,FN(parts.at(-1)));par.d[nm]={};const v={d:par.d[nm],p:[...par.p,nm]};map.set(k,v);if(parts.length==1)out.push(v.p);return v};
-  jobs.filter(j=>j.dir).forEach(j=>ensure(j.parts));
-  let cancel=false,done=0,bytes=0;const cx=document.createElement('button');cx.textContent='Cancel';cx.className='rcx';cx.onclick=()=>{cancel=true};
-  if(todo.length>1)stat.after(cx);
-  try{for(const j of todo){if(cancel)break;
-    say(todo.length>1?`Copying ${done+1} of ${todo.length} files (${fmtB(bytes)})…`:'Copying '+j.parts.at(-1)+'…');
-    let b;try{const r=await rd('fs/read?path='+encodeURIComponent(j.src));b=await r.blob()}catch(e){skip.push(j.parts.join('/')+' (could not be read)');continue}
-    const par=j.parts.length>1?ensure(j.parts.slice(0,-1)):{d:dest,p:DP};const nm=uniq(par.d,FN(j.parts.at(-1)));const e=ext(nm);
-    par.d[nm]=TEXTE.test(e)&&e!='SVG'&&b.size<4*1048576?await b.text():await blobToDataURL(new Blob([b],{type:MIMEX[e]||b.type||'application/octet-stream'}));
-    if(j.parts.length==1)out.push([...par.p,nm]);done++;bytes+=b.size}}
-  finally{cx.remove()}
-  if(out.length||done){fsSave();EXPL.forEach(f=>f());
-   const what=out.map(p=>p.at(-1)).join(', ');
-   notify(cancel?'Copying stopped':'Copied into '+(DP.length>1?'Downloads':DP[0]),(cancel?`${done} of ${todo.length} files were copied: `:'')+what+(skip.length?` · left out: ${skip.slice(0,5).join(', ')}${skip.length>5?' and '+(skip.length-5)+' more':''}`:''))}
-  /* the result stays in the status bar after the drive's list is drawn again */
-  const msg=[cancel?`Stopped: ${done} of ${todo.length} files copied.`:todo.length>1?`Copied ${done} files (${fmtB(bytes)}) into ${DP.at(-1)}.`:'',
-   skip.length?`Left out ${skip.length}: ${skip.slice(0,3).join(', ')}${skip.length>3?'…':''}`:''].filter(Boolean).join(' ');
-  if(msg){pn.msg=msg;pn.msgBad=!!skip.length;say(msg,!!skip.length)}
-  return out}
- async function remoteUpload(pn){if(!FC.items.length)return say('Copy files in Rudolf OS first, then paste them here.',true);for(const p of FC.items){const v=node(p);if(v==null||isDir(v))continue;say('Writing '+p.at(-1)+'…');try{await rd('fs/write?path='+encodeURIComponent(pn.remote.path+'/'+p.at(-1).toLowerCase()),{method:'POST',body:dataToBlob(v)})}catch(e){say(e.message,true);return}}draw()}
+    anything is copied; files over 256 MB are left out and listed; Cancel keeps what was copied so far.
+    1.6.1: done by xfRun (xfer61.js), with the progress window; the status line keeps its line and its Cancel. */
+ async function remoteImport(pn,list){if(!list||!list.length){say('Select files on the drive first.',true);return[]}const DP=downloadsPath();
+  const cx=document.createElement('button');cx.textContent='Cancel';cx.className='rcx';let job=null;cx.onclick=()=>{if(job){job.cancel=true;try{job.ac.abort()}catch(e){}}};
+  if(list.length>1||list.some(i=>i.dir))stat.after(cx);
+  const srcs=list.map(i=>({s:'R',base:pn.remote.path,name:i.name,dir:!!i.dir,size:i.size||0,mtime:i.mtime||0}));
+  try{const r=await xfRun(srcs,{s:'C',p:DP},'copy',xcx({srcR:rInfo(pn.remote),fromLabel:pn.remote.label,label:DP.length>1?'Downloads':DP[0],onJob:j=>{job=j}}));return r.out}
+  finally{cx.remove()}}
+ /* 1.6.1: Paste (and "Copy Rudolf OS clipboard here") on a drive: what was cut or copied, in C: or on a drive, folders too */
+ async function remoteUpload(pn){fcTake();if(pn.remote.ro)return say(pn.remote.label+' is read-only: nothing can be put there.',true);
+  if(FC.op&&FC.r&&FC.r.items.length)return xferR(FC.r,rHere(pn),FC.op);if(!FC.items.length)return say('Copy files in Rudolf OS first, then paste them here.',true);
+  return xferCR(FC.items,rHere(pn),FC.op=='cut'?'cut':'copy')}
  async function remoteUploadFiles(pn,fl){for(const f of fl){try{await rd('fs/write?path='+encodeURIComponent(pn.remote.path+'/'+f.name),{method:'POST',body:f})}catch(e){say(e.message,true)}}draw()}
  async function remoteMkdir(pn){const n='New folder '+new Date().toLocaleTimeString().replace(/:/g,'.');try{await rdPost('fs/mkdir?path='+encodeURIComponent(pn.remote.path+'/'+n));draw()}catch(e){say(e.message,true)}}
  /* ---- folders on this device (File System Access API) ---- */

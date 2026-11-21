@@ -36,8 +36,8 @@ gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-un
 cp trusted-keys.txt initramfs/etc/rudolf-keys
 FW=$W/linux-firmware
 for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git; do
-	rm -rf "$FW"; git clone -q --depth 1 --filter=blob:none --no-checkout "$u" "$FW" || continue
-	awk '$1=="F"{print "/"$3}' firmware-extra.txt | { echo /WHENCE; cat; } | git -C "$FW" sparse-checkout set --no-cone --stdin && git -C "$FW" checkout -q && break
+	rm -rf "$FW"; git clone -q --filter=blob:none --no-checkout "$u" "$FW" || continue
+	awk '$1=="F"{print "/"$3}' firmware-extra.txt | { echo /WHENCE; cat; } | git -C "$FW" sparse-checkout set --no-cone --stdin && git -C "$FW" checkout -q "$(awk '$1=="R"{print $2}' firmware-extra.txt)" && break
 done
 python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"
 # (1.6.1: tried three times: GitHub refused one of several test kernels' clones at once with a 403, run 44017025900)

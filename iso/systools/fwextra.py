@@ -22,6 +22,7 @@ install script makes them; a git checkout has none). What is listed:
     older Wi-Fi drivers sits in the base layer (wififw.py, at the full build).
 """
 import hashlib, os, re, shutil, sys
+import subprocess
 
 # Intel's sound processor firmware (SOF, 1.5.4), from thesofproject/sof-bin. Each laptop gets what the kernel picks
 # by default (sound/soc/sof/intel/pci-*.c):
@@ -84,6 +85,10 @@ def sha(p):
 def cmd_list(fw):
     files, links = whence(fw)
     print('# firmware in the modules layer (iso/systools/fwextra.py); made by: fwextra.py list LINUX_FIRMWARE')
+    # 1.6.1: the commit the list was made from; the release build checks out exactly this one
+    rev = subprocess.run(['git', '-C', fw, 'rev-parse', 'HEAD'], capture_output=True, text=True).stdout.strip()
+    if rev:
+        print('R', rev)
     for f in files:
         print('F', sha(os.path.join(fw, f)), f)
     for a, b in links:

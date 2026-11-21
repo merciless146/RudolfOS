@@ -1,0 +1,22 @@
+name: firmware-pin-check
+# 1.6.1: the release build takes linux-firmware at firmware-extra.txt's "R" commit; this runs the same fetch and copy
+on:
+  pull_request:
+    paths: [iso/firmware-extra.txt, iso/systools/fwextra.py, iso/systools/ci_release.sh, iso/systools/testkernel.sh, .github/workflows/firmware-pin-check.yml]
+  push:
+    branches: [fw-pin]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: fetch the pinned commit and copy every listed file
+        run: |
+          cd iso
+          R=$(awk '$1=="R"{print $2}' firmware-extra.txt); [ -n "$R" ] || { echo "firmware-extra.txt has no R line"; exit 1; }
+          FW=$RUNNER_TEMP/linux-firmware
+          for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git; do
+            rm -rf "$FW"; git clone -q --filter=blob:none --no-checkout "$u" "$FW" || continue
+            awk '$1=="F"{print "/"$3}' firmware-extra.txt | { echo /WHENCE; cat; } | git -C "$FW" sparse-checkout set --no-cone --stdin && git -C "$FW" checkout -q "$R" && break
+          done
+          python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$RUNNER_TEMP/fw"

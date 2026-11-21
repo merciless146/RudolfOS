@@ -516,3 +516,5 @@ html.dark .ssbar{background:#1e293b}html.dark .ssq{background:#0f172a;border-col
 @keyframes sshit{0%,60%{background:color-mix(in srgb,var(--ac) 28%,transparent)}100%{background:transparent}}
 .sshit{animation:sshit 2.4s ease-out;border-radius:4px}
 @media (prefers-reduced-motion:reduce){.sshit{animation:none;outline:2px solid var(--ac)}}
+/* 1.6.1: File Explorer: a list that takes what is dragged over it (into the folder it shows) */
+.xp25 .xc.xdt{outline:2px dashed var(--ac);outline-offset:-3px}.xp25 .xc{position:relative}

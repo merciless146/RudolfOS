@@ -116,10 +116,12 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	if [ -z "$FW" ]; then
 		FW=$W/linux-firmware
 		for u in https://gitlab.com/kernel-firmware/linux-firmware.git https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git; do
-			rm -rf "$FW"; git clone -q --depth 1 --filter=blob:none --no-checkout "$u" "$FW" || continue
+			rm -rf "$FW"; git clone -q --filter=blob:none --no-checkout "$u" "$FW" || continue
 			# 1.5.3: exactly the files firmware-extra.txt pins (its "F" lines), so a file added there is always fetched
 			# (rt2870.bin was not: the hand-written list here had fallen behind)
-			awk '$1=="F"{print "/"$3}' firmware-extra.txt | { echo /WHENCE; cat; } | git -C "$FW" sparse-checkout set --no-cone --stdin && git -C "$FW" checkout -q && break
+			# 1.6.1: at the linux-firmware commit the list was made from (its "R" line), not the newest: linux-firmware's
+			# own updates (2026-11-12, -18, -19: Qualcomm and Intel Bluetooth) stopped the release build three times
+			awk '$1=="F"{print "/"$3}' firmware-extra.txt | { echo /WHENCE; cat; } | git -C "$FW" sparse-checkout set --no-cone --stdin && git -C "$FW" checkout -q "$(awk '$1=="R"{print $2}' firmware-extra.txt)" && break
 		done
 	fi
 	rm -rf "$W/fw"; python3 systools/fwextra.py copy firmware-extra.txt "$FW" "$W/fw"

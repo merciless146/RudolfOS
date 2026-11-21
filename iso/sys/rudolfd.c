@@ -768,11 +768,48 @@ static void api_mount(struct req *r, int mount)
 	else reply_ok(r->fd, mount ? "mounted" : "safe to remove");
 }
 
+/* 1.6.1 (File Explorer: files dragged between windows and drives): one file copied from one reachable path to another,
+   beside it under a temporary name until it is whole (fsynced, then renamed; its time kept), never over something */
+static int fs_copy_file(const char *from, const char *to, long long *size, char *err, size_t en)
+{
+	int in = open(from, O_RDONLY | O_NOFOLLOW | O_CLOEXEC); struct stat st;
+	if (in < 0 || fstat(in, &st) || !S_ISREG(st.st_mode)) { if (in >= 0) close(in); snprintf(err, en, "only a file is copied at a time"); return 400; }
+	char tmp[1200]; snprintf(tmp, sizeof tmp, "%s.rudolf-tmp", to);
+	int out = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0644);
+	if (out < 0) { close(in); snprintf(err, en, "cannot write here (read-only drive?)"); return 500; }
+	static char buf[1 << 20]; ssize_t n; int e = 0; long long tot = 0;
+	while ((n = read(in, buf, sizeof buf)) > 0) { if (write(out, buf, n) != n) { e = errno ? errno : EIO; break; } tot += n; }
+	if (n < 0) e = errno;
+	if (!e && fsync(out)) e = errno;
+	struct timespec ts[2] = { st.st_atim, st.st_mtim }; futimens(out, ts);
+	close(in); if (close(out) && !e) e = errno;
+	if (e || tot != (long long)st.st_size || rename(tmp, to)) { unlink(tmp); snprintf(err, en, "%s", e == ENOSPC ? "the drive is full" : e ? strerror(e) : "the copy is not whole"); return e == ENOSPC ? 507 : 500; }
+	if (shared_path(to)) { if (chown(to, 1000, 1000)) {} }
+	*size = tot; return 0;
+}
 static void api_fs(struct req *r, const char *op)
 {
+	/* 1.6.1: POST fs/copy?from=A&to=B (a file), POST fs/move?from=A&to=B (a file or folder, renamed: on the same drive only;
+	   another drive answers 409 and the desktop copies, checks, then deletes). Both under /media or the shared folders,
+	   never into itself, never over something that is there. */
+	if (!strcmp(op, "copy") || !strcmp(op, "move")) {
+		char *fa = qparam(r->query, "from"), *ta = qparam(r->query, "to");
+		/* (nothing hidden either: Downloads/.accounts, .incoming and .quarantine are rudolfd's own) */
+		if (!safe_media_path(fa) || !safe_media_path(ta) || strstr(fa, "/.") || strstr(ta, "/.") || strstr(fa, ".rudolf-tmp") || strstr(ta, ".rudolf-tmp")) { reply_err(r->fd, 403, "only /media/... and the shared folders are reachable"); return; }
+		size_t fl = strlen(fa); if (!strncmp(ta, fa, fl) && (ta[fl] == '/' || !ta[fl])) { reply_err(r->fd, 400, "a folder cannot go inside itself"); return; }
+		struct stat st; if (lstat(fa, &st) || S_ISLNK(st.st_mode)) { reply_err(r->fd, 404, "not found"); return; }
+		if (!lstat(ta, &st)) { reply_err(r->fd, 409, "something with that name is already there"); return; }
+		if (!strcmp(op, "move")) {
+			if (rename(fa, ta)) { int e = errno; reply_err(r->fd, e == EXDEV ? 409 : 500, e == EXDEV ? "another drive: copy it, then delete it" : strerror(e)); return; }
+			reply_ok(r->fd, "moved"); return;
+		}
+		char err[200]; long long sz = 0; int rc = fs_copy_file(fa, ta, &sz, err, sizeof err);
+		if (rc) { reply_err(r->fd, rc, err); return; }
+		str s = {0}; sadd(&s, "{\"ok\":true,\"message\":\"copied\",\"size\":%lld}", sz); reply_json(r->fd, &s); return;
+	}
 	char *p = qparam(r->query, "path");
 	char path[1100];
-	int ro = !strcmp(op, "list") || !strcmp(op, "read") || !strcmp(op, "search");
+	int ro = !strcmp(op, "list") || !strcmp(op, "read") || !strcmp(op, "search") || !strcmp(op, "hash");
 	if (!p || (!safe_media_path(p) && !(ro && app_view_path(p)))) { reply_err(r->fd, 403, "only /media/... and the shared folders are reachable"); return; }
 	snprintf(path, sizeof path, "%s", p);
 	if (!strcmp(op, "list")) {
@@ -804,9 +841,17 @@ static void api_fs(struct req *r, const char *op)
 	else if (!strcmp(op, "write")) {
 		char tmp[1200];
 		snprintf(tmp, sizeof tmp, "%s.rudolf-tmp", path);
-		int f = open(tmp, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+		/* 1.6.1: a large file in pieces (File Explorer's transfers): part=OFFSET appends this piece where the last one
+		   ended (0 starts again), final=1 with the last piece puts the file in place, as a whole write does */
+		const char *pt = qparam(r->query, "part"), *fin = qparam(r->query, "final");
+		long long off = pt ? atoll(pt) : 0;
+		int f = open(tmp, O_WRONLY | O_CREAT | (pt && off ? O_APPEND : O_TRUNC) | O_NOFOLLOW, 0644);
 		if (f < 0) { reply_err(r->fd, 500, "cannot write here (read-only drive?)"); return; }
+		if (pt) { struct stat ts; if (fstat(f, &ts) || ts.st_size != off) { close(f); reply_err(r->fd, 409, "a piece is missing: start again"); return; } }
 		ssize_t w = r->blen ? write(f, r->body, r->blen) : 0;
+		if (pt && !(fin && !strcmp(fin, "1"))) { int e = errno; close(f);
+			if (w != (ssize_t)r->blen) { unlink(tmp); reply_err(r->fd, 500, e == ENOSPC ? "write failed (drive full?)" : "write failed"); return; }
+			str s2 = {0}; sadd(&s2, "{\"ok\":true,\"message\":\"piece\",\"size\":%lld}", off + (long long)r->blen); reply_json(r->fd, &s2); return; }
 		fsync(f); close(f);
 		if (w != (ssize_t)r->blen || rename(tmp, path)) { unlink(tmp); reply_err(r->fd, 500, "write failed (drive full?)"); return; }
 		if (shared_path(path)) { if (chown(path, 1000, 1000)) {} }
@@ -833,6 +878,17 @@ static void api_fs(struct req *r, const char *op)
 			closedir(d);
 		}
 		sadd(&s, "]}"); reply_json(r->fd, &s);
+	}
+	else if (!strcmp(op, "hash")) {
+		/* 1.6.1: a file's SHA-256 (File Explorer checks what it moved before deleting the original); nothing hidden */
+		if (strstr(path, "/.")) { reply_err(r->fd, 403, "not a hidden file"); return; }
+		int f = open(path, O_RDONLY | O_NOFOLLOW); struct stat st;
+		if (f < 0 || fstat(f, &st) || !S_ISREG(st.st_mode)) { if (f >= 0) close(f); reply_err(r->fd, 404, "not found"); return; }
+		char cmd[64]; snprintf(cmd, sizeof cmd, "sha256sum </proc/self/fd/%d 2>/dev/null", f);
+		char *h = run_out(cmd); close(f);
+		if (!h || strlen(h) < 64) { free(h); reply_err(r->fd, 500, "could not read the file"); return; }
+		h[64] = 0; for (int i = 0; i < 64; i++) if (!isxdigit((unsigned char)h[i])) { free(h); reply_err(r->fd, 500, "could not read the file"); return; }
+		str s = {0}; sadd(&s, "{\"ok\":true,\"sha256\":\"%s\",\"size\":%lld}", h, (long long)st.st_size); free(h); reply_json(r->fd, &s);
 	}
 	else if (!strcmp(op, "search")) {
 		/* 1.5.6: File Explorer's "Everywhere" on a plugged-in drive: names that contain q (any case), at most 3 folder
@@ -3049,7 +3105,11 @@ static void api_dl(struct req *r, const char *what, int post)
 		char hd[300]; if (!dl_acct_dir(qparam(r->query, "acct"), hd, sizeof hd)) { reply_err(r->fd, 400, "which account?"); return; }
 		int fromhome = from && (!strcmp(from, "home") || !strcmp(from, "root"));
 		const char *src_dir = !strcmp(to, "release") || (from && !strcmp(from, "quarantine")) ? QUARANTINE : from && !strcmp(from, "root") ? DLHOME : from && !strcmp(from, "home") ? hd : INCOMING;
-		if (fromhome && strcmp(to, "del") && strcmp(to, "rename") && strcmp(to, "quar") && strcmp(to, "acct")) { reply_err(r->fd, 400, "to?"); return; }
+		if (fromhome && strcmp(to, "del") && strcmp(to, "rename") && strcmp(to, "quar") && strcmp(to, "acct") && strcmp(to, "copy")) { reply_err(r->fd, 400, "to?"); return; }
+		/* 1.6.1 (the Vivobook, 2026-11-20: a 692 MB download copied in Downloads became a 99-byte "- COPY"): to=copy, a file
+		   kept on the disk copied as a file of its own, in the same account's folder only (from=home with acct), named as
+		   (or after it: "name (2).ext") */
+		if (!strcmp(to, "copy") && (!from || strcmp(from, "home") || !strcmp(hd, DLHOME))) { reply_err(r->fd, 400, "only an account's own files are copied"); return; }
 		if (!strcmp(to, "acct") && (!from || strcmp(from, "root") || !strcmp(hd, DLHOME))) { reply_err(r->fd, 400, "to which account?"); return; }
 		char src[600]; snprintf(src, sizeof src, "%s/%s", src_dir, name);
 		struct stat st; if (lstat(src, &st) || !S_ISREG(st.st_mode)) { reply_err(r->fd, 404, "the file is not there any more"); return; }
@@ -3063,6 +3123,15 @@ static void api_dl(struct req *r, const char *what, int post)
 		else if (!strcmp(to, "keep") || !strcmp(to, "release")) dl_unique(hd, dl_name_ok(as) ? as : name, dst, sizeof dst);
 		else if (!strcmp(to, "acct")) dl_unique(hd, name, dst, sizeof dst);
 		else if (!strcmp(to, "quar")) { mkdir(QUARANTINE, 0700); if (chown(QUARANTINE, 1000, 1000)) {} dl_unique(QUARANTINE, name, dst, sizeof dst); }
+		else if (!strcmp(to, "copy")) {
+			if (as && !dl_name_ok(as)) { reply_err(r->fd, 400, "which name?"); return; }
+			dl_unique(hd, as ? as : name, dst, sizeof dst);
+			char err[200]; long long sz = 0; int rc = fs_copy_file(src, dst, &sz, err, sizeof err);
+			if (rc) { reply_err(r->fd, rc, err); return; }
+			if (chown(dst, 1000, 1000)) {}
+			char ob[760]; str s = {0}; sadd(&s, "{\"ok\":true,\"path\":"); sjson(&s, dl_out(dst, ob, sizeof ob)); sadd(&s, ",\"name\":"); sjson(&s, strrchr(dst, '/') + 1); sadd(&s, ",\"size\":%lld}", sz);
+			reply_json(r->fd, &s); return;
+		}
 		else { reply_err(r->fd, 400, "to?"); return; }
 		if (rename(src, dst)) { reply_err(r->fd, 500, strerror(errno)); return; }
 		char ob[760]; str s = {0}; sadd(&s, "{\"ok\":true,\"path\":"); sjson(&s, dl_out(dst, ob, sizeof ob)); sadd(&s, ",\"name\":"); sjson(&s, strrchr(dst, '/') + 1); sadd(&s, ",\"size\":%lld}", (long long)st.st_size);
@@ -4716,7 +4785,7 @@ static void api(struct req *r)
 		start_job("drive-copy", "/usr/lib/rudolf/drivecopy.sh " RUN "/drivecopy.list"); reply_ok(r->fd, "started"); return;
 	}
 	if (!strncmp(p, "fs/", 3)) {
-		if (strcmp(p + 3, "list") && strcmp(p + 3, "read") && strcmp(p + 3, "search") && !post) { reply_err(r->fd, 400, "use POST"); return; }
+		if (strcmp(p + 3, "list") && strcmp(p + 3, "read") && strcmp(p + 3, "search") && strcmp(p + 3, "hash") && !post) { reply_err(r->fd, 400, "use POST"); return; }
 		api_fs(r, p + 3); return;
 	}
 	if (!strcmp(p, "display")) {
