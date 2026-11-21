@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Packages (as the release workflow installs them)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-nice glib-networking xvfb imagemagick >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xdotool libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-nice glib-networking xvfb imagemagick >/dev/null
       - name: Build rudolf-webkit
         run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
       - name: Build rudolf-native (1.5.9, plan Part 12)
@@ -71,6 +71,11 @@ jobs:
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
           python3 iso/qt/webkit/tabsgpu61_ci.py ./rudolf-webkit | tee tabsgpu-result.txt; r=${PIPESTATUS[0]}
           echo "::notice title=Lite tabs' painting::$(tail -1 tabsgpu-result.txt) — $(grep -E '^FAIL' tabsgpu-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
+      - name: Oracle's tabs - a page's full screen, five tabs at once (1.6.1)
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          python3 iso/qt/webkit/tabsfs61_ci.py ./rudolf-webkit | tee tabsfs-result.txt; r=${PIPESTATUS[0]}
+          echo "::notice title=Lite tabs - full screen, five tabs::$(tail -1 tabsfs-result.txt) — $(grep -E '^FAIL|^memory' tabsfs-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
       - name: An app's own link scheme in Oracle's tabs (1.6.0, the owner's Vivobook report of 2026-11-16)
         run: |
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home3; mkdir -p $HOME

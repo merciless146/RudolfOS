@@ -10,10 +10,13 @@
 #          the live page still runs for its scripts and its picture is taken again; uncovered, the live page is back.
 #          In the session's drawing mode and in software drawing (--draw=soft).
 #   gpu:   in mixed drawing the desktop page's own web process paints on the processor, its tab's with the graphics card.
+#   tabs:  a page's own full screen (a click, as a person's) fills the screen and Escape leaves it; a download in a tab
+#          arrives complete in the desktop's download folder as the desktop's user; five tabs at once, each its own
+#          process, their memory (PSS) reported, each under 300 MB.
 # QEMU's own processor draws slowly: the screen is read until it shows what it should (up to 90 s), then the page goes on.
 # Tests only.
 #   LT_FIX=DIR python3 lt161_t.py REL-DIR      (root; SB_PARTS, QEMU, QEMU_ACCEL as for t160_t.py; LT_MODES=session,soft;
-#                                               LT_PHASES=cover,gpu)
+#                                               LT_PHASES=cover,gpu,tabs)
 import os, sys, time, re, subprocess, shutil, struct, json, base64
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -22,7 +25,7 @@ from guest import Guest
 from ser import Ser
 from PIL import Image
 REL = os.path.abspath(sys.argv[1]); PARTS = os.environ.get('SB_PARTS', '/nonexistent'); FIX = os.environ.get('LT_FIX', '')
-MODES = os.environ.get('LT_MODES', 'session,soft').split(','); PHASES = os.environ.get('LT_PHASES', 'cover,gpu').split(',')
+MODES = os.environ.get('LT_MODES', 'session,soft').split(','); PHASES = os.environ.get('LT_PHASES', 'cover,gpu,tabs').split(',')
 LOG = open('lt161.txt', 'w'); R = []; T0 = time.time()
 def out(*a):
     s = ' '.join(str(x) for x in a); s = f'[{int(time.time() - T0):5d}s] ' + s; print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
@@ -62,8 +65,41 @@ async function run(){say('hello');
 </script>'''
 TAB = '''<!doctype html><meta charset=utf-8><title>LT161 tab</title><body style="background:#fde68a;font:40px sans-serif;margin:0">A tab
 <script>let n=0;setInterval(()=>{document.title='LT161 tab '+document.visibilityState+' '+(++n)},500)</script>'''
+# (the tabs phase) a page's own full screen, a download, five tabs at once
+DESK2 = r'''<!doctype html><meta charset=utf-8><title>lt161 tabs</title><body style="background:#123;margin:0;overflow:hidden"><script>
+const say=s=>console.log('LT161 '+s);const send=m=>window.webkit.messageHandlers.rudolfShell.postMessage(m);
+const ev=[];let hello=false;
+window.__rwkIn=m=>{ev.push(m);if(m.rudolfShell=='hello'&&!hello){hello=true;send({rudolfShell:'ready'});run().catch(e=>say('ERR '+e.message))}};
+const wait=(f,t=60000)=>new Promise((res,rej)=>{const t0=Date.now();const iv=setInterval(()=>{const i=ev.findIndex(f);if(i>=0){clearInterval(iv);res(ev.splice(i,1)[0])}else if(Date.now()-t0>t){clearInterval(iv);rej(new Error('timeout'))}},100)});
+const sl=t=>new Promise(r=>setTimeout(r,t));
+const gate=async k=>{for(let i=0;i<360;i++){try{if((await fetch('/gate-'+k,{cache:'no-store'})).ok)return}catch(e){}await sl(500)}};
+async function run(){say('hello');
+ send({rudolfShell:'tab',op:'open',tid:'t1',url:'http://127.0.0.1:8601/fs.html',part:'lt161'});
+ send({rudolfShell:'tab',op:'place',tid:'t1',r:[200,150,600,400],vis:null,z:1});
+ await wait(m=>m.ev=='load'&&m.tid=='t1'&&m.loading===false).catch(()=>0);await sl(1500);say('shot fsready');
+ const on=await wait(m=>m.ev=='fs'&&m.tid=='t1',180000).catch(()=>null);say('fs '+(on&&on.on?'on':'none'));
+ send({rudolfShell:'tab',op:'place',tid:'t1',r:null});await sl(1000);say('shot fs');await gate('fs');
+ const off=await wait(m=>m.ev=='fs'&&m.tid=='t1',180000).catch(()=>null);say('fs '+(off&&off.on===false?'off':'none'));
+ send({rudolfShell:'tab',op:'place',tid:'t1',r:[200,150,600,400],vis:null,z:1});await sl(1000);say('shot back');await gate('back');
+ send({rudolfShell:'tab',op:'go',tid:'t1',url:'http://127.0.0.1:8601/file.bin'});
+ const dl=await wait(m=>m.ev=='download'&&m.tid=='t1').catch(()=>null);say('download '+(dl?dl.url:'none'));await sl(4000);say('dl done');await gate('dl');
+ send({rudolfShell:'tab',op:'close',tid:'t1'});
+ for(let i=1;i<=5;i++){send({rudolfShell:'tab',op:'open',tid:'f'+i,url:'http://127.0.0.1:8601/page'+i+'.html',part:'five'});
+  send({rudolfShell:'tab',op:'place',tid:'f'+i,r:i==5?[100,100,800,500]:null,z:i})}
+ let n=0;for(let i=1;i<=5;i++){if(await wait(m=>m.ev=='load'&&m.tid=='f'+i&&m.loading===false,120000).catch(()=>null))n++}
+ say('five '+n);await sl(5000);say('shot five');await gate('five');say('done')}
+</script>'''
+FS = '''<!doctype html><meta charset=utf-8><title>fs</title><body style="background:#fde68a;margin:0">
+<button id=b style="position:fixed;inset:0;width:100%;height:100%;background:#fde68a;border:0;font:30px sans-serif">Full screen</button>
+<script>b.onclick=()=>document.documentElement.requestFullscreen().catch(e=>document.title='ERR '+e.message)</script>'''
+PAGE = '''<!doctype html><meta charset=utf-8><title>page %d</title><body style="background:#e0f2fe;font:16px sans-serif">
+<h1>Page %d</h1><canvas id=c width=600 height=300></canvas><p>%s</p><script>const x=c.getContext('2d');let t=0;
+setInterval(()=>{t++;x.fillStyle='hsl('+(t*7%%360)+',70%%,60%%)';x.fillRect((t*13)%%600,(t*7)%%300,40,40)},100)</script>'''
 os.makedirs(f'{W}/fix/www8600'); os.makedirs(f'{W}/fix/www8601')
 open(f'{W}/fix/www8600/desk.html', 'w').write(DESK); open(f'{W}/fix/www8601/tab.html', 'w').write(TAB)
+open(f'{W}/fix/www8600/desk2.html', 'w').write(DESK2); open(f'{W}/fix/www8601/fs.html', 'w').write(FS)
+open(f'{W}/fix/www8601/file.bin', 'wb').write(bytes(range(256)) * 400)
+for i in range(1, 6): open(f'{W}/fix/www8601/page{i}.html', 'w').write(PAGE % (i, i, ' '.join(['Some words of text in a paragraph.'] * 400)))
 shutil.copy(f'{FIX}/rudolf-webkit', f'{W}/fix/rudolf-webkit')
 FIXIMG = os.path.abspath('lt161fix.img'); subprocess.run(['truncate', '-s', '64M', FIXIMG], check=True)
 subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'LT161FIX', '-d', f'{W}/fix', FIXIMG], check=True)
@@ -191,6 +227,49 @@ try:
         ok('gpu 3. ...the tab\'s with the graphics card (no processor painting, no painting threads)', len(L) == 2 and L[1][2] == 0 and L[1][3] == 0, L)
         SEEN.clear(); shot = screen_until('mixed-tab', lambda f: yellow(px(f, 600, 400)), 'open')
         ok('gpu 4. ...and the tab is drawn on the screen', yellow(px(shot, 600, 400)), [px(shot, 600, 400), SEEN.get('open')])
+        sh("pkill -f '/run/lt161/rudolf-webkit'", 20, False); time.sleep(3)
+    # 1.6.1 (Oracle's WebKit tabs: a download, full screen, memory with 5 tabs), on the release's own Lite session
+    if 'tabs' in PHASES:
+        sh(f"pkill -f '/run/lt161/rudolf-webkit' ; rm -f /run/lt161/www8600/gate-* /run/rudolf/dl/.incoming/file.bin*; rm -rf /tmp/lth; mkdir -p /tmp/lth; chown rudolf /tmp/lth; : > /tmp/lt.log; chmod 666 /tmp/lt.log; "
+           f"su -s /bin/sh rudolf -c 'cd /tmp/lth; exec env DISPLAY=:0 HOME=/tmp/lth /run/lt161/rudolf-webkit --size={SW}x{SH} --draw={smode} http://127.0.0.1:8600/desk2.html' >> /tmp/lt.log 2>&1 &", 30)
+        log = lambda: sh("grep -o 'LT161 .*' /tmp/lt.log", 20, False)
+        def wait_log(k, secs):
+            end = time.time() + secs; lg = ''
+            while time.time() < end:
+                lg = log()
+                if k in lg or 'LT161 ERR' in lg: break
+                time.sleep(2)
+            return lg
+        lg = wait_log('LT161 shot fsready', 240)
+        SEEN.clear()
+        if 'shot fsready' in lg:
+            for _ in range(4):   # (a person's click on the page's button; once more if the page did not take it yet)
+                g.q.at(500, 350, W=SW, H=SH)
+                lg = wait_log('LT161 fs ', 40)
+                if 'LT161 fs on' in lg: break
+        ok('tabs 1. a page\'s own full screen (a click on its button) is said to the desktop', 'LT161 fs on' in lg, lg[-300:])
+        wait_log('LT161 shot fs', 60)
+        f = screen_until('fullscreen', lambda f: all(yellow(px(f, x, y)) for x, y in ((5, 5), (SW - 6, SH - 6), (SW // 2, 60))), 'fs')
+        ok('tabs 2. ...and fills the screen', all(yellow(px(f, x, y)) for x, y in ((5, 5), (SW - 6, SH - 6), (SW // 2, 60))), [px(f, 5, 5), px(f, SW - 6, SH - 6), SEEN.get('fs')])
+        time.sleep(1); g.q.key('esc'); lg = wait_log('LT161 shot back', 120)
+        ok('tabs 3. Escape leaves it, said to the desktop', 'LT161 fs off' in lg, lg[-300:])
+        f = screen_until('back', lambda f: not yellow(px(f, 5, 5)) and yellow(px(f, 300, 200)), 'back')
+        ok('tabs 4. ...and the tab is back where it was', not yellow(px(f, 5, 5)) and yellow(px(f, 300, 200)), [px(f, 5, 5), px(f, 300, 200)])
+        lg = wait_log('LT161 dl done', 120)
+        o = sh("ls -ln /run/rudolf/dl/.incoming/ | grep file.bin; stat -c '%s %U' /run/rudolf/dl/.incoming/file.bin 2>&1", 20)
+        g.sh("touch /run/lt161/www8600/gate-dl", 20)
+        ok('tabs 5. a download in a tab is said to the desktop', 'LT161 download http://127.0.0.1:8601/file.bin' in lg, lg[-300:])
+        ok('tabs 6. ...and arrives complete where the desktop files downloads from (as the desktop\'s user)', re.search(r'^102400 rudolf$', o, re.M) and '.crdownload' not in o, o)
+        lg = wait_log('LT161 shot five', 400)
+        ok('tabs 7. five tabs at once, all loaded', 'LT161 five 5' in lg, lg[-300:])
+        o = sh("P=$(pgrep -f '^/run/lt161/rudolf-webkit' | head -1); for d in /proc/[0-9]*; do [ \"$(awk '{print $4}' $d/stat 2>/dev/null)\" = \"$P\" ] || continue; "
+               "grep -q WebKitWebProces $d/comm 2>/dev/null || continue; echo \"WM $(awk '{print $22}' $d/stat) $(awk '/^Pss:/{print int($2/1024)}' $d/smaps_rollup)\"; done | sort -n -k2; "
+               "free -m | head -2", 60)
+        g.sh("touch /run/lt161/www8600/gate-five", 20)
+        M = sorted([(int(a), int(b)) for a, b in re.findall(r'^WM (\d+) (\d+)$', o, re.M)])
+        out('memory (PSS, MB) on the release: the desktop page', M[0][1] if M else '-', '; five tabs', [m[1] for m in M[1:]], '; total', sum(m[1] for m in M))
+        ok('tabs 8. ...each in its own web process (the desktop page\'s and five)', len(M) == 6, o)
+        ok('tabs 9. ...each tab under 300 MB (PSS)', len(M) == 6 and all(0 < m[1] < 300 for m in M[1:]), M)
         sh("pkill -f '/run/lt161/rudolf-webkit'", 20, False); time.sleep(3)
     ok('8. the release\'s own Lite desktop still runs', 'rudolf-webkit' in sh("pgrep -a -f 'rudolf-webkit --rudolf-kiosk'", 20, False))
 finally:
