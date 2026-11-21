@@ -117,6 +117,11 @@ y SECURITY SECURITYFS SECURITY_LOCKDOWN_LSM SECURITY_LOCKDOWN_LSM_EARLY LOCK_DOW
 # 1.5.9 (plan 15.1): Yama, so a program cannot read another's memory (the desktop's API token in the browser) by
 # ptrace just because it runs as the same user: only a process's parent may (ptrace_scope 1, its default)
 y SECURITY_YAMA
+# 1.6.1 (docs/plan-1.6.1.md Part 20): Landlock itself. "landlock" was in the LSM list since 1.5.9, but the option was never
+# on, so the kernel had none. rudolfd's narrow confinement (rudolfd-confine.inc) uses it for the folders a request may
+# write: a program puts it on itself, so it needs no policy loaded at the start (AppArmor would need its profiles
+# compiled and loaded by the start-up, and its own LSM); about 30 KB of kernel
+y SECURITY_LANDLOCK
 $C --set-str LSM "lockdown,landlock,yama"
 y MD BLK_DEV_DM DM_VERITY CRYPTO_SHA256 EFIVAR_FS
 # processor microcode (1.2.4): AMD's updates built into the kernel, so the start applies them before anything

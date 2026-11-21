@@ -27,6 +27,7 @@
 #endif
 static int peer_cached = -2;   /* per connection (each is its own process): -2 not looked at yet */
 static unsigned peer_uid_seen = (unsigned)-1;
+static int peer_pid_seen;   /* (1.6.1 Part 20: the desktop's process found holding the connection, for rudolfd-confine.inc's windows) */
 
 static const char *peer_cg(void) { const char *e = getenv("RUDOLFD_DESKTOP_CG"); return e && *e ? e : PEER_CG_DEFAULT; }
 /* 1.5.9 (15.3): the desktop's Linux user (rudolf, 1000); RUDOLFD_DESKTOP_UID (tests) stands for it */
@@ -92,9 +93,10 @@ static int peer_desktop(int fd)
 	   Linux user, a socket of any user but the desktop's is not the desktop's, whatever group its process is in */
 	if (uid != peer_desk_uid()) return peer_cached = 0;
 	int hint = 0; { char *h = slurp(PEER_HINT, NULL); if (h) { hint = atoi(h); free(h); } }
-	if (hint > 0) for (int i = 0; i < n; i++) if (pids[i] == hint) { if (peer_holds(hint, ino)) return peer_cached = 1; break; }
+	if (hint > 0) for (int i = 0; i < n; i++) if (pids[i] == hint) { if (peer_holds(hint, ino)) { peer_pid_seen = hint; return peer_cached = 1; } break; }
 	for (int i = 0; i < n; i++) {
 		if (pids[i] == hint || !peer_holds(pids[i], ino)) continue;
+		peer_pid_seen = pids[i];
 		char tmp[160]; snprintf(tmp, sizeof tmp, "%s.%d", PEER_HINT, (int)getpid());
 		int w = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
 		if (w >= 0) { char b[16]; int k = snprintf(b, sizeof b, "%d", pids[i]); if (write(w, b, k) == k && !close(w)) rename(tmp, PEER_HINT); else { close(w); unlink(tmp); } }
