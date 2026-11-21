@@ -1020,7 +1020,7 @@ static void start_job(const char *name, const char *cmd)
 	unlink(RUN "/job.status"); unlink(RUN "/job.log");
 	write_str(RUN "/job.name", name);
 	/* 1.3.0: the kernel's last crash line now, so a crash during this job can be told apart from older ones */
-	run("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -1 > " RUN "/job.kmark");
+	root_kmark();   /* (1.6.1 Part 11: the kernel's messages from the logs helper; rudolfd-rootother.inc) */
 	FILE *f = fopen(RUN "/job.sh", "w");
 	if (!f) return;
 	fprintf(f, "%s > " RUN "/job.log 2>&1\necho $? > " RUN "/job.status\n", cmd);
@@ -1069,7 +1069,7 @@ static void time_tick(void)
  * after this one (the last crash line when a job started). Other programs' crashes are not reported. */
 static int crash_list(str *s, const char *after, int max)
 {
-	char *l = run_out("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -200");
+	char *l = root_dmesg(0, KMARK_GREP " | tail -200", "dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -200");   /* (1.6.1 Part 11) */
 	int n = 0, past = !after || !*after;
 	for (char *line = l ? strtok(l, "\n") : NULL; line; line = strtok(NULL, "\n")) {
 		if (!past) { if (!strcmp(line, after)) past = 1; continue; }
@@ -2312,7 +2312,7 @@ static void api_ai_facts(struct req *r)
 	facts_add(&s, "job", RUN "/job.log", 60);
 	/* 1.5.9: the Wi-Fi, for "Why does the Wi-Fi drop?": its own log, the kernel's Wi-Fi messages, the radios */
 	facts_add(&s, "wifi", RUN "/wifi.log", 40);
-	{ char *k = run_out("dmesg 2>/dev/null | grep -E 'wlan[0-9]+:|rtw88|rtw89|iwlwifi|mt79|ath1[01]k|cfg80211' | grep -v -E 'Loading compiled-in|regulatory' | tail -40");
+	{ char *k = root_dmesg(0, "grep -E 'wlan[0-9]+:|rtw88|rtw89|iwlwifi|mt79|ath1[01]k|cfg80211' | grep -v -E 'Loading compiled-in|regulatory' | tail -40", "dmesg 2>/dev/null | grep -E 'wlan[0-9]+:|rtw88|rtw89|iwlwifi|mt79|ath1[01]k|cfg80211' | grep -v -E 'Loading compiled-in|regulatory' | tail -40");   /* (1.6.1 Part 11) */
 	  sadd(&s, ",\"wifiKernel\":"); sjson(&s, k ? k : ""); free(k); }
 	{ char *w = root_net_wifinow(); if (!w) w = run_out("/usr/lib/rudolf/wifi.sh radios \"\" 2>/dev/null; /usr/lib/rudolf/wifi.sh status \"\" 2>/dev/null | grep -E '^(adapter|wlan|wpa_state|ssid|bssid|freq|RSSI|LINKSPEED|country)='");
 	  sadd(&s, ",\"wifiNow\":"); sjson(&s, w ? w : ""); free(w); }
@@ -2586,7 +2586,7 @@ static void api_system(struct req *r)
 	sadd(&s, ",\"live\":%s,\"recovery\":%s", live ? "true" : "false", recovery ? "true" : "false");
 	jtext(&s, "modules", run_out("awk '{print $1}' /proc/modules 2>/dev/null | sort"));
 	/* the kernel's own warnings and errors (levels 0-4), newest last */
-	jtext(&s, "messages", run_out("dmesg -r 2>/dev/null | grep '^<[0-4]>' | sed 's/^<[0-9]>//' | tail -60"));
+	jtext(&s, "messages", root_dmesg(1, "grep '^<[0-4]>' | sed 's/^<[0-9]>//' | tail -60", "dmesg -r 2>/dev/null | grep '^<[0-4]>' | sed 's/^<[0-9]>//' | tail -60"));   /* (1.6.1 Part 11) */
 	sadd(&s, "},\"memory\":{\"total\":%lld,\"available\":%lld,\"cached\":%lld,\"buffers\":%lld,\"swapTotal\":%lld,\"swapFree\":%lld",
 		meminfo_kb("MemTotal"), meminfo_kb("MemAvailable"), meminfo_kb("Cached"), meminfo_kb("Buffers"), meminfo_kb("SwapTotal"), meminfo_kb("SwapFree"));
 	/* compressed swap in memory (zram): what was stored, what it takes */
@@ -2603,7 +2603,8 @@ static void api_system(struct req *r)
 	jtext(&s, "gpu", run_out("for d in /sys/class/drm/card[0-9]; do [ -e $d/device/vendor ] || continue; dr=$(readlink $d/device/driver 2>/dev/null); echo \"${d##*/} $(cat $d/device/vendor):$(cat $d/device/device) ${dr##*/}\"; done"));
 	/* what draws (1.2.4): the renderer glamor uses on the graphics card, and NVIDIA's GSP firmware (nouveau) */
 	jtext(&s, "renderer", run_out("sed -n 's/.*glamor X acceleration enabled on \\(.*\\)$/\\1/p' " RUN "/Xorg.log 2>/dev/null | head -1"));
-	jtext(&s, "gsp", run_out("grep -q '^nouveau ' /proc/modules && { dmesg 2>/dev/null | grep -i 'nouveau' | grep -iE 'gsp|firmware' | sed 's/^\\[[^]]*\\] *//' | tail -2; } || true"));
+	{ char *mods = slurp("/proc/modules", NULL); int nv = mods && (!strncmp(mods, "nouveau ", 8) || strstr(mods, "\nnouveau ")); free(mods);   /* (1.6.1 Part 11) */
+	  jtext(&s, "gsp", nv ? root_dmesg(0, "grep -i 'nouveau' | grep -iE 'gsp|firmware' | sed 's/^\\[[^]]*\\] *//' | tail -2", "grep -q '^nouveau ' /proc/modules && { dmesg 2>/dev/null | grep -i 'nouveau' | grep -iE 'gsp|firmware' | sed 's/^\\[[^]]*\\] *//' | tail -2; } || true") : strdup("")); }
 	jtext(&s, "display", run_out("echo \"$(cat " RUN "/display-mode 2>/dev/null) | $(cat " RUN "/screen-actual 2>/dev/null) | $(cat " RUN "/display-reason 2>/dev/null)\""));
 	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
 	jtext(&s, "audio_pcm", slurp("/proc/asound/pcm", NULL));
@@ -2920,12 +2921,21 @@ static void api_proc_end(struct req *r)
 	if (tr && *tr == '1') {
 		int *order = calloc(n, sizeof *order), kept = 0;
 		if (!order) { free(ps); reply_err(r->fd, 500, "out of memory"); return; }
-		int no = proc_tree(ps, n, pid, order, &kept), ended = proc_tree_end(ps, order, no, force);
+		int no = proc_tree(ps, n, pid, order, &kept), ended = -2;
+		/* (1.6.1 Part 11: by the procs helper, which checks again what must keep running; rudolfd-rootother.inc) */
+		{ int *pl = calloc(no ? no : 1, sizeof *pl), *er = calloc(no ? no : 1, sizeof *er), st = -2;
+		  if (pl && er) { for (int k = 0; k < no; k++) pl[k] = ps[order[k]].pid; st = root_procs_end(pl, no, 1, force, er); }
+		  if (st != -2) { ended = 0; if (!st) for (int k = 0; k < no; k++) if (!er[k]) ended++; }
+		  free(pl); free(er); }
+		if (ended == -2) ended = proc_tree_end(ps, order, no, force);
 		free(order); free(ps);
 		str s = {0}; sadd(&s, "{\"ok\":true,\"message\":"); sjson(&s, name); sadd(&s, ",\"ended\":%d,\"kept\":%d}", ended, kept); reply_json(r->fd, &s); return;
 	}
 	free(ps);
-	if (kill(pid, force ? SIGKILL : SIGTERM)) { reply_err(r->fd, 500, strerror(errno)); return; }
+	{ int er = 0, st = root_procs_end(&pid, 1, 0, force, &er);   /* (1.6.1 Part 11: by the procs helper, as below) */
+	  if (st == -1) { reply_err(r->fd, 500, strerror(EPERM)); return; }
+	  if (!st && er) { reply_err(r->fd, 500, strerror(er)); return; }
+	  if (st == -2 && kill(pid, force ? SIGKILL : SIGTERM)) { reply_err(r->fd, 500, strerror(errno)); return; } }
 	str s = {0}; sadd(&s, "{\"ok\":true,\"message\":"); sjson(&s, name); sadd(&s, "}"); reply_json(r->fd, &s);
 }
 /* restarting a service: sound (PulseAudio), wifi (reconnect), display (rudolf-display; the session starts it again) */
@@ -4078,7 +4088,7 @@ static void health_tick(void)
 		}
 	} else if (mg_off < 0) mg_off = 0;
 	/* crashes (every program: Rudolf OS's own, Linux and Windows programs), each once */
-	char *d = run_out("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -20");
+	char *d = root_dmesg(0, KMARK_GREP " | tail -20", "dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -20");   /* (1.6.1 Part 11) */
 	if (d) {
 		char *lines[20]; int nl = 0; for (char *l = strtok(d, "\n"); l && nl < 20; l = strtok(NULL, "\n")) lines[nl++] = l;
 		int from = 0;
@@ -4757,7 +4767,7 @@ static void api(struct req *r)
 		str s = {0}; sadd(&s, "{\"ok\":true,\"events\":"); sjson(&s, ev ? ev : ""); sadd(&s, "}");
 		free(ev); reply_json(r->fd, &s); return;
 	}
-	if (!strcmp(p, "log")) { char *l = run_out("dmesg | tail -200"); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
+	if (!strcmp(p, "log")) { char *l = root_dmesg(0, "tail -200", "dmesg | tail -200");   /* (1.6.1 Part 11) */ str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
 	if (!strcmp(p, "native/status")) { api_native_status(r); return; }
 	/* 1.5.7 (plan stage 5): rudolf-selftest, which only reads; its PASS/FAIL/SKIP lines */
 	/* 1.5.7 (plan Part 4): System Settings › Desktop engine. GET: the choice, the engine in use, and whether this Rudolf

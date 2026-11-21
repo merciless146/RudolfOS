@@ -54,7 +54,7 @@ static void root_net_job(const char *name, const char *const argv[], const char 
 {
 	unlink(RUN "/job.status"); unlink(RUN "/job.log");
 	write_str(RUN "/job.name", name);
-	run("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -1 > " RUN "/job.kmark");
+	root_kmark();
 	pid_t p = fork();
 	if (p == 0) {
 		setsid();

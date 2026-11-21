@@ -15,6 +15,7 @@
 #define RD_ROOT_DIR RR_DIR   /* (host tests build rudolfd with another) */
 #endif
 static int root_fd = -1;
+static void root_kmark(void);   /* (rudolfd-rootother.inc: a job's start, the kernel's last crash line) */
 static void root_init(void)
 {
 	const char *v = getenv("RUDOLF_ROOTD_FD");
@@ -84,7 +85,7 @@ static void root_job(const char *name, const char *const argv[])
 {
 	unlink(RUN "/job.status"); unlink(RUN "/job.log");
 	write_str(RUN "/job.name", name);
-	run("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -1 > " RUN "/job.kmark");
+	root_kmark();
 	pid_t p = fork();
 	if (p == 0) {
 		setsid();
@@ -100,3 +101,4 @@ static void root_job(const char *name, const char *const argv[])
 #include "rudolfd-rootpower.inc"  /* (power and the clock) */
 #include "rudolfd-rootnet.inc"    /* (the network) */
 #include "rudolfd-rootdev.inc"    /* (Bluetooth and Thunderbolt) */
+#include "rudolfd-rootother.inc"  /* (Task Manager's End process, the kernel's messages) */

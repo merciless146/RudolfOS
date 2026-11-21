@@ -58,6 +58,14 @@ printf 'RR_TEST_PROC=%s/proc\nRR_TEST_BIN=%s/bin\n' $T $T >> $T/rr.conf
 # and wpa_cli in $T/bin: none of them touches this computer's network, each only says how it was called)
 gcc $CF -o $T/root/network $SYS/rudolf-network.c || { echo "FAIL build network"; exit 1; }; chmod 700 $T/root/network
 gcc $CF -o $T/root/devices $SYS/rudolf-devices.c || { echo "FAIL build devices"; exit 1; }; chmod 700 $T/root/devices   # (1.6.1 devices: Bluetooth, Thunderbolt)
+# (1.6.1 other: Task Manager's End process, and the kernel's messages from a stand-in dmesg in $T/bin)
+gcc $CF -o $T/root/procs $SYS/rudolf-procs.c && gcc $CF -o $T/root/logs $SYS/rudolf-logs.c || { echo "FAIL build procs, logs"; exit 1; }; chmod 700 $T/root/procs $T/root/logs
+cat > $T/bin/dmesg <<'DM'
+#!/bin/sh
+if [ "$1" = -r ]; then printf '<6>[    1.0] usb 1-1: new device\n<3>[    2.0] i915: a GPU hang\n<4>[    3.0] wlan0: deauthenticated\n'
+else printf '[    1.0] usb 1-1: new device\n[    2.5] rudolf-apps[99]: segfault at 0 ip 1 sp 2 error 4 in libc.so.6[18badd,1000+2000]\n[    3.0] wlan0: deauthenticated\n[    4.0] nouveau 0000:01:00.0: gsp: firmware loaded\n'; fi
+DM
+chmod 755 $T/bin/dmesg
 cat > $T/netstand <<'NS'
 #!/bin/sh
 T=@T@; n=${0##*/}; rq=; [ "$n $1" = "wifi.sh connect" ] || [ "$n $1" = "wifi.sh forget" ] && rq="|req=$(md5sum < "$3" | cut -c1-8) $(stat -c %a:%u "$3") ${3##*/}" && rm -f "$3"
@@ -232,6 +240,24 @@ b=0; for a in "bt" "bt|status|x" "bt|on|now" "bt|scan" "bt|scan|2" "bt|scan|61" 
 ok "D2. devices: a device's address or ID that is not one, a search that is not 3 to 60 seconds, an answer that is not yes or no, the scripts' own start-up actions, extra arguments, unknown actions: refused, nothing run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
 ok "...said in the health log (Security)" "$([ "$(logged 'devices helper refused')" -ge 30 ] && echo 1)" "$(logged 'devices helper refused')"
 
+# ---- 1.6.1 other: the procs and logs helpers' checks (the processes ended are this test's own)
+PR=$T/root/procs; mkdir -p $T/fake; cp "$(command -v tail)" $T/fake/rudolfd
+tail -f /dev/null & P1=$!; sh -c 'tail -f /dev/null & tail -f /dev/null & wait' & P2=$!; timeout 1 tail -f /dev/null; BKP="$BKP $P1 $P2"
+K1=$(pgrep -P $P2 | head -1); K2=$(pgrep -P $P2 | tail -1); $T/fake/rudolfd -f /dev/null & PF=$!; BKP="$BKP $K1 $K2 $PF"
+live() { for p in "$@"; do s=$(sed 's/.*) //' /proc/$p/stat 2>/dev/null | cut -c1); [ -n "$s" ] && [ "$s" != Z ] && echo alive; done | wc -l; }
+o=$(echo $P1 | env -i $PR end term); r=$?; timeout 1 tail -f /dev/null; wait $P1 2>/dev/null; a1=$([ "$(live $P1)" = 0 ] && echo gone || echo alive)
+o2=$(printf '%s\n%s\n%s\n' $P2 $K1 $K2 | $PR tree kill); r2=$?; timeout 1 tail -f /dev/null; wait $P2 2>/dev/null; a2=$(live $P2 $K1 $K2)
+o3=$(echo 999999999 | $PR end term); r3=$?
+ok "O1. procs: End process (SIGTERM) and End process tree (stopped, then SIGKILL from the last), each one's result on a line; a process that is gone: its error (ESRCH)" "$([ $r$r2$r3 = 000 ] && [ "$o" = 0 ] && [ "$a1" = gone ] && [ "$(echo "$o2" | tr '\n' ' ')" = '0 0 0 ' ] && [ "$a2" = 0 ] && [ "$o3" = 3 ] && echo 1)" "$r$r2$r3 $o $a1 $o2 $a2 $o3"
+b=0; for i in "1" "2" "$PF" "$$" "0" "-5" "abc" "12 13" "1234567890" ""; do printf '%s\n' "$i" | $PR end term >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $i)"; }; done
+printf '%s\n1\n' $PF | $PR tree term >/dev/null 2>&1; [ $? = 2 ] || b=1; printf '5\n6\n' | $PR end term >/dev/null 2>&1; [ $? = 2 ] || b=1; printf '5' | $PR end term >/dev/null 2>&1; [ $? = 2 ] || b=1
+$PR end stop </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1; $PR frob term </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1; $PR end </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1
+ok "O2. procs: pid 1, the kernel's, a process named rudolfd, the helper's own caller, a number that is not one, two for End process, no last newline, a signal or action that is not one: refused, nothing ended" "$([ $b = 0 ] && kill -0 $PF 2>/dev/null && echo 1)" "$b"
+ok "...said in the health log (Security)" "$([ "$(logged 'procs helper refused')" -ge 16 ] && echo 1)" "$(logged 'procs helper refused')"
+kill $PF 2>/dev/null; wait $PF 2>/dev/null
+o=$(env -i $T/root/logs dmesg </dev/null); o2=$($T/root/logs dmesg-raw </dev/null); $T/root/logs dmesg -r </dev/null >/dev/null 2>&1; r=$?; $T/root/logs cat </dev/null >/dev/null 2>&1; r2=$?
+ok "O3. logs: dmesg and dmesg -r, as they are; nothing else (an argument, another action: refused)" "$([ $r$r2 = 22 ] && echo "$o" | grep -q 'segfault at 0' && echo "$o2" | grep -q '^<3>' && [ "$(logged 'logs helper refused')" -ge 2 ] && echo 1)" "$r$r2 $o $o2"
+
 # ---- the updates helper's checks
 U=$T/root/updates
 for c in check download rollback stable-info to-stable status speedtest boot-ok; do env -i $U $c >/dev/null 2>&1 || echo "rc $c"; done > $T/u.rc; c=$(calls)
@@ -369,6 +395,11 @@ nprobe() {
 	api GET bt; api POST 'bt/power?on=0'; api POST bt/visible; api POST 'bt/scan?s=5'; api POST 'bt/answer?ok=1'; touch $T/bt-noq; api POST 'bt/answer?ok=0'; rm -f $T/bt-noq
 	api POST 'bt/pair?mac=AA:BB:CC:DD:EE:01'; api POST 'bt/disconnect?mac=AA:BB:CC:DD:EE:01'; api POST 'bt/remove?mac=AA:BB:CC:DD:EE:01'; api POST 'bt/pair?mac=aa:bb:cc:dd:ee:01'
 	api GET tb; api POST 'tb/allow?id=0-1'; api POST 'tb/deny?id=0-1'; api POST 'tb/forget?uid=00ab-cd12'; api POST 'tb/allow?id=9-9'
+	# (1.6.1 other: Task Manager's End process and End process tree on this test's own processes; the kernel's messages)
+	timeout 300 tail -f /dev/null & Q1=$!; sh -c 'timeout 300 tail -f /dev/null & timeout 300 tail -f /dev/null & wait' & Q2=$!; timeout 1 tail -f /dev/null
+	api POST "proc/end?pid=$Q1"; api POST "proc/end?pid=$Q2&tree=1&force=1"; timeout 1 tail -f /dev/null; for p in $Q1 $Q2; do kill -0 $p 2>/dev/null && echo alive; done; wait $Q1 $Q2 2>/dev/null
+	api POST "proc/end?pid=$(pgrep -f "^$T/rudolfd" | head -1)"; api POST 'proc/end?pid=999999999'
+	api GET log; api GET crashes | sed 's/"at":[0-9]*/"at":N/g'; cat /run/rudolf/job.kmark
 }
 nnorm() { grep -v '^ntpd \|^hwclock \|^firewall status|' | sed "s|$T/run/|/run/rudolf/|g; s|$T/lib/|/usr/lib/rudolf/|g; s/|path=[^|]*//"; }
 # the accounts' folders: sign-in with the session, the state it leaves (owners, the binds, the session's files), a
@@ -413,5 +444,6 @@ ok "25. the network through the helper (Wi-Fi's actions, a join (a job) and a fo
 ok "...the scripts and commands asked the same things (the requests' files root's 0600, removed by wifi.sh as before)" "$([ -n "$NCA" ] && [ "$NCA" = "$NCB" ] && [ "$NCA" = "$NCC" ] && echo "$NCA" | grep -q '^wifi.sh connect rtest0 /run/rudolf/wifi.req|req=[0-9a-f]* 600:0 wifi.req|leak=$' && echo "$NCA" | grep -q '^udhcpc -i rtest0 -n -q -t 5 -O 43 -s /usr/lib/rudolf/udhcpc.sh|' && echo 1)" "$(printf '%s\n---\n%s\n---\n%s' "$NCA" "$NCB" "$NCC" | head -90)"
 ok "...and they are 1.6.0's answers: the status's raw text, the radio and band turned off, the adapter refused, connecting then the job ended 0, forgotten, connected, no DHCP answer 500, applied, the address refused 500 with the name server written, the firewall's count, its refusal's words, sharing, the hotspot off, metered refused" "$(echo "$NA" | grep -q '"raw":"adapter=rtest0' && echo "$NA" | grep -q 'Radio aa:bb:cc:dd:ee:ff turned off' && echo "$NA" | grep -q "5 GHz radio turned off" && echo "$NA" | grep -q 'No such adapter: wlan9' && echo "$NA" | grep -q '"message":"connecting"' && echo "$NA" | grep -q '"message":"Forgotten"' && echo "$NA" | grep -q '"message":"connected"' && echo "$NA" | grep -q 'no DHCP answer' && echo "$NA" | grep -q '"message":"applied"' && echo "$NA" | grep -q 'could not apply the address' && echo "$NA" | grep -q '^nameserver 8.8.4.4$' && echo "$NA" | grep -q '"blocked":7' && echo "$NA" | grep -q 'nft: no such table' && echo "$NA" | grep -q 'Sharing Phone Net' && echo "$NA" | grep -q 'The hotspot is off' && echo "$NA" | grep -q 'no such adapter' && ! grep -q 'network helper did not start' $T/rd.log && echo 1)" "$NA"
 ok "26. Bluetooth and Thunderbolt through the devices helper (in check 25's comparison): 1.6.0's answers: the status, answered, already answered 409, paired, disconnected, removed (the device still there: 409 as before), a lower-case address 400, the devices, approved, not approved, forgotten, no such device 500" "$(echo "$NA" | grep -q '"adapter":"hci0"' && echo "$NA" | grep -q '"message":"answered"' && echo "$NA" | grep -q 'already answered' && echo "$NA" | grep -q '"ok":true,"message":"Pairing successful"' && echo "$NA" | grep -q '"ok":true,"message":"Successful disconnected"' && echo "$NA" | grep -q '"ok":false,"message":"Device has been removed"' && echo "$NA" | grep -q 'bad device' && echo "$NA" | grep -q '"present":true' && echo "$NA" | grep -q '"message":"approved"' && echo "$NA" | grep -q '"message":"not approved"' && echo "$NA" | grep -q '"message":"forgotten"' && echo "$NA" | grep -q '"error":"no such device"' && echo "$NCA" | grep -q '^bluetooth scan 5|' && echo "$NCA" | grep -q '^thunderbolt forget 00ab-cd12|' && ! grep -q 'devices helper did not start' $T/rd.log && echo 1)" "$(echo "$NA" | tail -16)"
+ok "27. Task Manager's End process and End process tree through the procs helper, the kernel's messages through the logs helper (in check 25's comparison): 1.6.0's answers: ended, the tree's five, rudolfd itself 403, one that is gone 404, the log, the crash, a job's last crash line" "$(echo "$NA" | grep -q '"ok":true,"message":"timeout"}' && echo "$NA" | grep -q '"message":"sh","ended":5,"kept":0' && ! echo "$NA" | grep -q '^alive' && echo "$NA" | grep -q 'needs this process' && echo "$NA" | grep -q 'already ended' && echo "$NA" | grep -q '"log":"\[    1.0\] usb' && echo "$NA" | grep -q '"crashes":\[{' && echo "$NA" | grep -q '^\[    2.5\] rudolf-apps\[99\]: segfault' && ! grep -q 'helper did not start' $T/rd.log && echo 1)" "$(echo "$NA" | tail -9)"
 ok "21. rudolfd keeps rudolf-rootd's descriptor close-on-exec (nothing it starts has it)" "$(echo "$FDS" | python3 -c 'import sys,re; t=sys.stdin.read(); m=re.search(r"flags:\s*([0-7]+)", t); print(1 if m and int(m.group(1), 8) & 0o2000000 and "socket:" in t else 0)')" "$FDS"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

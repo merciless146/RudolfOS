@@ -32,6 +32,10 @@ static const struct { const char *name; uint64_t keep; } HELPER_CAPS[] = {
 	   "authorized" under /sys (root's file); no CAP_SYS_ADMIN, so no mount and no_new_privs */
 	{ "devices", CB(CAP_NET_ADMIN) | CB(CAP_NET_RAW) | CB(CAP_NET_BIND_SERVICE) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH)
 	  | CB(CAP_FOWNER) | CB(CAP_CHOWN) | CB(CAP_KILL) | CB(CAP_SETUID) | CB(CAP_SETGID) },
+	/* Task Manager's End process and End process tree (1.6.1 Part 11): signals to any user's processes, nothing else */
+	{ "procs", CB(CAP_KILL) },
+	/* the kernel's messages (1.6.1 Part 11): dmesg where kernel.dmesg_restrict is 1, nothing else */
+	{ "logs", CB(CAP_SYSLOG) },
 	{ NULL, 0 }
 };
 /* the system calls of CF_HELPER_DENY a helper may still make, by name: the power helper restarts and sets the clock */

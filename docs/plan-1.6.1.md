@@ -293,8 +293,8 @@ rudolfd runs as root today (they keep running as root, from the helper).
 | Display | screenshot (`grab_x`, `grab_fb`), clipboard (`api_clipboard`: su rudolf) | /dev/fb0; su to the desktop's user | none after the drop (video group; rudolfd is that user) |
 | Display | native/*, web/*, shell (POST shell: /etc/rudolf-shell), restart-browser, desktop/engine | the native desktop, Chromium windows started as the desktop's user (su/setuid), pkill of the kiosk browser, /etc and /persist/etc writes | display |
 | Sound | audio (/etc/asound.conf), audio/mics, mic, volume, media, sound restart, echo | /usr/lib/rudolf/sound, hotkey (PulseAudio and ALSA as the desktop's user, through su) | display (devices) |
-| Other | processes, proc/end (`api_proc_end`, `proc_tree_end`) | kill(2) of other users' processes (the accounts' apps), /proc of every process | other: **procs** |
-| Other | service (restart sound, Wi-Fi, display), selftest, starts, system (`api_system`: dmesg, modules), log, crash_list, health_tick's dmesg | the self-test, dmesg (kernel.dmesg_restrict), /proc/modules | other: **logs** (dmesg read by a helper, or dmesg_restrict=0 chosen in Part 12) |
+| Other | processes, proc/end (`api_proc_end`, `proc_tree_end`) | kill(2) of other users' processes (the accounts' apps), /proc of every process | other: **procs** (moved) |
+| Other | service (restart sound, Wi-Fi, display), selftest, starts, system (`api_system`: dmesg, modules), log, crash_list, health_tick's dmesg | the self-test, dmesg (kernel.dmesg_restrict), /proc/modules | other: **logs** (moved: dmesg read by a helper); the self-test and service next |
 | Other | devlink/* (`dl_start`, `dl_stop`) | rudolf-devlink started with its own user and environment | other |
 | Other | camera, portal, term (Debian's terminals) | /usr/lib/rudolf/camera, the portal's files chowned, rudolf-debian's terminals | other |
 | Other | fs/* (`api_fs`: the desktop's file browser outside the accounts' folders) | chown of new files to 1000 under the shared folders, and reading any path it allows | none after the drop (rudolfd is 1000), accounts for the accounts' folders |
@@ -514,8 +514,24 @@ rudolfd runs as root today (they keep running as root, from the helper).
   confinement on only): whether the kernel asks more than the file's mode for a Thunderbolt device's "authorized" (the
   test computers have no Thunderbolt). Tests: roothelpers161_t.sh D1-D2 and check 26 (in check 25's comparison: the same
   answers and calls with and without rudolf-rootd and as rudolfd itself); r161_t.py 27-28 in QEMU (no adapter, no bus).
-- Next: the modem, Tor and remote access; packages; display; other; then the drop (with the accounts' file service of
-  11.2).
+- **Other, part 1: Task Manager's End process and the kernel's messages (2026-11-21, branch root-helpers-procs, after
+  root-helpers-devices):** two small helpers (rudolfd-rootother.inc). The procs helper (iso/sys/rudolf-procs.c,
+  /usr/lib/rudolf/root/procs): `procs end term|kill` (one process) and `procs tree term|kill` (End process tree, in
+  rudolfd's order: all stopped, then ended from the last, each let go again), the numbers on standard input (a tree
+  can be longer than an argument list), one result a line (0, or the error's number: the API's 500 said with it as
+  before). rudolfd still lists the processes and decides; the helper checks each again as Task Manager marks what must
+  keep running (pid 1, the kernel's, rudolfd, rudolf-display, X, the session, rudolf-launch, the desktop's own browser,
+  and rudolf-rootd and the helper itself) and refuses the whole list if one is there (Security). The logs helper
+  (iso/sys/rudolf-logs.c): `logs dmesg`, `logs dmesg-raw` (-r), nothing else; rudolfd keeps every one of its pipelines
+  (the crashes, a job's last crash line, Wi-Fi's kernel lines, System health's messages and the graphics' firmware,
+  GET log) with the messages on their standard input instead of dmesg's own. Part 20: HELPER_CAPS has "procs"
+  (CAP_KILL only) and "logs" (CAP_SYSLOG only), both with no_new_privs. Each keeps its old way for when its helper does
+  not start. Tests: roothelpers161_t.sh O1-O3 (the test's own processes only, a stand-in dmesg) and check 27 (in check
+  25's comparison: End process, a tree of five, rudolfd itself 403, a process gone 404, the log, the crashes, a job's
+  last crash line; the same with and without rudolf-rootd and as rudolfd itself); proctree57_t.sh unchanged;
+  r161_t.py 29-31 in QEMU.
+- Next: the modem, Tor and remote access; packages; display and sound; the rest of other (the self-test, the service
+  restarts, devlink, the camera, the portal, the terminals); then the drop (with the accounts' file service of 11.2).
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
 The kernel already has zram (zstd), MGLRU, PSI, schedutil and the AMD and Intel P-state drivers (iso/kconfig.sh).
