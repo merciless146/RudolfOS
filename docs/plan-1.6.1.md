@@ -205,6 +205,20 @@ otherwise "File removed from list" with "⚡ Ask Blitzen" (the notification's ow
 by rudolf-native too). Test dlpage61_t.js; workflow downloads-page-check.yml. Left: the size of Chromium's downloads
 (rudolf-webkit's WebKitDownload knows it: Lite could send it).
 
+**Built (the owner, 2026-11-20): large ZIPs in Downloads, listed and extracted** (desktop/dlzip61.js, iso/sys/rudolfd-dlzip.inc,
+/usr/lib/rudolf/dlzip.sh). "Archive Manager would list what's inside a large ZIP without loading it into memory, and Extract
+here would unpack it next to the ZIP, with a progress window, using the same unpacking Add games… already uses." rudolfd
+`dl/zip` lists a ZIP kept on the disk (`unzip -l`, read as the desktop user; 20,000 entries at most), `dl/unzip` is the job:
+the free space checked first, unpacked as the desktop user (su, the paths as arguments) into a hidden folder in the account's
+folder, ".." and absolute entries refuse the ZIP, links removed, each file moved flat into the account's folder under a free
+name; `dl/unzipped` is its whole result. The page makes a folder named after the ZIP beside it, its sub-folders as in the
+ZIP, each file a reference (antivirus as dlAdopt), and dl27.js dlScope now leaves references in sub-folders of Downloads
+where they are. While it runs, dl/home says "unzip" so no page adopts the files (Native's Explorer and Oracle are two pages).
+Tests: iso/qt/host/dlzip161_t.sh (Info-ZIP and BusyBox), dlzip161api_t.sh (rudolfd), iso/qt/shell2/dlzip61_t.js (the page);
+workflow dlzip-check.yml. Left: a ZIP in a home folder kept on the disk (1.5.6 accounts with their files on RUDOLFDATA,
+whose large downloads home56.js moves into the home) is not listed yet: it keeps the old message; BusyBox's unzip drops ".."
+and a leading "/" from names itself, so with it such entries land inside the folder rather than refusing the ZIP.
+
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
 
 **Shipped in 1.6.0 (owner, 2026-11-17: "I do want to keep 446 and 447 in 1.6.0"):** rudolf-rootd with the drives' and
