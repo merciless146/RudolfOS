@@ -31,6 +31,11 @@ Summary: In progress.
   behind the scenes and comes back where it was when you show it: its files, tabs, folder, the scroll and the window's size
   and place. Never with unsaved changes, a dialog, sound or video playing, a call, a download or a transfer; Oracle and Linux,
   Debian, Flatpak and Wine apps are never touched. Task Manager shows such a window as "Resting (no memory used)".
+- New: Oracle blocks ads and trackers. A shield 🛡 in the address box says how many were blocked on the page; its menu
+  turns blocking off (or on) for that site and can note a broken site in System health. Settings › Privacy › Ads and
+  trackers in Oracle: on (the default) or off, the sites it is off for, and sites of your own to block. Private and Tor
+  windows always block. It uses Rudolf OS's own list of well-known ad and tracking services, checked on this computer:
+  nothing about the pages you visit is sent anywhere. On Standard, Native and Lite.
 - The desktop page is 870 KB smaller: the Quake engine and the Galaxy Map's universe are files of their own, read only when
   Quake or the Galaxy Map opens (every window of the native desktop, and Standard's page, parsed them before). Each window
   of the native desktop uses about 5 MB less memory.

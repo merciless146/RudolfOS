@@ -110,6 +110,7 @@ document.addEventListener('wheel', e => { if (captured) toDesk({rudolfShell: 'mw
      clear {part}               forget a partition's cookies, storage and cache
      readhtml {id}              (1.6.1) the page's HTML for reader mode: tabev readhtml {id, html, url, title}; tabev readable {on} after each load
      blur                       keyboard focus back to the desktop
+     block {cfg}                (1.6.1) ad and tracker blocking (all tabs): {on, b, tp, ex, off}; tabev adblock {n} the page's count
      unfs                       (1.5.8) leave full screen, whichever tab has it (Task Manager and the power dialog come first)
      ruffle {cfg}               Ruffle for Flash content in pages: {on, urls, config} (as the extension's settings)
      find {text, mc, back, again, id} | findstop | findsel {id}   (1.6.1) find in page; answered by tabev find {id, n, i} or {id, sel}
@@ -216,6 +217,7 @@ function tabEvents(t) {
   });
   f.addEventListener('loadstop', () => { toTab(t.tid, 'load', {loading: false}); navState(); if (/^https?:/i.test(t.url || '')) f.executeScript({code: HOVER_JS, allFrames: true}).catch(() => {}) });   // (1.6.1: frames added while it loaded)
   /* 1.6.0: how far the page has loaded (0..1), for Oracle's loading line (oload60.js) */
+  f.addEventListener('loadcommit', e => { if (e.isTopLevel) { t.bn = 0; clearTimeout(t.bnT); t.bnT = 0; toTab(t.tid, 'adblock', {n: 0}) } });   // (1.6.1: a new page's count of blocked requests)
   f.addEventListener('loadprogress', e => { if (e.isTopLevel !== false) toTab(t.tid, 'progress', {p: Math.max(0, Math.min(1, +e.progress || 0))}) });
   f.addEventListener('loadstop', () => setTimeout(() => tabReadable(t), 300));   // (1.6.1: reader mode: whether the page has an article)
   f.addEventListener('loadabort', e => {
@@ -285,6 +287,28 @@ const darkJS = on => `(()=>{const id='rudolf-dark';let s=document.getElementById
   const sh=s.sheet;if(sh)sh.disabled=true;let l=document.body?L(getComputedStyle(document.body).backgroundColor):null;if(l==null)l=L(getComputedStyle(document.documentElement).backgroundColor);if(sh)sh.disabled=false;if(l!=null&&l<.4&&s.isConnected)s.remove()}catch(e){}};
  if(document.readyState=='loading')document.addEventListener('DOMContentLoaded',chk,{once:true});else chk()})()`;
 const darken = t => { if (DARK) t.f.executeScript({code: darkJS(true)}).catch(() => {}) };
+/* 1.6.1 (docs/plan-1.6.1.md Part 10): ad and tracker blocking (desktop/orablock61.js). The desktop sends the lists {on, b, tp, ex, off}
+   (op block): whole domains blocked (b), blocked from other sites only (tp), never blocked (ex), and the sites the person turned it off
+   for. A request of a tab's page (never the page itself) to such a domain is cancelled here, in the firewall's interceptor, and
+   counted: tabev adblock {n}, the count of the page in the tab. Nothing leaves this computer: the lists are checked here. A private
+   window's tabs ("priv-" partitions: private and Tor windows) always block. */
+let BLOCK = {on: false, b: new Set(), tp: new Set(), ex: new Set(), off: new Set()};
+const SLD2 = new Set(['co.uk', 'org.uk', 'ac.uk', 'gov.uk', 'com.au', 'net.au', 'org.au', 'co.nz', 'co.jp', 'ne.jp', 'or.jp', 'co.kr', 'com.br', 'com.mx', 'com.ar', 'com.cn', 'com.tw', 'com.tr', 'co.in', 'co.za', 'com.sg', 'com.hk', 'co.il']);
+const siteOf = h => { const p = String(h || '').split('.'); if (p.length <= 2 || /^\d+$/.test(p[p.length - 1])) return h; const l2 = p.slice(-2).join('.'); return SLD2.has(l2) ? p.slice(-3).join('.') : l2 };
+const inSet = (h, S) => { if (!h || !S.size) return false; for (let x = h; ;) { if (S.has(x)) return true; const i = x.indexOf('.'); if (i < 0) return false; x = x.slice(i + 1) } };
+function blockWhy(t, u, ty) {
+  if (/main/i.test(ty) || !/^(https?|wss?):/i.test(u)) return false;
+  const priv = /^priv-/.test(String(t.part || '')); if (!BLOCK.on && !priv) return false;
+  const top = hostOf(t.url); if (!priv && top && inSet(top, BLOCK.off)) return false;
+  const h = hostOf(u); if (!h || inSet(h, BLOCK.ex)) return false;
+  return inSet(h, BLOCK.b) || (inSet(h, BLOCK.tp) && siteOf(h) !== siteOf(top));
+}
+function tabBlock(t, e, u) {
+  if (!blockWhy(t, u, String(e.request.type || e.request.resourceType || ''))) return false;
+  e.preventDefault(); t.bn = (t.bn || 0) + 1;
+  if (!t.bnT) t.bnT = setTimeout(() => { t.bnT = 0; toTab(t.tid, 'adblock', {n: t.bn}) }, 250);
+  return true;
+}
 /* whose cookies and site storage: an account's are kept on the disk (persist:); a private window's (1.5.9, "priv-…")
    are in memory only, and a new private session gets a new name, so nothing of an earlier one is seen again */
 const partName = p => { const n = 'web-' + String(p || 'x').replace(/[^a-z0-9_-]/gi, '').slice(0, 40); return /^priv-/.test(String(p || '')) ? n : 'persist:' + n };
@@ -310,6 +334,7 @@ function makeTab(tid, part) {
       resourceTypes: ['main-frame', 'sub-frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping', 'csp-report', 'media', 'websocket', 'webbundle', 'other']});
     i.addEventListener('beforerequest', e => {
       const u = e.request && e.request.url || '', why = fwWhy(u);
+      if (!why && tabBlock(t, e, u)) return;   // (1.6.1: an ad or a tracker)
       if (!why) return;
       e.preventDefault();
       const ty = String(e.request.type || e.request.resourceType || '');
@@ -448,6 +473,8 @@ const TAB_OPS = {
   place: (m, t) => place(t, rect(m.r), Array.isArray(m.vis) ? m.vis.map(rect).filter(Boolean) : null, m.z),
 };
 function onTab(m) {
+  if (m.op == 'block') { const c = m.cfg || {}, set = l => new Set([].concat(l || []).map(x => String(x).toLowerCase()).filter(x => /^[a-z0-9.-]{1,253}$/.test(x)));
+    BLOCK = {on: !!c.on, b: set(c.b), tp: set(c.tp), ex: set(c.ex), off: set(c.off)}; return }   // (1.6.1: ad and tracker blocking)
   if (m.op == 'fw') { const r = m.rules || {}; FW = {on: !!r.on, mode: String(r.mode || 'open'), block: [].concat(r.block || []).map(String), trust: [].concat(r.trust || []).map(String)}; return }
   if (m.op == 'dialog') { const d = DLG.get(m.did); DLG.delete(m.did); if (d) try { m.ok ? d.ok(String(m.text == null ? '' : m.text)) : d.cancel() } catch (e) {} return }
   /* (1.6.1: blurred first: after a click into a tab the shell still had the desktop as its focused element while the keyboard was the

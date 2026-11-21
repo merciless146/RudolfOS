@@ -1,0 +1,58 @@
+! Rudolf OS's own starter list for Oracle's ad and tracker blocking (docs/plan-1.6.1.md Part 10, docs/plan-oracle.md item 5).
+! Written for Rudolf OS (GPL-2.0-or-later, as the rest of it): well-known ad-serving and tracking services only, each a whole
+! domain whose only job is ads or tracking, so blocking it does not break the sites that use it. In Adblock Plus filter syntax
+! (the subset iso/systools/blocklist.py reads: ||domain^, $third-party, @@ exceptions), the same syntax as EasyList and
+! EasyPrivacy, which blocklist.py can compile instead (or as well) when they are added to the build.
+! Compiled into desktop/orablock61.json:  python3 iso/systools/blocklist.py iso/systools/blocklists/rudolf.txt > desktop/orablock61.json
+!
+! Ad serving and ad exchanges
+||doubleclick.net^
+||googlesyndication.com^
+||googleadservices.com^
+||googletagservices.com^
+||adservice.google.com^
+||amazon-adsystem.com^
+||adnxs.com^
+||adsrvr.org^
+||rubiconproject.com^
+||pubmatic.com^
+||openx.net^
+||casalemedia.com^
+||indexww.com^
+||criteo.com^
+||criteo.net^
+||taboola.com^
+||outbrain.com^
+||adform.net^
+||bidswitch.net^
+||smartadserver.com^
+||3lift.com^
+||sharethrough.com^
+||yieldmo.com^
+||teads.tv^
+||moatads.com^
+||adsafeprotected.com^
+||doubleverify.com^
+||serving-sys.com^
+||advertising.com^
+||media.net^$third-party
+! Analytics and tracking
+||google-analytics.com^
+||scorecardresearch.com^
+||quantserve.com^
+||quantcount.com^
+||hotjar.com^
+||hotjar.io^
+||chartbeat.com^
+||chartbeat.net^
+||mixpanel.com^$third-party
+||segment.io^
+||fullstory.com^
+||crazyegg.com^
+||mouseflow.com^
+||clarity.ms^
+||nr-data.net^
+||bat.bing.com^
+||ads-twitter.com^
+||ads.linkedin.com^
+||px.ads.linkedin.com^
