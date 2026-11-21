@@ -136,6 +136,8 @@ const URL0 = 'http://127.0.0.1:' + PORT + '/';
   await p.evaluate(`(async()=>{const W=__W;const el=[...W.blz.log.querySelectorAll('.blza')].at(-1);blzDevDraw(el);return 1})()`);
   const hasBtn = await until(p, "!!document.querySelector('.bdtc')", 5000);
   if (hasBtn) { await p.evaluate("[...document.querySelectorAll('.bdtc')].at(-1).click()"); await until(p, "!!document.querySelector('.blzdallow')", 5000);
+    await p.evaluate("document.querySelector('.blzdallow .ok').click()"); const still = await p.evaluate("!!document.querySelector('.blzdallow')");
+    ok('4. Allow is not answered by a script (a page or Blitzen\'s code clicking it)', still);
     await p.click('.blzdallow .ok'); await until(p, "/Refused|key file/.test([...document.querySelectorAll('.blzout')].map(x=>x.textContent).join())", 8000);
     const out = await p.evaluate("[...document.querySelectorAll('.blzout')].map(x=>x.textContent).join('\\n')");
     ok("4. the injection's devlink command (cat ~/.ssh/id_ed25519): refused even after Allow", /Refused: .*key file/.test(out), out.slice(-300)) }

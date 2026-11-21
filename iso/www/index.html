@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/86cb42e69ac0de5c.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=86cb42e69ac0de5c'+location.hash)}catch(e){}})()</script>
+<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/189e58efabbb4537.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=189e58efabbb4537'+location.hash)}catch(e){}})()</script>
 <script>/* (1.6.0, the owner's Vivobook report 1) an app's own window (#app=NAME: oneapp59.js, the native desktop's windows): from its first paint
    without the desktop around the app and without the sign-in screen, which oneapp59.js shows only when the window really needs a
    sign-in (no native session); never left hidden (20 s at most). The desktop's own page (no #app=) is as before */
@@ -21972,8 +21972,10 @@ blzdAllow=function(title,lines,detail,o={}){return new Promise(res=>{const d=doc
   <div class='msg'>${o.refuse?'Nothing is sent.':'Nothing is done until you choose Allow. This allows this one thing only, this once.'}</div>
   <div class='rmrow'>${o.refuse?'':"<button class='ok'>Allow</button>"}<button class='no pri'>${o.refuse?'Close':'Refuse'}</button></div></div>`;
  if(detail!=null)d.querySelector('pre').textContent=String(detail);
- const end=v=>{d.remove();res(v)};const ok=d.querySelector('.ok');if(ok)ok.onclick=()=>end(true);d.querySelector('.no').onclick=()=>end(false);
- d.addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Escape')end(false)});document.body.appendChild(d);d.querySelector('.no').focus()})};
+ const end=v=>{d.remove();res(v)};
+ /* (Part 26: only the person's own click or key press answers it, never a script's click(), Blitzen's code or a page) */
+ const ok=d.querySelector('.ok');if(ok)ok.onclick=e=>{if(!e.isTrusted)return;end(true)};d.querySelector('.no').onclick=e=>{if(!e.isTrusted)return;end(false)};
+ d.addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Escape'&&e.isTrusted)end(false)});document.body.appendChild(d);d.querySelector('.no').focus()})};
 const BLZD_ONE={busy:null};
 /* a command through the development link (replaces blzdev60.js's): one waiting at a time, refused when it carries a secret */
 blzdSend=async function(cmd,S,out){S=S||await blzdSettings(true);if(!S||!S.devlink||!S.devlinkToken){out&&(out.textContent='No development link is set (Settings › Apps › Blitzen › Developer).');return null}

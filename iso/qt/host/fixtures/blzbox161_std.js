@@ -11,6 +11,7 @@ const [BASE, PW] = process.argv.slice(2);
   await p.waitForTimeout(800); await p.focus('#lp'); await p.keyboard.type(PW); await p.keyboard.press('Enter');
   await p.waitForFunction(() => USER && getComputedStyle(document.getElementById('login')).display == 'none', null, {timeout: 60000});
   await p.waitForTimeout(1500); await p.evaluate(() => wins.slice().forEach(w => w.close()));
+  await p.exposeFunction('__tkey', async k => { for (const x of k.split(' ')) await p.keyboard.press(x.replace(/^shift\+/i, 'Shift+').replace(/^Return$/, 'Enter')) });   // (the person's keys: Part 26)
   await p.evaluate(() => __blzT.start());
   await p.waitForFunction(() => __blzT.res.done, null, {timeout: 240000}).catch(() => 0);
   const r = await p.evaluate(() => __blzT.res);

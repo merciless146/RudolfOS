@@ -53,7 +53,10 @@ w8 "grep -q '^client .* app=blitzen ' \$D/state" 120 && w8 "[ \"\$(ev blitzen 'S
 ok "Native: Blitzen in an app window of its own (the stand-in model)" "$([ "$(ev blitzen 'String(!!(window.__blzT&&OA.main&&OA.main.blz))')" = true ] && echo 1)" "$(tail -5 $T/native.log)"
 P1=$(pages)
 ev blitzen "__blzT.start()" >/dev/null
-w8 "[ \"\$(ev blitzen 'String(__blzT.res.done)')\" = true ]" 960
+# (the person's keys for the desktop's Allow, Part 26: the scenario asks, xdotool presses them)
+i=0; while [ $i -lt 960 ]; do [ "$(ev blitzen 'String(__blzT.res.done)')" = true ] && break
+	k=$(ev blitzen 'String(__blzT.keyReq||"")'); if [ -n "$k" ] && [ "$k" != undefined ]; then xdotool key --delay 120 $k; ev blitzen '__blzT.keyReq=null;1' >/dev/null; fi
+	timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 ev blitzen "__blzT.res.r.map(x=>(x[1]?'PASS ':'FAIL ')+'Native: '+x[0]+(x[1]?'':' - '+x[2])).join('\\u0001')" 80 | tr '\001' '\n' > $T/nat.out
 [ "$(ev blitzen 'String(__blzT.res.done)')" = true ] || echo "FAIL Native: the scenario did not finish" >> $T/nat.out
 tally < $T/nat.out
