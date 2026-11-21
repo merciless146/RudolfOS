@@ -120,7 +120,7 @@ rep("W.body.style.background='#fff';W.el.tabIndex=-1;","W.body.style.background=
 rep("['Extensions',()=>nav('about:extensions')],['About Oracle',()=>nav('about:oracle')]];","['Extensions',()=>nav('about:extensions')],[()=>(WEB_DARK?'✓ ':'')+'Dark pages',()=>webDarkSet(!WEB_DARK)],['About Oracle',()=>nav('about:oracle')]];")
 rep("MENU.forEach(([n,f])=>{const r=document.createElement('div');r.textContent=n;","MENU.concat(typeof window.__oracleMenu=='function'?window.__oracleMenu({url:cur(),tab:T()}):[]).forEach(([n,f])=>{const r=document.createElement('div');r.textContent=typeof n=='function'?n():n;")   # (1.5.8: oracle58.js adds Open in Chromium and FedCM)
 rep("fr.src=r.frame||u;if(navigator.onLine===false)","fr._html=null;fr.src=r.frame||u;webDarkFrame(fr,true);if(navigator.onLine===false)")
-rep("t.src=r.html;fr.srcdoc=r.html}","t.src=r.html;fr._html=r.html+(typeof ORACLE_TEL_JS=='string'?ORACLE_TEL_JS:'');webDarkFrame(fr,false);fr.srcdoc=webDarkHtml(fr._html)}")   # (1.6.0: tel: links in Oracle's pages, base_v24.html)
+rep("t.src=r.html;fr.srcdoc=r.html}","t.src=r.html;fr._html=r.html+(typeof ORACLE_TEL_JS=='string'?ORACLE_TEL_JS:'')+(typeof ORACLE_HOVER_JS=='string'?ORACLE_HOVER_JS:'');webDarkFrame(fr,false);fr.srcdoc=webDarkHtml(fr._html)}")   # (1.6.0: tel: links in Oracle's pages, base_v24.html)
 # 1.4.4: a picture of your own as the background (wallpaper31.js) comes before a dynamic background and the colours
 rep("const _u=window.__dyn?dynBg():'';","const _u=(typeof wpCss=='function'&&wpCss())||(window.__dyn?dynBg():'');")
 # 1.4.5: the desktop's right-click item opens Settings (it said "Change background…")

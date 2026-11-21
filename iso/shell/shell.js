@@ -156,6 +156,15 @@ addEventListener('keydown',e=>{const c=e.ctrlKey||e.metaKey,k=SUB[e.code]&&e.ctr
 addEventListener('click',e=>{if(!e.isTrusted)return;const a=e.target&&e.target.closest&&e.target.closest('a[href^="tel:" i]');if(!a)return;e.preventDefault();e.stopImmediatePropagation();say({tel:String(a.getAttribute('href')).slice(4,80)})},true);
 let t=null;const tt=()=>{if(document.title!==t){t=document.title;say({title:t})}};
 addEventListener('DOMContentLoaded',tt);addEventListener('load',tt);setInterval(tt,1500)})()`;
+/* 1.6.1 (the owner, 2026-11-20): in every frame of a page, where a link (or a form's submit button) goes, while the mouse is
+   over it or it has the keyboard's focus: Oracle's status line says "Goes To: <address>" (tabs26.js hover). Only the
+   address is sent ('' when it leaves); javascript: links are not shown. */
+const HOVER_JS = `(()=>{if(window.__rudolfHov)return;window.__rudolfHov=1;const N=${JSON.stringify(NONCE)},say=o=>{try{console.debug(N+JSON.stringify(o))}catch(e){}};let hv='';
+const at=t=>{if(!t||!t.closest)return'';const a=t.closest('a[href],area[href]');if(a){const h=a.href;return typeof h=='string'?h:(h&&h.animVal?new URL(h.animVal,document.baseURI).href:'')}
+ const b=t.closest('button,input[type=submit],input[type=image]');if(b&&b.form&&(b.type=='submit'||b.type=='image'))return b.hasAttribute('formaction')?b.formAction:b.form.action;return''};
+const set=u=>{if(/^javascript:/i.test(u))u='';u=String(u).slice(0,2000);if(u!==hv){hv=u;say({hov:u})}};
+addEventListener('mouseover',e=>set(at(e.target)),true);addEventListener('focusin',e=>set(at(e.target)),true);
+addEventListener('mouseout',e=>{if(!e.relatedTarget)set('')},true);addEventListener('pagehide',()=>set(''))})()`;
 /* in every frame of a page: Flash content (an <embed> or <object> with a .swf) asks for Ruffle */
 const FLASH_SEL = 'embed[src*=".swf" i],embed[type*="shockwave" i],embed[type*="futuresplash" i],object[data*=".swf" i],object[type*="shockwave" i],object[classid*="d27cdb6e" i],param[name="movie" i][value*=".swf" i]';
 const FLASH_JS = `(()=>{const N=${JSON.stringify(NONCE)},S=${JSON.stringify(FLASH_SEL)};let done=false,mo=null;
@@ -179,14 +188,14 @@ function tabEvents(t) {
   /* (1.6.0) PAGE_JS in every page of the tab: the content scripts reached only the first tab of an account's partition,
      so in Oracle's other website tabs Ctrl+T, Ctrl+W and the other keys did nothing (and their titles were not told);
      PAGE_JS runs once in a page, whichever gives it first */
-  f.addEventListener('loadcommit', e => { if (e.isTopLevel) { t.url = e.url; navState(); if (/^https?:/i.test(e.url || '')) f.executeScript({code: PAGE_JS}).catch(() => {}) } });
+  f.addEventListener('loadcommit', e => { if (e.isTopLevel) { t.url = e.url; navState(); if (/^https?:/i.test(e.url || '')) f.executeScript({code: PAGE_JS}).catch(() => {}); f.executeScript({code: HOVER_JS, allFrames: true}).catch(() => {}) } });
   f.addEventListener('loadstart', e => {
     if (!e.isTopLevel) return;
     const why = fwWhy(e.url || '');
     if (why) { f.stop(); if (!(t.blk && t.blk.startsWith(e.url + ' ') && Date.now() - +t.blk.split(' ')[1] < 3000)) toTab(t.tid, 'blocked', {url: e.url, why, main: true}); if (/^https?:/i.test(t.url) && t.url !== e.url && !fwWhy(t.url)) f.back().catch(() => {}); return }
     toTab(t.tid, 'load', {loading: true});
   });
-  f.addEventListener('loadstop', () => { toTab(t.tid, 'load', {loading: false}); navState() });
+  f.addEventListener('loadstop', () => { toTab(t.tid, 'load', {loading: false}); navState(); if (/^https?:/i.test(t.url || '')) f.executeScript({code: HOVER_JS, allFrames: true}).catch(() => {}) });   // (1.6.1: frames added while it loaded)
   /* 1.6.0: how far the page has loaded (0..1), for Oracle's loading line (oload60.js) */
   f.addEventListener('loadprogress', e => { if (e.isTopLevel !== false) toTab(t.tid, 'progress', {p: Math.max(0, Math.min(1, +e.progress || 0))}) });
   f.addEventListener('loadabort', e => {
@@ -199,6 +208,7 @@ function tabEvents(t) {
     if (typeof o.k == 'string') toTab(t.tid, 'keys', {k: o.k.slice(0, 8)});
     else if (typeof o.flash == 'string') { if (RUFFLE.on && RUFFLE.urls.length) { f.executeScript({code: ruffleJS(), allFrames: true}).catch(() => {}); toTab(t.tid, 'flash') } }
     else if (typeof o.title == 'string') toTab(t.tid, 'title', {title: o.title.slice(0, 300)});
+    else if (typeof o.hov == 'string') toTab(t.tid, 'hover', {url: o.hov.slice(0, 2000)});   // (1.6.1: where a link goes, for the status line)
     else if (typeof o.notice == 'number') toTab(t.tid, 'notice', {id: o.notice});
     else if (typeof o.tel == 'string') toTab(t.tid, 'tel', {num: o.tel.slice(0, 80)});   // (1.5.9, plan 7.3: a phone number clicked)   // (1.5.9: its button was pressed, by a person: isTrusted)
   });
@@ -273,7 +283,8 @@ function makeTab(tid, part) {
      tabEvents' loadcommit, which gives PAGE_JS to every page.) */
   t.ready = Promise.resolve();
   try { t.ready = f.addContentScripts([{name: 'oracle', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: PAGE_JS}, runAt: 'document-start', allFrames: false},
-    {name: 'flash', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: FLASH_JS}, runAt: 'document-idle', allFrames: true}]).catch(e => note('content scripts:', String(e))) } catch (e) { note('content scripts:', String(e)) }
+    {name: 'flash', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: FLASH_JS}, runAt: 'document-idle', allFrames: true},
+    {name: 'hover', urlPatterns: ['http://*/*', 'https://*/*'], js: {code: HOVER_JS}, runAt: 'document-start', allFrames: true}]).catch(e => note('content scripts:', String(e))) } catch (e) { note('content scripts:', String(e)) }
   try {
     const i = f.request.createWebRequestInterceptor({urlPatterns: ['*://*/*'], blocking: true,
       resourceTypes: ['main-frame', 'sub-frame', 'stylesheet', 'script', 'image', 'font', 'object', 'xmlhttprequest', 'ping', 'csp-report', 'media', 'websocket', 'webbundle', 'other']});
