@@ -447,7 +447,9 @@ rudolfd runs as root today (they keep running as root, from the helper).
   (the page sends a few). Tests: roothelpers161_t.sh P1-P5 (the arguments, stand-ins for every script and command, so
   a host test never restarts the computer or sets its clock) and check 24 (the API through the helper, with and without
   rudolf-rootd; rudolfd built there so that it could not restart or set the clock even if it did the work itself).
-  Not in QEMU yet: the t160 checks do not restart through the API; for the owner on the Vivobook (below in the PR).
+  In QEMU (roothelpers-check.yml, run 44874168648): r161_t.py 22/22 with its new 16-21 (the settings, the desktop's
+  priority, the cache, the clock set and back, the helper never skipped, a restart through the API that comes back),
+  t160_t.py 31/31, t150_t.py 18/18. Sleep, brightness and shut down: for the owner on the Vivobook.
 - Next: network; packages; display; other; then the drop (with the accounts' file service of 11.2).
 
 ### 12. Kernel tuning (added on 2026-11-16; proposed on 2026-11-12)
