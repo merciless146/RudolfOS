@@ -174,6 +174,8 @@ assert 'QWASM_B64' not in s and 'GM_UNI\'' not in s and 'atob(GM_UNI)' not in s
 _EXT['text/javascript']='js'
 _LZ={_g:_out('data:text/javascript;base64,'+base64.b64encode(_c.encode()).decode()) for _g,_c in LAZY_CODE.items()}
 s=s.replace("const LAZY_DONE={},LAZY_P={};let LAZY={};","const LAZY_DONE={},LAZY_P={};let LAZY="+json.dumps(_LZ)+";",1)
+# 1.6.1 (docs/plan-1.6.1.md Part 23 B, stage 2): the native desktop's apps' page, without the modules no app of it uses (oapage61.py)
+import oapage61;_EXT['text/html']='html';s,_oah=oapage61.build(s,L,_out)
 for _n in os.listdir(_A):
     if _n not in _keep:os.remove(os.path.join(_A,_n))
 open(O,'w').write(s);print(len(s),len(_keep),'files in a/')

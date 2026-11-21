@@ -30,7 +30,7 @@
 #   DIR/hotkey         (when there) the path of Rudolf OS's hotkey script: mic and volume answered through it as rudolfd does
 #                      (the sound server: pactl, PULSE_SERVER from the environment)
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
-import http.server, json, os, sys, threading
+import http.server, json, os, re, sys, threading
 PORT = int(sys.argv[1]); D = sys.argv[2]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../www')
 TOK = 'tok59native'; ST = {'session': None, 'locked': False, 'gen': 1, 'mt': 0}
 LOCK = threading.Lock()
@@ -71,6 +71,7 @@ class H(http.server.BaseHTTPRequestHandler):
     def body(self):
         n = int(self.headers.get('content-length') or 0); return self.rfile.read(n) if n else b''
     def do_GET(self): self.go('GET')
+    def do_HEAD(self): self.go('HEAD')
     def do_POST(self): self.go('POST')
     def go(self, m):
         u, _, q = self.path.partition('?'); b = self.body() if m == 'POST' else b''
@@ -84,11 +85,18 @@ class H(http.server.BaseHTTPRequestHandler):
             # (DIR/page.html, when there: served instead of the desktop page, for the window manager's checks)
             alt = rd('page.html')
             if alt is not None: return self.send(200, alt, 'text/html; charset=utf-8')
-            return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + INJ + (('<script type="application/json" id="rudolf-ls">%s</script><script>%s</script>' % ((rd('lsfile.json') or b'').decode().replace('<', '\\u003c'), lsjs())) if rd('lsjs') is not None else '') + ('<script>%s</script>' % rd('inject.js').decode() if rd('inject.js') else ''), 1), 'text/html; charset=utf-8')
+            # (1.6.1 Part 23 B, stage 2: the apps' page for /?oa=ID, as rudolfd gives it: a/ID.html, served as the page)
+            pg = 'index.html'; oa = (re.match(r'(?:.*&)?oa=([0-9a-f]{16})(?:&|$)', q or '') or [None, None])[1]
+            if oa and os.path.isfile(os.path.join(WWW, 'a', oa + '.html')) and '<script>window.__OAPAGE=1;' in open(os.path.join(WWW, 'a', oa + '.html'), encoding='utf-8').read(): pg = 'a/' + oa + '.html'; note('PAGE oa')
+            return self.send(200, open(os.path.join(WWW, pg), encoding='utf-8').read().replace('<head>', '<head>' + INJ + (('<script type="application/json" id="rudolf-ls">%s</script><script>%s</script>' % ((rd('lsfile.json') or b'').decode().replace('<', '\\u003c'), lsjs())) if rd('lsjs') is not None else '') + ('<script>%s</script>' % rd('inject.js').decode() if rd('inject.js') else ''), 1), 'text/html; charset=utf-8')
         if u == '/iwa/id' and rd('iwa-id') is not None: return self.send(200, rd('iwa-id'), 'text/plain')
         f = os.path.normpath(os.path.join(WWW, u.lstrip('/')))
         if f.startswith(os.path.normpath(WWW)) and os.path.isfile(f):
             ct = {'.js': 'text/javascript', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.wasm': 'application/wasm'}.get(os.path.splitext(f)[1], 'application/octet-stream')
+            if m == 'HEAD':
+                try: self.send_response(200); self.send_header('content-type', ct); self.send_header('content-length', str(os.path.getsize(f))); self.end_headers()
+                except Exception: pass
+                return
             return self.send(200, open(f, 'rb').read(), ct)
         self.send(404, 'not found', 'text/plain')
     def api(self, m, w, q, b):

@@ -466,12 +466,25 @@ static const char LSJS[] =
 	"window.__rudolfLsQuiet=function(k,v){si.call(S,k,v)};"
 	"addEventListener('pagehide',function(){if(t){clearTimeout(t);push()}})})();";
 
+/* 1.6.1 (docs/plan-1.6.1.md Part 23 B, stage 2): the native desktop's apps' page, asked for by the page itself in an app's window
+   (/?oa=ID: a/ID.html, made by build19.py with the page, named by its contents, the release's when the page's folder has none): served
+   as the page is, to the desktop only, with the token and the storage; anything else asked for this way is the page */
+static char *oa_page(struct req *r, const char *root, size_t *n)
+{
+	const char *id = qparam(r->query, "oa"); char p[600];
+	if (!id || strlen(id) != 16 || strspn(id, "0123456789abcdef") != 16) return NULL;
+	snprintf(p, sizeof p, "%s/a/%s.html", root, id); char *h = slurp(p, n);
+	if (!h) { snprintf(p, sizeof p, WWW "/a/%s.html", id); h = slurp(p, n); }
+	if (h && !strstr(h, "<script>window.__OAPAGE=1;")) { free(h); h = NULL; }
+	return h;
+}
 static void serve_index(struct req *r, const char *root)
 {
 	char p[512];
 	snprintf(p, sizeof p, "%s/index.html", root);
 	size_t n;
-	char *html = slurp(p, &n);
+	char *html = oa_page(r, root, &n);
+	if (!html) html = slurp(p, &n);
 	if (!html) { reply_err(r->fd, 404, "Rudolf OS page missing"); return; }
 	size_t lsn = 0;
 	char *ls = slurp(LSFILE, &lsn);

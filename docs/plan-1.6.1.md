@@ -1151,11 +1151,28 @@ Three parts, one PR each, in this order:
   without the hidden parts' pictures, buttons, statue and catalogue, working, its dialogs' pictures; every app of the page (48)
   in a native window of its own: there, lean, no error; Calculator, File Explorer, Settings' icon style (the hidden page gives
   the catalogue) and an app hidden in Settings (that window gives it); Part C's rest and return).
-  **Left (its own PR, for the owner's decision with the numbers above):** stage 2, the modules each app needs found by
-  exercising every app (a page per app built from the core and its modules, loaded by oneapp59.js; Standard keeps the whole page):
-  measured potential 2-5 MB per window, because the modules mostly patch each other (win, termUI, appsPanel, startMenuApps...) and
-  the core is most of the code (a Notepad window's page built without 45 app modules, after stage 3: 47 MB of its own instead of
-  52). The bigger saving on the Vivobook is the number of processes (one shared on this host; six there) and Part C.
+  **Stage 2, done but not worth it (2026-11-21, PR "Native: the apps' page"; for the owner's decision: the saving cannot be told
+  from the noise).** Each app opened alone in Chromium with precise coverage (every function that ran, by module): every app's
+  window runs functions of 93-96 of the ~150 modules (the modules patch the shared ones: win, launch, applySet, appsPanel...). A
+  module can be left out without changing what the window does only if its top level only declares (functions, constants,
+  regApp lines): 11 such modules no app with the apps' page uses (desktop/oapage61.py OA_OUT; each checked statement by statement
+  at the build, and in the test), about 90 KB of the page's 3.4 MB (the SNES core's 167 KB was already a file). The apps' page
+  (www/a/ID.html, beside the page, named by its contents) has stubs for their functions and getters for their names, which read
+  and run the module (www/a/, its own file) the first time anything of it is used; the page's head sends an app's window of the
+  native desktop there (window.stop(), /?oa=ID: rudolfd serves a/ID.html as the page, to the desktop only, with the token and the
+  storage; the release's file when the page's folder has none), except the apps of OA_NOT (Settings, Task Manager, Oracle, the
+  App Store, Blitzen, Block Lua, the weather, the emulator and the office apps). A page installed by hand names its own apps' page,
+  which is not among the release's files: its windows take the whole page. Measured (as stage 3, after it; two runs each): the
+  six 484-487 MB PSS with the apps' page, 485-486 MB without; Notepad 72 / 193 MB and File Explorer 76-77 / 200 MB either way
+  (their own memory 52 MB either way). Tried and given up: every function no app ran replaced by a stub (1.3 MB of the code):
+  more memory, not less (56 MB for Notepad instead of 52; the modules read back as the window starts); 45 app modules left out
+  whole, without regard to what their top level does (unsafe: their wrappers and listeners gone): 47 MB instead of 52. The page's
+  code that is never run costs little in WebKit (functions are compiled only when called); what the modules' top level runs and
+  builds is the cost, and it is shared by every app. Tests: iso/qt/host/apppage161_t.sh (6: the hidden page whole, Notepad in the
+  apps' page reading nothing left out; every app (49, 30 in the apps' page) reading nothing left out, no error; a left-out
+  function and name used: read then, right; a page installed by hand: the whole page; Part C's rest and return), peer59_t.sh 2b
+  (rudolfd's /?oa=: the desktop only, with the token; a wrong ID: the page).
+  The bigger saving on the Vivobook is the number of processes (one shared on this host; six there) and Part C.
 - **C. Idle windows give their memory back** (the owner: "if it won't cause any issues with Oracle or other Rudolf/Debian/
   Flatpak/Wine apps, then add it"). **Done (2026-11-21, PR "Native: idle windows give their memory back").** rudolf-native.c
   rest_tick (every 2 s): a Rudolf app's window minimized, or covered by one other window (or a full-screen one), for the time
