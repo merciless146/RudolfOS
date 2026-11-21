@@ -393,7 +393,9 @@ the owner's decision of 2026-11-16 ("Keep it in 1.6.0"): it ships with 1.6.0, no
   user (a child process that becomes it), every step opened without following a link; Flatpak's document portal is mapped
   to the real file through the portal's `user.document-portal.host-path`, which must itself be one of those. Refusals come
   back to the page as words the page shows ("Blocked: … was not copied: your account may not open it."). No shell.
-- **Not done:** Rudolf as a drag source (a desktop icon dragged into a Linux app), optional; the guest's drops (rudolfd has
+- **Not done:** Rudolf as a drag source (a desktop icon dragged into a Linux app), optional (looked at on 2026-11-21, with
+  Part 15: Standard's page gives its desktop icons' drags no `text/uri-list` or file of its own either, so under the owner's rule
+  it waits until Standard can do it too: both together, a decision for the owner); the guest's drops (rudolfd has
   no Linux user for the guest); a folder dropped (skipped; on Standard Chromium's reader fails on it); a link inside the
   home is refused (Chromium follows it). Files dropped on an app's window are WebKit's own (as Chromium's on Standard).
   When rudolfd drops root (Part 11), desktop/dropped's change of user moves into a root helper.
@@ -498,6 +500,19 @@ window and its insets, 1.5.9 12.3c), at a height known for that app (the list ab
 the app's pixels at 100 %, scaled as the app is). Offered only for apps on the list, whose bar holds only what Rudolf's
 has (the title and the three buttons); for one whose bar has more (Steam's menus, Discord's buttons), the menu says what
 would be lost instead of offering it. Kept per account and app (`bd95titlebar:` in its settings, read by the shell).
+**Item 3 built on 2026-11-21 (unattended; PR "Rudolf's title bar instead, by choice").** rudolf-native: the window's
+menu (its taskbar button's, Rudolf's title bar's, `_GTK_SHOW_WINDOW_MENU`) on a window asking for no decorations has
+"Title bar: the app's own" and "Title bar: Rudolf's" for an app with a `cut` entry (`CLASS<TAB>cut<TAB>N`, CLASS its
+WM_CLASS, which a window always has, as the shell cannot read a Flatpak's ID from another user's process); Rudolf's: the
+window framed with Rudolf's title bar, its own bar cut away by the clip window's top inset (N px, scaled as the desktop is),
+the app's window keeping its height; kept as `bd95titlebar:ID` = `{"class":"rudolf"}` in the account's storage (rudolfd's
+copy, as the quick settings' `bd95set:`), applied to every window of the app at once and to new ones. Any other such app:
+one row that cannot be chosen, "Title bar: the app's own (Rudolf's would hide its menus and buttons)". **No `cut` entry is
+listed yet:** each needs the app's bar measured on the app itself (none of Discord's, Steam's or Claude's qualifies: their
+bars have more), so for now every app gets that row. **Tests:** `csd161_t.sh` 44-50 (60/60 in all) with a stand-in entry
+(`RUDOLF_TITLEBARS`): the two rows, choosing Rudolf's (its bar, the cut, the height, kept for the account, moved by Rudolf's
+bar, a second window of the app), back to its own, an app not on the list. **For the owner:** which apps to measure for the
+list.
 
 **Tests.** `iso/qt/host/csd161_t.sh` (Xvfb and rudolf-native, a stand-in app made with `xwmclient.c`): a window with
 decorations 0 has no title bar (its frame's height is the window's plus its edges), `_NET_FRAME_EXTENTS` says so; a
