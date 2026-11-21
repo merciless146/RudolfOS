@@ -150,7 +150,8 @@ USB printers reading PDF or PostScript) stays; what 1.6.1 adds is a print queue 
   with this tree's files put in place (iso/qt/sb/fix161p.sh), iso/qt/sb/p161_t.py (23): Standard and Native print a PDF
   and a page to the host's ippeveprinter printers through QEMU's user network (the PDF printer's files read back, the
   raster printer's PWG decoded), the queue's users, lp in the guest as the account's user, the queue's own user and
-  socket, the self-test. QEMU has no USB printer to emulate: the IPP path only there.
+  socket, the self-test: 23/23 (2026-11-21, run without KVM in the session; print-check.yml runs it on GitHub). QEMU
+  has no USB printer to emulate: the IPP path only there.
 - **For the owner (the Vivobook):** a real USB printer: plugged in, Settings › Devices lists it and the queue; a page
   from WordPro and a PDF from the PDF Viewer printed, on Standard and on Native; from a Linux app (LibreOffice or a GTK
   app in Debian); a job cancelled from Settings; a second account's job shown without its name.
