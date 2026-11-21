@@ -1,0 +1,18 @@
+# Apps asked to use the system's title bar (1.6.1, docs/plan-1.6.1.md Part 15, item 1): rudolf-apps' titlebar step on its list
+# (iso/sys/root/usr/share/rudolf/titlebars), for Chromium's and VS Code's files, Flatpak's and Debian's. Publishes nothing.
+name: Title bars check
+on:
+  push:
+    paths: ['iso/sys/rudolf-apps.c', 'iso/sys/rudolf-debian.c', 'iso/sys/root/usr/share/rudolf/titlebars', 'iso/qt/host/titlebars161_t.sh', '.github/workflows/titlebars-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: The apps' own setting first
+        run: |
+          sh iso/qt/host/titlebars161_t.sh | tee result.txt
+          echo "::notice title=Title bars::$(tail -1 result.txt) — $(grep -E '^FAIL' result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' result.txt && ! grep -q '^FAIL' result.txt
