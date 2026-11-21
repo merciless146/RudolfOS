@@ -81,6 +81,12 @@ jobs:
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
           python3 iso/qt/webkit/lock61_ci.py ./rudolf-webkit | tee lock-result.txt; r=${PIPESTATUS[0]}
           echo "::notice title=Lite lock screens::$(tail -1 lock-result.txt) — $(grep -E '^FAIL' lock-result.txt | tr '\n' '|' | sed 's/::/: /g')"; exit $r
+      - name: The dynamic backgrounds' moving parts in Lite (1.6.1)
+        run: |
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1
+          for m in soft mixed; do python3 iso/qt/webkit/dynbg61_ci.py ./rudolf-webkit $m > dynbg-$m.txt || r=1
+            echo "::notice title=Lite dynamic backgrounds ($m)::$(tail -1 dynbg-$m.txt) — $(grep -E '^FAIL|^pixels' dynbg-$m.txt | tr '\n' '|' | sed 's/::/: /g')"; done
+          cat dynbg-*.txt; exit ${r:-0}
       - name: An app's own link scheme in Oracle's tabs (1.6.0, the owner's Vivobook report of 2026-11-16)
         run: |
           export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 HOME=$RUNNER_TEMP/home3; mkdir -p $HOME

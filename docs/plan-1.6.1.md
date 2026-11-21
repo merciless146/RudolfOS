@@ -91,7 +91,16 @@ Desktop engine as a compatibility option, "to be worked on and refined later". L
   the full-screen "Shutting down…" and the power asked for after the tone; and what is on the screen (the colour, the
   picture, the shutting-down screen) from screenshots. Owner's check on the Vivobook (Lite): the lock screen and sign-in
   page with a picture of his own, then Shut down (the tone, the screen).
-- The others: in the PRs that follow (this list is brought up to date by each).
+- *Checked without the owner, nothing to change:* the dynamic backgrounds' moving parts in Lite.
+  iso/qt/webkit/dynbg61_ci.py (the real page in rudolf-webkit, soft and mixed drawing): Glacier Lake's northern lights at
+  night (in the sky, not on the mountains, in the lake; moving; still with Reduce motion), Spirit Falls' 70 cherry petals
+  by day and 28 sky lanterns at night (kept to the sky by the mask, moving), and the screen changing where they move.
+  Owner's check on the Vivobook (Lite): both backgrounds by day and at night, and how smooth they are.
+- *Left for the owner:* Google sign-in for GitHub in Lite (the plan asks for the symptoms to be described first: what
+  GitHub's "Continue with Google" does in an Oracle tab on Lite, and where it stops); GPU drawing for Lite measured
+  against software and mixed (memory and smoothness on the Vivobook: Settings › Display › Graphics card, each choice,
+  then Task Manager and a scrolling page; the Lite engine check gives the processes' memory per mode on GitHub's runner,
+  which has no graphics card).
 
 ### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
 The phone's hardware made to work, on today's native desktop; its interface is 2.0's (stage 2).
