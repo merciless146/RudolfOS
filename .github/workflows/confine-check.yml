@@ -21,11 +21,12 @@ jobs:
         run: |
           sudo apt-get update -qq; sudo apt-get install -y -qq zlib1g-dev curl >/dev/null
           echo "Landlock ABI here: $(python3 -c 'import ctypes;print(ctypes.CDLL(None).syscall(444,None,0,1))')"
-          sudo sh iso/qt/host/confine161_t.sh
+          set +e
+          sudo sh iso/qt/host/confine161_t.sh || exit 1
           F=0
           for m in off on; do
             for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh roothelpers161_t.sh drop161_t.sh users59_t.sh fido161_t.sh devlink59_t.sh tor59_t.sh torwin59_t.sh inhibit60_t.sh dlpath_t.sh fssearch_t.sh vaultnative60_t.sh; do
-              echo "== $t ($m)"; sudo env RUDOLFD_CONFINE=$m sh iso/qt/host/$t > out.txt 2>&1; rc=$?; tail -1 out.txt; grep '^FAIL' out.txt; [ $rc = 0 ] || F=$((F+1))
+              echo "== $t ($m)"; sudo env RUDOLFD_CONFINE=$m sh iso/qt/host/$t > out.txt 2>&1; rc=$?; tail -1 out.txt; grep '^FAIL' out.txt; [ $rc = 0 ] || { F=$((F+1)); echo "::error::$t ($m) failed"; }
             done
             echo "== listeners59_t.sh ($m)"; RUDOLFD_CONFINE=$m sh iso/qt/host/listeners59_t.sh | tail -1 || F=$((F+1))
           done
@@ -42,7 +43,10 @@ jobs:
         run: |
           git fetch -q --depth 1 origin gh-pages
           KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
-          OUT=$PWD/kout EXTRA="" bash iso/systools/testkernel.sh
+          # (no firmware in this test kernel: QEMU needs none, and linux-firmware's tip no longer matches every pinned
+          # file of iso/firmware-extra.txt, which stops testkernel.sh: found here, 2026-11-21)
+          sed -e 's#^python3 systools/fwextra.py copy firmware-extra.txt .*$#mkdir -p "$W/fw"#' -e 's#^python3 systools/fwextra.py copy firmware-sof.txt .*$#true#' iso/systools/testkernel.sh > iso/systools/testkernel-ci.sh
+          OUT=$PWD/kout EXTRA="" bash iso/systools/testkernel-ci.sh
           grep -E '^CONFIG_SECURITY_LANDLOCK=|^CONFIG_LSM=' kout/config.txt 2>/dev/null || true
           ls -la kout
       - uses: actions/upload-artifact@v4
