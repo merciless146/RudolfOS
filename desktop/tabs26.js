@@ -206,6 +206,7 @@ addEventListener('message', e => {
     else if (ev == 'tel') { if (typeof telOpen == 'function') telOpen(m.num) }   // 1.5.9 (plan 7.3): a phone number clicked in a tab
     else if (ev == 'busy') { const w = RT_BUSY.get(m.id); if (w) { RT_BUSY.delete(m.id); w({m: !!m.m, f: !!m.f}) } }
     else if (ev == 'fs') h.fs && h.fs(!!m.on);
+    else if (ev == 'adblock') { if (h.adblock) h.adblock(+m.n || 0) }   /* (1.6.1: ads and trackers blocked, orablock61.js) */
     else if (ev == 'blocked') { if (m.main) h.blocked(String(m.url || ''), String(m.why || '')) }
     else if (ev == 'flash') h.flash && h.flash();
     else if (ev == 'still') rtStill(t, m.img);   /* (1.6.1, Lite: a covered tab's still picture) */
