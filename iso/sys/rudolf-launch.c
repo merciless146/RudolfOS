@@ -229,6 +229,8 @@ static struct { char params[1400]; int id, tries; long long at; } o_q[32]; stati
 static struct { char target[64], parent[64], session[80]; int attach_id; char title[600]; } o_pg[64]; static int o_npg;
 /* (1.6.0) the titles waiting for their window's place */
 static struct { int id; char title[600]; } o_tq[16];
+/* (1.6.1 Part 25) a page's progress (a number 0-100, busy, or "-": done), with its window's place, for its minimized taskbar button */
+static struct { int id; char v[8]; } o_pq[16];
 /* a JSON string's literal at key, quotes and escapes as they are ("" when none) */
 static int raw_str(const char *msg, const char *key, char *out, size_t n)
 {
@@ -243,6 +245,12 @@ static void o_title(int k)
 	if (!o_pg[k].parent[0]) return;
 	for (int i = 0; i < 16; i++) if (!o_tq[i].id) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%.63s\"}", o_pg[k].parent);
 		o_tq[i].id = next_id; snprintf(o_tq[i].title, sizeof o_tq[i].title, "%s", o_pg[k].title); send_cmd("Browser.getWindowForTarget", p); return; }
+}
+static void o_prog(int k, const char *v)
+{
+	if (!o_pg[k].parent[0]) return;
+	for (int i = 0; i < 16; i++) if (!o_pq[i].id) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%.63s\"}", o_pg[k].parent);
+		o_pq[i].id = next_id; snprintf(o_pq[i].v, sizeof o_pq[i].v, "%s", v); send_cmd("Browser.getWindowForTarget", p); return; }
 }
 /* (12.3c) downloads in progress: Chromium is not closed under them when Oracle's last window closes (on Standard Chromium never
    closes): that window goes from the screen, and its page closes once they have finished and it has filed them */
@@ -357,6 +365,11 @@ static int o_handle(const char *msg)
 		if (b) { printf("title %ld %ld %ld %ld %s\n", num_field(b, "left"), num_field(b, "top"), num_field(b, "width"), num_field(b, "height"), o_tq[i].title); fflush(stdout); }
 		return 1;
 	}
+	for (int i = 0; id > 0 && i < 16; i++) if (o_pq[i].id == id) {   /* (1.6.1 Part 25: a page's progress, with its window's place) */
+		o_pq[i].id = 0; const char *b = strstr(msg, "\"bounds\"");
+		if (b) { printf("prog %ld %ld %ld %ld %s\n", num_field(b, "left"), num_field(b, "top"), num_field(b, "width"), num_field(b, "height"), o_pq[i].v); fflush(stdout); }
+		return 1;
+	}
 	if (id > 0 && o_hide_id && id == o_hide_id) {   /* (the window that goes from the screen while Chromium finishes its downloads) */
 		o_hide_id = 0; const char *b = strstr(msg, "\"bounds\"");
 		if (b) { printf("hide %ld %ld %ld %ld\n", num_field(b, "left"), num_field(b, "top"), num_field(b, "width"), num_field(b, "height")); fflush(stdout); }
@@ -389,6 +402,11 @@ static int o_handle(const char *msg)
 			if (strstr(pl, "\"op\":\"fs\"")) o_fullscreen(sid, strstr(pl, "\"on\":1") != NULL);   /* (the page's own full screen: here) */
 			else if (strstr(pl, "\"op\":\"title\"")) {   /* (1.6.0: its title, with its window's place) */
 				char ti[600]; for (int k = 0; k < o_npg; k++) if (!strcmp(o_pg[k].session, sid)) { if (!raw_str(pl, "t", ti, sizeof ti)) { snprintf(o_pg[k].title, sizeof o_pg[k].title, "%s", ti); o_title(k); } break; } }
+			else if (strstr(pl, "\"op\":\"prog\"")) {   /* (1.6.1 Part 25: its progress, with its window's place: digits, busy, or nothing) */
+				char pv[16] = "", v[8] = "-"; raw_str(pl, "v", pv, sizeof pv); size_t n = strlen(pv);
+				if (n >= 2 && n - 2 < 4 && strspn(pv + 1, "0123456789") == n - 2 && n > 2) { memcpy(v, pv + 1, n - 2); v[n - 2] = 0; if (atoi(v) > 100) snprintf(v, sizeof v, "100"); }
+				else if (!strcmp(pv, "\"busy\"")) snprintf(v, sizeof v, "busy");
+				for (int k = 0; k < o_npg; k++) if (!strcmp(o_pg[k].session, sid)) { o_prog(k, v); break; } }
 			else { printf("msg %s %s\n", sid, pl); fflush(stdout); } }
 		return 1;
 	}

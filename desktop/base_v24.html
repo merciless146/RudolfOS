@@ -1018,6 +1018,8 @@ function browser(url,bo){bo=bo||{};const PV=!!bo.priv,W=win('Oracle','\u{1F310}\
     line says where it goes ("Goes To: <address>"), then shows again what it said (unless something new came meanwhile) */
  let stPrev=null,stHv='';const stHover=u=>{u=String(u||'');if(u){if(stPrev==null)stPrev=st.textContent;stHv='Goes To: '+u;st.textContent=stHv}else if(stPrev!=null){if(st.textContent===stHv)st.textContent=stPrev;stPrev=null;stHv=''}};
  const T=()=>tabs[ci],cur=()=>T().h[T().i];
+ /* 1.6.1 (docs/plan-1.6.1.md Part 25): a page of one of its tabs loading, for its minimized window's taskbar button (tbprog61.js) */
+ W.oLoading=()=>tabs.some(x=>x.loading);
  const OF=typeof oraFind=='function'?oraFind({W,T:()=>T(),tabs:()=>tabs}):null;   /* 1.6.1 (docs/plan-1.6.1.md Part 10): find in page (orafind61.js) */
  const lk=(u,t)=>`<a href='#' data-u='${esc(u)}' style='color:#2563eb;text-decoration:none' onclick='go(this.dataset.u);return false'>${esc(t)}</a>`;
  const doc=(t,b,x)=>({title:t,html:`<!doctype html><meta charset='utf-8'><title>${esc(t)}</title><body style='font:14px Tahoma,Arial,sans-serif;margin:0;color:#111'><div style='background:#2563eb;color:#fff;padding:9px 16px;font-weight:600'>${esc(t)}</div><div style='padding:16px'>${b}</div><script>function go(u){parent.postMessage({go:u},'*')}function act(a,v){parent.postMessage({act:a,v:v},'*')}${x||''}`+'</'+'script></body>'});

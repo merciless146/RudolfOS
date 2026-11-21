@@ -70,6 +70,7 @@ static int key_ok(const char *k) { size_t n = k ? strlen(k) : 0; return n && n <
 typedef struct {
 	char bs[16], b1[16], b2[16], dyn[48], dm[8], wpfit[12], tb[8], tbstyle[12], tbacm[12], tbbstyle[12], tbbacm[12];
 	char twstyle[12], twacm[12], accent[16], df[8], tz[64], acct[80], wpacct[80], icons[12], ff[48];
+	char tbpcol[16];   /* (1.6.1 Part 25: the progress fill's colour on a minimized window's taskbar button, tbprog61.js S.tbpcol) */
 	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][KN];
 	int nl, dnd, sr, mag, hc, vk, touch;   /* (quick settings' switches: item 3) */
 	int nlv, nlsched; double magz;   /* (1.6.0: Night light's strength and hours, the magnifier's zoom: the shell does them for the whole screen) */
@@ -598,7 +599,8 @@ static void nt_note(JSCValue *v);
 static void open_with(const char *file, const char *key);
 static void kbcap_msg(AppWin *a, int on);
 static void hfs_msg(AppWin *a, JSCValue *v);   /* (folders on this device: test finding N7) */
-static void ctx_msg(AppWin *a, JSCValue *v);   /* (an app's right-click menu, over the screen: test finding N21) */
+static void ctx_msg(AppWin *a, JSCValue *v);
+static void tbp_app(AppWin *a, const char *v);   /* (1.6.1 Part 25: a window's work in progress, for its minimized taskbar button) */   /* (an app's right-click menu, over the screen: test finding N21) */
 /* (1.5.9, 12.3c) Oracle's Chromium and the WebKit windows: the files one (rudolfd's mirror), the indicator of the keys the native
    desktop's, Oracle's new windows at an address or private */
 static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static const char *TOR_CTL_P;   /* (Part 16: the Tor windows' rudolf-launch FIFO, once it runs) */
@@ -657,6 +659,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
 	else if (!strcmp(op, "modal")) { jsstr(v, "on", x, sizeof x); appwin_modal(a, x[0] == '1'); }   /* (a page's dialog: over the whole screen, as Standard's) */
+	else if (!strcmp(op, "prog")) { jsstr(v, "v", x, sizeof x); tbp_app(a, x); }   /* (1.6.1 Part 25: its work in progress, for its minimized taskbar button) */
 	else if (!strcmp(op, "pwr")) { jsstr(v, "a", x, sizeof x); if (!strcmp(x, "reboot") || !strcmp(x, "poweroff")) power(x); }   /* (1.6.0: Restart into Windows, once the page has asked the firmware) */
 	else if (!strcmp(op, "size") && !a->sized) { a->sized = 1; ev_flush(a);
 		/* (a page doing something for the shell (#app=do-NAME) that made an app's window is that app's window now: the taskbar's
@@ -810,9 +813,11 @@ static double tw_tbh(void);   /* (the title bar's height in the page's pixels: t
 static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast; the title bar's height, TH, follows the display scaling, the font size and the touch mode: tw_th) */
 typedef struct Client { Window w, frame, rz[4]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
 	char ak[40]; Window clip; int il, it, ir, ib; int ws, off, mk; gint64 oask, used; int opened; char ptitle[256]; int wait; Window cover; int lpclip; LPRect lpcr;
-	int csd, gl, gr, gt, gb, nodeco, tbcut; } Client;   /* (1.6.1 Part 15: csd, the app draws its own title bar (_MOTIF_WM_HINTS, no decorations): Rudolf's frame keeps only its edge; gl..gb, GTK's
+	int csd, gl, gr, gt, gb, nodeco, tbcut;
+	int pg; double pgf, pgt; gint64 pgb0, pgch, pgend; } Client;   /* (1.6.1 Part 25: its page's progress, for its minimized taskbar button: pg 0 none, 1 a percentage (pgt; drawn from pgf, changed at pgch), 2 busy since pgb0, 3 ended at pgend) */   /* (1.6.1 Part 15: csd, the app draws its own title bar (_MOTIF_WM_HINTS, no decorations): Rudolf's frame keeps only its edge; gl..gb, GTK's
 	   invisible margins around it (_GTK_FRAME_EXTENTS), cut away by the clip window as Oracle's own bar is) */   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static void wopen_start(Client *c);
+static void tbp_set(Client *c, const char *v); static int oracle_at(Client *c, int x, int y, int w, int h);   /* (1.6.1 Part 25, below) */
 static int mon_k(Client *c), mon_ox(Client *c), mon_oy(Client *c), mon_of_ws(int n); static void mon_go(int n), mon_move(Client *c, int n), mon_show(int k, int n, int focus), mon_keep(void), mon_drop(Client *c);
 static void csd_extents(Client *c); static void csd_read(Client *c, XWindowAttributes *wa); static void tb_cut_apply(Client *c); static void csd_update(Client *c); static void net_state_sync(Client *c); static void csd_max_first(Client *c); static void csd_frame_draw(Client *c);   /* (1.6.1 Part 15, below) */
 static int lp_min(Client *c); static void lp_unmin(Client *c); static int lp_maxi(Client *c, int on); static void lp_gone(Client *c);   /* (1.6.0 Part 17) */
@@ -1123,6 +1128,9 @@ static gboolean oracle_msgs(GIOChannel *ch, GIOCondition c, gpointer d)
 	/* (rudolf-launch: Oracle's last window is closing while a download is still arriving: off the screen and the taskbar until its
 	   page has filed it and closes) */
 	if (l && sscanf(l, "hide %d %d %d %d", &hx, &hy, &hw, &hh) == 4) { oracle_hide(hx, hy, hw, hh); g_free(l); return G_SOURCE_CONTINUE; }
+	{ char pv[8] = ""; if (l && sscanf(l, "prog %d %d %d %d %7s", &hx, &hy, &hw, &hh, pv) == 5) {   /* (1.6.1 Part 25: an Oracle window's progress, found by its place as its title is) */
+		for (GList *k = CLIENTS; k; k = k->next) { Client *c = k->data; if (oracle_at(c, hx, hy, hw, hh)) { tbp_set(c, strcmp(pv, "-") ? pv : ""); break; } }
+		g_free(l); return G_SOURCE_CONTINUE; } }
 	{ int nn = 0; if (l && sscanf(l, "title %d %d %d %d %n", &hx, &hy, &hw, &hh, &nn) == 4 && nn > 0 && l[nn] == '"') {
 		g_strchomp(l); char *o = g_strdup_printf("{\"t\":%s}", l + nn); JV *v = jparse(o); char tt[256] = ""; if (v) { jstr(v, "t", tt, sizeof tt); jfree(v); }
 		g_free(o); if (tt[0]) oracle_title(hx, hy, hw, hh, tt); g_free(l); return G_SOURCE_CONTINUE; } }
@@ -2412,6 +2420,65 @@ static void hit_add(double x, double y, double w, double h, const char *k, const
 /* the bar's own height (46 px, 47 with Wireframe's top edge) and where its middle is (from the bar's top) */
 static double bar_mid(void) { return 23; }
 /* the bar: TOP: its window is at the top; W, H: its size in the page's units; the hovered and pressed parts by kind */
+/* ---- (1.6.1, docs/plan-1.6.1.md Part 25) a minimized window's work in progress on its taskbar button, as Standard draws it (tbprog61.js):
+   the page says a percentage, busy or nothing (op "prog"; Oracle's in Chromium through rudolf-launch, by its window's place). The fill:
+   3 px inside the button's edge, 3 px round corners, behind the picture and the title, the colour at half (high contrast: 65 %); only
+   while the window is minimized. A percentage moves to its new width in 0.35 s (CSS's transition, linear); busy creeps towards 90 %
+   (90 × (1 − e^(−t / 6 s))); the end goes to 100 % in 0.35 s, stays, and fades from 0.3 s to 0.8 s. */
+#define TBP_MOVE 350.0
+#define TBP_FULL 300.0
+#define TBP_FADE 500.0
+static guint TBP_T;
+static RGB tbp_colour(void)
+{
+	static const char *const P[][2] = { {"green", "#16a34a"}, {"blue", "#2563eb"}, {"orange", "#ea580c"}, {"purple", "#9333ea"}, {"red", "#dc2626"} };
+	const char *v = S.tbpcol[0] ? S.tbpcol : "green";
+	if (!strcmp(v, "accent")) return accent();
+	for (size_t i = 0; i < sizeof P / sizeof P[0]; i++) if (!strcmp(v, P[i][0])) return hexc(P[i][1], "#16a34a");
+	if (v[0] == '#' && strlen(v) == 7 && strspn(v + 1, "0123456789abcdefABCDEF") == 6) return hexc(v, "#16a34a");
+	return hexc("#16a34a", "#16a34a");
+}
+/* its width now (0-100; -1: nothing) and how opaque (0-1) */
+static double tbp_frac(Client *c, gint64 now, double *alpha)
+{
+	if (alpha) *alpha = 1;
+	if (c->pg == 1) { double dt = (now - c->pgch) / 1000.0; return S.rmotion || dt >= TBP_MOVE ? c->pgt : c->pgf + (c->pgt - c->pgf) * dt / TBP_MOVE; }
+	if (c->pg == 2) return 90.0 * (1 - exp(-((now - c->pgb0) / 1000.0) / 6000.0));
+	if (c->pg == 3) { double dt = (now - c->pgend) / 1000.0; if (dt >= TBP_FULL + TBP_FADE) return -1;
+		if (alpha) *alpha = dt < TBP_FULL ? 1 : 1 - (dt - TBP_FULL) / TBP_FADE;
+		return S.rmotion || dt >= TBP_MOVE ? 100 : c->pgf + (100 - c->pgf) * dt / TBP_MOVE; }
+	return -1;
+}
+static gboolean tbp_tick(gpointer d)
+{
+	(void)d; gint64 now = g_get_monotonic_time(); int any = 0, draw = 0;
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!c->pg) continue;
+		if (c->pg == 3 && (!c->min || tbp_frac(c, now, NULL) < 0)) { c->pg = 0; draw |= c->min; state_write(); continue; }   /* (ended: gone; restored meanwhile: at once, as the page's) */
+		any = 1; if (c->min) draw = 1; }
+	if (draw) bar_redraw();
+	if (!any) { TBP_T = 0; return G_SOURCE_REMOVE; }
+	return G_SOURCE_CONTINUE;
+}
+static void tbp_set(Client *c, const char *v)
+{
+	gint64 now = g_get_monotonic_time(); double cur = tbp_frac(c, now, NULL); int was = c->pg;
+	if (v && !strcmp(v, "busy")) { if (c->pg != 2) { c->pg = 2; c->pgb0 = now; } }
+	else if (v && v[0] && strlen(v) < 4 && strspn(v, "0123456789") == strlen(v)) { double t = fmin(100, atoi(v));
+		if (c->pg == 1 && t == c->pgt) return;
+		c->pgf = (was == 1 || was == 2) && cur >= 0 ? cur : t; c->pgt = t; c->pgch = now; c->pg = 1; }
+	else { if (c->pg != 1 && c->pg != 2) return; c->pgf = cur >= 0 ? cur : 0; c->pgend = now; c->pg = 3; }
+	if (!TBP_T) TBP_T = g_timeout_add(100, tbp_tick, NULL);
+	if (c->min) bar_redraw(); if (was != c->pg) state_write();
+}
+static void tbp_app(AppWin *a, const char *v) { Client *c = WM_OK ? client_of_app(a) : NULL; if (c) tbp_set(c, v); }
+/* the fill in a window's button (x, y, w, h: the button; b: its box, for its border) */
+static void tbp_paint(cairo_t *cr, Client *c, double x, double y, double w, double h, const Box *b)
+{
+	if (!c || !c->min || !c->pg) return; double al; double f = tbp_frac(c, g_get_monotonic_time(), &al); if (f < 0 || al <= 0) return;
+	snap(&x, &y, &w, &h);   /* (the button where box_paint puts it: whole pixels, as Chromium places the page's) */
+	double iw = (w - 2 * b->bw - 6) * fmin(100, f) / 100, ih = h - 2 * b->bw - 6; if (iw <= 0 || ih <= 0) return;
+	cairo_save(cr); rrect(cr, x + b->bw + 3, y + b->bw + 3, iw, ih, 3); src(cr, tbp_colour(), (S.hc ? .65 : .5) * al); cairo_fill(cr); cairo_restore(cr);
+}
 static void bar_paint_v(cairo_t *cr, double W, double H);
 static void bar_paint(cairo_t *cr, double W, double H, int top)
 {
@@ -2500,6 +2567,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		char wid[24]; snprintf(wid, sizeof wid, "%lx", c ? (unsigned long)c->w : (unsigned long)(uintptr_t)a);
 		double wx = tasks_x + j * (tw + 3), y = mid - 17; Box b = tb_box(act ? TB_TASKON : TB_TASK, HV("win", wid), PR("win", wid));
 		box_paint(cr, wx, y, tw, 34, &b); hit_add(wx, y, tw, 34, "win", wid);
+		tbp_paint(cr, c, wx, y, tw, 34, &b);   /* (1.6.1 Part 25: its work in progress, while minimized) */
 		if (c && c->w == LP_LITW && LP_LITA > 0) { cairo_save(cr); cairo_set_source_rgba(cr, LP_CORE.r, LP_CORE.g, LP_CORE.b, .55 * LP_LITA); cairo_rectangle(cr, wx, y, tw, 34); cairo_fill(cr); cairo_restore(cr); }   /* (Part 17: lit as the point lands) */
 		/* the line: the picture (vertical-align -4px) and the title, centred in the button's content (34 less 1 px above and below) */
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = y + b.bw + 1 + (32 - 2 * b.bw - (lb - lt)) / 2 - lt;
@@ -2600,6 +2668,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 		Client *c = WM_OK ? l->data : NULL; AppWin *a = c ? c->app : l->data; int act = c ? c == FOCUS && !c->min : a == ACTIVE;
 		char wid[24]; snprintf(wid, sizeof wid, "%lx", c ? (unsigned long)c->w : (unsigned long)(uintptr_t)a);
 		Box b = tb_box(act ? TB_TASKON : TB_TASK, HV("win", wid), PR("win", wid)); box_paint(cr, x, ty, cw, 22, &b); hit_add(x, ty, cw, 22, "win", wid);
+		tbp_paint(cr, c, x, ty, cw, 22, &b);   /* (1.6.1 Part 25) */
 		if (c && c->w == LP_LITW && LP_LITA > 0) { cairo_save(cr); cairo_set_source_rgba(cr, LP_CORE.r, LP_CORE.g, LP_CORE.b, .55 * LP_LITA); cairo_rectangle(cr, x, ty, cw, 22); cairo_fill(cr); cairo_restore(cr); }
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = ty + b.bw + 1 + (20 - 2 * b.bw - (lb - lt)) / 2 - lt;
 		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = x + b.bw + 6;
@@ -3583,7 +3652,7 @@ static void settings_load(void)
 	jstr(s, "bs", n.bs, sizeof n.bs); jstr(s, "b1", n.b1, sizeof n.b1); jstr(s, "b2", n.b2, sizeof n.b2); jstr(s, "dyn", n.dyn, sizeof n.dyn); jstr(s, "dm", n.dm, sizeof n.dm);
 	jstr(s, "wpfit", n.wpfit, sizeof n.wpfit); jstr(s, "tb", n.tb, sizeof n.tb); jstr(s, "tbstyle", n.tbstyle, sizeof n.tbstyle); jstr(s, "tbacm", n.tbacm, sizeof n.tbacm);
 	jstr(s, "tbbstyle", n.tbbstyle, sizeof n.tbbstyle); jstr(s, "tbbacm", n.tbbacm, sizeof n.tbbacm); jstr(s, "twstyle", n.twstyle, sizeof n.twstyle); jstr(s, "twacm", n.twacm, sizeof n.twacm);
-	jstr(s, "accent", n.accent, sizeof n.accent); jstr(s, "df", n.df, sizeof n.df); jstr(s, "tz", n.tz, sizeof n.tz); jstr(s, "ff", n.ff, sizeof n.ff);
+	jstr(s, "tbpcol", n.tbpcol, sizeof n.tbpcol); jstr(s, "accent", n.accent, sizeof n.accent); jstr(s, "df", n.df, sizeof n.df); jstr(s, "tz", n.tz, sizeof n.tz); jstr(s, "ff", n.ff, sizeof n.ff);
 	char wp[64] = ""; jstr(s, "wpimg", wp, sizeof wp); n.wpimg = wp[0] != 0;
 	jstr(s, "icons", n.icons, sizeof n.icons); n.scale = (int)jnum(s, "scale", 100); if (n.scale < 75 || n.scale > 250) n.scale = 100;
 	n.lpac = jbool(s, "lpac"); jstr(s, "lpacm", n.lpacm, sizeof n.lpacm); n.lpbr = (int)jnum(s, "lpbr", 100);   /* (DEFS.disp lpac false, lpacm normal, lpbr 100) */
@@ -7801,6 +7870,7 @@ static void state_write(void)
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
 			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
 		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);
+		if (c->pg) g_string_append_printf(s, "clientprog %lx %d %.0f\n", (unsigned long)c->w, c->pg, c->pg == 1 ? c->pgt : 0);   /* (1.6.1 Part 25: its progress: 1 a percentage, 2 busy, 3 ending) */
 		if (c->csd || c->clip) g_string_append_printf(s, "clientcsd %lx %d %d %d %d %d %d\n", (unsigned long)c->w, c->csd, c->il, c->it, c->ir, c->ib, c->tbcut);   /* (1.6.1 Part 15: its own title bar, its cut) */   /* (item 4: its workspace, shown or not) */
 		if (c->ontop) g_string_append_printf(s, "clienttop %lx\n", (unsigned long)c->w);   /* (Always on top: the title bars' test) */
 		if (c->hidden) g_string_append_printf(s, "clienthidden %lx\n", (unsigned long)c->w);   /* (1.6.0: out of sight, as the portal's page between its dialogs) */

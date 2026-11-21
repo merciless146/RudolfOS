@@ -49,7 +49,7 @@ async function dlZipExtract(path){const nm=path.at(-1),z=dlzOf(path),parent=path
  const W=win('Extracting '+nm,'📦',480,210);
  W.body.innerHTML=`<p class='msg dlzn'>Starting…</p><div class='dsbar'><i style='width:3%'></i></div><p class='msg dlzb' style='color:#6b7280'></p><div style='text-align:right'><button class='dlzc'>Cancel</button></div>`;
  const note=W.body.querySelector('.dlzn'),bar=W.body.querySelector('.dsbar i'),sub=W.body.querySelector('.dlzb'),cb=W.body.querySelector('.dlzc');
- const show=(t,s,pct)=>{note.textContent=t;sub.textContent=s||'';if(pct!=null)bar.style.width=Math.max(3,Math.min(100,pct))+'%'};
+ const show=(t,s,pct)=>{note.textContent=t;sub.textContent=s||'';if(pct!=null){bar.style.width=Math.max(3,Math.min(100,pct))+'%';if(typeof winProgress=='function')winProgress(W,pct>=100?null:pct,'zip')}};   /* (1.6.1 Part 25: and on its minimized window's taskbar button) */
  let stop=false,tot=0,bytes=0;
  cb.onclick=async()=>{if(stop)return;stop=true;cb.disabled=true;show('Stopping…','');try{await rdPost('dl/unzip?stop=1')}catch(e){}};
  try{
@@ -89,7 +89,7 @@ async function dlZipExtract(path){const nm=path.at(-1),z=dlzOf(path),parent=path
   notify(stopped?'Extraction stopped':'Extracted',`${stopped?'Stopped: ':''}${n.toLocaleString()} file(s) from ${nm} are in ${where}.${bad}`,{kind:quar.length||blocked.length?'error':'',action:()=>explorer([...parent,fn])});
   if(!bad)setTimeout(()=>{try{W.close()}catch(e){}},1500)}
  catch(e){console.warn('extract',e);show('Not extracted',e&&e.message||'',100);no(nm+' was not extracted: '+(e&&e.message||'it stopped unexpectedly.'))}
- finally{DLZ.run=null;
+ finally{DLZ.run=null;if(typeof winProgress=='function')winProgress(W,null,'zip');
   /* the references saved (on the native desktop: in rudolfd's copy, which Oracle's page reads), then the result taken, so dl/home no
      longer says "unzip" and dlAdopt looks at the folder again (a file left unreferenced is then taken in as before) */
   try{if(typeof oaDrained=='function')await oaDrained()}catch(e){}
