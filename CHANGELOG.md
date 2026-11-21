@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Fixed: Make a Rudolf OS USB stick on an older Rudolf OS stick said "/dev/sdb is in use (mounted at
+  /run/rudolf/stkinfo-sdb/i). Unmount it first." Settings' look at what such a stick holds left its image mounted
+  when the stick had no third partition. It now always unmounts, never looks while a stick is being made, and Make the
+  stick unmounts a look left behind by 1.6.0.
 - Fixed: Make a Rudolf OS USB stick with "The latest from the update address" stopped at once with "use POST", and so did
   Settings › System update › Check this address: the page asked rudolfd's address check the wrong way (a GET where it
   takes only a POST). Its test's stand-in now refuses a GET as rudolfd does.

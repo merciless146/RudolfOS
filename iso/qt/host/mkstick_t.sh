@@ -89,4 +89,35 @@ ok "info: a whole disc image starts on its own" $(echo "$j" | grep -q '"bootonly
 grep -q 'Nothing on it was changed. Use a bigger stick' $M && grep -q '^trap cleanup EXIT' $M && grep -q 'dd if=/dev/zero of="\$DEV" bs=1M count=8' $M
 ok "mkstick: room checked before anything is erased; a half-made stick is cleared (its start area)" $([ $? = 0 ] && echo 1 || echo 0)
 grep -q 'os_rescue /mnt/newstick' $M; ok "mkstick: keeps the rescue system after copying the system" $([ $? = 0 ] && echo 1 || echo 0)
+# 1.6.1: --info (Settings' look at an older Rudolf OS stick) always unmounts what it mounted. With set -e, "umount" of
+# a partition 3 that was never mounted ended it early and left the image mounted: Make the stick… then said "/dev/sdb is in
+# use (mounted at /run/rudolf/stkinfo-sdb/i)" (the owner, 2026-11-20). Stand-in mount/umount/mountpoint keep a list.
+FB=$T/fakebin; mkdir -p $FB; MT=$T/mounts; : > $MT; export MT
+cat > $FB/mount <<'X'
+#!/bin/sh
+for a; do :; done; dev=; for a; do case "$a" in /dev/*) dev=$a;; esac; done
+case "$dev" in *3) [ -n "$NOP3" ] && exit 32;; esac
+mkdir -p "$a/rudolf"; [ -n "$RUDOLFID" ] && : > "$a/rudolf/id"; echo "$a" >> $MT
+X
+cat > $FB/umount <<'X'
+#!/bin/sh
+grep -qx "$1" $MT || exit 32; grep -vx "$1" $MT > $MT.n; mv $MT.n $MT; rm -rf "$1/rudolf"
+X
+cat > $FB/mountpoint <<'X'
+#!/bin/sh
+[ "$1" = -q ] && shift; grep -qx "$1" $MT
+X
+chmod +x $FB/*
+RR=$T/run; mkdir -p $RR
+inf() { o=$(RUDOLF_TEST_PATH=$FB RUDOLF_RUN=$RR sh $M --info /dev/sdx 2>&1); }
+RUDOLFID=1 NOP3=1; export RUDOLFID NOP3; inf
+ok "--info: an older stick without partition 3: answered, and nothing left mounted" $(echo "$o" | grep -q '"rudolf":true' && [ ! -s $MT ] && [ ! -e $RR/stkinfo-sdx/i ] && echo 1 || echo 0) "$o / $(cat $MT)"
+unset NOP3; inf
+ok "--info: ...with partition 3: both unmounted" $(echo "$o" | grep -q '"rudolf":true' && [ ! -s $MT ] && echo 1 || echo 0) "$o / $(cat $MT)"
+unset RUDOLFID; inf
+ok "--info: not a Rudolf OS stick: nothing left mounted" $(echo "$o" | grep -q '"rudolf":false' && [ ! -s $MT ] && echo 1 || echo 0) "$o / $(cat $MT)"
+mkdir -p $RR/busy; : > $RR/busy/sdx; inf
+ok "--info: while the stick is being made (its busy mark): not mounted at all" $(echo "$o" | grep -q '"busy":true' && [ ! -s $MT ] && echo 1 || echo 0) "$o / $(cat $MT)"
+rm $RR/busy/sdx
+grep -q 'stkinfo-\$N/' $LIB/install.sh; ok "install.sh: a look left mounted by 1.6.0 (stkinfo-…) is unmounted before the in-use check" $([ $? = 0 ] && echo 1 || echo 0)
 echo "$((N-F))/$N passed"; [ $F = 0 ]
