@@ -265,6 +265,9 @@ Summary: In progress.
 - Fixed (Part 19's follow-up): game mode puts everything back by itself after a game crashes, also when nothing asks
   again (its watcher is a process of its own).
 
+- Fixed (Part 19's follow-up): a system extension with kernel modules or firmware (NVIDIA's driver) has them laid over
+  the system again; on Rudolf OS /lib is /usr/lib, and those were taken after /usr's own overlay, one overlay too many.
+
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.
 - Oracle's website data can be kept encrypted with your account: Settings › Oracle › "Keep my websites encrypted with my account". On, Oracle's sign-ins, site data, cache and saved site passwords go in a folder of the account's own, encrypted with the same key as its home folder and locked when it signs out. On by default on Native and Lite; off by default on Standard (Settings says plainly that off means not encrypted), where turning it on opens Oracle in a Chromium window of its own over the desktop, as Browse with Tor's windows are, using a little more memory while it is open. The choice is kept inside the account's encrypted folder, so it cannot be changed with the drive alone, and turning it off asks for the account's password. Only for accounts whose files are on the disk. The first time, the account's websites ask to sign in again, and their old unencrypted copy is removed. Tests: oraacct60_t.js 18-34, homeapi_t.sh 15a-15j.
