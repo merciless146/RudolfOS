@@ -10460,7 +10460,19 @@ const rfExt = n => (/\.([^.]+)$/.exec(n) || [, ''])[1].toLowerCase();
 const rfMime = n => RF_MIME[rfExt(n)] || 'application/octet-stream';
 const rfEsc = s => String(s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 const rfSize = b => b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : b < 1073741824 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1073741824).toFixed(2) + ' GB';
-const RF_MAX = 512 * 1048576;
+/* the largest file read into the page at once. 1.6.1 (the owner, 2026-11-20: "add the ability for the limit to follow the
+   computer's memory"): a chosen file is held in the page two to three times over while it is handed to the app, and on
+   Standard the whole desktop is one page, so too large a file ends the desktop (the memory guard, or Chromium). The limit:
+   a sixth of the computer's memory (256 MB at the least), no more than 40% of what is free now (128 MB at the least),
+   and never over 2 GB (what one page can hold). The Vivobook (3.3 GB) keeps about 512 MB; 8 GB about 1.2 GB; 16 GB 2 GB.
+   Without rudolfd's numbers: 512 MB, as before. */
+let RF_MAX = 512 * 1048576;
+function rfMaxFor(total, avail) {
+  const MB = 1048576; if (!(total > 0)) return 512 * MB;
+  let m = Math.max(256 * MB, total / 6.5); if (avail > 0) m = Math.min(m, Math.max(128 * MB, avail / 2.5));
+  return Math.floor(Math.min(m, 2048 * MB) / MB) * MB;
+}
+async function rfMaxNow() { try { const m = await rd('memory'); RF_MAX = rfMaxFor(+m.total, +m.available) } catch (e) {} return RF_MAX }
 
 /* does a file name match the input's accept="…" list (".png,image/*,audio/mpeg")? */
 function rfAccepts(accept, name) {
@@ -10473,6 +10485,7 @@ function rfAccepts(accept, name) {
 let RF_LAST = '/home/rudolf/Downloads';
 function rfPick(input) {
   if (document.querySelector('.rfpick')) return;
+  rfMaxNow();   /* (1.6.1: the limit for this computer's memory, as it is now) */
   const multi = input.multiple, accept = input.accept || '';
   const o = document.createElement('div'); o.className = 'rmodal rfpick';
   o.innerHTML = `<div class='rmbox' role='dialog' aria-modal='true' aria-label='Choose ${multi ? 'files' : 'a file'}' style='width:min(680px,calc(94*var(--vw1,1vw)));max-width:none;box-sizing:border-box;max-height:calc(100*var(--vh1,1vh) - 12px);overflow:auto;display:flex;flex-direction:column;gap:8px'>
@@ -10491,8 +10504,9 @@ function rfPick(input) {
     if (done) return;
     if (!ok) { done = true; o.remove(); input.dispatchEvent(new Event('cancel', {bubbles: false})); return }
     const paths = [...sel]; if (!paths.length) return;
+    await rfMaxNow(); if (done) return;
     const big = paths.map(p => items.find(i => cur + '/' + i.name == p)).filter(i => i && i.size > RF_MAX);
-    if (big.length) { q('.rfmsg').textContent = big[0].name + ' is larger than ' + rfSize(RF_MAX) + '; copy it in Files instead.'; return }
+    if (big.length) { q('.rfmsg').textContent = big[0].name + ' is larger than ' + rfSize(RF_MAX) + ', the most this computer\'s memory lets an app take in at once; copy it in Files instead.'; return }
     done = true; q('.rfok').disabled = true; q('.rfmsg').textContent = 'Reading…';
     try {
       const dt = new DataTransfer();

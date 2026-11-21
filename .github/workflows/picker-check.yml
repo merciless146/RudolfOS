@@ -1,0 +1,18 @@
+# 1.6.1 (the owner, 2026-11-20): the desktop's file picker reads at most what this computer's memory allows
+# (picker26.js rfMaxFor). Nothing published.
+name: File picker check
+on:
+  push:
+    paths: ['desktop/picker26.js', 'iso/qt/shell2/pickermem61_t.js', '.github/workflows/picker-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          (cd desktop && python3 build19.py ../iso/www/index.html >/dev/null)
+          node iso/qt/shell2/pickermem61_t.js
