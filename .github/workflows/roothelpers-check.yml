@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 150
     strategy:
       fail-fast: false
-      matrix: {test: [r161, t160]}
+      matrix: {test: [r161, t160, t150, t150base]}   # (t150: the encrypted folder of 1.5.0, set up, moved, locked, opened: drives part 2; t150base: the release as it is, for comparison)
     steps:
       - uses: actions/checkout@v5
       - name: The run's settings
@@ -68,6 +68,8 @@ jobs:
         run: |
           mkdir -p run && cd run
           if [ "${{ matrix.test }}" = r161 ]; then sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/r161_t.py ../rel
+          elif [ "${{ matrix.test }}" = t150base ]; then sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} python3 ../iso/qt/sb/t150_t.py ../rel; cp t150.txt t150base.txt
+          elif [ "${{ matrix.test }}" = t150 ]; then sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/t150_t.py ../rel
           else sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/t160_t.py ../rel ../rudolf-update; fi
       - if: always()
         uses: actions/upload-artifact@v4
