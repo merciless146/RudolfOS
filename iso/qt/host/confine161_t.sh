@@ -82,9 +82,8 @@ c=$(api ping); c2=$(api health); c3=$(api origin); c4=$(curl -s -o $T/p -w '%{ht
 ok "11. ...and they answer as before: ping, health, origin, the page (with its token) and its files" "$([ "$c$c2$c3$c4$c5" = 200200200200200 ] && grep -q 'RUDOLFD={token:"' $T/p && echo 1)" "$c $c2 $c3 $c4 $c5"
 c=$(api stats); c2=$(api memory/settings)
 ok "12. a request that starts programs (stats runs a command) answers as before too (layer 1 only)" "$([ "$c" = 200 ] && [ "$c2" = 200 ] && echo 1)" "$c $c2 $(cat $T/body | head -c 200)"
-c=$(curl -s -o $T/body -w '%{http_code}' -X POST -H "X-Rudolf-Token: $TOK" --data '/home/rudolf/x.txt' "http://127.0.0.1:8080/api/fs/write?path=/home/rudolf/Documents/cf.txt"); mkdir -p /home/rudolf/Documents
-c=$(curl -s -o $T/body -w '%{http_code}' -X POST -H "X-Rudolf-Token: $TOK" --data 'hello' "http://127.0.0.1:8080/api/fs/write?path=/home/rudolf/Documents/cf.txt")
-ok "13. a narrow request writing where it may (fs/write in the shared Documents): written" "$([ "$c" = 200 ] && [ "$(cat /home/rudolf/Documents/cf.txt 2>/dev/null)" = hello ] && echo 1)" "$c $(cat $T/body)"
+c=$(curl -s -o $T/body -w '%{http_code}' -X POST -H "X-Rudolf-Token: $TOK" --data 'cf161 written from a narrow request' "http://127.0.0.1:8080/api/clientlog")
+ok "13. a narrow request writing where it may (clientlog: rudolfd's run folder, a narrow request): written" "$([ "$c" = 200 ] && grep -q 'cf161 written from a narrow request' /run/rudolf/page.log && sed -n '/CONFINE_PURE/,/NULL/p' $SYS/rudolfd-confine-pure.h | grep -q '"clientlog",' && echo 1)" "$c $(cat $T/body) $(tail -2 /run/rudolf/page.log 2>/dev/null)"
 # the windows
 o=$(win python3 /api/stats); o2=$(win python3 /api/desktop/accounts); o3=$(win python3 /api/ping); o4=$(win python3 /)
 ok "14. the page (a window's process in the desktop's group) gets what it asks for, narrow or not (stats; ping and the page itself, whose peer check is made before the narrow confinement), and is refused what only the native shell asks for (desktop/accounts): 403" "$([ "$(echo "$o" | head -1)" = 200 ] && [ "$(echo "$o3" | head -1)" = 200 ] && [ "$(echo "$o4" | head -1)" = 200 ] && echo "$o2" | grep -q '^403 .*does not use' && echo 1)" "$o / $o2 / $o3 / $o4"

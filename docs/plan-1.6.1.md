@@ -198,6 +198,13 @@ Lite: rudolf-webkit's `mouse-target-changed` (WebKit's own hit test); Oracle's o
 window. The status line goes back to what it said, unless something new came meanwhile. Not possible to know before a
 click: where a script-only button (no link, no form) will go. Test orahover61_t.js; workflow oracle-hover-check.yml.
 
+**Built (the owner, 2026-11-20): the Downloads page's progress bar and Remove** (desktop/dlrm61.js). A file arriving: how
+much so far and how fast, and with a size known the percentage and time left (Chromium's own downloads do not tell their
+size: the bar then moves without a percentage); being checked: a bar. Remove beside Open: in Downloads → the Trash;
+otherwise "File removed from list" with "⚡ Ask Blitzen" (the notification's own Blitzen button, kept in the centre; drawn
+by rudolf-native too). Test dlpage61_t.js; workflow downloads-page-check.yml. Left: the size of Chromium's downloads
+(rudolf-webkit's WebKitDownload knows it: Lite could send it).
+
 ### 11. rudolfd's root work split into helpers (added on 2026-11-16; from docs/plan-1.5.9.md 15.5)
 
 **Shipped in 1.6.0 (owner, 2026-11-17: "I do want to keep 446 and 447 in 1.6.0"):** rudolf-rootd with the drives' and
@@ -906,7 +913,8 @@ authenticator codes were built there (desktop/otp60.js, rudolfd's `desktop/secon
   stand-in rudolfd: the key asked at once after the password, a wrong key, Enter asking again); `iso/qt/sb/fido161_t.py` (QEMU, the newest beta with this tree's page, rudolfd and libfido2:
   the keys as real HID devices in the guest through uhid, `iso/qt/vfido_uhid.c`, their reports over a serial port to
   vfido.py on the host; the real Settings and sign-in screen, the lock screen, rudolfd's native sign-in, and the drive
-  image read on the host afterwards). **Not covered yet:** Native's and Lite's own screens with a key in QEMU (Native's
+  image read on the host afterwards; 2026-11-21, after #522: everything passes in CI but item 3's read of rudolfd's copy of the
+  page's storage, asked by wget, which rudolfd does not serve: the account is checked in the page now, and rudolfd's copy on the disk image, 9a). **Not covered yet:** Native's and Lite's own screens with a key in QEMU (Native's
   shows the request's message under the password field, not the page's dialog: a difference to fix in Native), a recovery
   code, the elevation prompts (an administrator's password only), "Encrypt my data"'s copy of its key (password only).
 
@@ -970,9 +978,9 @@ From the comparison with other distributions on 2026-11-19: the weak points name
      /tmp, /proc/sys/vm/drop_caches, /dev/null), run nothing, no TCP of its own, no signals or abstract sockets outside;
      capabilities cut to owners and modes, reading the accounts' folders, the peer check's /proc, the dropped file's
      child becoming the account's user; no_new_privs. Which requests: iso/systools/confinepure.py reads every function
-     of rudolfd and its .inc files and what each reaches (iso/sys/rudolfd-confine-pure.h): today 28 requests and the
+     of rudolfd and its .inc files and what each reaches (iso/sys/rudolfd-confine-pure.h): today 27 requests and the
      page with all its files, and 12 more that reach root only through rudolf-rootd's helpers (while rudolf-rootd is
-     there); the other 94 still start programs. As Part 11 moves an area, its requests join (the host test says which,
+     there); the other 95 still start programs. As Part 11 moves an area, its requests join (the host test says which,
      so the list never lags the code). Five that start nothing are kept out by hand, as they write where the narrow
      folders do not reach: display (/etc), bootmenu (the firmware's variables), brightness (the backlight under
      /sys/devices), factory-reset (/persist itself), desktop/keys (the security keys' /dev/hidraw).
@@ -985,7 +993,7 @@ From the comparison with other distributions on 2026-11-19: the weak points name
   A helper without its line is never run with "on".
 - **The windows' lists:** the process holding the connection (found by the peer check, never from the request) is the
   native shell (rudolf-native) or the page (Standard's Chromium; WebKit's network process for the native desktop's app
-  windows and Lite). iso/systools/winapi.py reads what each asks for (iso/sys/rudolfd-winapi.h: 346 paths for the page,
+  windows and Lite). iso/systools/winapi.py reads what each asks for (iso/sys/rudolfd-winapi.h: 349 paths for the page,
   every literal given to its API helpers and each string that is one of rudolfd's request names; 35 for the shell);
   anything else is refused (403 "this window does not use that part of the API") and said in the health log. The
   shell, for instance, is refused the files API; the page is refused desktop/login, desktop/accounts and the shell's
@@ -1046,6 +1054,44 @@ From the comparison with other distributions on 2026-11-19: the weak points name
   on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
   Native; calls; a real CAC only when the owner asks.
 
+### 22. File Explorer: dragging between windows, the selection box, the progress window (added on 2026-11-20)
+The owner, 2026-11-20, with a photo of two File Explorer windows side by side (Downloads; the Games (Emu library) folder):
+"Users should be able to move files by click-dragging items from one file explorer window to a different window showing a
+different location within it. They should also be able to use the mouse to click-drag a selection box over items in the
+file explorer to select multiple files at the same time to move via right-click or click-drag. A pop-up window should
+appear that shows file transfer progress." On Standard, Native and Lite alike.
+- **The selection box:** pressed on an empty spot of a list (details, icons, thumbnails; C: and a drive's pane) and dragged;
+  what it touches is selected while dragging, Ctrl or Shift adds, the list scrolls at its edge, a plain click on an empty
+  spot clears. The mouse only (touch and keys as they were). A drive's pane got Shift+click, a right-click menu (Open, Cut,
+  Copy, Paste, Delete, Copy into Rudolf OS, Copy to another drive…, Properties), keys and dragging.
+- **Dragging between windows and panes:** C: ↔ C:, C: ↔ a drive or the Games folder, a drive ↔ another; onto a list (the
+  folder it shows) or a folder row; highlighted while over; the same folder: nothing. A drag moves, Ctrl+drag copies (the
+  pointer says which); from a read-only folder it copies; a read-only folder takes nothing. Cut, Copy and Paste the same.
+- **Moves that are checked** (desktop/xfer61.js, xfRun): across stores a copy, its sizes and SHA-256 compared (rudolfd's new
+  fs/hash, and home/hash), then the originals removed only once everything arrived; cancelled or failed, the originals stay
+  and what was copied is taken away again. On the same drive a rename (fs/move). Into C:: remoteImport's limits (5,000
+  files, the storage left, files over 256 MB left out) and the antivirus and type rules (secIngress, as Upload). rudolfd
+  (rudolfd.c): fs/copy, fs/move, fs/hash, fs/write in pieces (part=, final=1), all inside /media and the shared folders,
+  nothing hidden, never over something, links not followed.
+- **The progress window:** "Moving N items" / "Copying N items", the file, n of N, bytes, a bar, the time left, Cancel; at
+  once across stores, after half a second within C:; closes itself after a success, stays with the details otherwise;
+  one per transfer, stacked at the bottom right. remoteImport (Copy selected into Rudolf OS) uses it too.
+- **Native:** each window is a page of its own: a drive's selection goes with the drag (text/x-rudolf-remote, as
+  text/x-rudolf-paths), Cut and Copy are kept where every window reads them, and a page that changed a drive's folder
+  tells the others. The progress window is drawn in the page doing the work, as Properties is.
+- **The 99-byte "- COPY"** (the same photo): Copy and Paste of a large download kept on the disk copied its reference, not
+  the file. Now rudolfd copies the file (dl/file to=copy, in the account's own folder only) and the copy is a file of its
+  own; one in a home folder kept on the disk is copied by home56.js as before; any other is refused with a message. A
+  move keeps the reference. Copies made before (two entries naming one file) are made files of their own when Downloads
+  is looked at (dlScope, dlDupFix); one that cannot be is kept and said so, never deleted unseen (before, the second was
+  dropped).
+- **Found on the way:** C:'s Properties window stopped at its first line (its icon replaced the window's contents).
+- **Status (2026-11-21, branch fe-drag):** done; tests: iso/qt/host/fsxfer161_t.sh (rudolfd, 15 checks),
+  iso/qt/shell2/xdrag161_t.js (Chromium with a stand-in rudolfd, the native pages included, 56 checks),
+  iso/qt/webkit/xdrag61_ci.py (WebKitGTK, real mouse input, on GitHub: xfer-check.yml). **For the owner, on the
+  Vivobook:** drag a file from Downloads into the Games (Emu library) window and back; box-select several files and drag
+  them; right-click Cut and Paste across windows; watch the progress window; Ctrl+drag copies.
+
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
   1.6.0 instead"): docs/plan-1.6.0.md Part 22.
@@ -1074,3 +1120,5 @@ From the comparison with other distributions on 2026-11-19: the weak points name
 9. Part 21's CI checks first (so every later part is checked), then Part 18 (security keys with the QR code), Part 20
    (rudolfd confined; the review booked before 2.0), Part 19 (the NVIDIA driver choice, then game mode, measured), and
    Part 21's checks with the owner after each beta.
+10. Part 22 (File Explorer: dragging between windows, the selection box, the progress window): one PR, then the owner's
+   checks on the Vivobook.

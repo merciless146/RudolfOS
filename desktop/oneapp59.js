@@ -27,13 +27,17 @@ if(!ONEAPP)oaLoginUnhide();
    is the page's own, so it goes with the drag as text/x-rudolf-paths and is taken back on the drop (a desktop file dropped on a
    window: oaFs's op=drop) */
 if(ONEAPP){
- const T='text/x-rudolf-paths',ours=e=>e.dataTransfer&&[...e.dataTransfer.types].includes(T);let lent=0;
- document.addEventListener('dragstart',e=>{try{if(typeof FC=='object'&&FC.drag&&FC.drag.length&&e.dataTransfer)e.dataTransfer.setData(T,JSON.stringify(FC.drag))}catch(x){}});
- document.addEventListener('dragenter',e=>{if(!ours(e)||typeof FC!='object')return;if(!lent&&!FC.drag){FC.drag=[];lent=1}else if(lent)lent++},true);
- document.addEventListener('dragover',e=>{if(lent&&ours(e))try{e.dataTransfer.dropEffect=e.ctrlKey?'copy':'move'}catch(x){}},true);   /* (WebKit gives a drag from another page none) */
- document.addEventListener('dragleave',e=>{if(lent&&--lent==0&&FC.drag&&!FC.drag.length)FC.drag=null},true);
- document.addEventListener('drop',e=>{if(lent&&ours(e)){lent=0;try{FC.drag=JSON.parse(e.dataTransfer.getData(T))}catch(x){FC.drag=null}}},true);
- document.addEventListener('dragend',()=>{if(lent){lent=0;if(FC.drag&&!FC.drag.length)FC.drag=null}});
+ /* (1.6.1, docs/plan-1.6.1.md Part 22) and a drive's files (FC.dragR: the place and its items), as text/x-rudolf-remote; a read-only
+    place says so in its types (text/x-rudolf-ro), which the window under the pointer can read before the drop (it copies) */
+ const T='text/x-rudolf-paths',TR='text/x-rudolf-remote',has=(e,t)=>e.dataTransfer&&[...e.dataTransfer.types].includes(t),ours=e=>has(e,T)||has(e,TR);let lent=0;
+ document.addEventListener('dragstart',e=>{try{if(typeof FC=='object'&&FC.drag&&FC.drag.length&&e.dataTransfer)e.dataTransfer.setData(T,JSON.stringify(FC.drag))}catch(x){}
+  try{if(typeof FC=='object'&&FC.dragR&&FC.dragR.items&&FC.dragR.items.length&&e.dataTransfer)e.dataTransfer.setData(TR,JSON.stringify(FC.dragR))}catch(x){}});
+ const empty=()=>(!FC.drag||!FC.drag.length)&&(!FC.dragR||!FC.dragR.items||!FC.dragR.items.length);
+ document.addEventListener('dragenter',e=>{if(!ours(e)||typeof FC!='object')return;if(!lent&&!FC.drag&&!FC.dragR){if(has(e,TR))FC.dragR={r:{ro:has(e,'text/x-rudolf-ro')},items:[]};else FC.drag=[];lent=1}else if(lent)lent++},true);
+ document.addEventListener('dragover',e=>{if(lent&&ours(e))try{e.dataTransfer.dropEffect=e.ctrlKey||(typeof XFK=='object'&&XFK.ctrl)||has(e,'text/x-rudolf-ro')?'copy':'move'}catch(x){}},true);   /* (WebKit gives a drag from another page none) */
+ document.addEventListener('dragleave',e=>{if(lent&&--lent==0&&empty()){FC.drag=null;FC.dragR=null}},true);
+ document.addEventListener('drop',e=>{if(lent&&ours(e)){lent=0;FC.drag=null;FC.dragR=null;try{if(has(e,TR))FC.dragR=JSON.parse(e.dataTransfer.getData(TR));else FC.drag=JSON.parse(e.dataTransfer.getData(T))}catch(x){FC.drag=null;FC.dragR=null}}},true);
+ document.addEventListener('dragend',()=>{if(lent){lent=0;if(empty()){FC.drag=null;FC.dragR=null}}});
  /* a file dropped on this app's window: in a window of its own, as on Standard (the shell asks a page to do it: op=drop) */
  const _dfw=window.__dropFileOnWindow;if(_dfw)window.__dropFileOnWindow=function(W,path){
   if(W&&W===OA.main&&oaNative()&&W.app&&W.app!='explorer'&&W.app!='trash'){if(node(path)==null)return false;oaPost({op:'drop',file:path.join('\\'),in:String(W.app)});return true}
@@ -105,9 +109,9 @@ if(ONEAPP){addEventListener('storage',e=>{try{if(!USER||e.key!='bd95set:'+uid()|
    (its click: the notification's own action, run here, __oaToastAct) */
 if(ONEAPP&&window.__notifCentre){const NA=window.__notifCentre.add,ACTS={};window.__oaToastAct=id=>{const f=ACTS[id];delete ACTS[id];if(f)try{f()}catch(e){console.warn(e)}};
  window.__notifCentre.add=function(title,body,opt){const H=document.getElementById('ntoasts'),k=H?H.children.length:0,n=NA.apply(this,arguments);
-  try{if(oaOut()&&!(opt&&opt.quiet))oaPost({op:'note',t:n.t,b:n.b,k:n.k,at:String(n.at)})}catch(e){}   /* (in the centre at once, and counted on its button) */
+  try{if(oaOut()&&!(opt&&opt.quiet))oaPost({op:'note',t:n.t,b:n.b,k:n.k,at:String(n.at),wl:n.wl||''})}catch(e){}   /* (in the centre at once, and counted on its button) */
   try{const h=document.getElementById('ntoasts');if(oaOut()&&h&&h.children.length>k){const d=h.lastElementChild;d.remove();const id=String(n.id);if(n.act)ACTS[id]=n.act;
-   oaPost({op:'toast',t:n.t,b:n.b,k:n.k,id,ms:String((opt&&opt.toast)||5000),why:d.querySelector('.bzwhy')?'1':'0',act:n.act?'1':'0'})}}catch(e){console.warn(e)}return n}}
+   oaPost({op:'toast',t:n.t,b:n.b,k:n.k,id,ms:String((opt&&opt.toast)||5000),why:d.querySelector('.bzwhy')?'1':'0',act:n.act?'1':'0',wl:n.wl||''})}}catch(e){console.warn(e)}return n}}
 /* (an app's own window is not the desktop: its icons' grid is the screen's, not the window's, or every window opened, or a page never
    shown, as do-desk's, would squeeze the desktop's places into its own size and keep them) */
 if(ONEAPP&&typeof gridInfo=='function'){const _gi=gridInfo;gridInfo=function(){const g=_gi();try{const q=ONEAPP.q,zf=parseFloat(document.documentElement.style.zoom)||1,top=document.body.classList.contains('top'),

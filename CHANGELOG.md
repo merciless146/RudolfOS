@@ -11,9 +11,38 @@ Summary: In progress.
   system calls, writing only in rudolfd's folders through Landlock, which the kernel now has, fewer capabilities);
   each of rudolf-rootd's helpers gets only its own capabilities; and the API answers each window only what its code
   asks for (the native shell, the page). Refusals are said in System health.
+- Changed: Native uses less memory: each window's page frees its caches and collects garbage sooner (a limit that
+  follows the computer's memory, checked every 5 s instead of 15), and the pages the desktop opens by itself at
+  start-up wait until the others have started, so their memory peaks no longer come all at once.
+- Fixed: Emu's "Open a file…" refused a ZIP or disc over 512 MB ("copy it in Files instead"). A ZIP or a disc image
+  (.chd, .cdi, .gdi, .cue, .pbp, N64) chosen there is now added to the game library (a ZIP is unpacked) and the game
+  added starts; nothing that large is read into the page. A 7-Zip file is refused with a reason.
+- Changed: the most a "choose a file" window takes into an app at once follows the computer's memory: about a sixth
+  of it (no more than 40% of what is free at that moment, and never over 2 GB) instead of 512 MB for every computer. The
+  Vivobook (3.3 GB) keeps about 512 MB; 8 GB about 1.2 GB; 16 GB and more 2 GB. The message says why a file is too large.
+- New: File Explorer moves files by dragging them from one window to another, between Rudolf OS's own folders, a
+  plugged-in drive and the Games (Emu library) folder, either way: dropped on a window's list they go into the folder it
+  shows, dropped on a folder into that folder, and what will take them is highlighted. A drag moves; Ctrl+drag copies
+  (the pointer shows which). Cut, Copy and Paste in the right-click menu work the same between windows and drives. A
+  move between Rudolf OS and a drive is a copy that is checked first; the originals go only once everything arrived, and
+  one that is cancelled or fails leaves them where they were.
+- New: a selection box in File Explorer: press on an empty spot of the list and drag over the files to select them
+  (Ctrl or Shift adds to what is selected); then drag them, or right-click them. A drive's files can now be selected
+  with Shift+click too, and have a right-click menu (Cut, Copy, Paste, Delete, Copy into Rudolf OS, Properties).
+- New: a window shows a transfer's progress: the file, how many of how many, the bytes, the time left, and Cancel. It
+  closes by itself when done and stays to say what went wrong if something did.
+- Fixed: copying a large download kept on the disk (Copy and Paste in Downloads) made a 99-byte "- COPY" that did not
+  open. The copy is now a file of its own on the disk; copies made like that before are mended when Downloads is opened
+  (kept, never deleted).
+- Fixed: File Explorer's Properties window showed only an icon.
 - New: Oracle's status line (bottom left, where it says "Done") shows where a link goes while the mouse is over it:
   "Goes To: <address>". It covers links, image-map areas, a form's submit button and links in ads and other frames, on
   websites and Oracle's own pages; then the status line goes back to what it said. On Standard, Native and Lite.
+- New: Oracle's Downloads page shows a progress bar for a file that is arriving (how much so far and how fast, and with
+  a known size the percentage and the time left) and one being checked. Each download has Remove beside Open: a file in
+  Downloads goes to the Trash with it; otherwise the notification "File removed from list: Not in Downloads. Ask Blitzen
+  if you need help finding this file." has a "⚡ Ask Blitzen" button. Blitzen reads the download's record, the Trash and
+  where files of that name are, and says whether the file was moved, put in the Trash, deleted or never downloaded.
 - Fixed: Make a Rudolf OS USB stick on an older Rudolf OS stick said "/dev/sdb is in use (mounted at
   /run/rudolf/stkinfo-sdb/i). Unmount it first." Settings' look at what such a stick holds left its image mounted
   when the stick had no third partition. It now always unmounts, never looks while a stick is being made, and Make the
