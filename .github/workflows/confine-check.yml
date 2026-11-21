@@ -24,8 +24,10 @@ jobs:
           set +e
           sudo sh iso/qt/host/confine161_t.sh || exit 1
           F=0
+          # (not users59_t.sh: it stops the processes of the accounts' Linux users, uid 1001 among them, which on GitHub's
+          # runner is the runner itself; it passes off and on on a machine of its own)
           for m in off on; do
-            for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh roothelpers161_t.sh drop161_t.sh users59_t.sh fido161_t.sh devlink59_t.sh tor59_t.sh torwin59_t.sh inhibit60_t.sh dlpath_t.sh fssearch_t.sh vaultnative60_t.sh; do
+            for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh roothelpers161_t.sh drop161_t.sh fido161_t.sh devlink59_t.sh tor59_t.sh torwin59_t.sh inhibit60_t.sh dlpath_t.sh fssearch_t.sh vaultnative60_t.sh; do
               echo "== $t ($m)"; sudo timeout -k 10 600 env RUDOLFD_CONFINE=$m sh iso/qt/host/$t > out.txt 2>&1; rc=$?; [ $rc = 124 ] && echo "(timed out after 10 minutes)"; tail -1 out.txt; grep '^FAIL' out.txt; [ $rc = 0 ] || { F=$((F+1)); echo "::error::$t ($m) failed"; }
             done
             echo "== listeners59_t.sh ($m)"; RUDOLFD_CONFINE=$m timeout 600 sh iso/qt/host/listeners59_t.sh | tail -1 || F=$((F+1))
