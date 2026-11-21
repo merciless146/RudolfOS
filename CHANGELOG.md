@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Native: an app's window loads the desktop page without 11 modules no app of its own uses (WordPro's additions, Notey for
+  the office apps, the Wi-Fi panel, the computer check, the SNES core's loader, the weather, Settings' search and a few
+  more); each is read the moment something of it is needed. Settings, Task Manager, Oracle, the App Store, Blitzen and
+  the games and office apps that use them keep the whole page, as Standard and Lite do. Measured: no difference in memory
+  that can be told from the noise (about 1 MB at most).
 - Native: each app's window uses about 10 MB less memory. A window no longer makes the pictures of the start menu, the
   desktop's icons and the taskbar for itself (the native desktop draws those), nor the taskbar's pinned buttons or the
   dynamic background's moving parts under the app, and it no longer gives the desktop its list of apps again when it opens

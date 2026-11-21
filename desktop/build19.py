@@ -183,6 +183,8 @@ s=s.replace("const LAZY_DONE={},LAZY_P={};let LAZY={};","const LAZY_DONE={},LAZY
 # 1.6.1 (Part 10): Mozilla's Readability (libs/readability, Apache-2.0) for Oracle's reader mode, a file beside the page read the first time it is used
 _n=s.count("const ORA_RDB_URL = '';");assert _n==1,_n
 s=s.replace("const ORA_RDB_URL = '';","const ORA_RDB_URL = '"+_out('data:text/javascript;base64,'+base64.b64encode(open(os.path.join(here,'../libs/readability/Readability.js'),'rb').read()).decode())+"';")
+# 1.6.1 (docs/plan-1.6.1.md Part 23 B, stage 2): the native desktop's apps' page, without the modules no app of it uses (oapage61.py)
+import oapage61;_EXT['text/html']='html';s,_oah=oapage61.build(s,L,_out)
 for _n in os.listdir(_A):
     if _n not in _keep:os.remove(os.path.join(_A,_n))
 open(O,'w').write(s);print(len(s),len(_keep),'files in a/')

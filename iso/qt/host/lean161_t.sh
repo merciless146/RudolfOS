@@ -52,7 +52,8 @@ cats() { grep -c "POST desktop/apps" $D/calls 2>/dev/null; }
 catj() { python3 -c "import json,sys;c=json.load(open('$D/apps.json'));print($1)" 2>/dev/null; }
 # (the hidden parts' pictures: the start menu's rows, the desktop's icons, the taskbar's buttons)
 HID="[...document.querySelectorAll('#menu img.ico,#desk>.ic img.ico,#pins img,#tasks img.ico')].length+'|'+document.querySelectorAll('#pins .pin').length"
-openw() { ev do-bg "oaPost({op:'open',app:'$1'});1" >/dev/null; w8 "grep -q '^client .* app=$1 ' \$D/state" ${2:-120} && w8 "[ \"\$(ev $1 'String(!!(OA.main&&OA.main.el&&document.title))')\" = true ]" ${3:-80}; }
+# (asked only once the window's page has its window: with stage 2 its first page sends it on to the apps' page)
+openw() { ev do-bg "oaPost({op:'open',app:'$1'});1" >/dev/null; w8 "grep -q '^client .* app=$1 ' \$D/state" ${2:-120} && w8 "[ \"\$(ev $1 '(()=>{try{return String(!!(OA.main&&OA.main.el&&document.title))}catch(e){return String(false)}})()')\" = true ]" ${3:-80}; }
 w8 '[ "$(st signin)" = 1 ]' 160; LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ]' 120; w8 '[ "$(st svc | cut -d" " -f1)" = ready ]' 240; w8 '[ "$(cats)" -ge 1 ]' 80; timeout 3 tail -f /dev/null
 B=$(ev do-bg "JSON.stringify([__oaLean().on,[...document.querySelectorAll('#menu img.ico')].length])")
