@@ -43,6 +43,7 @@ MODULE_SIG      y   security: module signatures
 MODULE_SIG_FORCE y  security: unsigned modules refused
 KEXEC_SIG       y   security: only signed kernels started by an update's handover
 SECURITY_YAMA   y   security: Yama (ptrace limited to a process's parent: the desktop's token)
+SECURITY_LANDLOCK y security: Landlock (rudolfd's narrow confinement: the folders a request may write, docs/plan-1.6.1.md Part 20)
 KEYS            y   security: the kernel's keyrings (fscrypt, trusted keys)
 SYSTEM_TRUSTED_KEYRING y security: Rudolf OS's Secure Boot certificate built in
 DM_VERITY       y   security: the system layers checked as they are read (dm-verity)

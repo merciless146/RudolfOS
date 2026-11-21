@@ -1,0 +1,131 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 20): rudolfd confined. The host tests (confine161_t.sh: the lists, every system call
+# through each filter, each layer for real, the switch off, log and on; and rudolfd's existing host tests with the switch
+# off and on), a kernel built from this tree's kconfig.sh (Landlock in it: the release's kernel has none) and, on the
+# newest beta in QEMU with this tree's rudolfd, rudolf-rootd and helpers put in place (iso/qt/sb/fix161.sh), t160's checks
+# unchanged and r161's with the switch off, on and log, on the release's kernel and on the one built here. After each
+# QEMU run the health log's confinement lines are read from the test drive (what "log" says "on" would refuse).
+# Run by a push that changes .github/confine-run.txt (serial=SERIAL picks a release; empty: the newest beta). Nothing is
+# published: the kernel is an artifact of this run only.
+name: Confinement check
+on:
+  push:
+    paths: ['.github/confine-run.txt']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v5
+      - name: Host tests
+        run: |
+          sudo apt-get update -qq; sudo apt-get install -y -qq zlib1g-dev curl >/dev/null
+          echo "Landlock ABI here: $(python3 -c 'import ctypes;print(ctypes.CDLL(None).syscall(444,None,0,1))')"
+          set +e
+          sudo apt-get install -y -qq libglib2.0-dev libssl-dev >/dev/null
+          sudo sh iso/qt/host/confine161_t.sh || exit 1
+          # rudolfd's host tests with the switch off and on: the same answers either way (a test this machine cannot run
+          # fails the same with both, and is said so; only a difference between the two fails the job)
+          # (not users59_t.sh: it stops the processes of the accounts' Linux users, uid 1001 among them, which on GitHub's
+          # runner is the runner itself; it passes off and on on a machine of its own)
+          D=0
+          for t in peer59_t.sh deskapi59_t.sh homeapi_t.sh roothelpers161_t.sh drop161_t.sh fido161_t.sh devlink59_t.sh tor59_t.sh torwin59_t.sh inhibit60_t.sh dlpath_t.sh fssearch_t.sh vaultnative60_t.sh listeners59_t.sh; do
+            for m in off on; do
+              if [ $t = listeners59_t.sh ]; then RUDOLFD_CONFINE=$m timeout 600 sh iso/qt/host/$t > out.$m 2>&1; else sudo timeout -k 10 600 env RUDOLFD_CONFINE=$m sh iso/qt/host/$t > out.$m 2>&1; fi
+              echo "rc=$?" >> out.$m
+            done
+            for m in off on; do grep -E '^(PASS|FAIL|SKIP)|^rc=' out.$m | sed -e 's/ - .*//' -e 's%/tmp/[A-Za-z0-9._-]*%/tmp/T%g' > r.$m; done
+            if cmp -s r.off r.on; then echo "== $t: the same off and on ($(grep -c '^PASS' r.on) passed, $(grep -c '^FAIL' r.on) failed$(grep -q '^FAIL' r.on && echo ': this machine'))"; grep '^FAIL' out.on | head -3
+            else D=$((D+1)); echo "::error::$t differs with the confinement on"; diff r.off r.on; fi
+          done
+          RUDOLFD_CONFINE=on FUZZ_SECONDS=60 timeout 900 sh iso/qt/host/fuzz59_t.sh | tail -2
+          [ $D = 0 ]
+  kernel:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools bc flex bison libelf-dev libssl-dev kmod >/dev/null
+      - name: The kernel, from this tree's kconfig.sh (not published)
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
+          # (no firmware in this test kernel: QEMU needs none, and the build is shorter)
+          sed -e 's#^python3 systools/fwextra.py copy firmware-extra.txt .*$#mkdir -p "$W/fw"#' -e 's#^python3 systools/fwextra.py copy firmware-sof.txt .*$#true#' iso/systools/testkernel.sh > iso/systools/testkernel-ci.sh
+          OUT=$PWD/kout EXTRA="" bash iso/systools/testkernel-ci.sh
+          grep -E '^CONFIG_SECURITY_LANDLOCK=|^CONFIG_LSM=' kout/config.txt 2>/dev/null || true
+          ls -la kout
+      - uses: actions/upload-artifact@v4
+        with: {name: kernel, retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\nkout/config-extra.txt"}
+  qemu:
+    needs: kernel
+    runs-on: ubuntu-24.04
+    timeout-minutes: 170
+    strategy:
+      fail-fast: false
+      matrix:
+        r:
+          - {id: t160-off, test: t160, confine: 'off', kernel: release}
+          - {id: t160-off-ll, test: t160, confine: 'off', kernel: built}
+          - {id: r161-off-ll, test: r161, confine: 'off', kernel: built}
+          - {id: t160-on, test: t160, confine: 'on', kernel: release}
+          - {id: t160-on-ll, test: t160, confine: 'on', kernel: built}
+          - {id: t160-log-ll, test: t160, confine: log, kernel: built}
+          - {id: r161-on-ll, test: r161, confine: 'on', kernel: built}
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: echo "N_serial=$(sed -n 's/^serial=//p' .github/confine-run.txt | head -1)" >> $GITHUB_ENV
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography libssl-dev zlib1g-dev bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          echo "::notice title=Confinement check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)), ${{ matrix.r.id }}"
+      - if: matrix.r.kernel == 'built'
+        uses: actions/download-artifact@v4
+        with: {name: kernel, path: kout}
+      - if: matrix.r.kernel == 'built'
+        name: The kernel built here in place of the release's
+        run: cp kout/vmlinuz rel/vmlinuz && cp kout/modules.sfs rel/modules.sfs && grep -E '^CONFIG_SECURITY_LANDLOCK=' kout/config.txt || true
+      - name: This tree's rudolfd, rudolf-rootd and helpers (as the release builds them), and the switch
+        run: |
+          . iso/systools/hardflags.sh; mkdir -p fix/root
+          gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/rudolf-rootd iso/sys/rudolf-rootd.c
+          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c; done
+          python3 iso/systools/hardcheck.py fix/rudolfd fix/rudolf-rootd fix/root/*
+          echo '${{ matrix.r.confine }}' > fix/confine; ls -laR fix
+          gcc -O2 -o rudolf-update iso/sys/rudolf-update.c -lcrypto -ldl
+      - name: ${{ matrix.r.id }}
+        run: |
+          mkdir -p run && cd run
+          if [ "${{ matrix.r.test }}" = r161 ]; then sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/r161_t.py ../rel
+          else sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} R161_FIX=$PWD/../fix python3 ../iso/qt/sb/t160_t.py ../rel ../rudolf-update; fi
+      - if: always()
+        name: The confinement's lines in the test drive's health log
+        run: |
+          cd run; for img in int160.img r161.img; do [ -f "$img" ] || continue
+            L=$(sudo losetup -f --show -o 1048576 "$img") || continue
+            sudo debugfs -R 'cat /var/log/health.log' "$L" 2>/dev/null | grep -iE 'confinement|never asks for|could not confine' | tee -a confine-health.txt
+            echo "-- confine.log ($img)"; sudo debugfs -R 'cat /var/log/confine.log' "$L" 2>/dev/null | tee -a confine-log.txt
+            sudo losetup -d "$L"; done
+          echo "::notice title=${{ matrix.r.id }} (fix161.sh, last start)::$(grep -h 'confine.log:' ${{ matrix.r.test }}.txt 2>/dev/null | tail -1 | cut -c1-400)"
+          echo "::notice title=${{ matrix.r.id }}::$(grep -c . confine-health.txt 2>/dev/null || echo 0) confinement lines in the health log; confine.log: $(grep -c 'refused\|logged' confine-log.txt 2>/dev/null || echo 0) calls or requests refused or logged, $(grep -c 'confinement ' confine-log.txt 2>/dev/null || echo 0) starts"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: '${{ matrix.r.id }}', retention-days: 7, path: "run/${{ matrix.r.test }}.txt\nrun/confine-health.txt\nrun/confine-log.txt\nrun/${{ matrix.r.test }}*/qemu.log\nrun/${{ matrix.r.test }}*/*.png"}
