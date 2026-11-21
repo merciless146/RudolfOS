@@ -64,7 +64,10 @@ sync_() {
 # the watcher: one at a time (its folder is the lock), until game mode is over and no source is left
 watch_() { mkdir "$D/watch" 2>/dev/null || { p=$(cat "$D/watch/pid" 2>/dev/null); alive "$p" && return 0; rm -rf "$D/watch"; mkdir "$D/watch" || return 0; }
 	echo $$ > "$D/watch/pid"; while :; do sync_; [ -e "$D/on" ] || [ -n "$(ls "$D"/src.* 2>/dev/null)" ] || break; sleep ${GM_TICK:-2}; done; rm -rf "$D/watch"; }
-watcher() { [ -n "$GM_NOWATCH" ] && return 0; p=$(cat "$D/watch/pid" 2>/dev/null); alive "$p" && return 0; ( watch_ ) >/dev/null 2>&1 & }
+# (a process of its own, in a session of its own: a subshell would keep the caller's $$ as its pid, and could go with the
+#  caller's session; the QEMU check found nothing putting things back after a game crashed)
+watcher() { [ -n "$GM_NOWATCH" ] && return 0; p=$(cat "$D/watch/pid" 2>/dev/null); alive "$p" && return 0
+	if command -v setsid >/dev/null 2>&1; then setsid sh "$0" watch </dev/null >/dev/null 2>&1 & else sh "$0" watch </dev/null >/dev/null 2>&1 & fi; }
 status() {
 	sync_; printf '{"ok":true,"enabled":%s,"on":%s,"throttled":%s,"sources":[' "$(enabled && echo true || echo false)" "$( [ -e "$D/on" ] && echo true || echo false)" "$( [ -e "$D/throttled" ] && echo true || echo false)"
 	s=; fs_sources | while read -r a k p; do printf '%s{"src":%s,"kind":%s,"pid":%s}' "$s" "$(js "$a")" "$(js "$k")" "$( [ "$p" = - ] && echo null || echo "$p")"; s=,; done
