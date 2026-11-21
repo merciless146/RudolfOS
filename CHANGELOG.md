@@ -145,6 +145,9 @@ Summary: In progress.
   Secure Boot, in place of the browser's built-in key: the drive taken out of the computer, or another system started on
   it, cannot read the sign-ins, saved site passwords and cards. Without a TPM, as before. Turning Secure Boot off or on
   makes a new key once: websites ask you to sign in again. Settings › Oracle › Website data says which way it is kept.
+- Lite: the desktop's menus and windows now open over Oracle's tabs instead of behind their pages. While something covers
+  part of a tab, a still picture of the page is shown there (taken again every 2 seconds); the page itself goes on running
+  and is back as soon as nothing covers it.
 
 ## 1.6.0 (2026-11-20, release 2026112014)
 Summary: In progress.

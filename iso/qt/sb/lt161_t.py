@@ -8,8 +8,11 @@
 #   cover: a tab placed and drawn; the desktop's stand-in menu over part of it (place with vis): rudolf-webkit sends a still
 #          picture of the page, the desktop shows it under the menu, the menu is seen over the tab (not behind its page),
 #          the live page still runs for its scripts and its picture is taken again; uncovered, the live page is back.
-# In the session's drawing mode and in software drawing (--draw=soft). Tests only.
-#   LT_FIX=DIR python3 lt161_t.py REL-DIR      (root; SB_PARTS, QEMU, QEMU_ACCEL as for t160_t.py; LT_MODES=session,soft)
+#          In the session's drawing mode and in software drawing (--draw=soft).
+# QEMU's own processor draws slowly: the screen is read until it shows what it should (up to 90 s), then the page goes on.
+# Tests only.
+#   LT_FIX=DIR python3 lt161_t.py REL-DIR      (root; SB_PARTS, QEMU, QEMU_ACCEL as for t160_t.py; LT_MODES=session,soft;
+#                                               LT_PHASES=cover)
 import os, sys, time, re, subprocess, shutil, struct, json, base64
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -18,7 +21,7 @@ from guest import Guest
 from ser import Ser
 from PIL import Image
 REL = os.path.abspath(sys.argv[1]); PARTS = os.environ.get('SB_PARTS', '/nonexistent'); FIX = os.environ.get('LT_FIX', '')
-MODES = os.environ.get('LT_MODES', 'session,soft').split(',')
+MODES = os.environ.get('LT_MODES', 'session,soft').split(','); PHASES = os.environ.get('LT_PHASES', 'cover').split(',')
 LOG = open('lt161.txt', 'w'); R = []; T0 = time.time()
 def out(*a):
     s = ' '.join(str(x) for x in a); s = f'[{int(time.time() - T0):5d}s] ' + s; print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
@@ -41,18 +44,20 @@ window.__rwkIn=m=>{ev.push(m);if(m.rudolfShell=='hello'&&!hello){hello=true;send
  if(m.rudolfShell=='tabev'&&m.ev=='title'&&cov){const v=/^LT161 tab (\w+) \d+$/.exec(m.title||'');if(v)VC[v[1]]=(VC[v[1]]||0)+1}};
 const wait=(f,t=30000)=>new Promise((res,rej)=>{const t0=Date.now();const iv=setInterval(()=>{const r=ev.find(f);if(r){clearInterval(iv);res(r)}else if(Date.now()-t0>t){clearInterval(iv);rej(new Error('timeout'))}},100)});
 const sl=t=>new Promise(r=>setTimeout(r,t));
+/* the test reads the screen until it shows what it should (QEMU's own processor draws slowly), then opens the gate */
+const gate=async k=>{for(let i=0;i<360;i++){try{if((await fetch('/gate-'+k,{cache:'no-store'})).ok)return}catch(e){}await sl(500)}};
 async function run(){say('hello');
  send({rudolfShell:'tab',op:'open',tid:'t1',url:'http://127.0.0.1:8601/tab.html',part:'lt161'});
  send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:null,z:1});
  const ti=await wait(m=>m.ev=='title'&&m.tid=='t1'&&/^LT161 tab/.test(m.title||'')).catch(()=>null);say('title '+(ti?ti.title:'none'));
- await sl(3000);say('shot open');await sl(9000);
+ await sl(1500);say('shot open');await gate('open');
  menu.style.display='block';say('cover');cov=true;
  send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:[[0,0,350,450]],z:1});
  const st=await wait(m=>m.ev=='still'&&m.tid=='t1'&&typeof m.img=='string').catch(()=>null);say('still '+(st?st.img.slice(0,23)+' '+st.img.length:'none'));
- await sl(1500);say('shot covered');await sl(9000);say('again '+stills);cov=false;say('vis '+VC.visible+' '+VC.hidden);
+ await sl(1500);say('shot covered');await gate('covered');await sl(4500);say('again '+stills);cov=false;say('vis '+VC.visible+' '+VC.hidden);
  send({rudolfShell:'tab',op:'place',tid:'t1',r:[100,100,700,450],vis:null,z:1});menu.style.display='none';
  const s0=await wait(m=>m.ev=='still'&&m.tid=='t1'&&m.img===null).catch(()=>null);say('uncover '+!!s0);
- await sl(2000);say('shot uncovered');await sl(9000);say('done')}
+ await sl(1500);say('shot uncovered');await gate('uncovered');say('done')}
 </script>'''
 TAB = '''<!doctype html><meta charset=utf-8><title>LT161 tab</title><body style="background:#fde68a;font:40px sans-serif;margin:0">A tab
 <script>let n=0;setInterval(()=>{document.title='LT161 tab '+document.visibilityState+' '+(++n)},500)</script>'''
@@ -110,12 +115,22 @@ def px(f, x, y):
 yellow = lambda c: bool(c) and c[0] > 200 and c[1] > 190 and c[2] < 180
 red = lambda c: bool(c) and c[0] > 170 and c[1] < 60 and c[2] < 60
 
+SEEN = {}
+def screen_until(tag, want, gate, secs=90):
+    """QEMU's screen read until it shows what it should (or secs pass); then the page's gate is opened"""
+    t0 = time.time(); f = None
+    while time.time() - t0 < secs:
+        f = vm.shot(tag)
+        if want(f): SEEN[gate] = round(time.time() - t0, 1); break
+        time.sleep(2)
+    g.sh(f"touch /run/lt161/www8600/gate-{gate}", 20)
+    return f
 # the fix in place: rudolf-webkit in a tmpfs the desktop's user can run from, the pages served by busybox httpd
 APPLY = ("FX=$(blkid | grep 'LABEL=\"LT161FIX\"' | cut -d: -f1 | head -1); echo fix=$FX; mkdir -p /tmp/fx; mountpoint -q /tmp/fx || mount -o ro $FX /tmp/fx; "
          "X=/run/lt161; mkdir -p $X; mountpoint -q $X || mount -t tmpfs -o exec,mode=755 none $X; cp /tmp/fx/rudolf-webkit $X/; chmod 755 $X/rudolf-webkit; "
          "cp -r /tmp/fx/www8600 /tmp/fx/www8601 $X/; chmod -R a+rX $X; "
          "busybox httpd -p 127.0.0.1:8600 -h $X/www8600; busybox httpd -p 127.0.0.1:8601 -h $X/www8601; sleep 1; busybox wget -q -O- http://127.0.0.1:8601/tab.html | head -c 80; echo; "
-         "ldd $X/rudolf-webkit | grep -c 'not found'; ls -l $X")
+         "LD=$(ls /lib64/ld-linux-x86-64.so.2 2>/dev/null | head -1); $LD --list $X/rudolf-webkit > $X/libs.txt 2>&1; echo libs $(grep -c . $X/libs.txt) missing $(grep -c 'not found' $X/libs.txt); grep 'not found' $X/libs.txt; ls -l $X")
 make_drive(DRV)
 vm = None
 try:
@@ -128,26 +143,29 @@ try:
     smode = (re.search(r'--draw=(\w+)', o) or [None, 'gpu'])[1]
     scr = re.search(r'^(\d+) (\d+)$', o, re.M); SW, SH = (int(scr.group(1)), int(scr.group(2))) if scr else (1280, 800)
     o = sh(APPLY, 120)
-    ok('0c. this tree\'s rudolf-webkit in place, with every library it needs in the release; the pages served', 'A tab' in o and re.search(r'^0$', o, re.M), o)
-    for mode in MODES:
+    ok('0c. this tree\'s rudolf-webkit in place, with every library it needs in the release; the pages served', 'LT161 tab' in o and re.search(r'^libs [1-9]\d* missing 0$', o, re.M), o)
+    for mode in (MODES if 'cover' in PHASES else []):
         m = smode if mode == 'session' else mode
+        SEEN.clear()
         tag = f'{mode}({m})'
-        sh(f"pkill -f '/run/lt161/rudolf-webkit' ; rm -rf /tmp/lth; mkdir -p /tmp/lth; chown rudolf /tmp/lth; : > /tmp/lt.log; chmod 666 /tmp/lt.log; "
+        sh(f"pkill -f '/run/lt161/rudolf-webkit' ; rm -f /run/lt161/www8600/gate-*; rm -rf /tmp/lth; mkdir -p /tmp/lth; chown rudolf /tmp/lth; : > /tmp/lt.log; chmod 666 /tmp/lt.log; "
            f"su -s /bin/sh rudolf -c 'cd /tmp/lth; exec env DISPLAY=:0 HOME=/tmp/lth /run/lt161/rudolf-webkit --size={SW}x{SH} --draw={m} http://127.0.0.1:8600/desk.html' >> /tmp/lt.log 2>&1 &", 30)
-        shots = {}; end = time.time() + 240; lg = ''
+        WANT = {'open': lambda f: yellow(px(f, 600, 400)), 'covered': lambda f: red(px(f, 650, 400)) and yellow(px(f, 250, 400)),
+                'uncovered': lambda f: yellow(px(f, 650, 400))}
+        shots = {}; end = time.time() + 600; lg = ''
         while time.time() < end:
             lg = sh("grep -o 'LT161 .*' /tmp/lt.log", 20, False)
             for k in ('open', 'covered', 'uncovered'):
-                if f'LT161 shot {k}' in lg and k not in shots: time.sleep(1.5); shots[k] = vm.shot(f'{mode}-{k}')
+                if f'LT161 shot {k}' in lg and k not in shots: shots[k] = screen_until(f'{mode}-{k}', WANT[k], k)
             if 'LT161 done' in lg or 'LT161 ERR' in lg: break
             time.sleep(1)
         out('the page:', lg.strip().replace('\n', ' | '))
         P1 = px(shots.get('open'), 600, 400); P2L = px(shots.get('covered'), 250, 400); P2R = px(shots.get('covered'), 650, 400); P3 = px(shots.get('uncovered'), 650, 400)
-        out('pixels', tag, 'open', P1, 'covered: left', P2L, 'right', P2R, 'uncovered', P3)
+        out('pixels', tag, 'open', P1, 'covered: left', P2L, 'right', P2R, 'uncovered', P3, '- on the screen after (s):', {k: SEEN.get(k) for k in WANT})
         vis = re.search(r'LT161 vis (\d+) (\d+)', lg)
         ok(f'{tag} 1. a tab opens its page and is drawn on the screen', 'LT161 title LT161 tab' in lg and yellow(P1), [lg[-300:], P1])
         st = re.search(r'LT161 still (\S+) (\d+)', lg)
-        ok(f'{tag} 2. covered by the desktop\'s menu: the desktop gets a still picture of the tab', bool(st) and st.group(1) == 'data:image/jpeg;base64' and int(st.group(2)) > 2000, lg[-300:])
+        ok(f'{tag} 2. covered by the desktop\'s menu: the desktop gets a still picture of the tab', bool(st) and st.group(1) == 'data:image/jpeg;base64,' and int(st.group(2)) > 2000, lg[-300:])
         ok(f'{tag} 3. ...the menu is seen over the tab, not behind its page', red(P2R), P2R)
         ok(f'{tag} 4. ...with the picture of the page beside it', yellow(P2L), P2L)
         ag = re.search(r'LT161 again (\d+)', lg)
