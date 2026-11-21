@@ -1,0 +1,31 @@
+# 1.6.1 (docs/plan-1.6.1.md Part 1): several monitors. rudolf-display's arrangement and list and screenctl arrange
+# (iso/qt/host/monitors161_t.sh), and the desktop on two monitors on both engines, compared (iso/qt/native/monbeh_t.sh, at 100 %
+# and at 125 % display scaling), on Xorg with the dummy driver. The pictures are kept as an artifact. Nothing is published.
+name: Several monitors
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['iso/sys/rudolf-display.c', 'iso/sys/rrcompat.h', 'iso/sys/rudolf-native.c', 'iso/sys/root/usr/lib/rudolf/screenctl', 'desktop/mon61.js',
+      'iso/www/index.html', 'iso/qt/host/monitors161_t.sh', 'iso/qt/native/monbeh_t.sh', 'iso/qt/native/monbeh_t.js', 'iso/qt/native/same_rd.py',
+      '.github/workflows/monitors-check.yml']
+permissions: {contents: read}
+jobs:
+  monitors:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xserver-xorg-core xserver-xorg-video-dummy x11-xserver-utils xdotool imagemagick python3-pil libwebkit2gtk-4.1-dev libxtst-dev libxrandr-dev libxfixes-dev fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: rudolf-display and screenctl
+        run: sh iso/qt/host/monitors161_t.sh
+      - name: Two monitors, Standard and Native
+        run: mkdir -p out && sh iso/qt/native/monbeh_t.sh $PWD/out/100
+      - name: The same at 125 %
+        run: MON_SCALE=125 SAME_DSP=:85 SAME_PORT=8613 sh iso/qt/native/monbeh_t.sh $PWD/out/125
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: monitors, retention-days: 7, path: out}

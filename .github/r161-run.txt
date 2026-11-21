@@ -1,3 +1,3 @@
 # Root helpers check (.github/workflows/roothelpers-check.yml): serial=SERIAL (empty: the newest beta)
-# (drives and updates; drives part 2: the accounts' folders and sessions, the vault; accounts; power; Part 20 merged)
+# (drives and updates; drives part 2: the accounts' folders and sessions, the vault; accounts; power; Part 20 merged; network; devices; procs, logs; main merged)
 serial=

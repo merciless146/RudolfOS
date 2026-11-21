@@ -63,7 +63,8 @@
 ["Options","Screen saver"],
 ["Show the time (except with Clock)","Screen saver"],
 ["Ask for the password when it ends","Screen saver"],
-["Tablet mode","",1]],"vol":
+["Tablet mode","",1],
+["Displays","",1]],"vol":
 [["All desktop sounds",""],
 ["Startup chime",""],
 ["Login success",""],
