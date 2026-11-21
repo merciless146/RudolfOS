@@ -4362,6 +4362,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-drop.inc"      /* 1.6.1: files dropped from outside onto the native desktop (plan-1.6.1 Part 13) */
 #include "rudolfd-know.inc"      /* 1.6.0: Blitzen knows the system (plan Part 18) */
 #include "rudolfd-dev.inc"       /* 1.6.0: Blitzen as a developer's agent (plan Part 19) */
+#include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -5445,6 +5446,7 @@ static void handle(int fd)
 	size_t have = n - (body0 - hdr);
 	size_t clen = 0;
 	if (req_head(hdr, &r, &clen)) { reply_err(fd, 400, "bad request"); return; }
+	if (confine_request(fd, r.path)) { reply_err(fd, 503, "rudolfd could not confine this request"); return; }   /* (1.6.1 Part 20) */
 	if (clen > MAXBODY) { reply_err(fd, 413, "too large"); return; }
 	if (clen) {
 		r.body = malloc(clen + 1);
@@ -5462,6 +5464,7 @@ static void handle(int fd)
 	if (!strncmp(r.path, "/api/", 5)) {
 		if (strcmp(r.tok, token)) { reply_err(fd, 403, "missing token"); goto out; }
 		{ int pd = peer_desktop(fd); if (!pd) { peer_refused(fd, r.path); goto out; } if (pd < 0) peer_unchecked_note(); }   /* (plan 15.1) */
+		if (!confine_window(&r)) goto out;   /* (1.6.1 Part 20) */
 		api(&r);
 		goto out;
 	}
@@ -5550,6 +5553,7 @@ int main(int argc, char **argv)
 	{ char *sb = slurp("/etc/rudolf/secureboot", NULL); secureboot = sb && sb[0] == '1'; free(sb); }
 	live = access(RUN "/persistent", F_OK) != 0;
 	root_init();   /* 1.6.1 (plan Part 11) */
+	confine_boot();   /* 1.6.1 (plan Part 20): before rudolfd starts anything (rudolfd-confine.inc) */
 	dl_boot();
 	au_on = 1; au_start();   /* 1.5.9 (15.3): each account's Linux user, and the move of existing accounts' folders */
 	dl_home_boot();
@@ -5585,6 +5589,7 @@ int main(int argc, char **argv)
 		health_tick();
 		tor_tick();
 		know_tick();
+		confine_tick();   /* 1.6.1 (plan Part 20) */
 		if (poll(&pf, 1, 1000) <= 0) continue;
 		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) continue;

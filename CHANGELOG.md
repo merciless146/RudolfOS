@@ -15,6 +15,12 @@ Summary: In progress.
   own, no longer by rudolfd; it is asked only when an account comes or goes. Nothing changes on screen.
 - Security: restart, shut down, sleep, the power settings, brightness, Task Manager's "Clear cache" and the desktop's
   priority, and setting the clock are done by a power helper of its own, no longer by rudolfd. Nothing changes on screen.
+- Security: rudolfd can be confined (off by default until a beta has run with it: /persist/etc/rudolf-confine, or
+  rudolf.confine= at the start-up, off, log or on). All of rudolfd loses the system calls and capabilities nothing it
+  starts needs; each request that starts no program is put in a narrow confinement of its own (only rudolfd's own
+  system calls, writing only in rudolfd's folders through Landlock, which the kernel now has, fewer capabilities);
+  each of rudolf-rootd's helpers gets only its own capabilities; and the API answers each window only what its code
+  asks for (the native shell, the page). Refusals are said in System health.
 - New: a ZIP larger than 1.5 MB in Downloads (kept on the disk) opens in Archive Manager, which lists what is inside it
   (names, sizes, folders; the first 3,000 shown) without loading it, with Extract here; File Explorer's Open with offers
   Archive Manager for it too. Extract here (there, or in File Explorer) unpacks it next to the ZIP with a progress window
