@@ -693,10 +693,13 @@ static void api_net(struct req *r)
 		snprintf(p, sizeof p, "/sys/class/net/%s/speed", e->d_name);
 		if (!wifi) sadd(&s, ",\"speed\":%lld", st && !strcmp(st, "up") ? read_ll(p, -1) : -1LL);
 		if (wifi && st && !strcmp(st, "up") && safe_word(e->d_name, 16)) {
+			char *ss = NULL, *rs = NULL;
+			if (root_net_link(e->d_name, &ss, &rs)) {   /* (1.6.1 Part 11: rudolfd-rootnet.inc; as before when it did not start) */
 			snprintf(cmd, sizeof cmd, "wpa_cli -p /run/rudolf/wpa -i %s status 2>/dev/null | sed -n 's/^ssid=//p' | head -1", e->d_name);
-			char *ss = run_out(cmd); trim(ss);
+			ss = run_out(cmd); trim(ss);
 			snprintf(cmd, sizeof cmd, "wpa_cli -p /run/rudolf/wpa -i %s signal_poll 2>/dev/null | sed -n 's/^RSSI=//p' | head -1", e->d_name);
-			char *rs = run_out(cmd); trim(rs);
+			rs = run_out(cmd); trim(rs);
+			}
 			sadd(&s, ",\"ssid\":"); sjson(&s, ss);
 			if (*rs && strspn(rs, "-0123456789") == strlen(rs)) sadd(&s, ",\"rssi\":%s", rs);
 			free(ss); free(rs);
@@ -1025,7 +1028,7 @@ static void start_job(const char *name, const char *cmd)
 	unlink(RUN "/job.status"); unlink(RUN "/job.log");
 	write_str(RUN "/job.name", name);
 	/* 1.3.0: the kernel's last crash line now, so a crash during this job can be told apart from older ones */
-	run("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -1 > " RUN "/job.kmark");
+	root_kmark();   /* (1.6.1 Part 11: the kernel's messages from the logs helper; rudolfd-rootother.inc) */
 	FILE *f = fopen(RUN "/job.sh", "w");
 	if (!f) return;
 	fprintf(f, "%s > " RUN "/job.log 2>&1\necho $? > " RUN "/job.status\n", cmd);
@@ -1074,7 +1077,7 @@ static void time_tick(void)
  * after this one (the last crash line when a job started). Other programs' crashes are not reported. */
 static int crash_list(str *s, const char *after, int max)
 {
-	char *l = run_out("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -200");
+	char *l = root_dmesg(0, KMARK_GREP " | tail -200", "dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -200");   /* (1.6.1 Part 11) */
 	int n = 0, past = !after || !*after;
 	for (char *line = l ? strtok(l, "\n") : NULL; line; line = strtok(NULL, "\n")) {
 		if (!past) { if (!strcmp(line, after)) past = 1; continue; }
@@ -1124,7 +1127,9 @@ static void api_wifi(struct req *r, const char *what)
 		int okb = b && strlen(b) == 17; for (int k = 0; okb && k < 17; k++) okb = (k % 3 == 2) ? b[k] == ':' : isxdigit((unsigned char)b[k]);
 		if (!okb || !on || (strcmp(on, "on") && strcmp(on, "off"))) { reply_err(r->fd, 400, "bad radio"); return; }
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh radio %s %s %s 2>&1", ifn, b, on);
-		char *o = run_out(cmd); trim(o);
+		const char *av[] = { "network", "wifi", "radio", i && *i ? i : "", b, on, NULL }; char *o = root_net_try(av, 1);   /* (1.6.1 Part 11: rudolfd-rootnet.inc) */
+		if (!o) o = run_out(cmd);
+		trim(o);
 		if (o && !strncmp(o, "Radio ", 6)) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change the radio");
 		free(o); return;
 	}
@@ -1134,31 +1139,48 @@ static void api_wifi(struct req *r, const char *what)
 		char *b = qparam(r->query, "band"), *on = qparam(r->query, "on");
 		if (!b || (strcmp(b, "2.4") && strcmp(b, "5") && strcmp(b, "6")) || !on || (strcmp(on, "on") && strcmp(on, "off"))) { reply_err(r->fd, 400, "bad band"); return; }
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh band %s %s %s 2>&1", ifn, b, on);
-		char *o = run_out(cmd); trim(o);
+		const char *av[] = { "network", "wifi", "band", i && *i ? i : "", b, on, NULL }; char *o = root_net_try(av, 1);   /* (1.6.1 Part 11) */
+		if (!o) o = run_out(cmd);
+		trim(o);
 		if (o && !strncmp(o, "This computer's ", 16) && strstr(o, " turned ")) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change the radio");
 		free(o); return;
 	}
 	if (!strcmp(what, "status") || !strcmp(what, "scan") || !strcmp(what, "disconnect") || !strcmp(what, "reconnect") || !strcmp(what, "radios") || !strcmp(what, "bands")) {
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh %s %s 2>&1", what, ifn);
-		char *o = run_out(cmd); str s = {0}; sadd(&s, "{\"ok\":true,\"raw\":"); sjson(&s, o ? o : ""); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
+		const char *av[] = { "network", "wifi", what, i && *i ? i : "", NULL }; char *o = root_net_try(av, 1);   /* (1.6.1 Part 11) */
+		if (!o) o = run_out(cmd);
+		str s = {0}; sadd(&s, "{\"ok\":true,\"raw\":"); sjson(&s, o ? o : ""); sadd(&s, "}"); free(o); reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(what, "country")) {
 		char *c = qparam(r->query, "cc");
 		if (!c || strlen(c) != 2 || !isupper((unsigned char)c[0]) || !isupper((unsigned char)c[1])) { if (!c || strcmp(c, "00")) { reply_err(r->fd, 400, "bad country"); return; } }
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh country %s %s 2>&1", ifn, c);
-		char *o = run_out(cmd); trim(o); reply_ok(r->fd, o); free(o); return;
+		const char *av[] = { "network", "wifi", "country", i && *i ? i : "", c, NULL }; char *o = root_net_try(av, 1);   /* (1.6.1 Part 11) */
+		if (!o) o = run_out(cmd);
+		trim(o); reply_ok(r->fd, o); free(o); return;
 	}
 	/* 1.5.3: the Wi-Fi adapter to use from now on (a USB dongle next to the built-in one) */
 	if (!strcmp(what, "adapter")) {
 		if (!i || !*i) { reply_err(r->fd, 400, "which adapter?"); return; }
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh adapter %s 2>&1", i);
-		char *o = run_out(cmd); trim(o);
+		const char *av[] = { "network", "wifi", "adapter", i, NULL }; char *o = root_net_try(av, 1);   /* (1.6.1 Part 11) */
+		if (!o) o = run_out(cmd);
+		trim(o);
 		if (o && !strncmp(o, "Using ", 6)) reply_ok(r->fd, o); else reply_err(r->fd, 400, o && *o ? o : "could not change the adapter");
 		free(o); return;
 	}
 	if (!strcmp(what, "connect") || !strcmp(what, "forget")) {
 		if (!r->body || !r->blen || r->blen > 600) { reply_err(r->fd, 400, "bad request"); return; }
 		const char *f = !strcmp(what, "connect") ? RUN "/wifi.req" : RUN "/wifi-forget.req";
+		/* (1.6.1 Part 11: the request on the network helper's standard input, never in a file of rudolfd's) */
+		if (root_have("network")) {
+			snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/wifi.sh %s %s %s", what, ifn, f);
+			const char *av[] = { "network", "wifi", what, i && *i ? i : "", NULL };
+			if (!strcmp(what, "connect")) { if (job_running()) { reply_err(r->fd, 409, "busy, try again in a moment"); return; } root_net_job("wifi", av, r->body, r->blen, f, cmd); reply_ok(r->fd, "connecting"); return; }
+			int st; char *o = root_net_out(av, r->body, r->blen, 1, &st);
+			if (st != -2) { trim(o); reply_ok(r->fd, o); free(o); return; }
+			free(o);
+		}
 		unlink(f);
 		int fd = open(f, O_WRONLY | O_CREAT | O_EXCL, 0600);
 		if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not write the request"); return; }
@@ -1212,6 +1234,12 @@ static void catalog_fresh(void)
  * Flatpak keeps the objects it already fetched, so each try continues where the last one stopped */
 #define FP_INSTALL "n=0; until flatpak install --system -y --noninteractive flathub %s; do n=$((n+1)); [ $n -lt 3 ] || exit 1; " \
 	"echo \"The download stopped. Trying again in 10 seconds; what was already downloaded is kept...\"; sleep 10; done; echo Done."
+/* (1.6.1 Part 11) as reply_cmd_json, for an output already had (rudolfd-rootdev.inc's root_dev_out); frees it */
+static void reply_out_json(struct req *r, char *o, const char *fail)
+{
+	if (!o || o[0] != '{') { free(o); reply_err(r->fd, 500, fail); return; }
+	reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o);
+}
 static void reply_cmd_json(struct req *r, const char *cmd, const char *fail)
 {
 	char *o = run_out(cmd);
@@ -2302,9 +2330,9 @@ static void api_ai_facts(struct req *r)
 	facts_add(&s, "job", RUN "/job.log", 60);
 	/* 1.5.9: the Wi-Fi, for "Why does the Wi-Fi drop?": its own log, the kernel's Wi-Fi messages, the radios */
 	facts_add(&s, "wifi", RUN "/wifi.log", 40);
-	{ char *k = run_out("dmesg 2>/dev/null | grep -E 'wlan[0-9]+:|rtw88|rtw89|iwlwifi|mt79|ath1[01]k|cfg80211' | grep -v -E 'Loading compiled-in|regulatory' | tail -40");
+	{ char *k = root_dmesg(0, "grep -E 'wlan[0-9]+:|rtw88|rtw89|iwlwifi|mt79|ath1[01]k|cfg80211' | grep -v -E 'Loading compiled-in|regulatory' | tail -40", "dmesg 2>/dev/null | grep -E 'wlan[0-9]+:|rtw88|rtw89|iwlwifi|mt79|ath1[01]k|cfg80211' | grep -v -E 'Loading compiled-in|regulatory' | tail -40");   /* (1.6.1 Part 11) */
 	  sadd(&s, ",\"wifiKernel\":"); sjson(&s, k ? k : ""); free(k); }
-	{ char *w = run_out("/usr/lib/rudolf/wifi.sh radios \"\" 2>/dev/null; /usr/lib/rudolf/wifi.sh status \"\" 2>/dev/null | grep -E '^(adapter|wlan|wpa_state|ssid|bssid|freq|RSSI|LINKSPEED|country)='");
+	{ char *w = root_net_wifinow(); if (!w) w = run_out("/usr/lib/rudolf/wifi.sh radios \"\" 2>/dev/null; /usr/lib/rudolf/wifi.sh status \"\" 2>/dev/null | grep -E '^(adapter|wlan|wpa_state|ssid|bssid|freq|RSSI|LINKSPEED|country)='");
 	  sadd(&s, ",\"wifiNow\":"); sjson(&s, w ? w : ""); free(w); }
 	sadd(&s, "}"); reply_json(r->fd, &s);
 }
@@ -2576,7 +2604,7 @@ static void api_system(struct req *r)
 	sadd(&s, ",\"live\":%s,\"recovery\":%s", live ? "true" : "false", recovery ? "true" : "false");
 	jtext(&s, "modules", run_out("awk '{print $1}' /proc/modules 2>/dev/null | sort"));
 	/* the kernel's own warnings and errors (levels 0-4), newest last */
-	jtext(&s, "messages", run_out("dmesg -r 2>/dev/null | grep '^<[0-4]>' | sed 's/^<[0-9]>//' | tail -60"));
+	jtext(&s, "messages", root_dmesg(1, "grep '^<[0-4]>' | sed 's/^<[0-9]>//' | tail -60", "dmesg -r 2>/dev/null | grep '^<[0-4]>' | sed 's/^<[0-9]>//' | tail -60"));   /* (1.6.1 Part 11) */
 	sadd(&s, "},\"memory\":{\"total\":%lld,\"available\":%lld,\"cached\":%lld,\"buffers\":%lld,\"swapTotal\":%lld,\"swapFree\":%lld",
 		meminfo_kb("MemTotal"), meminfo_kb("MemAvailable"), meminfo_kb("Cached"), meminfo_kb("Buffers"), meminfo_kb("SwapTotal"), meminfo_kb("SwapFree"));
 	/* compressed swap in memory (zram): what was stored, what it takes */
@@ -2593,12 +2621,14 @@ static void api_system(struct req *r)
 	jtext(&s, "gpu", run_out("for d in /sys/class/drm/card[0-9]; do [ -e $d/device/vendor ] || continue; dr=$(readlink $d/device/driver 2>/dev/null); echo \"${d##*/} $(cat $d/device/vendor):$(cat $d/device/device) ${dr##*/}\"; done"));
 	/* what draws (1.2.4): the renderer glamor uses on the graphics card, and NVIDIA's GSP firmware (nouveau) */
 	jtext(&s, "renderer", run_out("sed -n 's/.*glamor X acceleration enabled on \\(.*\\)$/\\1/p' " RUN "/Xorg.log 2>/dev/null | head -1"));
-	jtext(&s, "gsp", run_out("grep -q '^nouveau ' /proc/modules && { dmesg 2>/dev/null | grep -i 'nouveau' | grep -iE 'gsp|firmware' | sed 's/^\\[[^]]*\\] *//' | tail -2; } || true"));
+	{ char *mods = slurp("/proc/modules", NULL); int nv = mods && (!strncmp(mods, "nouveau ", 8) || strstr(mods, "\nnouveau ")); free(mods);   /* (1.6.1 Part 11) */
+	  jtext(&s, "gsp", nv ? root_dmesg(0, "grep -i 'nouveau' | grep -iE 'gsp|firmware' | sed 's/^\\[[^]]*\\] *//' | tail -2", "grep -q '^nouveau ' /proc/modules && { dmesg 2>/dev/null | grep -i 'nouveau' | grep -iE 'gsp|firmware' | sed 's/^\\[[^]]*\\] *//' | tail -2; } || true") : strdup("")); }
 	jtext(&s, "display", run_out("echo \"$(cat " RUN "/display-mode 2>/dev/null) | $(cat " RUN "/screen-actual 2>/dev/null) | $(cat " RUN "/display-reason 2>/dev/null)\""));
 	jtext(&s, "audio", slurp("/proc/asound/cards", NULL));
 	jtext(&s, "audio_pcm", slurp("/proc/asound/pcm", NULL));
 	/* 1.5.4: Thunderbolt and USB4: the protection and the devices, approved or not */
-	jtext(&s, "thunderbolt", run_out("[ -d /sys/bus/thunderbolt ] && /usr/lib/rudolf/thunderbolt json 2>/dev/null || true"));
+	{ const char *av[] = { "devices", "tb", "json", NULL };   /* (1.6.1 Part 11: as before, nothing without the bus) */
+	  jtext(&s, "thunderbolt", access("/sys/bus/thunderbolt", F_OK) ? strdup("") : root_dev_out(av, 0, "[ -d /sys/bus/thunderbolt ] && /usr/lib/rudolf/thunderbolt json 2>/dev/null || true")); }
 	/* 1.5.3: devices with no driver ("bus|id|kind|name" a line), so a report says what this computer is missing */
 	jtext(&s, "unsupported", run_out("/usr/lib/rudolf/devplug unsupported 2>/dev/null"));
 	jtext(&s, "input", run_out("sed -n 's/^N: Name=\"\\(.*\\)\"$/\\1/p' /proc/bus/input/devices 2>/dev/null"));
@@ -2909,12 +2939,21 @@ static void api_proc_end(struct req *r)
 	if (tr && *tr == '1') {
 		int *order = calloc(n, sizeof *order), kept = 0;
 		if (!order) { free(ps); reply_err(r->fd, 500, "out of memory"); return; }
-		int no = proc_tree(ps, n, pid, order, &kept), ended = proc_tree_end(ps, order, no, force);
+		int no = proc_tree(ps, n, pid, order, &kept), ended = -2;
+		/* (1.6.1 Part 11: by the procs helper, which checks again what must keep running; rudolfd-rootother.inc) */
+		{ int *pl = calloc(no ? no : 1, sizeof *pl), *er = calloc(no ? no : 1, sizeof *er), st = -2;
+		  if (pl && er) { for (int k = 0; k < no; k++) pl[k] = ps[order[k]].pid; st = root_procs_end(pl, no, 1, force, er); }
+		  if (st != -2) { ended = 0; if (!st) for (int k = 0; k < no; k++) if (!er[k]) ended++; }
+		  free(pl); free(er); }
+		if (ended == -2) ended = proc_tree_end(ps, order, no, force);
 		free(order); free(ps);
 		str s = {0}; sadd(&s, "{\"ok\":true,\"message\":"); sjson(&s, name); sadd(&s, ",\"ended\":%d,\"kept\":%d}", ended, kept); reply_json(r->fd, &s); return;
 	}
 	free(ps);
-	if (kill(pid, force ? SIGKILL : SIGTERM)) { reply_err(r->fd, 500, strerror(errno)); return; }
+	{ int er = 0, st = root_procs_end(&pid, 1, 0, force, &er);   /* (1.6.1 Part 11: by the procs helper, as below) */
+	  if (st == -1) { reply_err(r->fd, 500, strerror(EPERM)); return; }
+	  if (!st && er) { reply_err(r->fd, 500, strerror(er)); return; }
+	  if (st == -2 && kill(pid, force ? SIGKILL : SIGTERM)) { reply_err(r->fd, 500, strerror(errno)); return; } }
 	str s = {0}; sadd(&s, "{\"ok\":true,\"message\":"); sjson(&s, name); sadd(&s, "}"); reply_json(r->fd, &s);
 }
 /* restarting a service: sound (PulseAudio), wifi (reconnect), display (rudolf-display; the session starts it again) */
@@ -2924,7 +2963,8 @@ static void api_service(struct req *r)
 	if (!n) { reply_err(r->fd, 400, "which service?"); return; }
 	int rc = -1;
 	if (!strcmp(n, "sound")) rc = run("/usr/lib/rudolf/sound restart >>" RUN "/sound.log 2>&1");
-	else if (!strcmp(n, "wifi")) rc = run("/usr/lib/rudolf/wifi.sh reconnect >/dev/null 2>&1");
+	else if (!strcmp(n, "wifi")) { const char *av[] = { "network", "wifi", "reconnect", NULL }; rc = root_have("network") ? root_net(av, 1) : -2;   /* (1.6.1 Part 11) */
+		if (rc == -2) rc = run("/usr/lib/rudolf/wifi.sh reconnect >/dev/null 2>&1"); }
 	else if (!strcmp(n, "display")) rc = run("pkill -x rudolf-display >/dev/null 2>&1; true");
 	else { reply_err(r->fd, 404, "unknown service"); return; }
 	if (rc) reply_err(r->fd, 500, "it did not start again"); else reply_ok(r->fd, n);
@@ -4066,7 +4106,7 @@ static void health_tick(void)
 		}
 	} else if (mg_off < 0) mg_off = 0;
 	/* crashes (every program: Rudolf OS's own, Linux and Windows programs), each once */
-	char *d = run_out("dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -20");
+	char *d = root_dmesg(0, KMARK_GREP " | tail -20", "dmesg 2>/dev/null | grep -E ': segfault at |: general protection|traps: ' | tail -20");   /* (1.6.1 Part 11) */
 	if (d) {
 		char *lines[20]; int nl = 0; for (char *l = strtok(d, "\n"); l && nl < 20; l = strtok(NULL, "\n")) lines[nl++] = l;
 		int from = 0;
@@ -4094,7 +4134,8 @@ static void health_tick(void)
 	}
 	/* the firewall, once an hour */
 	if (t - last_fw >= 3600 || t < last_fw) {
-		char *o = run_out("/usr/lib/rudolf/firewall status 2>/dev/null");
+		const char *av[] = { "network", "firewall", "status", NULL }; char *o = root_net_try(av, 0);   /* (1.6.1 Part 11) */
+		if (!o) o = run_out("/usr/lib/rudolf/firewall status 2>/dev/null");
 		if (o && !strncmp(o, "on ", 3)) { long long c = atoll(o + 3); if (fw_prev >= 0 && c > fw_prev) health_add("firewall", "%lld incoming connection%s blocked in the last hour", c - fw_prev, c - fw_prev == 1 ? "" : "s"); fw_prev = c; }
 		free(o); last_fw = t;
 	}
@@ -4223,11 +4264,18 @@ static void api_firewall(struct req *r, int post)
 {
 	if (post) {
 		char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1 or on=0"); return; }
-		if (run(*on == '1' ? "/usr/lib/rudolf/firewall on >/dev/null 2>" RUN "/firewall.err" : "/usr/lib/rudolf/firewall off >/dev/null 2>" RUN "/firewall.err")) {
+		int fst = -2;
+		if (root_have("network")) {   /* (1.6.1 Part 11: its errors into RUN/firewall.err as before) */
+			const char *av[] = { "network", "firewall", *on == '1' ? "on" : "off", NULL }; int ef = open(RUN "/firewall.err", O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+			char *o = root_net_out(av, NULL, 0, ef >= 0 ? ef : 0, &fst); free(o); if (ef >= 0) close(ef);
+		}
+		if (fst == -2) fst = run(*on == '1' ? "/usr/lib/rudolf/firewall on >/dev/null 2>" RUN "/firewall.err" : "/usr/lib/rudolf/firewall off >/dev/null 2>" RUN "/firewall.err");
+		if (fst) {
 			char *e = slurp(RUN "/firewall.err", NULL); if (e) trim(e); reply_err(r->fd, 500, e && *e ? e : "the firewall could not be changed"); free(e); return; }
 		health_add("firewall", "the firewall was turned %s", *on == '1' ? "on" : "off");
 	}
-	char *o = run_out("/usr/lib/rudolf/firewall status 2>/dev/null");
+	const char *av[] = { "network", "firewall", "status", NULL }; char *o = root_net_try(av, 0);   /* (1.6.1 Part 11) */
+	if (!o) o = run_out("/usr/lib/rudolf/firewall status 2>/dev/null");
 	str s = {0}; sadd(&s, "{\"ok\":true,\"on\":%s,\"blocked\":%lld,\"remote\":%s}", o && !strncmp(o, "on", 2) ? "true" : "false", o && !strncmp(o, "on ", 3) ? atoll(o + 3) : 0LL, access(RUN "/firewall-remote", F_OK) ? "false" : "true");
 	free(o); reply_json(r->fd, &s);
 }
@@ -4407,7 +4455,7 @@ static void remote_start(void)
 	   printed as 10 digits that no viewer would accept) */
 	snprintf(code, sizeof code, "%06u\n", ((unsigned)rb[0] << 24 | (unsigned)rb[1] << 16 | (unsigned)rb[2] << 8 | (unsigned)rb[3]) % 1000000u); write_str(RREM "/code", code);
 	write_str(RREM "/on", "1\n");
-	run("/usr/lib/rudolf/firewall remote on >/dev/null 2>&1");
+	{ const char *av[] = { "network", "firewall", "remote", "on", NULL }; if ((root_have("network") ? root_net(av, 1) : -2) == -2) run("/usr/lib/rudolf/firewall remote on >/dev/null 2>&1"); }   /* (1.6.1 Part 11) */
 	/* (1.5.1: one loop only. rudolf-remote writes its pid once it listens, which takes a few seconds on a slow
 	   computer; the desktop's status checks in the meantime started a second loop, whose rudolf-remote then failed
 	   "Address already in use" every 2 s for as long as remote access stayed on) */
@@ -4419,7 +4467,7 @@ static void remote_stop(void)
 	unlink(RREM "/on"); int p = remote_pid(); if (p) kill(p, SIGTERM);
 	run("pkill -f '[r]udolf-remote' >/dev/null 2>&1; rm -rf " RREM "/sess " RREM "/pending " RREM "/session");
 	unlink(RREM "/code"); unlink(PERSIST "/etc/remote-devices");
-	run("/usr/lib/rudolf/firewall remote off >/dev/null 2>&1");
+	{ const char *av[] = { "network", "firewall", "remote", "off", NULL }; if ((root_have("network") ? root_net(av, 1) : -2) == -2) run("/usr/lib/rudolf/firewall remote off >/dev/null 2>&1"); }   /* (1.6.1 Part 11) */
 }
 static void remote_boot(void) { if (!access(PERSIST "/etc/remote-on", F_OK) && !live) remote_start(); }
 static void api_remote(struct req *r, const char *what, int post)
@@ -4484,7 +4532,7 @@ static int tb_arg_ok(const char *a, int uid)
 }
 static void api_tb(struct req *r, const char *what, int post)
 {
-	if (!post && !*what) { reply_cmd_json(r, "/usr/lib/rudolf/thunderbolt json 2>/dev/null", "Thunderbolt devices are not known"); return; }
+	if (!post && !*what) { const char *av[] = { "devices", "tb", "json", NULL }; reply_out_json(r, root_dev_out(av, 0, "/usr/lib/rudolf/thunderbolt json 2>/dev/null"), "Thunderbolt devices are not known"); return; }   /* (1.6.1 Part 11) */
 	if (!post && !strcmp(what, "ask")) {
 		char buf[512] = ""; FILE *f = fopen(RUN "/tb-ask", "r");
 		size_t n = f ? fread(buf, 1, sizeof buf - 1, f) : 0; if (f) fclose(f); buf[n] = 0; trim(buf);
@@ -4497,7 +4545,8 @@ static void api_tb(struct req *r, const char *what, int post)
 	const char *a = qparam(r->query, forget ? "uid" : "id");
 	if (!tb_arg_ok(a, forget)) { reply_err(r->fd, 400, "bad device"); return; }
 	char cmd[200]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/thunderbolt %s %s 2>&1", what, a);
-	char *o = run_out(cmd); trim(o);
+	const char *av[] = { "devices", "tb", what, a, NULL }; char *o = root_dev_out(av, 1, cmd);   /* (1.6.1 Part 11) */
+	trim(o);
 	if (!o || (strcmp(o, "approved") && strcmp(o, "not approved") && strcmp(o, "forgotten"))) { reply_err(r->fd, 500, o && *o ? o : "that did not work"); free(o); return; }
 	health_add("hardware", !strcmp(what, "allow") ? "a Thunderbolt or USB4 device was approved" : !strcmp(what, "deny") ? "a Thunderbolt or USB4 device was not approved" : "a Thunderbolt or USB4 device was forgotten");
 	reply_ok(r->fd, o); free(o);
@@ -4513,32 +4562,35 @@ static void api_bt(struct req *r, const char *what, int post)
 		str s = {0}; sadd(&s, "{\"ok\":true,\"ask\":%s}", buf[0] == '{' ? buf : "null");
 		reply(r->fd, 200, "application/json", s.b, s.n, NULL); free(s.b); return;
 	}
-	if (!post) { reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return; }
+	if (!post) { { const char *sav[] = { "devices", "bt", "status", NULL }; reply_out_json(r, root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null"), "Bluetooth is not available"); }; return; }
 	if (!strcmp(what, "answer")) {
 		char *ok = qparam(r->query, "ok"); if (!ok || (strcmp(ok, "1") && strcmp(ok, "0"))) { reply_err(r->fd, 400, "ok=1 or ok=0"); return; }
-		int rc = run(*ok == '1' ? "/usr/lib/rudolf/bluetooth answer yes >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth answer no >/dev/null 2>&1");
+		const char *av[] = { "devices", "bt", "answer", *ok == '1' ? "yes" : "no", NULL };   /* (1.6.1 Part 11: rudolfd-rootdev.inc) */
+		int rc = root_dev_run(av, *ok == '1' ? "/usr/lib/rudolf/bluetooth answer yes >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth answer no >/dev/null 2>&1");
 		if (rc) { reply_err(r->fd, 409, "The question was already answered or has run out of time"); return; }
 		reply_ok(r->fd, "answered"); return;
 	}
 	if (!strcmp(what, "power")) {
 		char *on = qparam(r->query, "on"); if (!on || (strcmp(on, "1") && strcmp(on, "0"))) { reply_err(r->fd, 400, "on=1 or on=0"); return; }
-		run(*on == '1' ? "/usr/lib/rudolf/bluetooth on >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth off >/dev/null 2>&1");
-		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
+		{ const char *av[] = { "devices", "bt", *on == '1' ? "on" : "off", NULL }; root_dev_run(av, *on == '1' ? "/usr/lib/rudolf/bluetooth on >/dev/null 2>&1" : "/usr/lib/rudolf/bluetooth off >/dev/null 2>&1"); }
+		{ const char *sav[] = { "devices", "bt", "status", NULL }; reply_out_json(r, root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null"), "Bluetooth is not available"); }; return;
 	}
 	if (!strcmp(what, "visible")) {
-		run("/usr/lib/rudolf/bluetooth visible >/dev/null 2>&1");
-		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
+		{ const char *av[] = { "devices", "bt", "visible", NULL }; root_dev_run(av, "/usr/lib/rudolf/bluetooth visible >/dev/null 2>&1"); }
+		{ const char *sav[] = { "devices", "bt", "status", NULL }; reply_out_json(r, root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null"), "Bluetooth is not available"); }; return;
 	}
 	if (!strcmp(what, "scan")) {
 		char *sv = qparam(r->query, "s"); int sec = sv ? atoi(sv) : 15; if (sec < 3 || sec > 60) sec = 15;
-		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/bluetooth scan %d >/dev/null 2>&1", sec); run(cmd);
-		reply_cmd_json(r, "/usr/lib/rudolf/bluetooth status 2>/dev/null", "Bluetooth is not available"); return;
+		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/bluetooth scan %d >/dev/null 2>&1", sec);
+		{ char sn[8]; snprintf(sn, sizeof sn, "%d", sec); const char *av[] = { "devices", "bt", "scan", sn, NULL }; root_dev_run(av, cmd); }
+		{ const char *sav[] = { "devices", "bt", "status", NULL }; reply_out_json(r, root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null"), "Bluetooth is not available"); }; return;
 	}
 	if (!strcmp(what, "pair") || !strcmp(what, "connect") || !strcmp(what, "disconnect") || !strcmp(what, "remove")) {
 		char *m = qparam(r->query, "mac"); if (!bt_mac_ok(m)) { reply_err(r->fd, 400, "bad device"); return; }
 		snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/bluetooth %s %s 2>&1", what, m);
-		char *o = run_out(cmd); if (o) trim(o);
-		char *st = run_out("/usr/lib/rudolf/bluetooth status 2>/dev/null");
+		const char *av[] = { "devices", "bt", what, m, NULL }, *sav[] = { "devices", "bt", "status", NULL };   /* (1.6.1 Part 11) */
+		char *o = root_dev_out(av, 1, cmd); if (o) trim(o);
+		char *st = root_dev_out(sav, 0, "/usr/lib/rudolf/bluetooth status 2>/dev/null");
 		/* did it work: the device's state now */
 		char key[40]; snprintf(key, sizeof key, "\"mac\":\"%s\"", m); char *d = st ? strstr(st, key) : NULL; char *de = d ? strchr(d, '}') : NULL;
 		int paired = d && de && strstr(d, "\"paired\":true") && strstr(d, "\"paired\":true") < de, conn = d && de && strstr(d, "\"connected\":true") && strstr(d, "\"connected\":true") < de;
@@ -4590,13 +4642,17 @@ static void api(struct req *r)
 	/* 1.5.9 (plan Part 4): Share this connection. GET net/hotspot: the state; POST net/hotspot?on=0: off; POST with a
 	   body (name, password, band: one per line) through a root-only file: on. The desktop asks an administrator first */
 	if (!strcmp(p, "net/hotspot")) {
-		if (!post) { char *o = run_out("/usr/lib/rudolf/hotspot status 2>/dev/null"); trim(o);
+		if (!post) { const char *av[] = { "network", "hotspot", "status", NULL }; char *o = root_net_try(av, 0); if (!o) o = run_out("/usr/lib/rudolf/hotspot status 2>/dev/null"); trim(o);   /* (1.6.1 Part 11) */
 			if (!o || o[0] != '{') { free(o); reply_err(r->fd, 404, "this Rudolf OS has no hotspot"); return; }
 			str js = {0}; sadd(&js, "{\"ok\":true,"); sadd(&js, "%s", o + 1); free(o); reply_json(r->fd, &js); return; }
-		char *on = qparam(r->query, "on"); char *o;
-		if (on && !strcmp(on, "0")) o = run_out("/usr/lib/rudolf/hotspot stop 2>&1");
+		char *on = qparam(r->query, "on"); char *o = NULL;
+		if (on && !strcmp(on, "0")) { const char *av[] = { "network", "hotspot", "stop", NULL }; o = root_net_try(av, 1); if (!o) o = run_out("/usr/lib/rudolf/hotspot stop 2>&1"); }   /* (1.6.1 Part 11) */
 		else {
 			if (!r->body || !r->blen || r->blen > 200) { reply_err(r->fd, 400, "bad request"); return; }
+			/* (1.6.1 Part 11: the request on the network helper's standard input, never in a file of rudolfd's) */
+			if (root_have("network")) { const char *av[] = { "network", "hotspot", "start", NULL }; int st; o = root_net_out(av, r->body, r->blen, 1, &st); if (st == -2) { free(o); o = NULL; } }
+		}
+		if (!o && !(on && !strcmp(on, "0"))) {
 			const char *f = RUN "/hotspot.req"; unlink(f);
 			int fd = open(f, O_WRONLY | O_CREAT | O_EXCL, 0600);
 			if (fd < 0 || write(fd, r->body, r->blen) != (ssize_t)r->blen) { if (fd >= 0) close(fd); reply_err(r->fd, 500, "could not write the request"); return; }
@@ -4610,11 +4666,13 @@ static void api(struct req *r)
 	if (!strncmp(p, "mobile/", 7) && api_mobile(r, p, post)) return;
 	if (!strncmp(p, "sc/", 3) && api_sc(r, p, post)) return;   /* 1.6.0 (plan Part 20) */
 	if (!strcmp(p, "net/metered")) {
-		if (!post) { char *o = run_out("/usr/lib/rudolf/netplug state 2>/dev/null"); trim(o); str j = {0}; sadd(&j, "%s", *o == '{' ? o : "{\"ok\":true,\"connected\":false}"); free(o); reply_json(r->fd, &j); return; }
+		if (!post) { const char *av[] = { "network", "metered-state", NULL }; char *o = root_net_try(av, 0); if (!o) o = run_out("/usr/lib/rudolf/netplug state 2>/dev/null"); trim(o); str j = {0}; sadd(&j, "%s", *o == '{' ? o : "{\"ok\":true,\"connected\":false}"); free(o); reply_json(r->fd, &j); return; }
 		const char *i = qparam(r->query, "if"), *v = qparam(r->query, "v");
 		if (!safe_word(i, 15) || !v || (strcmp(v, "on") && strcmp(v, "off") && strcmp(v, "auto"))) { reply_err(r->fd, 400, "if=ADAPTER&v=on|off|auto"); return; }
 		char cmd[128]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/netplug set %s %s 2>&1", i, v);
-		char *o = run_out(cmd); trim(o); if (*o) { reply_err(r->fd, 400, o); free(o); return; } free(o);
+		const char *av[] = { "network", "metered", i, v, NULL }; char *o = root_net_try(av, 1);   /* (1.6.1 Part 11) */
+		if (!o) o = run_out(cmd);
+		trim(o); if (*o) { reply_err(r->fd, 400, o); free(o); return; } free(o);
 		reply_ok(r->fd, "ok"); return;
 	}
 	if (!strcmp(p, "disks")) { api_disks(r); return; }
@@ -4729,7 +4787,7 @@ static void api(struct req *r)
 		str s = {0}; sadd(&s, "{\"ok\":true,\"events\":"); sjson(&s, ev ? ev : ""); sadd(&s, "}");
 		free(ev); reply_json(r->fd, &s); return;
 	}
-	if (!strcmp(p, "log")) { char *l = run_out("dmesg | tail -200"); str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
+	if (!strcmp(p, "log")) { char *l = root_dmesg(0, "tail -200", "dmesg | tail -200");   /* (1.6.1 Part 11) */ str s = {0}; sadd(&s, "{\"ok\":true,\"log\":"); sjson(&s, l); sadd(&s, "}"); free(l); reply_json(r->fd, &s); return; }
 	if (!strcmp(p, "native/status")) { api_native_status(r); return; }
 	/* 1.5.7 (plan stage 5): rudolf-selftest, which only reads; its PASS/FAIL/SKIP lines */
 	/* 1.5.7 (plan Part 4): System Settings › Desktop engine. GET: the choice, the engine in use, and whether this Rudolf
@@ -4955,7 +5013,8 @@ static void api(struct req *r)
 			if (!strcmp(p, "power/set")) { snprintf(qq, sizeof qq, "%s", r->query ? r->query : ""); char *sv = NULL; for (char *w = strtok_r(qq, "&", &sv); w && k < 39; w = strtok_r(NULL, "&", &sv)) av[k++] = w; }
 			av[k] = NULL; int st; o = root_power_out(av, 0, &st); if (st == -2) { free(o); o = NULL; }
 		}
-		if (!o) o = run_out(cmd); trim(o);
+		if (!o) o = run_out(cmd);
+		trim(o);
 		if (!o || o[0] != '{') { reply_err(r->fd, 500, "the power settings could not be read"); free(o); return; }
 		if (strstr(o, "\"ok\":false")) { reply(r->fd, 400, "application/json", o, strlen(o), NULL); free(o); return; }
 		reply(r->fd, 200, "application/json", o, strlen(o), NULL); free(o); return;
@@ -4966,7 +5025,8 @@ static void api(struct req *r)
 		if (!post || !d || (strcmp(d, "up") && strcmp(d, "down"))) { reply_err(r->fd, 400, "POST with d=up or down"); return; }
 		char cmd[96]; snprintf(cmd, sizeof cmd, "/usr/lib/rudolf/hotkey brightness %s 2>/dev/null", d);
 		char *o = NULL; if (root_have("power")) { const char *av[] = { "power", "brightness-step", d, NULL }; int st; o = root_power_out(av, 0, &st); if (st == -2) { free(o); o = NULL; } }   /* (1.6.1 Part 11) */
-		if (!o) o = run_out(cmd); trim(o); int lv = atoi(o);
+		if (!o) o = run_out(cmd);
+		trim(o); int lv = atoi(o);
 		if (!strcmp(o, "none") || !*o) { free(o); reply_err(r->fd, 404, "this screen has no adjustable backlight"); return; }
 		str js = {0}; sadd(&js, "{\"ok\":true,\"brightness\":%d}", lv); free(o); reply_json(r->fd, &js); return;
 	}
@@ -5230,7 +5290,9 @@ static void api(struct req *r)
 		char *i = qparam(r->query, "if");
 		if (!safe_word(i, 16)) { reply_err(r->fd, 400, "bad interface"); return; }
 		char cmd[256]; snprintf(cmd, sizeof cmd, "ip link set %s up; udhcpc -i %s -n -q -t 5 -O 43 -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1", i, i);
-		if (run(cmd)) reply_err(r->fd, 500, "no DHCP answer on this network"); else reply_ok(r->fd, "connected");
+		const char *av[] = { "network", "dhcp", i, NULL }; int st = root_have("network") ? root_net(av, 1) : -2;   /* (1.6.1 Part 11) */
+		if (st == -2) st = run(cmd);
+		if (st) reply_err(r->fd, 500, "no DHCP answer on this network"); else reply_ok(r->fd, "connected");
 		return;
 	}
 	if (!strcmp(p, "net/static")) {
@@ -5243,7 +5305,9 @@ static void api(struct req *r)
 		if (!safe_word(i, 16) || !*a || strspn(a, "0123456789./") != strlen(a) || strspn(g, "0123456789.") != strlen(g) || strspn(d, "0123456789.") != strlen(d)) { reply_err(r->fd, 400, "bad address"); return; }
 		char cmd[512];
 		snprintf(cmd, sizeof cmd, "ip addr flush dev %s && ip addr add %s dev %s && ip link set %s up%s%s%s", i, a, i, i, *g ? " && ip route replace default via " : "", g, "");
-		int rc = run(cmd);
+		const char *av[] = { "network", "static", i, a, g, d, NULL }; int rc = root_have("network") ? root_net(av, 0) : -2;   /* (1.6.1 Part 11: the name server too) */
+		if (rc != -2) { if (rc) reply_err(r->fd, 500, "could not apply the address"); else reply_ok(r->fd, "applied"); return; }
+		rc = run(cmd);
 		if (*d) { char rs[96]; snprintf(rs, sizeof rs, "nameserver %s\n", d); write_str("/etc/resolv.conf", rs); }
 		if (rc) reply_err(r->fd, 500, "could not apply the address"); else reply_ok(r->fd, "applied");
 		return;
