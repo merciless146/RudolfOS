@@ -158,6 +158,8 @@ static const char *PAGE_JS =
 	"addEventListener('keydown',e=>{if(!e.isTrusted)return;const c=e.ctrlKey||e.metaKey;let a='';if(c&&!e.shiftKey&&!e.altKey&&e.code=='KeyF')a='cf';else if(!c&&!e.altKey&&e.code=='F3')a=e.shiftKey?'sf3':'f3';else if(c&&!e.altKey&&e.code=='KeyG')a=e.shiftKey?'sf3':'f3';"
 	" if(a){e.preventDefault();e.stopImmediatePropagation();say({k:a})}},true);"
 	"addEventListener('click',e=>{if(!e.isTrusted)return;const a=e.target&&e.target.closest&&e.target.closest('a[href^=\"tel:\" i]');if(!a)return;e.preventDefault();e.stopImmediatePropagation();say({tel:String(a.getAttribute('href')).slice(4,80)})},true);"
+	/* 1.6.1 (Part 10): F9 shows the page's article in Oracle's reader mode (and back), before the page sees it */
+	"addEventListener('keydown',e=>{if(e.isTrusted&&e.key=='F9'&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();e.stopImmediatePropagation();say({k:'f9'})}},true);"
 	"let done=false,mo=null;const go=()=>{if(done)return;done=true;if(mo)mo.disconnect();say({flash:location.href})};"
 	"const watch=()=>{if(document.querySelector(S))return go();mo=new MutationObserver(()=>{if(document.querySelector(S))go()});"
 	" mo.observe(document.documentElement,{childList:true,subtree:true,attributes:true,attributeFilter:['src','data','type','value']});setTimeout(()=>mo&&mo.disconnect(),60000)};"
@@ -451,6 +453,49 @@ static void on_tab_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, g
 	else if (fl && RUFFLE_JS[0]) { webkit_web_view_run_javascript(WEBKIT_WEB_VIEW(t->view), RUFFLE_JS, NULL, NULL, NULL); tabev(t, "flash", NULL); }
 	g_free(k); g_free(fl);
 }
+/* ------------------------------------------------------------------ 1.6.1 (docs/plan-1.6.1.md Part 10): reader mode
+   As the Chromium shell (iso/shell/shell.js READABLE_JS, READHTML_JS): when a page has loaded, whether it holds an article ->
+   tabev readable {on}; op readhtml {id}: the page's HTML as it is now (at most 4 MB), its address and title -> tabev readhtml, which
+   the desktop reads with Readability in an inert copy (desktop/orareader61.js). Run in the page's isolated world ("rudolf"). */
+static const char READABLE_JS[] = "(()=>{try{const U=/-ad-|ai2html|banner|breadcrumbs|combx|comment|community|cover-wrap|disqus|extra|footer|gdpr|header|legends|menu|related|remark|replies|rss|shoutbox|sidebar|skyscraper|social|sponsor|supplemental|ad-break|agegate|pagination|pager|popup|yom-remote/i,C=/and|article|body|column|content|main|shadow/i;"
+	"const L=new Set(document.querySelectorAll('p,pre,article'));document.querySelectorAll('div > br').forEach(b=>L.add(b.parentNode));let sc=0;"
+	"for(const n of L){if(n.checkVisibility&&!n.checkVisibility({visibilityProperty:true}))continue;const m=(n.getAttribute('class')||'')+' '+(n.id||'');if(U.test(m)&&!C.test(m))continue;if(n.matches('li p'))continue;"
+	"const l=(n.textContent||'').trim().length;if(l<140)continue;sc+=Math.sqrt(l-140);if(sc>20)return true}}catch(e){}return false})()";
+static const char READHTML_JS[] = "JSON.stringify({u:location.href,t:document.title,h:(document.documentElement?document.documentElement.outerHTML:'').slice(0,4000000)})";
+typedef struct { char tid[64]; int id; } trd;
+static void rd_readable_done(GObject *o, GAsyncResult *res, gpointer p)
+{
+	trd *q = p; GError *e = NULL; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(o), res, &e);
+	tab *t = TABS ? g_hash_table_lookup(TABS, q->tid) : NULL;
+	if (v && t) tabev(t, "readable", jsc_value_is_boolean(v) && jsc_value_to_boolean(v) ? "\"on\":true" : "\"on\":false");
+	if (v) g_object_unref(v); if (e) g_error_free(e); g_free(q);
+}
+static void on_tab_rdload(WebKitWebView *v, WebKitLoadEvent ev, gpointer d)
+{
+	tab *t = d; if (ev != WEBKIT_LOAD_FINISHED || !http_url(webkit_web_view_get_uri(v))) return;
+	trd *q = g_new0(trd, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid);
+	webkit_web_view_evaluate_javascript(v, READABLE_JS, -1, "rudolf", NULL, NULL, rd_readable_done, q);
+}
+static void rd_html_done(GObject *o, GAsyncResult *res, gpointer p)
+{
+	trd *q = p; GError *e = NULL; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(o), res, &e);
+	tab *t = TABS ? g_hash_table_lookup(TABS, q->tid) : NULL;
+	if (t) { GString *x = g_string_new(""); g_string_append_printf(x, "\"id\":%d,", q->id);
+		JSCValue *j = NULL; char *s = v && jsc_value_is_string(v) ? jsc_value_to_string(v) : NULL;
+		if (s) { JSCContext *cx = jsc_value_get_context(v); j = jsc_value_new_from_json(cx, s); }
+		char *h = j ? jstr(j, "h") : NULL, *u = j ? jstr(j, "u") : NULL, *ti = j ? jstr(j, "t") : NULL;
+		if (ti && strlen(ti) > 300) ti[300] = 0;
+		g_string_append(x, "\"html\":"); json_str(x, h ? h : ""); g_string_append(x, ",\"url\":"); json_str(x, u ? u : ""); g_string_append(x, ",\"title\":"); json_str(x, ti ? ti : "");
+		tabev(t, "readhtml", x->str); g_string_free(x, TRUE); g_free(h); g_free(u); g_free(ti); g_free(s); if (j) g_object_unref(j); }
+	if (v) g_object_unref(v); if (e) g_error_free(e); g_free(q);
+}
+static int tab_reader_op(tab *t, const char *op, JSCValue *m)
+{
+	if (strcmp(op, "readhtml")) return 0;
+	trd *q = g_new0(trd, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->id = (int)jnum(m, "id", 0);
+	webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(t->view), READHTML_JS, -1, "rudolf", NULL, NULL, rd_html_done, q);
+	return 1;
+}
 static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 {
 	tab *t = g_new0(tab, 1); snprintf(t->tid, sizeof t->tid, "%s", tid); snprintf(t->part, sizeof t->part, "%s", part);
@@ -475,6 +520,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	g_signal_connect(t->view, "notify::uri", G_CALLBACK(on_tab_uri), t);
 	g_signal_connect(t->view, "notify::title", G_CALLBACK(on_tab_title), t);
 	g_signal_connect(t->view, "mouse-target-changed", G_CALLBACK(on_tab_hover), t);   /* (1.6.1) */
+	g_signal_connect(t->view, "load-changed", G_CALLBACK(on_tab_rdload), t);   /* (1.6.1: reader mode) */
 	g_signal_connect(t->view, "close", G_CALLBACK(on_tab_close), t);
 	g_signal_connect(t->view, "web-process-terminated", G_CALLBACK(on_tab_gone), t);
 	g_signal_connect(t->view, "focus-in-event", G_CALLBACK(on_tab_focus), t);
@@ -638,6 +684,7 @@ static void on_tab_op(JSCValue *m)
 {
 	char *op = jstr(m, "op"), *tid = jstr(m, "tid"); if (!op) { g_free(tid); return; }
 	tab *t = tid ? g_hash_table_lookup(TABS, tid) : NULL;
+	if (t && tab_reader_op(t, op, m)) { g_free(op); g_free(tid); return; }   /* (1.6.1: reader mode) */
 	if (!strcmp(op, "fw")) {
 		JSCValue *r = jsc_value_object_get_property(m, "rules");
 		if (r && jsc_value_is_object(r)) { FW.on = jbool(r, "on"); char *md = jstr(r, "mode"); snprintf(FW.mode, sizeof FW.mode, "%s", md ? md : "open"); g_free(md);
