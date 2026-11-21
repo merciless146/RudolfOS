@@ -132,6 +132,7 @@ typedef struct tab {
 	GtkWidget *box, *view;           /* the view, in an event box with its own window (cut to the visible parts) */
 	int x, y, w, h, z, shown, fs;
 	cairo_region_t *vis;             /* NULL: nothing covers it */
+	int still, still_up, still_busy; guint still_timer, still_gen;   /* (1.6.1) covered: a still picture in the desktop (still_step) */
 } tab;
 static GHashTable *HOVER;   /* 1.6.1: a tab's last link address sent (tab* -> char*), so only changes are sent */
 static GHashTable *TABS;           /* tid -> tab */
@@ -217,6 +218,7 @@ static WebKitWebContext *ctx_for(const char *part)
 static void tab_free(gpointer p)
 {
 	tab *t = p; if (t->vis) cairo_region_destroy(t->vis);
+	if (t->still_timer) g_source_remove(t->still_timer);   /* (1.6.1) */
 	if (HOVER) g_hash_table_remove(HOVER, t);   /* (1.6.1) */
 	if (t->box) gtk_widget_destroy(t->box); g_free(t);
 }
@@ -236,14 +238,73 @@ static void shape(tab *t)
 	gdk_window_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
 	gdk_window_input_shape_combine_region(gw, t->fs ? NULL : t->vis, 0, 0);
 }
+/* 1.6.1 (docs/plan-1.6.1.md Part 3, from 1.5.8): the desktop's menus and windows over Oracle's tabs. A WebKit page cannot be cut
+   on the screen in GTK 3 (its window's shape, a clip of its drawing, a native window: the page stayed on top in every drawing
+   mode, the Lite engine check of 2026-11-12, branch litetabs), so menus and windows went behind tab pages. Now, while anything
+   of the desktop covers part of a tab, the desktop shows a still picture of the page in the tab's place ('still' {img}, a JPEG;
+   tabs26.js), under its menus and windows, and the live page is moved out of sight (moved, not hidden: it stays a visible
+   page for WebKit, so its scripts, videos and the next picture go on); the picture is taken again every 2 s while covered.
+   Uncovered ('still' {img: null}), the live page is back where it was. Taken out of sight only once the picture is sent. */
+static void still_send(tab *t, cairo_surface_t *sf)
+{
+	GString *x = g_string_new("\"img\":");
+	GdkPixbuf *pb = sf ? gdk_pixbuf_get_from_surface(sf, 0, 0, cairo_image_surface_get_width(sf), cairo_image_surface_get_height(sf)) : NULL;
+	gchar *buf = NULL; gsize len = 0;
+	if (pb && gdk_pixbuf_save_to_buffer(pb, &buf, &len, "jpeg", NULL, "quality", "80", NULL)) {
+		gchar *b = g_base64_encode((guchar *)buf, len); g_string_append(x, "\"data:image/jpeg;base64,"); g_string_append(x, b); g_string_append_c(x, '"'); g_free(b);
+	} else g_string_append(x, "null");
+	g_free(buf); if (pb) g_object_unref(pb);
+	tabev(t, "still", x->str); g_string_free(x, TRUE);
+}
+static void apply_place(tab *t);
+typedef struct { char tid[64]; guint gen; } still_q;
+static void still_ready(GObject *o, GAsyncResult *res, gpointer d)
+{
+	still_q *q = d; tab *t = g_hash_table_lookup(TABS, q->tid); GError *err = NULL;
+	cairo_surface_t *sf = webkit_web_view_get_snapshot_finish(WEBKIT_WEB_VIEW(o), res, &err); if (err) g_error_free(err);
+	if (t && t->view == GTK_WIDGET(o)) t->still_busy = 0;
+	if (t && t->view == GTK_WIDGET(o) && t->still && t->still_gen == q->gen && sf) {
+		still_send(t, sf);
+		if (!t->still_up) { t->still_up = 1; apply_place(t); }
+	}
+	if (sf) cairo_surface_destroy(sf); g_free(q);
+}
+static void still_take(tab *t)
+{
+	if (t->still_busy) return; t->still_busy = 1;
+	still_q *q = g_new0(still_q, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->gen = t->still_gen;
+	webkit_web_view_get_snapshot(WEBKIT_WEB_VIEW(t->view), WEBKIT_SNAPSHOT_REGION_VISIBLE, WEBKIT_SNAPSHOT_OPTIONS_NONE, NULL, still_ready, q);
+}
+static gboolean still_again(gpointer d) { tab *t = d; if (!t->still) { t->still_timer = 0; return G_SOURCE_REMOVE; } still_take(t); return G_SOURCE_CONTINUE; }
+static void still_end(tab *t)
+{
+	if (!t->still) return;
+	t->still = t->still_up = 0; t->still_gen++;
+	if (t->still_timer) { g_source_remove(t->still_timer); t->still_timer = 0; }
+	tabev(t, "still", "\"img\":null");
+}
+/* after each place: 1 when the tab is covered and its picture is up (the live page is then out of sight) */
+static int still_step(tab *t)
+{
+	if (!t->vis || t->fs || !t->shown) { still_end(t); return 0; }
+	if (!t->still) { t->still = 1; t->still_up = 0; t->still_gen++; still_take(t); if (!t->still_timer) t->still_timer = g_timeout_add(2000, still_again, t); }
+	if (!t->still_up) return 0;
+	int W = gtk_widget_get_allocated_width(overlay);
+	gtk_widget_set_margin_start(t->box, (W > 0 ? W : 4000) + 64); gtk_widget_set_margin_top(t->box, t->y);
+	gtk_widget_set_size_request(t->box, t->w, t->h); gtk_widget_show(t->box);
+	GdkWindow *gw = gtk_widget_get_window(t->box); if (gw && gtk_widget_get_has_window(t->box)) { gdk_window_shape_combine_region(gw, NULL, 0, 0); gdk_window_input_shape_combine_region(gw, NULL, 0, 0); }
+	return 1;
+}
 static void apply_place(tab *t)
 {
 	if (t->fs) {
+		still_end(t);
 		int W = gtk_widget_get_allocated_width(overlay), H = gtk_widget_get_allocated_height(overlay);
 		gtk_widget_set_margin_start(t->box, 0); gtk_widget_set_margin_top(t->box, 0); gtk_widget_set_size_request(t->box, W, H);
 		gtk_widget_show(t->box); shape(t); tabs_order(); return;
 	}
-	if (!t->shown) { gtk_widget_hide(t->box); return; }
+	if (!t->shown) { still_end(t); gtk_widget_hide(t->box); return; }
+	if (still_step(t)) return;
 	gtk_widget_set_margin_start(t->box, t->x); gtk_widget_set_margin_top(t->box, t->y);
 	gtk_widget_set_size_request(t->box, t->w, t->h);
 	gtk_widget_show(t->box); shape(t); tabs_order();
