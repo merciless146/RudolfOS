@@ -18,7 +18,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("settings('disp')"); await wait(1200);
   const g = await q(`(()=>{const tg=SW.body.querySelector('.tbgrp');const labs=[...tg.querySelectorAll(':scope > label')].map(l=>l.textContent);const s=tg.querySelector('#dtbbs'),c=tg.querySelector('#dtbbac'),m=tg.querySelector('#dtbbacm');
     return {labs,st:s&&[...s.options].map(o=>o.textContent),v:s&&s.value,ck:c&&c.checked,md:m&&[...m.options].map(o=>o.textContent),mdis:m&&m.disabled}})()`);
-  ok('1. Taskbar: a Buttons style and Button colours, after the taskbar\'s own Style', JSON.stringify(g.labs.slice(-3)) == '["Style","Buttons","Button colours"]', g.labs);
+  ok('1. Taskbar: a Buttons style and Button colours, after the taskbar\'s own Style', JSON.stringify(g.labs.slice(g.labs.indexOf('Style'), g.labs.indexOf('Style') + 3)) == '["Style","Buttons","Button colours"]', g.labs);
   ok('2. ...the five styles (Standard is as now), Standard and unticked at first', JSON.stringify(g.st) == '["Standard (as the taskbar)","Wireframe","Monochrome","Candy","Retro"]' && g.v == 'standard' && !g.ck, g);
   ok('3. ...Normal / Negative / Complementary, off while unticked', JSON.stringify(g.md) == '["Normal","Negative","Complementary"]' && g.mdis, g);
   const btn = () => q("(()=>{const b=document.querySelector('#bar #tasks button:not(.on)')||document.querySelector('#bar #pins .pin')||document.querySelector('#bar #vol');const cs=getComputedStyle(b);return{bg:cs.backgroundColor,img:cs.backgroundImage,br:cs.borderRadius,bd:cs.borderTopWidth+' '+cs.borderTopStyle,sh:cs.boxShadow}})()");
