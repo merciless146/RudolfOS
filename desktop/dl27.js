@@ -47,7 +47,7 @@ function dlMatch(it){const N=dlCName(it.name);let r=DLN.pend.find(x=>x.st=='wait
 async function dlPoll(){clearTimeout(DLN.t);if(!dlOn()||!dlMine())return;if(DLN.busy){DLN.t=setTimeout(dlPoll,1500);return}DLN.busy=true;let active=false;
  try{const j=await rd('dl/incoming');const items=j.items||[];
   for(const it of items){const key=it.name+'\0'+it.size+'\0'+it.mtime;
-   if(it.partial){active=true;const r=DLN.pend.find(x=>x.st=='wait'&&(!x.part||x.part==it.name))||null;if(r){r.sz=it.size;r.part=it.name;if(r.gs!==it.size){r.gs=it.size;r.gt=Date.now()}}
+   if(it.partial){active=true;const r=DLN.pend.find(x=>x.st=='wait'&&(!x.part||x.part==it.name))||null;if(r){if(typeof dlSpeed=='function')dlSpeed(r,it.size);r.sz=it.size;r.part=it.name;if(r.gs!==it.size){r.gs=it.size;r.gt=Date.now()}}
     if(r&&Date.now()-r.gt>120e3){/* not grown for two minutes: Chromium is holding it. 1.5.5: "Unconfirmed N.crdownload"
      is a file Chromium waits to have confirmed, which the desktop cannot do (the policy now exempts the file types it
      asked about, as Rudolf OS checks every file itself); the old message blamed an insecure (http) address, which

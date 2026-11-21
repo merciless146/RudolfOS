@@ -8,6 +8,11 @@ Summary: In progress.
 - New: Oracle's status line (bottom left, where it says "Done") shows where a link goes while the mouse is over it:
   "Goes To: <address>". It covers links, image-map areas, a form's submit button and links in ads and other frames, on
   websites and Oracle's own pages; then the status line goes back to what it said. On Standard, Native and Lite.
+- New: Oracle's Downloads page shows a progress bar for a file that is arriving (how much so far and how fast, and with
+  a known size the percentage and the time left) and one being checked. Each download has Remove beside Open: a file in
+  Downloads goes to the Trash with it; otherwise the notification "File removed from list: Not in Downloads. Ask Blitzen
+  if you need help finding this file." has a "⚡ Ask Blitzen" button. Blitzen reads the download's record, the Trash and
+  where files of that name are, and says whether the file was moved, put in the Trash, deleted or never downloaded.
 - Fixed: Make a Rudolf OS USB stick on an older Rudolf OS stick said "/dev/sdb is in use (mounted at
   /run/rudolf/stkinfo-sdb/i). Unmount it first." Settings' look at what such a stick holds left its image mounted
   when the stick had no third partition. It now always unmounts, never looks while a stick is being made, and Make the
