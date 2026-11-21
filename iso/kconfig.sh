@@ -124,6 +124,13 @@ y SECURITY_YAMA
 y SECURITY_LANDLOCK
 $C --set-str LSM "lockdown,landlock,yama"
 y MD BLK_DEV_DM DM_VERITY CRYPTO_SHA256 EFIVAR_FS
+# 1.6.1 (docs/plan-1.6.1.md Part 20): the TPM 2.0 (the computer's security chip: AMD's and Intel's firmware TPMs through
+# CRB, discrete chips through TIS; QEMU's swtpm both), for the key the shared browser profile's website data is kept
+# under (rudolf-webkey, sealed to Secure Boot's measurements). Built in, so /dev/tpmrm0 is there before the desktop
+# starts. TCG_TPM2_HMAC off: the kernel's own use of the TPM here is its random numbers only, and the encrypted session
+# it would put on each of its own commands costs time at every start; rudolf-webkey's commands are its own
+y TCG_TPM TCG_TIS TCG_CRB
+n TCG_TPM2_HMAC
 # processor microcode (1.2.4): AMD's updates built into the kernel, so the start applies them before anything
 # else runs (fixes such as SRSO's "IBPB-extending microcode not applied"). UCODE_DIR: a folder holding
 # amd-ucode/ (the pinned files of firmware-extra.txt); without it the kernel has none, as before.

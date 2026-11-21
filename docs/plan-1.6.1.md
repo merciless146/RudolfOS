@@ -988,6 +988,31 @@ From the comparison with other distributions on 2026-11-19: the weak points name
   narrower one; the page's API checked against a list of what each window may call.
 - **An outside security review:** before 2.0, a review by people outside the project of rudolfd's API, the sign-in and
   encryption, the update and recovery chain and the development link; findings fixed, published with the release.
+- **Status: Standard's website data, "off" (2026-11-21, branch tpm-webdata; webkey-check.yml; docs/website-data-key.md).**
+  The release's kernel had no TPM driver: TCG_TPM, TCG_CRB (firmware TPMs: the Vivobook's) and TCG_TIS added, built in,
+  with their lines in iso/kconfig-required.txt (Part 12's check); TCG_TPM2_HMAC off (only the kernel's own random
+  numbers use it here, and its session costs time at each start). rudolf-webkey (iso/sys/rudolf-webkey.c, the TPM's
+  commands written out, through /dev/tpmrm0, root only; no tpm2-tss) seals a 32-byte secret under the owner hierarchy's
+  ECC storage key to **PCR 7** (Secure Boot's state, its keys, the certificate each start-up file was checked with) and
+  **PCR 14** (shim's MOK list), not 0-6 (firmware and boot-loader updates, settings) nor 11-12 (nothing measured there):
+  updates of Rudolf OS change neither. Chromium's password is HKDF of it, given by rudolf-webkey's KWallet stand-in on the
+  desktop's session bus (`--password-store=kwallet6`: Chromium 157 asks KWallet's openAsync, then readPassword); before
+  Chromium starts, every "v10" value of the profile (cookies, saved site passwords, payment cards) is encrypted again as
+  "v11". The session's webkey_start (once per start) sets PWSTORE for every Chromium of the shared profile: Standard's
+  desktop, Native's Oracle, rudolf-shellfix (found: Chromium drops what it cannot read, so all three must agree).
+  Falls back to Chromium's built-in key, said in System health and Settings › Oracle › Website data (rudolfd's GET
+  webkey): no TPM; the TPM refusing (an owner's password, locked out: nothing changed); Secure Boot's measurements changed
+  or the TPM cleared (a new key at once: websites sign in again, said once). **Tests:** webkey161_t.sh 25/25 (swtpm;
+  tpm2-tools' own policy session opens the same object to the same key; Rudolf's Chromium: v11 written and read, a v10
+  profile moved over, nothing readable with the built-in key), webkey161_t.js 10/10, wk161_t.py in QEMU (swtpm as a CRB
+  TPM, a kernel with the driver; the session's own webkey_start; a restart; Microsoft's keys enrolled in the firmware with
+  Secure Boot still off, which changes PCR 7). **Not covered:** the computer itself taken (it starts Rudolf OS, which
+  opens the key; the sign-in is then what protects them), signed-in use (anything running as the desktop's user can ask
+  the key store), a discrete TPM's bus while it starts (no parameter encryption; firmware TPMs have no bus), Lite and the
+  RudolfWeb windows' profile, and what Chromium does not encrypt itself (history, cache, site storage). **For the owner
+  (Vivobook):** after a beta with this, Settings › Oracle › Website data says "encrypted with a key kept in this
+  computer's security chip"; turn Secure Boot off and on again in the firmware: one start each says "a new key" in
+  System health and websites ask to sign in again; a firmware update leaves the key as it was.
 - **Standard's website data, "off":** a key sealed in the computer's TPM (bound to Secure Boot's measurements) in place
   of Chromium's built-in key, so a drive taken out cannot read the shared profile's cookies; written up with what it
   does not cover (the computer itself taken, signed-in use). From 1.6.0 Part 22's "could come later".
