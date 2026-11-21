@@ -135,7 +135,7 @@ class H(http.server.BaseHTTPRequestHandler):
             sid = s['id'] if s else ''
             st = sget(data, 'bd95set:' + sid) if sid else None
             if st is None: st = sget(data, 'bd95set') or {}
-            K = ["bs", "b1", "b2", "dyn", "dm", "lat", "wpimg", "wpfit", "tb", "tbstyle", "tbac", "tbacm", "tbbstyle", "tbbac", "tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", "icons", "icstyle", "nl", "dnd", "sr", "mag", "cb", "vk", "touch", "tx"]
+            K = ["bs", "b1", "b2", "dyn", "dm", "lat", "wpimg", "wpfit", "tb", "tbstyle", "tbac", "tbacm", "tbbstyle", "tbbac", "tbbacm", "twstyle", "twacm", "accent", "darkui", "ck", "h24", "df", "tz", "doff", "ff", "fs", "lang", "scale", "icons", "icstyle", "nl", "dnd", "sr", "mag", "cb", "vk", "touch", "tx", "tbpcol"]
             pins = sget(data, 'bd95pins:' + (sid or 'nobody'))
             nt = sget(data, 'bd95notif:' + (sid or 'nobody')) or []
             wall = bool(sid and st.get('wpimg') and rd('wall.jpg'))

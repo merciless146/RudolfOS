@@ -60,7 +60,8 @@ async function wzDebRun(W,path,file,info){const name=info.package||path.at(-1);
  let n=0;const j=await lxJobWait(l=>{log.textContent+=l+'\n';let m;
   if((m=/^step (.*)/.exec(l))){step.textContent=m[1]+'…';n=Math.max(n,m[1]=='Installing'?30:m[1]=='Adding what it recommends'?70:5)}
   else if(/^(Get|Unpacking|Setting up|Selecting|Preparing)/.test(l)){n=Math.min(95,n+3);step.textContent=l.replace(/\s*\.\.\.$/,'').slice(0,90)}
-  bar.style.width=n+'%'});
+  bar.style.width=n+'%';if(typeof winProgress=='function')winProgress(W,n,'install')});
+ if(typeof winProgress=='function')winProgress(W,null,'install');   /* (1.6.1 Part 25: on its minimized window's taskbar button too) */
  if(j.status!=0){bar.style.width='100%';bar.style.background='#c0392b';
   const last=(j.log||'').trim().split('\n').filter(l=>/^E:|error|rudolf-debian/i.test(l)).slice(-2).join(' ')||(j.log||'').trim().split('\n').pop()||'';
   step.textContent=(j.crashed&&typeof jobCrashText=='function'?jobCrashText(j):name+' could not be installed: '+last);wzFoot(W,[['Close',()=>W.close()]]);return}

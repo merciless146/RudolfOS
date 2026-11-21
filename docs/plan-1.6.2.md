@@ -433,8 +433,23 @@ weight (20) is one line in /usr/lib/rudolf/gamemode.
   on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
   Native; calls; a real CAC only when the owner asks.
 
+### 25b. Linux apps' progress on their taskbar buttons (from 1.6.1 Part 25, item 5)
+Firefox, Chromium-based apps (Discord, VS Code, Steam's web parts) and others say their downloads' progress with the Unity
+LauncherEntry D-Bus signal (com.canonical.Unity.LauncherEntry, Update: the app's application://NAME.desktop, "progress" 0-1 and
+"progress-visible"). Not done in 1.6.1 Part 25: the apps run as each account's own Linux user on that account's own session bus
+(/run/user/UID/bus, its folder 0700), and the shell, the desktop user, cannot listen there without opening the account's bus to it.
+The way that weakens nothing:
+- the account's own rudolf-portal (already that user's process on that bus) listens for the signal and leaves a progress note in its
+  request folder as it leaves its questions (rudolfd's /run/rudolf/portal/req: each request its sender's, 0600);
+- rudolfd passes on only a desktop file id (letters, digits and . - _) and a number, checking the note is from that account's portal
+  (its peer check and owner), and the confinement lists (confinepure, winapi) are updated for the new kind;
+- rudolf-native (and Standard's page, through linux26.js's lxtb buttons) maps the desktop file id to the account's window
+  (_GTK_APPLICATION_ID, WM_CLASS, the lx: key) and calls the same fill (tbp_set; winProgress on Standard).
+A host test with a D-Bus sender on a stand-in account bus; the owner's check: a Firefox download with Firefox minimized.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist and 19b's measurements with the owner, after the 1.6.1 beta.
 3. Part 8 with the MiFi, then Part 7; then the phone: Part 4, Part 6's items measured, 9b, Part 5 when the hardware is there.
 4. 21b after each beta.
+5. 25b (Linux apps' progress on their taskbar buttons), then a Firefox download checked on the Vivobook.

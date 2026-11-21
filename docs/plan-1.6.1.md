@@ -1641,6 +1641,49 @@ applySet through 11, themeApply through 7, and one section that failed stopped e
   is changed. Speed: unchanged (the extra calls cost microseconds); the gain is code that is easier to follow and a
   failing section that no longer hides the rest.
 
+### 25. Progress on a minimized window's taskbar button (added on 2026-11-21)
+The owner, 2026-11-21: "When a window is minimized but has a task ongoing (downloads, page-loading, request sending, etc) can it's
+taskbar button show an inset loading feature that fills the button as if it were a loading bar from the left edge to the right edge?
+This loading feature is green by default but can be set to other colors." For work with no real percentage the owner chose a
+"creeping fill".
+- **The fill** (desktop/tbprog61.js): 3 px inside the button's edge, round corners, behind the picture and the title (which stay as
+  they are), the colour at half (65 % with high contrast); only while the window is minimized: restoring it hides it, minimizing it
+  again shows where the work is now. A percentage fills that much (0.35 s to a new width); work with none creeps towards 90 %
+  (90 × (1 − e^(−t / 6 s))); when it ends: 100 %, then it fades (0.3 s, 0.5 s). Windows grouped on one button: a minimized one's.
+  In every taskbar and button style (tbstyle56, tbbtn59), at the bottom, top, left and right, dark and light, high contrast.
+- **The colour:** Display Properties › Taskbar › Progress colour (S.tbpcol): Green (as it comes), Blue, Orange, Purple, Red, the
+  accent colour, or any colour (a colour picker); applied at once, saved with the taskbar's other settings (DKEYS; rudolfd's
+  desktop/settings gives it to the native shell).
+- **The API:** winProgress(W, v[, src]): v 0-100, 'busy' or null; several sources on one window (a percentage over 'busy', several
+  averaged). Found by itself while a window is minimized: a <progress> or [role=progressbar] in its body (a value or aria-valuenow:
+  that percentage; none: busy; 100 %: finished; hidden ones not counted), and an Oracle window loading a page (W.oLoading, its tabs'
+  load state). A window with work in progress does not rest (rest61.js, Part 23 C).
+- **The sources:** downloads (dl27.js: on the Oracle window in front when the download began, else Oracle's last used; a percentage
+  when the size is known, else busy: Chromium's partial file does not say its size); File Explorer's copies and moves (xfer61.js: on
+  the window they were asked in, bytes or items) and Part 22's progress window (its bar); a drive's copy (drivecopy60.js: on the File
+  Explorer window, its percentage); Extract here (dlzip61.js: its window, its percentage); the App Store's, the Library's and
+  Packages' installs and updates, Linux apps' installs, system updates and extensions (pkgJob, lxJobWait, sysuJob, sxJobWait: busy,
+  on the window in front when it was asked for with a click or a key in the last 15 s; the daily update check has none), the .deb
+  wizard (install56.js: its own percentage); printing (print25.js: from Print until the queue has it); Messages sending (msgSend);
+  Oracle's pages loading (Standard's real tabs, and Native's Oracle in Chromium: rudolf-launch adds its window's place, "prog X Y W
+  H V", as for its title). Not wired: Mail (Rudolf hands the message to web mail in Oracle, whose loading shows, or to the
+  clipboard: nothing of its own is sent), the print queue after a job is sent (the computer's, not a window's: Settings › Devices ›
+  Print queue), Oracle's frames fallback (its frames' loading is not known), the Wine installers (they wait for the person), and
+  Standard's encrypted Oracle (orawin: a Chromium of its own, outside windows on Standard's taskbar as Linux apps' are: with item 5).
+- **The native desktop** (the owner's rule): each window's page tells the shell (oneapp59.js oaPost, op "prog": a number, busy or
+  nothing; its own work and its <progress> bars found whether minimized or not, the shell knowing which), and rudolf-native draws
+  the same fill on its own taskbar while the window is minimized (tbp_*: the same place, colour, creep, move and fade; snapped to
+  whole pixels as Chromium places them), the other monitors' taskbars too. Lite: the page's own taskbar, the same code as Standard's.
+- **Linux apps** (the Unity LauncherEntry D-Bus progress Firefox, Chromium-based apps and others send): not in this part. They run
+  as each account's own Linux user on that account's own session bus (rudolfd-users.inc: /run/user/UID/bus, its folder 0700); the
+  shell (the desktop user) cannot listen there without opening one account's bus to it, which would undo what keeps the accounts
+  apart. Moved to docs/plan-1.6.2.md (25b) with the way that keeps everything.
+- **Status (2026-11-21, branch taskbar-progress):** built. Tests: iso/qt/shell2/tbprog61_t.js (Chromium with a stand-in rudolfd, 43
+  checks, the native page's messages included); iso/qt/native/same_t.sh's prog-* cases (Standard and Native compared: 40 % and busy,
+  the four button styles, dark and blue, the accent colour, ended, at the left with any colour). **For the owner, on the
+  Vivobook:** minimize Oracle while a big page loads; a download with Oracle minimized; a file copy (File Explorer minimized);
+  change the colour (a preset, the accent colour, any colour); each on Standard and Native.
+
 ## Not moved here
 - **Oracle's website data encrypted:** written here on 2026-11-19, moved to 1.6.0 the same day (the owner: "Put it in
   1.6.0 instead"): docs/plan-1.6.0.md Part 22.
@@ -1673,3 +1716,5 @@ applySet through 11, themeApply through 7, and one section that failed stopped e
    scheduled with the rest of 1.6.1).
 10. Part 11's remaining groups (after drives, updates, the accounts' folders, accounts and power), one PR per group.
 11. Part 24 (Settings' pages built from one list), after every other 1.6.1 task's PR, before the final beta.
+12. Part 25 (progress on a minimized window's taskbar button): one PR (taskbar-progress), then the owner's checks on the Vivobook;
+    Linux apps' progress (item 5) in docs/plan-1.6.2.md (25b).

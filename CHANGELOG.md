@@ -5,6 +5,12 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- New: a minimized window's taskbar button shows the work it is doing: the button fills from its left edge to its right, a few
+  pixels inside its edge and behind its picture and title, as a progress bar (a download, a page loading in Oracle, a copy or move
+  in File Explorer, a drive's copy, Extract here, an installation or update, printing, a text message being sent, and any progress
+  bar in the window). Work with no percentage creeps towards the end and completes when it is done; the fill fades away then, and
+  restoring the window hides it. Green as it comes: Display Properties › Taskbar › Progress colour has Blue, Orange, Purple, Red,
+  the accent colour and any colour. The same on Standard, Native and Lite.
 - Fixed: Find printers finds network printers with the firewall on (found on a Vivobook: it listed none). It now asks
   the network as other computers do (multicast DNS from its own port, 5353), and the firewall lets in only those
   answers, from the local network and never on a cellular connection; nothing else is opened. Printers that answer
