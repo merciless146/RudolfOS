@@ -256,6 +256,10 @@ scan_main() {
 }
 
 # ---------------------------------------------------------------- unlock (BitLocker)
+# (1.6.2 Part 27, BitLocker in QEMU: the base layer's udev has no device-mapper rules (they come with dmsetup, not udev), so
+#  cryptsetup's libdevmapper would wait for ever for udev to say the mapping is ready; DM_DISABLE_UDEV: it makes
+#  /dev/mapper/rbl-PART itself. Only for these mappings, nothing else changes. The kernel: dm-crypt built in, and AES, XTS,
+#  CBC and ECB for BitLocker's AES-XTS, AES-CBC (eboiv) and the Elephant diffuser: iso/kconfig-required.txt)
 unlock_main() {
 	P=$1; word_ok "$P" && [ -e "$SYS/class/block/$P" ] || die 2 "No such partition: $P"
 	[ "$(kind_of "$DEVD/$P")" = bitlocker ] || die 2 "$P is not locked with BitLocker."
@@ -269,7 +273,7 @@ unlock_main() {
 		printf '%s' "$K" | cryptsetup open --type bitlk --readonly --test-passphrase --key-file=- "$DEVD/$P" >/dev/null 2>&1; R=$?
 	else
 		[ -b "$DEVD/mapper/rbl-$P" ] && { K=; echo "already open"; exit 0; }
-		printf '%s' "$K" | cryptsetup open --type bitlk --readonly --key-file=- "$DEVD/$P" "rbl-$P" 2>"$ST/unlock.err"; R=$?
+		printf '%s' "$K" | DM_DISABLE_UDEV=1 cryptsetup open --type bitlk --readonly --key-file=- "$DEVD/$P" "rbl-$P" 2>"$ST/unlock.err"; R=$?
 	fi
 	K=; R2=$R
 	case $R2 in 0) echo "opened (read-only)"; exit 0;; 2) echo "That key does not open it."; exit 3;;
@@ -281,7 +285,7 @@ close_main() {
 	D=$1; word_ok "$D" || die 2 "No such disk."
 	for P in $(parts_of "$D") $D; do
 		M=$(mp_of "$P"); is_mounted "$M" && umount "$M" 2>/dev/null; rmdir "$M" 2>/dev/null
-		[ -b "$DEVD/mapper/rbl-$P" ] && cryptsetup close "rbl-$P" 2>/dev/null
+		[ -b "$DEVD/mapper/rbl-$P" ] && DM_DISABLE_UDEV=1 cryptsetup close "rbl-$P" 2>/dev/null
 	done
 	return 0
 }

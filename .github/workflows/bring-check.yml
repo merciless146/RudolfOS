@@ -4,14 +4,17 @@
 # (Playwright: the installer's step and Bring in files, on Standard's page and Native's app window), and in QEMU on the
 # newest beta with this tree's rudolfd, rudolf-rootd, helpers, bringfiles.sh and install.sh put in place (bring62_q.py).
 # The QEMU job runs on a push that changes .github/bring62-run.txt (its line serial=SERIAL picks a release; empty: the
-# newest beta) and by hand. Nothing is published.
+# newest beta) and by hand. 1.6.2 (Part 27's BitLocker): the bitlocker job, with bitlocker=1 in that file, builds this tree's
+# kernel (iso/systools/testkernel.sh, kept as this run's artifact only: dm-crypt built in) and starts it in QEMU on the same
+# release, cryptsetup added as the base layer will have it, and opens cryptsetup's own BitLocker test images (AES-XTS, AES-CBC,
+# the Elephant diffuser) through rudolfd with their recovery keys (bring62_q.py's B checks). Nothing is published.
 name: Bring your files check
 on:
   workflow_dispatch:
   push:
     paths: ['.github/bring62-run.txt']
   pull_request:
-    paths: ['iso/sys/root/usr/lib/rudolf/bringfiles.sh', 'iso/sys/root/usr/lib/rudolf/install.sh', 'iso/sys/rudolf-drives.c', 'iso/sys/rudolfd-bring.inc',
+    paths: ['iso/sys/root/usr/lib/rudolf/bringfiles.sh', 'iso/kconfig-required.txt', 'iso/sys/root/usr/lib/rudolf/install.sh', 'iso/sys/rudolf-drives.c', 'iso/sys/rudolfd-bring.inc',
       'desktop/bring62.js', 'iso/qt/host/bringfiles62_t.sh', 'iso/qt/host/bringhelper62_t.sh', 'iso/qt/shell2/bring62_t.js', 'iso/qt/sb/bring62_q.py',
       '.github/workflows/bring-check.yml']
 permissions: {contents: read}
@@ -83,3 +86,59 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: bring62, retention-days: 7, path: "run/bring62.txt\nrun/b62*/qemu.log\nrun/b62*/*.png"}
+  bitlocker:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: |
+          echo "N_serial=$(sed -n 's/^serial=//p' .github/bring62-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV
+          echo "N_bitlk=$(sed -n 's/^bitlocker=//p' .github/bring62-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV
+      - name: Tools
+        if: env.N_bitlk == '1'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs ntfs-3g dosfstools python3-cryptography libssl-dev zlib1g-dev bzip2 squashfs-tools bc flex bison libelf-dev kmod cryptsetup-bin >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+          mkdir -p bitlk && curl -sSfL --retry 3 https://raw.githubusercontent.com/mbroz/cryptsetup/main/tests/bitlk-images.tar.xz | tar xJ -C bitlk && ls bitlk/bitlk-images | head -3
+      - name: This tree's kernel (the release's Linux 6.18.y, kconfig.sh as it is; an artifact of this run only)
+        if: env.N_bitlk == '1'
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
+          S=$(date +%s); OUT=$PWD/kout bash iso/systools/testkernel.sh; echo "built in $(( $(date +%s) - S )) s"
+          grep -E '^CONFIG_(DM_CRYPT|CRYPTO_AES|CRYPTO_XTS|CRYPTO_CBC|CRYPTO_ECB|MODULE_SIG_FORCE|SECURITY_LOCKDOWN_LSM)=' kout/config.txt || true
+          echo "::notice title=BitLocker's kernel::Linux $KERNEL_VERSION, $(grep -cE '^CONFIG_(DM_CRYPT|CRYPTO_AES|CRYPTO_XTS|CRYPTO_CBC|CRYPTO_ECB)=y' kout/config.txt)/5 BitLocker options built in"
+      - name: The release
+        if: env.N_bitlk == '1'
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          echo "::notice title=BitLocker check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)) with this tree's kernel"
+      - name: This tree's rudolfd, helpers, bringfiles.sh, and cryptsetup as ci_release.sh adds it to the base layer
+        if: env.N_bitlk == '1'
+        run: |
+          . iso/systools/hardflags.sh; mkdir -p fix/root fix/lib fix/cs/lib
+          gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/rudolf-rootd iso/sys/rudolf-rootd.c
+          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c -Wl,-Bstatic -lz -Wl,-Bdynamic; done
+          gcc -O2 $HARD -o fix/root/drives-home iso/sys/rudolf-drives-home.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          cp iso/sys/root/usr/lib/rudolf/bringfiles.sh iso/sys/root/usr/lib/rudolf/install.sh fix/lib/
+          cp /usr/sbin/cryptsetup fix/cs/; for l in $(ldd /usr/sbin/cryptsetup | awk '/=>/{print $3}'); do cp -L "$l" fix/cs/lib/; done; ls -la fix/cs fix/cs/lib
+      - name: BitLocker in QEMU (bring62_q.py's B checks, then the rest as before)
+        if: env.N_bitlk == '1'
+        run: mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} BRING_FIX=$PWD/../fix BRING_KERNEL=$PWD/../kout BRING_BITLK=$PWD/../bitlk/bitlk-images python3 ../iso/qt/sb/bring62_q.py ../rel
+      - if: always() && env.N_bitlk == '1'
+        uses: actions/upload-artifact@v4
+        with: {name: bring62-bitlocker, retention-days: 7, path: "run/bring62.txt\nrun/b62*/qemu.log\nkout/config-extra.txt"}
