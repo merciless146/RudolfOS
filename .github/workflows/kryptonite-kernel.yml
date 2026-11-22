@@ -87,6 +87,8 @@ jobs:
     #  them, for the record (the handover's second start fails there as before)
     strategy: {fail-fast: false, matrix: {k: [{name: '', kv: '', extra: '', off: '', nopatch: ''}, {name: unpatched, kv: '', extra: '', off: '', nopatch: '1'}]}}
     name: build ${{ matrix.k.name }}
+    # (the unpatched kernel is expected to fail the handover: it is there for the record, not as a check)
+    continue-on-error: ${{ matrix.k.nopatch == '1' }}
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
       - uses: actions/checkout@v5
