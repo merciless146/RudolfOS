@@ -536,11 +536,12 @@ one that draws its own), a game in full screen; minimize and close from Rudolf's
 Ember Reach's duels (rudolfos-library, Ember Reach 0.5.2) on a LAN as well as online; the owner: "Go with WebSocket and
 LAN as the selectable options for networking for the player". A game page can't accept connections, so while a player
 hosts, Rudolf OS runs a small relay on that computer, and the other computer finds it.
-- **The relay:** `rudolf-duel serve` (iso/sys/rudolf-duel.c) speaks the Library relay's protocol (tools/duel-relay).
-  - It hosts one room with the code rudolfd chose, for that game and version. Another version is refused with a
-    message.
-  - Every message is passed to the other game as sent, never with an address.
-  - Limits: 4 connections, 8 KB a message, 120 a second, one minute silent. Text that isn't UTF-8 is refused.
+- **The relay:** `rudolf-duel serve` (iso/sys/rudolf-duel.c) speaks the Library relay's protocol (rudolfos-library
+  docs/duel-protocol.md, tools/duel-relay/protocol.mjs), with one room, as `relay.mjs --lan CODE` has it.
+  - The room has the code rudolfd chose, for that game and version. Another version is refused with a message.
+  - The games' messages are passed to the other as sent, never with an address.
+  - Limits (protocol.mjs's): 8 KB a message, 90 a second, 10 s to say hello, 60 s silent once paired; 4 connections.
+    Text that isn't UTF-8 is refused.
 - **Who and where:**
   - It runs as the signed-in account's own Linux user (the desktop's with nobody signed in), never root (it refuses
     to), with no new privileges and no extra groups.
@@ -549,12 +550,12 @@ hosts, Rudolf OS runs a small relay on that computer, and the other computer fin
     is opened just before the relay starts and closed by its watcher the moment the relay ends.
 - **When:**
   - Started only when the player hosts (the game kit's `lanHost` → desktop/duel62.js → rudolfd's `duel/host`).
-  - Stops by itself when the hosting game leaves, when no game hosts within a minute, or when nobody joins in half an
-    hour. The game's `lanStop` (`duel/stop`) also stops it.
+  - Stops by itself when its duel ends (the hosting game leaves, or either player once paired), when no game hosts
+    within a minute, or when nobody joins in 10 minutes. The game's `lanStop` (`duel/stop`) also stops it.
 - **Found by multicast DNS:**
-  - Announced as `NAME._rudolf-duel._tcp.local`, with TXT game=, v= and code=, on the interfaces that are up (not
-    cellular). It answers only questions for itself, and says goodbye when it ends.
-  - `duel/find` runs `rudolf-duel find` as the account's user and lists that package's games on the network.
+  - Announced as `NAME._emberduel._tcp.local` (the Library's protocol names it), with TXT game=, ver= and code=, on
+    the interfaces that are up (not cellular). It answers only questions for itself, and says goodbye when it ends.
+  - `duel/find` runs `rudolf-duel find` as the account's user and lists that game's duels on the network.
   - Port 5353 is shared with Find printers. The parsing is bounded and fuzzed.
 - **Who may ask:**
   - rudolfd's `duel/` requests are authorized like the page's other system calls (the token and the peer check: only
@@ -567,6 +568,8 @@ hosts, Rudolf OS runs a small relay on that computer, and the other computer fin
     while hosting; found by mDNS from the home network but not the cellular one; a duel and another version through
     it; stopping when the host leaves, on duel/stop and with nobody hosting; duel/find; and the fuzz test.
   - `iso/qt/shell2/duel62_t.js`: the page answering the game kit.
+  - `iso/qt/shell2/duelgame62_t.sh`: the Library's own two-page Ember Reach test, its LAN relay swapped for
+    rudolf-duel: the LAN duel through it.
 - **The owner's checklist (two computers on the home network, both on a 1.6.2 beta with this, Ember Reach 0.5.2):**
   1. A: Ember Reach › Duels › LAN › Host on this network. A room code shows.
   2. B: Duels › LAN › Find games. A is listed by its computer name: Join. The match starts on both.

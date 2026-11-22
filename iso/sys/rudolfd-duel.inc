@@ -3,16 +3,18 @@
  * connections, so while a player hosts, this computer runs the LAN game relay (/usr/bin/rudolf-duel serve) and the
  * other's Rudolf OS finds it by multicast DNS. The game asks through the game kit (RG.lan), the desktop asks here
  * (desktop/duel62.js), so only the desktop reaches these (rudolfd's token and the peer check, as every request):
- *   POST duel/host?v=VERSION&game=PKG   the relay started for that game and version (one running is stopped first):
- *                                       {ok, url ("ws://192.168.1.20:47731/"), code, name, port}
- *   POST duel/stop                      stopped
- *   GET  duel/find?game=PKG             the games of that package hosted on the network: {ok, games: [{name, url, code, v}]}
- *   GET  duel/status                    {ok, running, port, code}
+ *   POST duel/host?ver=VERSION&game=GAME   the relay started for that game (its game kit id: "ember-reach") and version
+ *                                          (one running is stopped first): {ok, url ("ws://192.168.1.20:47731/"), code,
+ *                                          name, port}
+ *   POST duel/stop                         stopped
+ *   GET  duel/find?game=GAME               that game's duels hosted on the network: {ok, games: [{name, url, code, ver}]}
+ *   GET  duel/status                       {ok, running, port, code}
+ * The relay speaks the Library relay's protocol (rudolfos-library docs/duel-protocol.md) with one room.
  * The relay runs as the signed-in account's own Linux user (the desktop's user with nobody signed in), never root, with
  * no new privileges, its own session; it answers only the local network, and the firewall's duel chain lets its port in
  * from private addresses, never on a cellular interface, only while it runs: opened before it starts, closed by its
  * watcher (a process of rudolfd's that waits for it) as soon as it ends, whether stopped here or by itself (it stops when
- * the hosting game leaves, when no game hosts within a minute, or when nobody joins in half an hour). /run is a tmpfs:
+ * its duel ends, when no game hosts within a minute, or when nobody joins in 10 minutes). /run is a tmpfs:
  * nothing of it survives a restart. Finding runs rudolf-duel find as the same user. */
 #include <grp.h>
 #include <ifaddrs.h>
@@ -100,7 +102,7 @@ static void api_duel(struct req *r, const char *what, int post)
 		reply_json(r->fd, &s); return;
 	}
 	if (!strcmp(what, "find")) {
-		char *gm = qparam(r->query, "game"); if (!duel_word(gm, 40, "-")) { reply_err(r->fd, 400, "game=PACKAGE"); return; }
+		char *gm = qparam(r->query, "game"); if (!duel_word(gm, 40, "-")) { reply_err(r->fd, 400, "game=GAME"); return; }
 		char game[48]; snprintf(game, sizeof game, "%s", gm);
 		uid_t u; gid_t g; char home[300]; if (!duel_user(&u, &g, home, sizeof home)) { reply_err(r->fd, 403, "not as root"); return; }
 		int pf[2]; if (pipe2(pf, O_CLOEXEC)) { reply_err(r->fd, 500, "cannot look"); return; }
@@ -117,17 +119,18 @@ static void api_duel(struct req *r, const char *what, int post)
 	if (!post) { reply_err(r->fd, 405, "use POST"); return; }
 	if (!strcmp(what, "stop")) { duel_stop(); reply_ok(r->fd, "stopped"); return; }
 	if (strcmp(what, "host")) { reply_err(r->fd, 404, "unknown duel action"); return; }
-	char *vq = qparam(r->query, "v"), *gq = qparam(r->query, "game");
-	if (!duel_word(vq, 20, ".+-") || !duel_word(gq, 40, "-")) { reply_err(r->fd, 400, "v=VERSION and game=PACKAGE"); return; }
+	char *vq = qparam(r->query, "ver"), *gq = qparam(r->query, "game");
+	if (!duel_word(vq, 20, ".+-") || !duel_word(gq, 40, "-")) { reply_err(r->fd, 400, "ver=VERSION and game=GAME"); return; }
 	char v[24], game[48], addr[64], name[48], code[8];
 	snprintf(v, sizeof v, "%s", vq); snprintf(game, sizeof game, "%s", gq);
 	uid_t u; gid_t g; char home[300]; if (!duel_user(&u, &g, home, sizeof home)) { reply_err(r->fd, 403, "not as root"); return; }
 	duel_stop();
 	if (!duel_addr(addr, sizeof addr)) { reply_err(r->fd, 409, "This computer isn't on a home network (Wi-Fi or a cable): connect to the same network as the other player."); return; }
-	/* the room code: six of the relay's letters and digits, from the kernel's random numbers */
-	static const char AL[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; unsigned char rb[6]; int rf = open("/dev/urandom", O_RDONLY | O_CLOEXEC);
-	if (rf < 0 || read(rf, rb, 6) != 6) { if (rf >= 0) close(rf); reply_err(r->fd, 500, "no random numbers"); return; } close(rf);
-	for (int i = 0; i < 6; i++) code[i] = AL[rb[i] & 31];
+	/* the room code: six of the relay's letters and digits (protocol.mjs's: no 0/O, 1/I/L), from the kernel's random numbers */
+	static const char AL[] = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; int rf = open("/dev/urandom", O_RDONLY | O_CLOEXEC), k6 = 0;
+	while (rf >= 0 && k6 < 6) { unsigned char b; if (read(rf, &b, 1) != 1) break; if (b < 248) code[k6++] = AL[b % 31]; }   /* (248 = 31 * 8: none favoured) */
+	if (rf >= 0) close(rf);
+	if (k6 < 6) { reply_err(r->fd, 500, "no random numbers"); return; }
 	code[6] = 0;
 	/* the computer's name, as the other player sees it */
 	char hn[64] = ""; if (gethostname(hn, sizeof hn - 1)) hn[0] = 0; hn[sizeof hn - 1] = 0;

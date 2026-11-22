@@ -10,7 +10,7 @@ Summary: In progress.
   and announces it on the network; on the other computer Find games lists it, and the two games meet through it.
   Nothing goes over the internet. The relay runs as your account's own user (never as root), answers only the local
   network, and the firewall opens its port to the home network only (never on a cellular connection) and only while a
-  game is hosted. It stops when the hosting game leaves, or within a minute if none connects.
+  game is hosted. It stops when the duel ends, or within a minute if no game connects.
 
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.

@@ -1,23 +1,27 @@
 /* rudolf-duel: the LAN game relay for two-player games from the Rudolf OS Library (Ember Reach's duels), docs/plan-1.6.2.md
  * Part 30. A browser page cannot take connections, so while a player hosts, this computer runs a small WebSocket relay
  * on the local network and announces it there by multicast DNS; the other player's Rudolf OS finds it and the two
- * games meet through it. The protocol is the Library's duel relay's (rudolfos-library tools/duel-relay):
- *   a game says {t:"host",v,proto} (the relay answers {t:"room",code}) or {t:"join",code,v,proto}; paired, both get
- *   {t:"paired",role}, and every message one sends goes to the other as it is; one leaving, the other gets {t:"gone"}.
- *   Refusals: {t:"error",why,text} (version, proto, room, full, bad, size, rate, busy, idle).
+ * games meet through it. The protocol is the Library's duel relay's (rudolfos-library docs/duel-protocol.md,
+ * tools/duel-relay/protocol.mjs), with one room, as `relay.mjs --lan CODE` has it:
+ *   a game's first message is {t:"hello",proto:1,game,ver,want:"host"|"join"|"quick",code}; hosting, the relay answers
+ *   {t:"room",code}; paired, both get {t:"paired",role}, and every message beginning {"t":"g" goes to the other as it
+ *   is; one leaving, the other gets {t:"left"}. Refusals: {t:"error",why,text} (bad, version (with the room's ver),
+ *   room, full, busy, limit, time), then the connection is closed.
  *
- *   rudolf-duel serve --port P --code CODE --v VERSION --game PKG --name NAME --addr A.B.C.D [--wait S]
- *       the relay, for one game of one version, with its room code (rudolfd chooses it): announced as
- *       NAME._rudolf-duel._tcp.local (TXT game=, v=, code=). It stops by itself when the hosting game leaves, when no
- *       game hosts within --wait seconds (60), or when nobody joins in 30 minutes; and on SIGTERM (rudolfd's duel/stop).
- *   rudolf-duel find [--game PKG] [--ms 2500]
- *       the games hosted on the network: {"ok":true,"games":[{"name","url","code","v","game"}]}
+ *   rudolf-duel serve --port P --code CODE --v VERSION --game GAME --name NAME --addr A.B.C.D [--wait S]
+ *       the relay for one game (its game kit id, "ember-reach") and version, with its room code (rudolfd chooses it):
+ *       announced as NAME._emberduel._tcp.local (TXT game=, ver=, code=). Its work is done, and it stops, when the
+ *       room closes (the hosting game leaves, or either player once paired), when no game hosts within --wait seconds
+ *       (60), or when nobody joins in 10 minutes; and on SIGTERM (rudolfd's duel/stop).
+ *   rudolf-duel find [--game GAME] [--ms 2500]
+ *       the games hosted on the network: {"ok":true,"games":[{"name","url","code","ver","game"}]}
  *
  * Started by rudolfd (rudolfd-duel.inc) as the signed-in account's own Linux user, never root (it refuses to run as root),
  * with no new privileges. It takes connections only from loopback and private addresses (the local network); the
  * firewall's duel chain lets in its port from private addresses only, never on a cellular interface, while it runs.
- * Limits: 4 connections, 8 KB a message, 120 a second (240 at once), a minute silent. Text that is not UTF-8 is
- * refused (a browser would drop the other's connection over it). Addresses are never passed on.
+ * Limits (protocol.mjs's): 8 KB a message, 90 a second (180 at once), 10 s to say hello, 60 s silent once paired;
+ * 4 connections here. Text that is not UTF-8 is refused (a browser would drop the other's connection over it).
+ * Addresses are never passed on.
  * mDNS: port 5353 shared (SO_REUSEADDR: Find printers may ask at the same time), joined on each interface that is up
  * (not loopback, point-to-point or cellular: /run/rudolf/firewall-cellular, RD_CELLULAR for tests); questions answered
  * by multicast (or to the asker when it asked from another port); the name read with every pointer and length checked
@@ -46,14 +50,17 @@
 #include <time.h>
 #include <unistd.h>
 
+/* the Library relay's limits (tools/duel-relay/protocol.mjs): 8 KB a message, 90 a second with a burst of 180, 10 s to
+   say hello, 10 minutes waiting for the second player, 60 s of silence once paired; at most 4 connections here */
 #define MAXMSG 8192
 #define MAXC 4
-#define RATE 120.0
-#define BURST 240.0
-#define IDLE 60.0
-#define ROOMLIFE 1800.0
-#define SVC "_rudolf-duel._tcp.local"
-static const char ALPHA[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+#define RATE 90.0
+#define BURST 180.0
+#define HELLO 10.0
+#define WAITING 600.0
+#define QUIET 60.0
+#define SVC "_emberduel._tcp.local"
+static const char ALPHA[] = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 
 static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec + t.tv_nsec / 1e9; }
 
@@ -230,7 +237,7 @@ static void mdns_answer(buf *x, int ttl, int id, const unsigned char *q, size_t 
 	pname(x, ME.name, SVC); put16(x, 16); put16(x, 0x8001); put32(x, ttl);
 	d = (buf){0}; char kv[96];
 	snprintf(kv, sizeof kv, "game=%s", ME.game); put8(&d, strlen(kv)); put(&d, kv, strlen(kv));
-	snprintf(kv, sizeof kv, "v=%s", ME.v); put8(&d, strlen(kv)); put(&d, kv, strlen(kv));
+	snprintf(kv, sizeof kv, "ver=%s", ME.v); put8(&d, strlen(kv)); put(&d, kv, strlen(kv));
 	snprintf(kv, sizeof kv, "code=%s", ME.code); put8(&d, strlen(kv)); put(&d, kv, strlen(kv));
 	put16(x, d.n); put(x, d.b, d.n); free(d.b);
 	pname(x, NULL, ME.host); put16(x, 1); put16(x, 0x8001); put32(x, ttl); put16(x, 4); put(x, &ME.addr, 4);
@@ -305,7 +312,7 @@ void duel_parse(const unsigned char *m, size_t n)
 			found_t *f = found_get(nm); if (f) { f->txt = 1; size_t j = d;
 				while (j < d + len) { int l = m[j++]; if (j + l > d + len) break; char kv[300]; snprintf(kv, sizeof kv, "%.*s", l, (const char *)m + j); j += l;
 					char *eq = strchr(kv, '='); if (!eq) continue; *eq++ = 0;
-					if (!strcasecmp(kv, "v")) snprintf(f->v, sizeof f->v, "%s", eq); else if (!strcasecmp(kv, "code")) snprintf(f->code, sizeof f->code, "%s", eq); else if (!strcasecmp(kv, "game")) snprintf(f->game, sizeof f->game, "%s", eq); } }
+					if (!strcasecmp(kv, "ver")) snprintf(f->v, sizeof f->v, "%s", eq); else if (!strcasecmp(kv, "code")) snprintf(f->code, sizeof f->code, "%s", eq); else if (!strcasecmp(kv, "game")) snprintf(f->game, sizeof f->game, "%s", eq); } }
 		}
 		else if (type == 1 && len == 4 && NAR < 32) { snprintf(AR[NAR].name, sizeof AR[NAR].name, "%s", nm); inet_ntop(AF_INET, m + d, AR[NAR].ip, sizeof AR[NAR].ip); NAR++; }
 		i += len;
@@ -340,24 +347,23 @@ static int cmd_find(const char *game, int ms)
 		char name[80]; size_t L = strlen(f->inst) - strlen("." SVC); snprintf(name, sizeof name, "%.*s", (int)(L < 60 ? L : 60), f->inst);
 		for (char *c = name; *c; c++) if (*c == '\x1f') *c = '.'; else if ((unsigned char)*c < 0x20) *c = ' ';
 		char url[64]; snprintf(url, sizeof url, "ws://%s:%d/", ip, f->port);
-		printf("%s{\"name\":", first ? "" : ","); first = 0; jstr(name); printf(",\"url\":"); jstr(url); printf(",\"code\":"); jstr(f->code); printf(",\"v\":"); jstr(f->v); printf(",\"game\":"); jstr(f->game); printf("}");
+		printf("%s{\"name\":", first ? "" : ","); first = 0; jstr(name); printf(",\"url\":"); jstr(url); printf(",\"code\":"); jstr(f->code); printf(",\"ver\":"); jstr(f->v); printf(",\"game\":"); jstr(f->game); printf("}");
 	}
 	printf("]}\n");
 	return 0;
 }
 #endif
 
-/* ---------------------------------------------------------------- the relay */
+/* ---------------------------------------------------------------- the relay (protocol.mjs's Lobby, one room) */
 typedef struct cl {
-	int fd, ws, gone, hosted, role; double tokens, at, heard; char v[40];
+	int fd, ws, gone, said; double tokens, filled, at, heard;
 	unsigned char in[MAXMSG + 4096 + 16]; size_t inl;
 	unsigned char *frag; size_t fragl;
 	unsigned char *out; size_t outl;
-	struct cl *peer;
 } cl;
 static cl *C[MAXC];
-static int ROOM_OPEN;   /* a game hosts the room, waiting for the other */
-static double ROOM_AT;
+/* the one room: its host, its guest, whether it is a quick-match room, its version, when it was made */
+static struct { int on, quick; cl *host, *guest; char ver[24]; double made; } ROOM;
 static volatile sig_atomic_t STOP;
 static void on_term(int s) { (void)s; STOP = 1; }
 static void cl_write(cl *c, const void *v, size_t n)
@@ -374,42 +380,68 @@ static void ws_frame(cl *c, int op, const void *d, size_t n)
 	cl_write(c, h, hl); cl_write(c, d, n);
 }
 static void ws_text(cl *c, const char *t) { ws_frame(c, 1, t, strlen(t)); }
-static void refuse(cl *c, const char *why, const char *text)
+static void ws_close(cl *c, int code) { unsigned char b[2] = {code >> 8, code & 255}; if (c->ws) ws_frame(c, 8, b, 2); c->gone = 1; }
+/* a player gone: the room goes with it, and the other is told and let go (the relay's work is then done) */
+static void leave(cl *c)
 {
-	char m[400]; snprintf(m, sizeof m, "{\"t\":\"error\",\"why\":\"%s\",\"text\":\"%s\"}", why, text);
-	if (c->ws) { ws_text(c, m); unsigned char b[2] = {0x03, 0xE8}; ws_frame(c, 8, b, 2); }
-	c->gone = 1;
+	if (!ROOM.on || (c != ROOM.host && c != ROOM.guest)) return;
+	cl *o = c == ROOM.host ? ROOM.guest : ROOM.host;
+	ROOM.on = 0; ROOM.host = ROOM.guest = NULL;
+	if (o && !o->gone) { ws_text(o, "{\"t\":\"left\"}"); ws_close(o, 1000); }
+	STOP = 2;
+}
+static const struct { const char *why, *text; } TEXT[] = {
+	{"bad", "That is not a duel the relay knows."}, {"version", "The other player runs another version of the game."}, {"room", "There is no duel with that code."},
+	{"full", "That duel already has two players."}, {"busy", "The relay is busy."}, {"limit", "Too much, too fast."}, {"time", "Nothing heard in time."}};
+static void drop(cl *c, const char *why, const char *ver)
+{
+	if (c->gone) return;
+	const char *t = ""; for (size_t i = 0; i < sizeof TEXT / sizeof TEXT[0]; i++) if (!strcmp(TEXT[i].why, why)) t = TEXT[i].text;
+	char m[300]; if (ver) snprintf(m, sizeof m, "{\"t\":\"error\",\"why\":\"%s\",\"text\":\"%s\",\"ver\":\"%s\"}", why, t, ver); else snprintf(m, sizeof m, "{\"t\":\"error\",\"why\":\"%s\",\"text\":\"%s\"}", why, t);
+	if (c->ws) ws_text(c, m);
+	ws_close(c, !strcmp(why, "limit") ? 1008 : 1000);
+	leave(c);
+}
+static void host_room(cl *c, const char *ver, int quick)
+{
+	if (ROOM.on) { drop(c, "busy", NULL); return; }
+	ROOM.on = 1; ROOM.quick = quick; ROOM.host = c; ROOM.guest = NULL; ROOM.made = now(); snprintf(ROOM.ver, sizeof ROOM.ver, "%s", ver);
+	if (quick) ws_text(c, "{\"t\":\"wait\"}");
+	else { char m[64]; snprintf(m, sizeof m, "{\"t\":\"room\",\"code\":\"%s\"}", ME.code); ws_text(c, m); }
+}
+static void pair(cl *c)
+{
+	ROOM.guest = c;
+	ws_text(ROOM.host, "{\"t\":\"paired\",\"role\":\"host\"}"); ws_text(c, "{\"t\":\"paired\",\"role\":\"guest\"}");
 }
 static void relay_msg(cl *c, const char *t, size_t n)
 {
-	double tn = now(); c->tokens += (tn - c->at) * RATE; if (c->tokens > BURST) c->tokens = BURST; c->at = tn; c->heard = tn;
-	if (--c->tokens < 0) { refuse(c, "rate", "Too many messages."); return; }
-	if (!utf8_ok((const unsigned char *)t, n)) { refuse(c, "bad", "The relay did not understand the game."); return; }
-	char ty[24], v[40], code[24], proto[16];
-	if (jget(t, n, "t", ty, sizeof ty) != 's') { refuse(c, "bad", "The relay did not understand the game."); return; }
-	if (c->peer) {
-		if (!strcmp(ty, "room") || !strcmp(ty, "queued") || !strcmp(ty, "paired") || !strcmp(ty, "error") || !strcmp(ty, "gone")) { refuse(c, "bad", "The relay did not understand the game."); return; }
-		ws_frame(c->peer, 1, t, n); return;
-	}
-	if (!strcmp(ty, "ping") && (c->hosted || c->role)) return;
-	if (c->hosted) { refuse(c, "bad", "The relay did not understand the game."); return; }
-	if (jget(t, n, "proto", proto, sizeof proto) != 'n' || strcmp(proto, "1")) { refuse(c, "proto", "That relay speaks a different duel protocol: update the game."); return; }
-	if (jget(t, n, "v", v, sizeof v) != 's' || !word_ok(v, 20, ".+-")) { refuse(c, "bad", "The relay did not understand the game."); return; }
-	if (strcmp(v, ME.v)) { char tx[200]; snprintf(tx, sizeof tx, "That game runs version %s, and you have %s. Both need the same version to duel.", ME.v, v); refuse(c, "version", tx); return; }
-	snprintf(c->v, sizeof c->v, "%s", v);
-	if (!strcmp(ty, "host")) {
-		for (int i = 0; i < MAXC; i++) if (C[i] && C[i] != c && C[i]->hosted && !C[i]->gone) { refuse(c, "busy", "A game is already hosted here."); return; }
-		for (int i = 0; i < MAXC; i++) if (C[i] && C[i]->role == 1) { refuse(c, "busy", "A game is already hosted here."); return; }
-		c->hosted = 1; ROOM_OPEN = 1; ROOM_AT = tn;
-		char m[64]; snprintf(m, sizeof m, "{\"t\":\"room\",\"code\":\"%s\"}", ME.code); ws_text(c, m);
-	} else if (!strcmp(ty, "join")) {
-		jget(t, n, "code", code, sizeof code);
-		char k[8]; size_t o = 0; for (char *p = code; *p && o < 6; p++) if (isalnum((unsigned char)*p)) k[o++] = toupper((unsigned char)*p); k[o] = 0;
-		cl *h = NULL; for (int i = 0; i < MAXC; i++) if (C[i] && C[i]->hosted && !C[i]->gone && !C[i]->peer) h = C[i];
-		if (!h || strcmp(k, ME.code)) { refuse(c, "room", "No game is waiting with that code. Check it with the other pilot."); return; }
-		h->hosted = 0; h->role = 1; c->role = 2; h->peer = c; c->peer = h; ROOM_OPEN = 0;
-		ws_text(h, "{\"t\":\"paired\",\"role\":\"host\"}"); ws_text(c, "{\"t\":\"paired\",\"role\":\"guest\"}");
-	} else refuse(c, "bad", "Games on a home network are joined by their code.");
+	if (c->gone) return;
+	double tn = now(); c->tokens += (tn - c->filled) * RATE; if (c->tokens > BURST) c->tokens = BURST; c->filled = tn;
+	if (--c->tokens < 0) { drop(c, "limit", NULL); return; }
+	c->heard = tn;
+	/* after pairing: the game's messages pass to the other as they are */
+	if (ROOM.on && ROOM.guest && (c == ROOM.host || c == ROOM.guest) && n >= 8 && !memcmp(t, "{\"t\":\"g\"", 8)) { cl *o = c == ROOM.host ? ROOM.guest : ROOM.host; if (!o->gone) ws_frame(o, 1, t, n); return; }
+	char ty[24], ver[40], code[24], proto[16], game[48], want[16];
+	if (jget(t, n, "t", ty, sizeof ty) != 's') { drop(c, "bad", NULL); return; }
+	if (!strcmp(ty, "g")) return;   /* (not paired yet: nobody to pass it to) */
+	if (strcmp(ty, "hello") || c->said) { drop(c, "bad", NULL); return; }
+	c->said = 1;
+	if (jget(t, n, "proto", proto, sizeof proto) != 'n' || strcmp(proto, "1") || jget(t, n, "game", game, sizeof game) != 's' || strcmp(game, ME.game)
+		|| jget(t, n, "ver", ver, sizeof ver) != 's' || !word_ok(ver, 20, ".+-") || jget(t, n, "want", want, sizeof want) != 's') { drop(c, "bad", NULL); return; }
+	if (!strcmp(want, "host")) {
+		/* (this computer's service was started for one version: the room is that version's) */
+		if (strcmp(ver, ME.v)) { drop(c, "version", ME.v); return; }
+		host_room(c, ver, 0);
+	} else if (!strcmp(want, "join")) {
+		if (jget(t, n, "code", code, sizeof code) != 's' || !code_ok(code) || strcmp(code, ME.code) || !ROOM.on || ROOM.quick || !ROOM.host || ROOM.host->gone) { drop(c, "room", NULL); return; }
+		if (ROOM.guest) { drop(c, "full", NULL); return; }
+		if (strcmp(ROOM.ver, ver)) { char rv[24]; snprintf(rv, sizeof rv, "%s", ROOM.ver); drop(c, "version", rv); return; }
+		pair(c);
+	} else if (!strcmp(want, "quick")) {
+		if (ROOM.on && ROOM.quick && !ROOM.guest && ROOM.host && !ROOM.host->gone && !strcmp(ROOM.ver, ver)) pair(c);
+		else host_room(c, ver, 1);
+	} else drop(c, "bad", NULL);
 }
 /* the WebSocket handshake: GET / or /duel, Upgrade: websocket, version 13, a key */
 static int hdr(const char *h, const char *name, char *out, size_t on)
@@ -420,7 +452,7 @@ static int hdr(const char *h, const char *name, char *out, size_t on)
 }
 static void handshake(cl *c)
 {
-	char *e = memmem(c->in, c->inl, "\r\n\r\n", 4);
+	char *e = memmem(c->in, c->inl, "\r\n\r\n", 4);   /* (the address's query, the hello's routing for other relays, is not needed here) */
 	if (!e) { if (c->inl >= 4096) c->gone = 1; return; }
 	size_t hl = (unsigned char *)e - c->in + 4; char h[4200]; memcpy(h, c->in, hl); h[hl] = 0;
 	char up[64], key[64], ver[8];
@@ -439,19 +471,20 @@ static void frames(cl *c)
 	while (!c->gone && c->inl >= 2) {
 		unsigned char *b = c->in; int fin = b[0] & 0x80, op = b[0] & 15, masked = b[1] & 0x80; size_t n = b[1] & 127, o = 2;
 		if (b[0] & 0x70 || !masked) { c->gone = 1; return; }
-		if (n == 126) { if (c->inl < 4) return; n = (size_t)b[2] << 8 | b[3]; o = 4; } else if (n == 127) { refuse(c, "size", "A message was too large."); return; }
-		if (n > MAXMSG) { refuse(c, "size", "A message was too large."); return; }
+		if (n == 126) { if (c->inl < 4) return; n = (size_t)b[2] << 8 | b[3]; o = 4; } else if (n == 127) { drop(c, "limit", NULL); return; }
+		if (n > MAXMSG) { drop(c, "limit", NULL); return; }
 		if (c->inl < o + 4 + n) return;
 		unsigned char *mk = b + o, *d = b + o + 4; for (size_t i = 0; i < n; i++) d[i] ^= mk[i & 3];
-		if (op == 8) { unsigned char z[2] = {0x03, 0xE8}; ws_frame(c, 8, z, 2); c->gone = 1; return; }
+		if (op == 8) { ws_close(c, 1000); leave(c); return; }
 		else if (op == 9) { if (n <= 125) ws_frame(c, 10, d, n); }
 		else if (op == 10) {}
 		else if (op == 1 || op == 0) {
 			if (op == 1 && c->fragl) { c->gone = 1; return; }
 			if (op == 0 && !c->frag) { c->gone = 1; return; }
-			if (c->fragl + n > MAXMSG) { refuse(c, "size", "A message was too large."); return; }
+			if (c->fragl + n > MAXMSG) { drop(c, "limit", NULL); return; }
 			c->frag = realloc(c->frag, c->fragl + n + 1); if (!c->frag) { c->gone = 1; return; } memcpy(c->frag + c->fragl, d, n); c->fragl += n;
-			if (fin) { c->frag[c->fragl] = 0; size_t L = c->fragl; char *t = (char *)c->frag; c->frag = NULL; c->fragl = 0; relay_msg(c, t, L); free(t); }
+			/* (a text message must be UTF-8: a browser would drop the other's connection over one that is not) */
+			if (fin) { c->frag[c->fragl] = 0; size_t L = c->fragl; char *t = (char *)c->frag; c->frag = NULL; c->fragl = 0; if (utf8_ok((unsigned char *)t, L)) relay_msg(c, t, L); else drop(c, "bad", NULL); free(t); }
 		} else { c->gone = 1; return; }
 		size_t used = o + 4 + n; memmove(c->in, c->in + used, c->inl - used); c->inl -= used;
 	}
@@ -459,9 +492,8 @@ static void frames(cl *c)
 static void cl_drop(int i)
 {
 	cl *c = C[i]; C[i] = NULL;
+	leave(c);
 	if (c->outl) { if (send(c->fd, c->out, c->outl, MSG_NOSIGNAL | MSG_DONTWAIT) < 0) {} }
-	if (c->peer) { cl *p = c->peer; p->peer = NULL; ws_text(p, "{\"t\":\"gone\"}"); unsigned char z[2] = {0x03, 0xE8}; ws_frame(p, 8, z, 2); p->gone = 1; }
-	if (c->hosted || c->role == 1) STOP = 2;   /* (the hosting game left: the relay's work is done) */
 	close(c->fd); free(c->out); free(c->frag); free(c);
 }
 #ifndef RD_NO_MAIN
@@ -494,7 +526,7 @@ static int cmd_serve(int port, int wait)
 					/* the local network only: loopback and private addresses (the firewall's rule says the same) */
 					if (slot < 0 || !private4(ntohl(from.sin_addr.s_addr))) { close(fd); continue; }
 					setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof one);
-					cl *c = calloc(1, sizeof *c); if (!c) { close(fd); continue; } c->fd = fd; c->tokens = BURST; c->at = c->heard = now(); C[slot] = c; ever = 1;
+					cl *c = calloc(1, sizeof *c); if (!c) { close(fd); continue; } c->fd = fd; c->tokens = BURST; c->at = c->heard = c->filled = now(); C[slot] = c; ever = 1;
 				}
 			} else if (ix[j] == -2) mdns_reply(md);
 			else {
@@ -508,22 +540,27 @@ static int cmd_serve(int port, int wait)
 			}
 		}
 		double t = now();
-		for (int i = 0; i < MAXC; i++) if (C[i] && (C[i]->gone || t - C[i]->heard > IDLE)) { if (!C[i]->gone) refuse(C[i], "idle", "Nothing was heard for a minute."); cl_drop(i); }
+		/* those who never said hello, a room waiting too long, players gone quiet (protocol.mjs's sweep) */
+		for (int i = 0; i < MAXC; i++) if (C[i] && !C[i]->gone) {
+			cl *c = C[i];
+			if (!c->said && t - c->at > HELLO) drop(c, "time", NULL);
+			else if (ROOM.on && c == ROOM.host && !ROOM.guest && t - ROOM.made > WAITING) drop(c, "time", NULL);
+			else if (ROOM.on && ROOM.guest && (c == ROOM.host || c == ROOM.guest) && t - c->heard > QUIET) drop(c, "time", NULL);
+		}
+		for (int i = 0; i < MAXC; i++) if (C[i] && C[i]->gone) cl_drop(i);
 		if (md >= 0 && anns < 3 && t >= ann) { mdns_send_all(md, 120); anns++; ann = t + 2; }
 		if (t >= sweep) { sweep = t + 1;
-			int hosting = 0; for (int i = 0; i < MAXC; i++) if (C[i] && (C[i]->hosted || C[i]->role)) hosting = 1;
-			if (!hosting && t - start > wait) STOP = 3;   /* (nobody hosted) */
-			if (ROOM_OPEN && t - ROOM_AT > ROOMLIFE) STOP = 4;   /* (nobody joined in half an hour) */
+			if (!ROOM.on && t - start > wait) STOP = 3;   /* (nobody hosted) */
 			(void)ever; }
 	}
-	for (int i = 0; i < MAXC; i++) if (C[i]) { if (C[i]->peer) C[i]->peer = NULL; ws_text(C[i], "{\"t\":\"gone\"}"); cl_drop(i); }
+	for (int i = 0; i < MAXC; i++) if (C[i]) { if (!C[i]->gone && C[i]->ws) { ws_text(C[i], "{\"t\":\"left\"}"); ws_close(C[i], 1000); } cl_drop(i); }
 	if (md >= 0) { mdns_send_all(md, 0); mdns_join(md, 1); close(md); }   /* (goodbye: the announcement withdrawn) */
 	close(ls);
 	return 0;
 }
 int main(int argc, char **argv)
 {
-	if (argc < 2) { fprintf(stderr, "usage: rudolf-duel serve --port P --code CODE --v VERSION --game PKG --name NAME --addr A.B.C.D [--wait S] | find [--game PKG] [--ms MS]\n"); return 2; }
+	if (argc < 2) { fprintf(stderr, "usage: rudolf-duel serve --port P --code CODE --v VERSION --game GAME --name NAME --addr A.B.C.D [--wait S] | find [--game PKG] [--ms MS]\n"); return 2; }
 	const char *code = "", *v = "", *game = "", *name = "", *addr = ""; int port = 0, wait = 60, ms = 2500;
 	for (int i = 2; i + 1 < argc; i += 2) {
 		if (!strcmp(argv[i], "--port")) port = atoi(argv[i + 1]); else if (!strcmp(argv[i], "--code")) code = argv[i + 1]; else if (!strcmp(argv[i], "--v")) v = argv[i + 1];

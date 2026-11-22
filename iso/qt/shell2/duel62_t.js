@@ -9,7 +9,7 @@ const ROOT = path.join(__dirname, '../../..'), WWW = path.join(ROOT, 'iso/www'),
 const PORT = 8851;
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 400) : '')) };
 const M = {calls: [], tokens: [], host: {ok: true, url: 'ws://192.168.1.20:47731/', port: 47731, code: 'ABC234', name: 'rudolf-pc'}};
-const GAMES = [{name: 'Other PC', url: 'ws://192.168.1.30:47731/', code: 'XYZ789', v: '0.5.2', game: 'rudolf-emberreach'}];
+const GAMES = [{name: 'Other PC', url: 'ws://192.168.1.30:47731/', code: 'XYZ789', ver: '0.5.2', game: 'ember-reach'}];
 const api = (a, q) => {
 	if (a.startsWith('duel/')) { M.calls.push(a + (q ? '?' + q : '')); if (a == 'duel/host') return M.host; if (a == 'duel/find') return {ok: true, games: GAMES}; if (a == 'duel/stop') return {ok: true} }
 	if (a == 'net') return {ok: true, interfaces: [{name: 'wlan0', state: 'up', ip: '192.168.1.20', default: true}]};
@@ -43,19 +43,19 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 		await wait(1500);
 		const fr = n => p.frames().find(f => f.url().includes('/pkg/' + n + '/www/index.html'));
 		const g = fr('rudolf-emberreach'), d = fr('dev-game');
-		const h = await g.evaluate(() => ask('lanHost', {v: '0.5.2'}));
-		ok('1. lanHost from the project\'s game: the desktop asks rudolfd (POST duel/host, with the token) for this package and version, and gives the game the relay\'s address, code and name', h && h.ok && h.url == 'ws://192.168.1.20:47731/' && h.code == 'ABC234' && h.name == 'rudolf-pc' && M.tokens.includes('POST duel/host tok62') && M.calls.includes('duel/host?v=0.5.2&game=rudolf-emberreach'), {h, M});
+		const h = await g.evaluate(() => ask('lanHost', {ver: '0.5.2'}));
+		ok('1. lanHost from the project\'s game: the desktop asks rudolfd (POST duel/host, with the token) for this game (the game kit\'s id) and version, and gives the game the relay\'s address, code and name', h && h.ok && h.url == 'ws://192.168.1.20:47731/' && h.code == 'ABC234' && h.name == 'rudolf-pc' && M.tokens.includes('POST duel/host tok62') && M.calls.includes('duel/host?ver=0.5.2&game=ember-reach'), {h, M});
 		const f = await g.evaluate(() => ask('lanFind'));
-		ok('2. lanFind: duel/find for this package (GET, with the token): the games on the network', f && f.ok && f.games.length == 1 && f.games[0].code == 'XYZ789' && f.games[0].url == 'ws://192.168.1.30:47731/' && M.tokens.includes('GET duel/find tok62') && M.calls.includes('duel/find?game=rudolf-emberreach'), {f, M: M.calls});
+		ok('2. lanFind: duel/find for this game (GET, with the token): the games on the network', f && f.ok && f.games.length == 1 && f.games[0].code == 'XYZ789' && f.games[0].url == 'ws://192.168.1.30:47731/' && M.tokens.includes('GET duel/find tok62') && M.calls.includes('duel/find?game=ember-reach') && f.games[0].ver == '0.5.2', {f, M: M.calls});
 		const st = await g.evaluate(() => ask('lanStop'));
 		ok('3. lanStop: duel/stop', st && st.ok && M.calls.includes('duel/stop') && M.tokens.includes('POST duel/stop tok62'), st);
 		const n0 = M.calls.length;
-		const bad = await g.evaluate(() => ask('lanHost', {v: '0.5.2&game=other'}));
+		const bad = await g.evaluate(() => ask('lanHost', {ver: '0.5.2&game=other'}));
 		ok('4. a version that is not one is refused in the page; nothing asked of rudolfd', bad && !bad.ok && M.calls.length == n0, bad);
-		const dv = await d.evaluate(() => Promise.all([ask('lanHost', {v: '1.0'}), ask('lanFind'), ask('lanStop')]));
+		const dv = await d.evaluate(() => Promise.all([ask('lanHost', {ver: '1.0'}), ask('lanFind'), ask('lanStop')]));
 		ok('5. an outside developer\'s app is refused all three, and rudolfd is never asked', dv.every(x => x && !x.ok && /outside developers/.test(x.error)) && M.calls.length == n0, dv);
 		M.host = {ok: false, error: 'This computer isn\'t on a home network (Wi-Fi or a cable): connect to the same network as the other player.'};
-		const e = await g.evaluate(() => ask('lanHost', {v: '0.5.2'}));
+		const e = await g.evaluate(() => ask('lanHost', {ver: '0.5.2'}));
 		ok('6. rudolfd\'s refusal reaches the game as it is (not on a home network)', e && !e.ok && /isn't on a home network/.test(e.error), e);
 		const other = await g.evaluate(() => ask('lanSomething'));
 		ok('7. other messages are as before (unknown)', other && !other.ok && other.error == 'unknown op', other);
@@ -63,8 +63,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 		const kit = await g.evaluate(() => !!(window.RG && RG.lan));
 		if (kit) {
 			M.host = {ok: true, url: 'ws://192.168.1.20:47731/', port: 47731, code: 'QRS456', name: 'rudolf-pc'};
-			const r = await g.evaluate(async () => { await RG.init('ember-reach'); return {h: await RG.lan.host({v: '0.5.2'}), f: await RG.lan.find(), s: await RG.lan.stop()} });
-			ok('8. through the game kit\'s RG.lan (1.3.0): host, find and stop', r.h.ok && r.h.code == 'QRS456' && r.f.ok && r.f.games[0].name == 'Other PC' && r.s.ok, r);
+			const r = await g.evaluate(async () => { await RG.init('ember-reach'); return {h: await RG.lan.host({ver: '0.5.2'}), f: await RG.lan.find(), s: await RG.lan.stop()} });
+			ok('8. through the game kit\'s RG.lan (1.3.0): host (the address and code), find (the games, their versions) and stop', r.h && r.h.url == 'ws://192.168.1.20:47731/' && r.h.code == 'QRS456' && r.f && r.f.games[0].name == 'Other PC' && r.f.games[0].ver == '0.5.2' && r.s && !r.s.error, r);
 		} else console.log('SKIP 8. the game kit with RG.lan (rudolfos-library 1.3.0) is not next to this repository');
 		ok('9. no errors in the page', errs.length == 0, errs);
 	} catch (e) { R.push(false); console.log('FAIL (threw) ' + (e.stack || e)) }

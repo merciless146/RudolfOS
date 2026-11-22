@@ -27,7 +27,7 @@ static void dns_one(const unsigned char *p, size_t n)
 static void text_one(const unsigned char *p, size_t n)
 {
 	char *c = malloc(n ? n : 1); memcpy(c, p, n); char out[64];
-	arm(); jget(c, n, "t", out, sizeof out); jget(c, n, "v", out, sizeof out); jget(c, n, "proto", out, sizeof out); jget(c, n, "code", out, 8); utf8_ok((unsigned char *)c, n); disarm(); N++;
+	arm(); jget(c, n, "t", out, sizeof out); jget(c, n, "ver", out, sizeof out); jget(c, n, "want", out, sizeof out); jget(c, n, "game", out, sizeof out); jget(c, n, "proto", out, sizeof out); jget(c, n, "code", out, 8); utf8_ok((unsigned char *)c, n); disarm(); N++;
 	free(c);
 }
 int main(int argc, char **argv)
@@ -35,11 +35,11 @@ int main(int argc, char **argv)
 	int secs = argc > 1 ? atoi(argv[1]) : 10; unsigned seed = argc > 2 ? (unsigned)atoi(argv[2]) : (unsigned)time(NULL);
 	signal(SIGALRM, slow); srand(seed);
 	/* the relay's own announcement, read back */
-	snprintf(ME.name, sizeof ME.name, "Test PC"); snprintf(ME.code, sizeof ME.code, "ABC234"); snprintf(ME.v, sizeof ME.v, "0.5.2"); snprintf(ME.game, sizeof ME.game, "rudolf-emberreach");
+	snprintf(ME.name, sizeof ME.name, "Test PC"); snprintf(ME.code, sizeof ME.code, "ABC234"); snprintf(ME.v, sizeof ME.v, "0.5.2"); snprintf(ME.game, sizeof ME.game, "ember-reach");
 	snprintf(ME.host, sizeof ME.host, "rudolf-duel-abc234.local"); snprintf(ME.inst, sizeof ME.inst, "Test PC." SVC); ME.port = 47731; inet_pton(AF_INET, "192.168.1.20", &ME.addr);
 	buf a = {0}; mdns_answer(&a, 120, 0, NULL, 0);
 	reset(); duel_parse(a.b, a.n);
-	int found = 0; for (int i = 0; i < NF; i++) if (FOUND[i].srv && FOUND[i].txt && !strcmp(FOUND[i].inst, "Test PC." SVC) && FOUND[i].port == 47731 && !strcmp(FOUND[i].code, "ABC234") && !strcmp(FOUND[i].v, "0.5.2") && !strcmp(FOUND[i].game, "rudolf-emberreach") && NAR == 1 && !strcmp(AR[0].ip, "192.168.1.20") && !strcasecmp(AR[0].name, FOUND[i].host)) found = 1;
+	int found = 0; for (int i = 0; i < NF; i++) if (FOUND[i].srv && FOUND[i].txt && !strcmp(FOUND[i].inst, "Test PC." SVC) && FOUND[i].port == 47731 && !strcmp(FOUND[i].code, "ABC234") && !strcmp(FOUND[i].v, "0.5.2") && !strcmp(FOUND[i].game, "ember-reach") && NAR == 1 && !strcmp(AR[0].ip, "192.168.1.20") && !strcasecmp(AR[0].name, FOUND[i].host)) found = 1;
 	if (!found) { fprintf(stderr, "FAIL: the announcement was not read back (%d services, %d addresses)\n", NF, NAR); return 1; }
 	printf("found Test PC\n");
 	/* a question for the service is one the relay answers; one for another isn't */
@@ -70,7 +70,7 @@ int main(int argc, char **argv)
 	for (size_t k = 12; k < a.n; k++) { unsigned char *c = malloc(a.n); memcpy(c, a.b, a.n); c[k] = 0xff; dns_one(c, a.n); c[k] = 0; dns_one(c, a.n); c[k] = 0xc0; dns_one(c, a.n); free(c); }
 	for (size_t cut = 0; cut < a.n; cut++) dns_one(a.b, cut);
 	/* mutations, for the time given */
-	const char *seeds[] = {"{\"t\":\"join\",\"code\":\"ABC234\",\"v\":\"0.5.2\",\"proto\":1}", "{\"t\":\"st\",\"r\":1,\"s\":{\"p\":[1,2,3],\"q\":[1,0,0,0]},\"c\":{\"th\":0.5}}", "{\"t\":\"shot\",\"s\":{\"k\":\"pulse\",\"id\":\"g1\",\"d\":6,\"p\":[0,0,0],\"v\":[1,2,3]}}"};
+	const char *seeds[] = {"{\"t\":\"hello\",\"proto\":1,\"game\":\"ember-reach\",\"ver\":\"0.5.2\",\"want\":\"join\",\"code\":\"ABC234\"}", "{\"t\":\"st\",\"r\":1,\"s\":{\"p\":[1,2,3],\"q\":[1,0,0,0]},\"c\":{\"th\":0.5}}", "{\"t\":\"shot\",\"s\":{\"k\":\"pulse\",\"id\":\"g1\",\"d\":6,\"p\":[0,0,0],\"v\":[1,2,3]}}"};
 	time_t end = time(NULL) + secs;
 	while (time(NULL) < end) {
 		unsigned char m[2048]; size_t n = a.n; memcpy(m, a.b, n);

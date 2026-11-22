@@ -28,7 +28,7 @@ chmod 755 $T/rudolf-duel
 if gcc -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -o $T/duel_fuzz $HERE/fuzz/duel_fuzz.c 2>$T/fcc; then
 	o=$($T/duel_fuzz ${DUEL_FUZZ_SECS:-20} 2>&1); ok "1. the relay's parsing: its own announcement read back; loops, pointers and lengths past the end, every cut and byte, the games' JSON and UTF-8, ${DUEL_FUZZ_SECS:-20} s of mutations: no crash, no read past the end, no loop (ASan, UBSan)" "$(echo "$o" | grep -q '^found Test PC' && echo "$o" | grep -q '^ok [0-9]' && echo 1)" "$o"
 else ok "1. the fuzz test builds (ASan, UBSan)" 0 "$(cat $T/fcc)"; fi
-o=$($T/rudolf-duel serve --port 8851 --code ABC234 --v 0.5.2 --game rudolf-emberreach --name X --addr 127.0.0.1 2>&1; echo "rc=$?")
+o=$($T/rudolf-duel serve --port 8851 --code ABC234 --v 0.5.2 --game ember-reach --name X --addr 127.0.0.1 2>&1; echo "rc=$?")
 o2=$(RD_TEST_ROOT=1 $T/rudolf-duel serve --port 80 --code ABC234 --v 0.5.2 --game x --name X --addr 127.0.0.1 2>&1; echo "rc=$?"); o3=$(RD_TEST_ROOT=1 $T/rudolf-duel serve --port 8851 --code ABC234 --v 0.5.2 --game x --name X --addr 8.8.8.8 2>&1; echo "rc=$?")
 ok "2. rudolf-duel never runs as root; a port under 1024, or an address off the local network, refused" "$(echo "$o" | grep -q 'never as root' && echo "$o" | grep -q 'rc=2' && echo "$o2$o3" | grep -c 'rc=2' | grep -qx 2 && echo 1)" "$o $o2 $o3"
 
@@ -71,10 +71,10 @@ code() { echo "$1" | head -1 | cut -d' ' -f1; }
 env RUDOLFD_DESKTOP_CG=$T/cg RUDOLFD_DESKTOP_UID=65534 $T/rudolfd > $T/rd.log 2>&1 & RDP=$!
 w8 'python3 -c "import socket; socket.create_connection((\"127.0.0.1\", 8080), 1)" 2>/dev/null' 80 || { echo "FAIL: rudolfd did not start: $(tail -5 $T/rd.log)"; exit 1; }
 o=$(run d0 GET / desk); echo "$o" | sed -n 's/.*RUDOLFD={token:"\([0-9a-f]*\)".*/\1/p' | head -1 > $T/tok; chmod 644 $T/tok
-mv $T/tok $T/tok.k; o=$(run x1 POST "/api/duel/host?v=0.5.2&game=rudolf-emberreach" desk); mv $T/tok.k $T/tok
-o2=$(run x2 POST "/api/duel/host?v=0.5.2&game=rudolf-emberreach" no)
+mv $T/tok $T/tok.k; o=$(run x1 POST "/api/duel/host?ver=0.5.2&game=ember-reach" desk); mv $T/tok.k $T/tok
+o2=$(run x2 POST "/api/duel/host?ver=0.5.2&game=ember-reach" no)
 ok "4. duel/host refused without the token (the desktop's own process), and to another program even with it" "$([ "$(code "$o")" = 403 ] && [ "$(code "$o2")" = 403 ] && [ ! -e /run/rudolf/duel/pid ] && ! nft list chain inet rudolf duel | grep -q accept && echo 1)" "$o / $o2"
-o=$(run d1 POST "/api/duel/host?v=0.5.2&game=rudolf-emberreach" desk)
+o=$(run d1 POST "/api/duel/host?ver=0.5.2&game=ember-reach" desk)
 J=$(echo "$o" | cut -d' ' -f2-); CODE=$(echo "$J" | sed -n 's/.*"code":"\([A-Z0-9]*\)".*/\1/p')
 ok "5. the desktop asks: the relay started for that game and version; its address on the home network (not the cellular one), a room code, the computer's name" "$([ "$(code "$o")" = 200 ] && echo "$J" | grep -q '"url":"ws://192.168.77.1:8850/"' && [ ${#CODE} = 6 ] && echo "$J" | grep -q '"name":"' && echo 1)" "$o $(tail -3 $T/rd.log)"
 RP=$(cat /run/rudolf/duel/pid 2>/dev/null); ST=$(cat /proc/$RP/status 2>/dev/null)
@@ -82,38 +82,39 @@ U=$(echo "$ST" | awk '/^Uid:/{print $2" "$3" "$4" "$5}'); NNP=$(echo "$ST" | awk
 ok "6. ...running as the account's own user (here the desktop's, nobody signed in: uid 1000), never root, no new privileges, no extra groups" "$([ -n "$RP" ] && [ "$(cat /proc/$RP/comm)" = rudolf-duel ] && [ "$U" = "1000 1000 1000 1000" ] && [ "$NNP" = 1 ] && [ -z "$G" ] && echo 1)" "pid=$RP uid=$U nnp=$NNP groups=$G"
 DU=$(nft list chain inet rudolf duel)
 ok "7. ...the firewall's duel chain open for its port, from private addresses, never on the cellular interface" "$(echo "$DU" | grep -q 'iifname @cellular return' && echo "$DU" | grep 'tcp dport 8850 accept' | grep -q 'ip saddr {.*10.0.0.0/8' && for a in 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16; do echo "$DU" | grep 'tcp dport 8850' | grep -q "$a" || exit; done && [ "$(echo "$DU" | grep -c accept)" = 1 ] && echo 1)" "$DU"
-fb=$(B env RD_CELLULAR=/dev/null RD_TEST_ROOT=1 $T/rudolf-duel find --game rudolf-emberreach --ms 2500); fo=$(B env RD_CELLULAR=/dev/null $T/rudolf-duel find --game another-game --ms 1200)
-ok "8. found by multicast DNS from the other computer: its name, ws://192.168.77.1:8850/, the room code and the version (and not for another game)" "$(echo "$fb" | grep -q "\"url\":\"ws://192.168.77.1:8850/\",\"code\":\"$CODE\",\"v\":\"0.5.2\",\"game\":\"rudolf-emberreach\"" && echo "$fo" | grep -q '"games":\[\]' && echo 1)" "$fb / $fo"
+fb=$(B env RD_CELLULAR=/dev/null RD_TEST_ROOT=1 $T/rudolf-duel find --game ember-reach --ms 2500); fo=$(B env RD_CELLULAR=/dev/null $T/rudolf-duel find --game another-game --ms 1200)
+ok "8. found by multicast DNS from the other computer: its name, ws://192.168.77.1:8850/, the room code and the version (and not for another game)" "$(echo "$fb" | grep -q "\"url\":\"ws://192.168.77.1:8850/\",\"code\":\"$CODE\",\"ver\":\"0.5.2\",\"game\":\"ember-reach\"" && echo "$fo" | grep -q '"games":\[\]' && echo 1)" "$fb / $fo"
 fc=$(C env RD_CELLULAR=/dev/null $T/rudolf-duel find --ms 1500)
 tb=$(B python3 -c "import socket; socket.create_connection(('192.168.77.1', 8850), 2); print('open')" 2>&1); tc=$(C python3 -c "import socket; socket.create_connection(('10.64.0.1', 8850), 2); print('open')" 2>&1)
 ok "9. ...not from the cellular network: no answer there, and its port shut to it; open to the home network" "$(echo "$fc" | grep -q '"games":\[\]' && [ "$tb" = open ] && [ "$tc" != open ] && echo 1)" "$fc / $tb / $tc"
-# a duel through it: the hosting game here (at the address the desktop gave it), the other from the other computer
-python3 $HERE/fixtures/wsduel.py ws://192.168.77.1:8850/ host - 0.5.2 $T/h '{"t":"st","r":1,"x":"host"}' & PH=$!; PIDS="$PIDS $PH"
+# a duel through it (the Library relay's protocol: docs/duel-protocol.md): the hosting game here (at the address the
+# desktop gave it), the other from the other computer
+python3 $HERE/fixtures/wsduel.py ws://192.168.77.1:8850/ host - 0.5.2 $T/h '{"t":"g","k":"st","x":"host"}' & PH=$!; PIDS="$PIDS $PH"
 w8 "grep -q '\"t\":\"room\"' $T/h 2>/dev/null"
 B python3 $HERE/fixtures/wsduel.py ws://192.168.77.1:8850/ join "$CODE" 0.5.1 $T/old & PO=$!; PIDS="$PIDS $PO"
 w8 "grep -q 'error' $T/old 2>/dev/null"
-B python3 $HERE/fixtures/wsduel.py ws://192.168.77.1:8850/ join "$(echo $CODE | tr A-Z a-z)" 0.5.2 $T/g '{"t":"st","r":1,"x":"guest"}' & PG=$!; PIDS="$PIDS $PG"
+B python3 $HERE/fixtures/wsduel.py ws://192.168.77.1:8850/ join "$CODE" 0.5.2 $T/g '{"t":"g","k":"st","x":"guest"}' & PG=$!; PIDS="$PIDS $PG"
 w8 "grep -q '\"x\":\"host\"' $T/g 2>/dev/null && grep -q '\"x\":\"guest\"' $T/h 2>/dev/null"
-ok "10. a duel through it: the host's room has the code; another version refused with a message; the same version joins (the code in any case), and each one's messages reach the other" "$(grep -q "\"code\":\"$CODE\"" $T/h && grep -q '"why":"version"' $T/old && grep -q 'same version' $T/old && grep -q '"role":"host"' $T/h && grep -q '"role":"guest"' $T/g && grep -q '"x":"host"' $T/g && grep -q '"x":"guest"' $T/h && echo 1)" "$(cat $T/h $T/old $T/g 2>&1 | head -20)"
+ok "10. a duel through it: the host's room has the code; another version refused with a message; the same version joins with the code, and each one's game messages reach the other" "$(grep -q "\"code\":\"$CODE\"" $T/h && grep -q '"why":"version"' $T/old && grep -q 'another version' $T/old && grep -q '"ver":"0.5.2"' $T/old && grep -q '"role":"host"' $T/h && grep -q '"role":"guest"' $T/g && grep -q '"x":"host"' $T/g && grep -q '"x":"guest"' $T/h && echo 1)" "$(cat $T/h $T/old $T/g 2>&1 | head -20)"
 ok "10b. ...and nothing the relay sends carries an address" "$(! grep -q '192\.168\|10\.64' $T/h $T/g && echo 1)" "$(cat $T/h $T/g)"
 # the hosting game leaves: the relay stops by itself, and the port is shut again
 touch $T/h.stop; w8 "[ ! -e /proc/$RP ] || [ \"\$(cat /proc/$RP/comm 2>/dev/null)\" != rudolf-duel ]" 50
 w8 "! nft list chain inet rudolf duel | grep -q accept" 30
 o=$(run d2 GET /api/duel/status desk)
-ok "11. the hosting game leaves: the relay stops by itself, the other game is told, the firewall's port is shut again, and status says so" "$([ ! -e /proc/$RP ] && ! nft list chain inet rudolf duel | grep -q accept && grep -q '"t":"gone"' $T/g && echo "$o" | grep -q '"running":false' && [ ! -e /run/rudolf/duel/pid ] && echo 1)" "$(nft list chain inet rudolf duel) $o $(cat $T/g | tail -3)"
+ok "11. the hosting game leaves: the relay stops by itself, the other game is told, the firewall's port is shut again, and status says so" "$([ ! -e /proc/$RP ] && ! nft list chain inet rudolf duel | grep -q accept && grep -q '"t":"left"' $T/g && echo "$o" | grep -q '"running":false' && [ ! -e /run/rudolf/duel/pid ] && echo 1)" "$(nft list chain inet rudolf duel) $o $(cat $T/g | tail -3)"
 fb2=$(B env RD_CELLULAR=/dev/null $T/rudolf-duel find --ms 1200)
 ok "12. ...and it is no longer found on the network" "$(echo "$fb2" | grep -q '"games":\[\]' && echo 1)" "$fb2"
-o=$(run d3 POST "/api/duel/host?v=0.5.2&game=rudolf-emberreach" desk); RP2=$(cat /run/rudolf/duel/pid 2>/dev/null)
+o=$(run d3 POST "/api/duel/host?ver=0.5.2&game=ember-reach" desk); RP2=$(cat /run/rudolf/duel/pid 2>/dev/null)
 o2=$(run d4 POST /api/duel/stop desk); w8 "[ ! -e /proc/$RP2 ]" 30
 ok "13. hosted again, then duel/stop (the game's lanStop): stopped, the port shut" "$([ "$(code "$o")" = 200 ] && [ -n "$RP2" ] && [ "$(code "$o2")" = 200 ] && [ ! -e /proc/$RP2 ] && ! nft list chain inet rudolf duel | grep -q accept && echo 1)" "$o / $o2 / $(nft list chain inet rudolf duel)"
-o=$(run d5 POST "/api/duel/host?v=0.5.2&game=rudolf-emberreach" desk); RP3=$(cat /run/rudolf/duel/pid 2>/dev/null)
+o=$(run d5 POST "/api/duel/host?ver=0.5.2&game=ember-reach" desk); RP3=$(cat /run/rudolf/duel/pid 2>/dev/null)
 w8 "[ \$(date +%s) -ge $(( $(date +%s) + 75 )) ] || [ ! -e /proc/$RP3 ]" 800
 ok "14. hosted, but no game connects within a minute: it stops by itself, the port shut" "$([ -n "$RP3" ] && [ ! -e /proc/$RP3 ] && ! nft list chain inet rudolf duel | grep -q accept && echo 1)" "$RP3 $(nft list chain inet rudolf duel)"
 # duel/find through rudolfd: a game hosted on the other computer
-B env RD_CELLULAR=/dev/null RD_TEST_ROOT=1 $T/rudolf-duel serve --port 8852 --code XYZ789 --v 0.5.2 --game rudolf-emberreach --name "Other PC" --addr 192.168.77.2 --wait 30 > $T/b.log 2>&1 & PBS=$!; PIDS="$PIDS $PBS"
+B env RD_CELLULAR=/dev/null RD_TEST_ROOT=1 $T/rudolf-duel serve --port 8852 --code XYZ789 --v 0.5.2 --game ember-reach --name "Other PC" --addr 192.168.77.2 --wait 30 > $T/b.log 2>&1 & PBS=$!; PIDS="$PIDS $PBS"
 w8 "grep -q ok $T/b.log"
-o=$(run d6 GET "/api/duel/find?game=rudolf-emberreach" desk); o2=$(run x3 GET "/api/duel/find?game=rudolf-emberreach" no)
-ok "15. duel/find (as the account's user): the other computer's game, its address, code and version; refused to another program" "$([ "$(code "$o")" = 200 ] && echo "$o" | grep -q '"name":"Other PC","url":"ws://192.168.77.2:8852/","code":"XYZ789","v":"0.5.2"' && [ "$(code "$o2")" = 403 ] && echo 1)" "$o / $o2"
-o=$(run d7 POST "/api/duel/host?v=%3Cb%3E&game=rudolf-emberreach" desk); o2=$(run d8 POST "/api/duel/host?v=0.5.2" desk); o3=$(run d9 GET "/api/duel/host?v=0.5.2&game=x" desk); o4=$(run d10 GET "/api/duel/find?game=..%2Fx" desk)
+o=$(run d6 GET "/api/duel/find?game=ember-reach" desk); o2=$(run x3 GET "/api/duel/find?game=ember-reach" no)
+ok "15. duel/find (as the account's user): the other computer's game, its address, code and version; refused to another program" "$([ "$(code "$o")" = 200 ] && echo "$o" | grep -q '"name":"Other PC","url":"ws://192.168.77.2:8852/","code":"XYZ789","ver":"0.5.2"' && [ "$(code "$o2")" = 403 ] && echo 1)" "$o / $o2"
+o=$(run d7 POST "/api/duel/host?ver=%3Cb%3E&game=ember-reach" desk); o2=$(run d8 POST "/api/duel/host?ver=0.5.2" desk); o3=$(run d9 GET "/api/duel/host?ver=0.5.2&game=x" desk); o4=$(run d10 GET "/api/duel/find?game=..%2Fx" desk)
 ok "16. a version or package that is not one, a missing package, a GET to host: refused" "$([ "$(code "$o")" = 400 ] && [ "$(code "$o2")" = 400 ] && [ "$(code "$o3")" = 405 ] && [ "$(code "$o4")" = 400 ] && echo 1)" "$o / $o2 / $o3 / $o4"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

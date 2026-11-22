@@ -4,14 +4,15 @@
 #         while hosting, found by mDNS, a duel through it, stopping; the fuzz test of its parsing), the list of listeners,
 #         Find printers with the firewall (its chains changed), the release's build flags for rudolf-duel and rudolfd
 #   page: qt/shell2/duel62_t.js (the game kit's lanHost, lanFind and lanStop answered by the desktop, with rudolfos-library's
-#         game kit), and the Library games' messages and sandbox as before
+#         game kit), qt/shell2/duelgame62_t.sh (the Library's own two-page Ember Reach test with its LAN relay swapped for
+#         rudolf-duel), and the Library games' messages and sandbox as before
 name: LAN duel check
 on:
   workflow_dispatch:
   pull_request:
     paths: ['iso/sys/rudolf-duel.c', 'iso/sys/rudolfd-duel.inc', 'iso/sys/root/usr/lib/rudolf/firewall', 'iso/sys/rudolf-network.c', 'desktop/duel62.js',
       'desktop/games58.js', 'iso/qt/host/duel162_t.sh', 'iso/qt/host/fixtures/wsduel.py', 'iso/qt/host/fuzz/duel_fuzz.c', 'iso/qt/shell2/duel62_t.js',
-      '.github/workflows/duel-check.yml']
+      'iso/qt/shell2/duelgame62_t.sh', '.github/workflows/duel-check.yml']
 permissions: {contents: read}
 jobs:
   host:
@@ -43,6 +44,8 @@ jobs:
         run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
       - name: The game kit's LAN calls in the page
         run: RUDOLFOS_LIBRARY=$PWD/library node iso/qt/shell2/duel62_t.js
+      - name: Ember Reach's duels through rudolf-duel (the Library's two-page test)
+        run: RUDOLFOS_LIBRARY=$PWD/library NODE_PATH=$PWD/node_modules sh iso/qt/shell2/duelgame62_t.sh
       - name: The Library games' messages and sandbox as before
         run: |
           ln -s $PWD/library ../rudolfos-library
