@@ -155,6 +155,9 @@ if command -v cryptsetup >/dev/null && [ -n "${BITLK_IMAGES:-}" ] && [ -f "$BITL
 	echo '235818 357951 253979 013365 241120 245575 342914 591910' | RUDOLF_BRING_TESTKEY=1 BFX unlock blk0p1 > $T/u2 2>&1; r2=$?
 	echo '235818357951253979013365241120245575342914591910' | RUDOLF_BRING_TESTKEY=1 BFX unlock blk0p1 > /dev/null 2>&1; r3=$?
 	ok "25. the recovery key: a wrong one refused (3), the right one opens it (typed with spaces, or without dashes)" "$( [ $r1 = 3 ] && [ $r2 = 0 ] && [ $r3 = 0 ] && echo 1)" "$r1 $r2 $r3 $(cat $T/u1 $T/u2)"
+	echo '111111-222222-333333-444444-555555-666666-777777-888888' | RUDOLF_BRING_TESTKEY=1 BFX unlock blk0p1 > $T/u4 2>&1; r4=$?
+	echo 'not the password' | RUDOLF_BRING_TESTKEY=1 BFX unlock blk0p1 > $T/u5 2>&1; r5=$?
+	ok "25b. (1.6.2 Part 27's BitLocker) a whole recovery key that is wrong (cryptsetup: 1, saying nothing) and a wrong password (2): \"That key does not open it.\" (3), not \"could not be opened here\"" "$( [ $r4 = 3 ] && [ $r5 = 3 ] && grep -q 'does not open it' $T/u4 && echo 1)" "$r4 $r5 $(cat $T/u4 $T/u5)"
 	ok "26. the key is stored nowhere (not in the state folder)" "$( ! grep -rqs 235818 $T/state && echo 1)" ""
 else echo "NOTE BitLocker not tested here (cryptsetup or BITLK_IMAGES missing)"; fi
 # ---- 6. after installing: the copies found, one person's files brought into an account's folder (as its user)

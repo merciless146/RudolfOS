@@ -48,11 +48,14 @@ KEYS            y   security: the kernel's keyrings (fscrypt, trusted keys)
 SYSTEM_TRUSTED_KEYRING y security: Rudolf OS's Secure Boot certificate built in
 DM_VERITY       y   security: the system layers checked as they are read (dm-verity)
 DM_CRYPT        y   disks: Bring your files, an old Windows disk's BitLocker opened read-only (cryptsetup BITLK)
+CRYPTO_AES      y   disks: BitLocker's cipher (and fscrypt's); built in, as the drives helper may load no module
+CRYPTO_CBC      y   disks: BitLocker's AES-CBC (Windows 7 and older, and with the Elephant diffuser: dm-crypt's eboiv and elephant)
+CRYPTO_ECB      y   disks: BitLocker's Elephant diffuser (dm-crypt's elephant IV takes ecb(aes))
 TCG_TPM         y   security: the TPM 2.0 (the website data's key, rudolf-webkey: docs/website-data-key.md)
 TCG_CRB         y   security: firmware TPMs (AMD's, Intel's PTT: the owner's Vivobook)
 TCG_TIS         y   security: discrete TPM chips, and QEMU's
 FS_ENCRYPTION   y   security: the accounts' encrypted folders (fscrypt on ext4)
-CRYPTO_XTS      y   security: fscrypt's file contents (AES-256-XTS)
+CRYPTO_XTS      y   security: fscrypt's file contents (AES-256-XTS); and BitLocker's AES-XTS (Windows 10 and 11)
 CRYPTO_CTS      y   security: fscrypt's file names (AES-256-CTS)
 NF_TABLES       y   security: the firewall (nftables)
 NF_TABLES_INET  y   security: the firewall's IPv4 and IPv6 table

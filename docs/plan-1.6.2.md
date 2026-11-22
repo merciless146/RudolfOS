@@ -322,6 +322,56 @@ checked on the host with cryptsetup --test-passphrase). **For the owner:** an ol
 Install here… on it, the folders found and their sizes, Copy and check, then the first sign-in's offer and the files in
 Documents, Pictures…; a BitLocker laptop's recovery key, if one is at hand.
 
+**Status, 2026-11-22: BitLocker checked for real (unattended; PR "BitLocker opened for real", branch `bitlocker-kernel`).**
+
+**The kernel (6.18, iso/kconfig.sh) needs no change.** It already has everything cryptsetup's BITLK asks of it:
+- dm-crypt built in (#607);
+- AES, XTS, CBC and ECB built in (fscrypt's since 1.5.0);
+- dm-crypt's own `eboiv` IV (AES-CBC, Windows 7 and older);
+- dm-crypt's own `elephant` IV, the Elephant diffuser, in the kernel since 5.6. It takes `ecb(aes)`, so the note above that the kernel
+  lacks it is out of date.
+
+All are built in, which matters: the drives helper, which runs cryptsetup, may load no module (rudolf-rootd's CF_HELPER_DENY).
+Module signing, lockdown and Secure Boot are unchanged. iso/kconfig-required.txt now names CRYPTO_AES, CRYPTO_CBC and CRYPTO_ECB
+(and CRYPTO_XTS's line) for BitLocker, so no tuning drops them. The base's size note above stands: only cryptsetup and its libraries,
+about 1.3 MB.
+
+**Found in QEMU and fixed in bringfiles.sh:**
+- (1) The base's udev has no device-mapper rules (they come with dmsetup). So cryptsetup's libdevmapper waits for ever for udev to
+  confirm the mapping, with signals blocked; only KILL ends it. cryptsetup now runs with `DM_DISABLE_UDEV=1`, and libdevmapper makes
+  /dev/mapper/rbl-PART itself. Only these mappings are affected.
+- (2) A whole recovery key that is wrong makes cryptsetup exit 1 without a word. bringfiles.sh reported that as "BitLocker could not
+  be opened here" (500). The key is now checked first (`--test-passphrase`: 1 or 2 is "That key does not open it.", 403), and the
+  volume is opened only after that.
+
+**Tests:**
+- **QEMU**: bring-check.yml's new `bitlocker` job (with `bitlocker=1` in .github/bring62-run.txt): **30/30 in run 45078876401**;
+  the two runs before it are what found (1) and (2).
+  - Setup:
+    - It builds this tree's kernel (iso/systools/testkernel.sh: the stable release's Linux 6.18.64, kconfig.sh as it is, its modules
+      signed; an artifact of the run only) and starts it on the newest beta.
+    - cryptsetup and its libraries are put in place as ci_release.sh adds them to the base.
+    - A third disk holds three of cryptsetup's own BitLocker test images as partitions (made by Windows; cryptsetup cannot make one):
+      AES-XTS-128, AES-CBC-128 (eboiv) and AES-CBC-128 with the Elephant diffuser.
+  - bring62_q.py's B checks, through rudolfd as the page asks:
+    - the three found as BitLocker;
+    - a wrong recovery key refused (403);
+    - each one opened read-only with its recovery key: `cryptsetup status` shows its cipher and readonly, and the device is read-only;
+    - each decrypted right: its NTFS boot sector, and the whole volume's SHA-256 equal to cryptsetup's own tests' sum;
+    - `xts(aes)`, `cbc(aes)` and `ecb(aes)` are the kernel's own;
+    - scanned again through the mappings, never writable. The test images' NTFS is not a whole one, so it reads as
+      "ntfs-unreadable"; ntfs-3g refuses dislocker's decryption of them in the same way;
+    - the recovery keys stored nowhere;
+    - closed again;
+    - cryptsetup without DM_DISABLE_UDEV killed after 40 s;
+    - then the whole of bring62 as before on that kernel.
+  - The beta's own kernel (the qemu job) passes as before with the changed bringfiles.sh.
+- **Host**: bringfiles62_t.sh 35/35, adding 25b: a whole wrong recovery key and a wrong password are both "does not open it".
+  bring62_t.js 48/48 here (5 of its checks failed once on the runner, in timing alone; they passed on the run before).
+
+**For the owner:** a BitLocker USB stick or disk, if one is at hand, with its recovery key (Bring in files, or Install here… on a
+BitLocker laptop): the volume opens read-only and its folders are found.
+
 ### 25b. Linux apps' progress on their taskbar buttons (from 1.6.1 Part 25, item 5)
 Firefox, Chromium-based apps (Discord, VS Code, Steam's web parts) and others say their downloads' progress with the Unity
 LauncherEntry D-Bus signal (com.canonical.Unity.LauncherEntry, Update: the app's application://NAME.desktop, "progress" 0-1 and
