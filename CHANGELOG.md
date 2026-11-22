@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.2.md Parts 33 to 35): a VPN for the whole computer (WireGuard, then OpenVPN; an
+  administrator adds them, everyone may turn them on and off unless told otherwise; an optional kill switch), scanners
+  (driverless first, with a Scan app) and network shares (Windows and NAS shares in File Explorer).
 - Fixed: Bring your files now opens an old Windows disk's BitLocker for real. It was checked in a virtual machine on Rudolf OS's
   own kernel with BitLocker volumes made by Windows: AES-XTS (Windows 10 and 11), AES-CBC, and AES-CBC with the older Elephant
   diffuser. Each opened read-only with its recovery key, which is stored nowhere. Two fixes: opening no longer waits for ever for

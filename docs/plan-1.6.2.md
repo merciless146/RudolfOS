@@ -628,6 +628,69 @@ desktop and hurts on neither.
    stopwatch is enough), and Settings › System health's memory at idle, on each of Native, Chromium and Lite, in a table:
    machine, engine, build (xz/zstd), start, first Oracle, memory.
 
+### 33. VPN: WireGuard, then OpenVPN, for the whole computer (added on 2026-11-22)
+The owner, 2026-11-22, after asking whether Tor in Oracle is enough (it isn't for a work network, for apps outside Oracle's
+Tor windows, or for calls and games) and what the best VPN would be: "Yes. That sounds like the best option."
+**Already there:** the kernel's WIREGUARD (built in) and TUN (iso/kconfig.sh), and the nftables firewall
+(iso/sys/root/usr/lib/rudolf/firewall). Missing: the settings and the code that brings a VPN up.
+1. **WireGuard first:** Settings › Network › VPN: import a `.conf` (or its QR code from the camera), name it, connect and
+   disconnect there and from the taskbar's network pop-up (its state shown there too), on Native, Chromium and Lite alike.
+   rudolfd sets the interface up through the kernel's netlink itself (no wg tools shipped): the address, the peers, the
+   routes for the whole computer (AllowedIPs), and the DNS servers the file names, so name lookups go through the VPN too.
+2. **OpenVPN second:** a `.ovpn` file imported the same way; OpenVPN 2.6 with the kernel's data channel offload (DCO) where
+   the server allows it; outside the Linux apps' sandbox, run by rudolfd only while connected. Its TLS library: OpenSSL if
+   the base layer has it already, else mbedTLS (measured: at most about 3 MB on disk; nothing in memory while off).
+3. **Who may do what** (the owner's choice): an administrator adds, changes and removes VPNs (behind the administrator's
+   prompt; the files, with their private keys, kept where only root reads them, never in the page or an account's home)
+   and sets, per VPN, who may turn it on and off: "Everyone" (the default), "Administrators only", or "Always on: nobody
+   can turn it off". Any account may connect and disconnect a VPN set to Everyone without a password. Accounts under
+   parental controls cannot turn a VPN off. The VPN is the whole computer's: turning it off while another account is
+   signed in says so ("Ann's VPN is on for everyone on this computer").
+4. **The kill switch** (administrator only, off by default): while a VPN marked so is meant to be on and is down, the
+   firewall lets nothing out but the VPN's own server, until it is back or turned off.
+5. **Oracle:** Tor windows unchanged; Settings says in a line that Tor then runs inside the VPN.
+6. **Nothing weakened:** connecting goes through rudolfd's checked requests (confinepure and winapi lists updated), the page
+   never runs a command; the firewall stays on; Secure Boot and module signing unchanged (WireGuard is built in; OpenVPN's
+   DCO module signed as the others).
+7. **Tests:** two QEMU guests (or network namespaces on the host) as client and WireGuard/OpenVPN server: connected, the
+   whole computer's traffic and DNS through the tunnel (a capture outside it shows only the tunnel), disconnected, the
+   kill switch (nothing out while it is down), the permissions (an account without the right refused, a child account
+   refused off), import of malformed files refused. **The owner's checks:** a real VPN (a provider's or a home router's
+   WireGuard) on the Vivobook: connect, browse, a call, sleep and wake, change Wi-Fi.
+
+### 34. Scanners (added on 2026-11-22)
+The owner, 2026-11-22: scanners and network shares are what is left to add from what Mint and Ubuntu have (a phone link,
+fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, already handled, or already there).
+1. **Driverless first:** most scanners and printer-scanners from about 2015 speak eSCL (AirScan) or WSD over the network;
+   sane-airscan finds them (mDNS, as the printers' discovery of #574 does, with the firewall on) and scans. USB ones that
+   speak eSCL go through ipp-usb, which Rudolf already runs for USB printers (usbprint).
+2. **Older USB scanners:** SANE's backends that are free to ship (Canon's pixma among them; check each licence), as a
+   small set chosen by what is common, not all of SANE.
+3. **A Scan app** of Rudolf's own: the scanners found, a preview, the area, colour or grey, resolution, several pages into
+   one PDF, saved as PDF, PNG or JPEG in the account's Documents (or where chosen); the same on Native, Chromium and Lite.
+   Linux apps (Simple Scan in the Debian sandbox) may use the same scanners.
+4. **Nothing weakened:** scanning runs as the account's own Linux user where it can (the USB device given to it while it
+   scans); no listener reachable from outside; the firewall on.
+5. **Tests:** a virtual eSCL scanner on the host and in QEMU (a stand-in server answering eSCL with a known picture), the
+   page scanned and checked; a USB stand-in where QEMU allows. **The owner's check:** the Canon (if it scans) over USB and,
+   if it has it, over Wi-Fi; one page and three pages into a PDF.
+
+### 35. Network shares in File Explorer (added on 2026-11-22)
+1. **Windows and NAS shares (SMB):** File Explorer's Network lists the shares found on the home network (WS-Discovery and
+   mDNS, with the firewall on), and a share's address typed (\\server\share or smb://server/share). Signing in with a name
+   and password (kept in the account's keyring if asked), or as a guest where the share allows it. Opened as a folder:
+   browse, open, copy to and from, drag onto the desktop, as any folder.
+2. **How:** the kernel's SMB client (CIFS, SMB 3 only by default, SMB 2.1 if asked; never SMB 1), built as a signed module,
+   mounted by rudolfd's checked request for the account's own Linux user only (its files owned by that user, under its own
+   folder; other accounts cannot see them), unmounted at sign-out. NFS for NAS boxes that offer only NFS, later, if asked.
+3. **Recent shares:** listed in File Explorer for the account, reconnected when opened (not at start-up, so a missing
+   server never slows the start).
+4. **Nothing weakened:** no share served from Rudolf (only a client); passwords never in the page or a file; encryption asked
+   of the server where it supports it; the firewall unchanged.
+5. **Tests:** a Samba server in a network namespace or second QEMU guest: found, signed in, a file copied each way, a guest
+   share, a wrong password, a share of another account not seen. **The owner's check:** a share on a Windows computer or a
+   NAS at home, if there is one.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -640,3 +703,6 @@ desktop and hurts on neither.
    reads Native, Chromium, Lite and shows "In use now: Native" (or Chromium); Help › Keyboard shortcuts says the Chromium engine.
 9. Part 31 (zstd for the system's images): 1 in one PR (the kernel option, shipped first); 2-3 measured in QEMU in a
    check workflow; every image switched to zstd in a later PR, at the level the numbers choose; then the owner's checklist on both machines.
+11. Part 33 (VPN): WireGuard in one PR, then OpenVPN, then the kill switch; tested in QEMU; the owner's check with a real VPN.
+12. Part 34 (scanners): driverless eSCL first with the Scan app, then the older USB backends; the owner's check on the Canon.
+13. Part 35 (network shares): SMB in File Explorer in one PR; the owner's check on a share at home if there is one.
