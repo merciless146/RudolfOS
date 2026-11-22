@@ -9,6 +9,10 @@ Summary: In progress.
   service. Lua (Command Prompt, BlockLua Builder, Blitzen) always uses Rudolf's own copy of its runtime, never one downloaded from
   a website, and the page now has a security policy that refuses any other site's script. Flash content plays in a sealed-off frame
   of its own: the Flash Player app, and Oracle's pages for Flash files.
+- Fixed: the Blitzen knows check's "⚡ Why?" test (bzwhy57_t.js, 4) failed at some times of day: when the search, which
+  reads the log lines with their times, found two pieces of one document's section, both had the same name, and the test
+  took the one kept for the one unticked. It now unticks a row by its place and looks for that row's text. Blitzen leaves
+  out what is unticked, as it did; nothing in Rudolf OS changed.
 - Fixed: Oracle's status line kept saying "Goes To: <address>" after the mouse left one of Oracle's own pages (its home
   page, the reader) for the rest of the desktop or Oracle's own bar: Chromium does not tell such a page that the mouse
   left it, so the desktop now ends it itself when the mouse arrives on its own page.
