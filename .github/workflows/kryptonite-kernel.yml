@@ -214,7 +214,7 @@ jobs:
           sudo unsquashfs -q -d om rel/modules.sfs usr/lib/modules >/dev/null; sudo unsquashfs -q -d nm K/modules.sfs usr/lib/modules >/dev/null
           unsquashfs -l rel/base.sfs usr/lib/firmware | sed -n 's#^squashfs-root/usr/lib/firmware/##p' > basefw.txt
           set +e; python3 iso/systools/kfwdiff.py om/usr/lib/modules/* nm/usr/lib/modules/* iso/firmware-extra.txt basefw.txt | tee kfwdiff.txt; RC=${PIPESTATUS[0]}; set -e
-          echo "::notice title=Firmware::$(grep -c '^LISTED' kfwdiff.txt) new names listed, $(grep -c '^BASE' kfwdiff.txt) in the base layer, $(grep -c '^REGENERATE' kfwdiff.txt) to add, $(grep -c '^NOT-SHIPPED' kfwdiff.txt) outside what Rudolf ships"
+          echo "::notice title=Firmware::$(grep -c '^LISTED' kfwdiff.txt || true) new names listed, $(grep -c '^BASE' kfwdiff.txt || true) in the base layer, $(grep -c '^REGENERATE' kfwdiff.txt || true) to add, $(grep -c '^NOT-SHIPPED' kfwdiff.txt || true) outside what Rudolf ships"
           [ $RC = 0 ] || { echo "::error title=Firmware::firmware-extra.txt must be made again: $(grep '^REGENERATE' kfwdiff.txt | cut -d' ' -f2 | tr '\n' ' ')"; exit 1; }
       - name: Standard and Native on the test kernel (kr20_t.py)
         run: |

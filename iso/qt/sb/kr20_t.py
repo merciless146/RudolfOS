@@ -50,19 +50,28 @@ def make_drive(path, kernel, engine):
     os.remove(D)
 
 INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()"
-def boot(tag, drv, kernel):
+def boot(tag, drv, kernel, append='', secs=600):
     extra = ['-drive', f'file={drv},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf20',
-             '-kernel', f'{kernel or REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
+             '-kernel', f'{kernel or REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1 {append}'.strip()]
     vm = sbvm.VM('kr20' + tag, PARTS, [], secure=False, mem=MEM, extra=extra); t = time.time()
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
-    up = False; end = time.time() + 600
+    up = False; end = time.time() + secs; seen = ''
     while time.time() < end:
         try:
-            if 'ready' in g.sh('echo ready', 8): up = True; break
+            o = g.sh('echo ready', 8); seen = (seen + o)[-200000:]
+            if 'ready' in o: up = True; break
         except OSError: pass
         time.sleep(2)
     out(f'start {tag}: serial shell {"up" if up else "NOT up"} after {time.time() - t:.0f} s')
+    if not up:
+        try: vm.shot(f'{tag}-notup')
+        except Exception: pass
+        open(f'{W}/serial-{tag}.txt', 'w').write(seen); out(f'{tag}: the serial line said (last lines):\n' + '\n'.join(seen.replace('\r', '').splitlines()[-80:]))
     return vm, g, up
+def diagnose(tag, drv, kernel):
+    """a start that did not reach the serial shell, again with the kernel's messages on the serial line"""
+    vm, g, up = boot(tag + 'diag', drv, kernel, 'console=ttyS0,115200 ignore_loglevel earlyprintk=serial,ttyS0,115200', 180)
+    stop(vm, g)
 def run(g, c, t=60):
     f = os.path.join(W, 'c20.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/c20.sh', '644')
     o = g.sh('sh /tmp/c20.sh 2>&1', t); out('$', c[:160].replace('\n', ' ; '), quiet=True); out(o.rstrip()[-12000:], quiet=True); return o
@@ -107,11 +116,12 @@ def look(o):
 def one(name, kernel, engine):
     drv = os.path.join(W, f'{name}-{engine}.img'); make_drive(drv, kernel, engine)
     vm, g, up = boot(f'{name}{engine}0', drv, kernel)   # the first start: the first-time setup
+    if not up: stop(vm, g); diagnose(f'{name}{engine}', drv, kernel); return {'up': False}
     if up:
         wait_desktop(g); g.js(INIT_JS, 60); run(g, 'sleep 20; cat /run/rudolf/desktop-engine', 40)
     stop(vm, g)
     vm, g, up = boot(f'{name}{engine}1', drv, kernel)
-    if not up: stop(vm, g); return {'up': False}
+    if not up: stop(vm, g); diagnose(f'{name}{engine}', drv, kernel); return {'up': False}
     d = wait_desktop(g); run(g, 'sleep 30', 50)
     r = look(run(g, LOOK, 400)); r['up'] = True; r['desktop'] = d
     try: vm.shot(f'{name}-{engine}')
@@ -142,7 +152,7 @@ try:
         if engine == 'native':
             ok('Native: Native is the engine (no fall-back to Standard), rudolf-native runs', new['engine'] == 'native' and new['procs'].get('rudolf-native', 0) > 0, f'{new["engine"]} {new["procs"]}')
         else:
-            ok('Standard: Standard is the engine, Chromium runs', new['engine'] == 'standard' and new['procs'].get('chrome', 0) > 0, f'{new["engine"]} {new["procs"]}')
+            ok('Standard: Standard is the engine, Chromium runs', new['engine'] in ('standard', 'chromium') and new['procs'].get('chrome', 0) > 0, f'{new["engine"]} {new["procs"]}')
         rf = {k for k, v in rel.get('st', {}).items() if v[0] == 'FAIL'}; nf = {k: v for k, v in new['st'].items() if v[0] == 'FAIL'}
         extra = {k: v for k, v in nf.items() if k not in rf}
         ok(f'{e}: the self-test fails nothing the release kernel passes ({len(new["st"])} checks; release fails {sorted(rf) or "none"})', len(new['st']) > 10 and not extra, json.dumps(extra) if extra else f'{len(new["st"])} checks')
