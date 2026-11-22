@@ -9,6 +9,14 @@ Summary: In progress.
   apps (the Library's, the Linux apps', Debian's) one after another and the Start menu's pictures, which took about 10 seconds on a
   slow laptop; the list of installed Linux apps is kept and given again at once until an app is installed, updated or removed; and
   the desktop's icons and Start menu no longer wait minutes for Linux apps' pictures that cannot be had.
+- New: Rudolf's title bar on Standard's windows from outside the page (docs/plan-1.6.2.md Part 29, the owner, 2026-11-21): Linux
+  apps, the encrypted Oracle and Oracle's Tor windows get the same title bar, buttons, edges and window menu as Rudolf's own windows
+  (and as Native's frames), in the title-bar style and colour chosen in Display Properties. Drag the title bar to move them, any edge
+  or corner to size them; maximize and restore, minimize (the taskbar button brings them back), close (the app is asked, as by its
+  own close button), Always on top and the workspaces from the window's menu. A click on the desktop or another window puts the app
+  behind it, its window keeping its place with the app's name ("Click to show it"). Full-screen videos and games keep the whole
+  screen with no frame; dialogs open in the middle of their window. Chromium-based windows (the encrypted Oracle, Tor windows,
+  Chromium-based browsers) leave their own frame off; apps that always draw their own (Steam, Discord) show both, as on Native.
 - Fixed: on the Native desktop, Task Manager could come up as an empty window for several seconds (or not at all) while the desktop
   was busy, for example while Steam was starting: its page waited for the desktop's hidden background page. Task Manager now has a
   page of its own and comes up at once (docs/plan-1.6.2.md Part 14, found on the owner's Vivobook).

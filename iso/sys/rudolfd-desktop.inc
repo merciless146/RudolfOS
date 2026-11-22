@@ -1016,6 +1016,8 @@ static int orawin_start(const char *acct)
 			{ char cmd[1400]; snprintf(cmd, sizeof cmd, "S=/usr/share/rudolf/www/iwa/shell.swbn; H=0; M=0; for f in '%s'/Default/iwa/*/main.swbn; do [ -f \"$f\" ] || continue; H=1; cmp -s \"$f\" $S && M=1; done; "
 				"[ $H = 1 ] && [ $M = 0 ] && [ -x /usr/bin/rudolf-shellfix ] && /usr/bin/rudolf-shellfix '%s' '%s' $S '%s'; exit 0", prof, L[1], prof, L[0]);
 			  if (!strchr(prof, '\'')) { if (system(cmd)) {} } }
+			/* (1.6.2 Part 29: the system's title bar, Rudolf's, on Standard too, unless chosen in Oracle's Chromium) */
+			{ char cf[600]; snprintf(cf, sizeof cf, "/usr/bin/rudolf-apps chromeframe '%s' 2>/dev/null", prof); if (!strchr(prof, '\'') && !access("/usr/bin/rudolf-apps", X_OK)) { if (system(cf)) {} } }
 			char *a[210]; int k = 0; a[k++] = ORAWIN_LAUNCH; a[k++] = "--oracle"; a[k++] = ORAWIN_CTL; a[k++] = L[0];
 			for (int i = 1; i < n && k < 206; i++) if (strncmp(L[i], "--user-data-dir=", 16) && strncmp(L[i], "--class=", 8)) a[k++] = L[i];
 			static char ud[480]; snprintf(ud, sizeof ud, "--user-data-dir=%s", prof); a[k++] = ud; a[k++] = "--class=RudolfOracle"; a[k] = NULL;
