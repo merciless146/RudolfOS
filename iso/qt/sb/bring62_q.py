@@ -134,8 +134,12 @@ try:
     A, B = pid('Ann'), pid('Bob'); DEST = f'/media/{UP}/Rudolf OS - Bring your files/Old computer 2026-11-22 10.30'
     body = f"{OD} continue=0\n{DEST}\n{A}\tDocuments\n{A}\tPictures\n{A}\tDesktop\n{A}\tOther\n{B}\tVideos\n"
     # a cancelled copy (Bob's videos, 200 MB: the stop asked for as soon as it counts), then its folder taken away
-    api(sh, 'bring/copy', True, f"{OD} continue=0\n/media/{UP}/Rudolf OS - Bring your files/Cancelled\n{B}\tVideos\n")
-    sh("for i in $(seq 1 200); do grep -q 'to copy into' /run/rudolf/job.log 2>/dev/null && break; sleep 0.2; done", 60, False); api(sh, 'bring/cancel', True)
+    # (in one command in the guest: the copy asked for, then Stop as soon as its log starts; with KVM 200 MB is copied in
+    # about a second, so the serial line's round trips would come too late)
+    f = os.path.join(W, 'body'); open(f, 'w').write(f"{OD} continue=0\n/media/{UP}/Rudolf OS - Bring your files/Cancelled\n{B}\tVideos\n"); g.put(f, '/tmp/b62.body', '644')
+    sh(f"T={TOK}; rm -f /run/rudolf/job.log; busybox wget -q -O- --header \"X-Rudolf-Token: $T\" --post-file=/tmp/b62.body http://127.0.0.1:8080/api/bring/copy; "
+       "for i in $(seq 1 400); do grep -q 'Counting' /run/rudolf/job.log 2>/dev/null && break; sleep 0.02; done; "
+       "busybox wget -q -O- --header \"X-Rudolf-Token: $T\" --post-data= http://127.0.0.1:8080/api/bring/cancel; echo", 60)
     st, lg = job(sh, 'bring-copy', 300)
     ok('6. a cancelled copy: stopped (130), "Nothing is erased"', st == 130 and 'Nothing is erased' in lg, [st, lg[-500:]])
     if st != 130: raise RuntimeError('the copy was not cancelled: the installation is not tried, so the old disk stays for the next checks')
