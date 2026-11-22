@@ -17274,7 +17274,8 @@ __svcMod("games58.js");
        hello  -> {dark, reduceFlash}             the desktop's theme and Reduce motion
        load   -> {data}                          the game's save, for this account
        save   {data} -> {}                       kept in the desktop's database (mirrored by rudolfd, backed up),
-                                                 one record per package, game and account; up to 256 KB
+                                                 one record per package, game and account; up to 6 MB
+                                                 (1.6.2: was 256 KB; a game may keep several records)
        lanHost {v} / lanFind / lanStop           1.6.2: the LAN game relay for two-player games (duel62.js)
      and the desktop sends pause / resume (the window minimised or on another workspace, the computer locked, the
      screen saver on) and settings (the theme or Reduce motion changed).
@@ -17302,7 +17303,7 @@ async function gameLibOpen(g){
  if(gone){const ul=$('#menu ul');ul&&ul.querySelectorAll('li.rapp').forEach(li=>{if(LIB_GAMES.some(g=>li.dataset.v25=='pkg:'+g.pkg))li.remove()})}}}
 
 /* ---------- the game kit's messages ---------- */
-const GAME_MAX=256*1024;
+const GAME_MAX=6*1024*1024;   /* 1.6.2 (the owner, 2026-11-22): 6 MB a record, up from 256 KB */
 /* the package frame a message came from, and its package's name */
 function gameFrame(src){for(const f of document.querySelectorAll('iframe')){let w=null;try{w=f.contentWindow}catch(e){}if(w&&w===src){const m=/^\/pkg\/([a-z0-9][a-z0-9+._-]*)\/www\//.exec(new URL(f.src,location.href).pathname);return m?{f,pkg:decodeURIComponent(m[1])}:null}}return null}
 const gameKey=(pkg,game)=>'game:'+pkg+':'+game+':'+uid();
