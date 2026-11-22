@@ -8,6 +8,12 @@ Summary: In progress.
 - Fixed: the Lite engine check's apps' own title bars test (csd161_t.sh, 7) failed whenever it ran after 18:00 UTC: with no
   theme chosen the native desktop turns dark at night, and the window's edge is then the dark theme's, as it should be.
   The test now chooses the light theme. Nothing in Rudolf OS changed.
+- New: two-player games from the Rudolf OS Library on your home network (docs/plan-1.6.2.md Part 30; Ember Reach 0.5.2's
+  duels). Press Host on this network in the game, and Rudolf OS runs a small relay on this computer while you play,
+  and announces it on the network; on the other computer Find games lists it, and the two games meet through it.
+  Nothing goes over the internet. The relay runs as your account's own user (never as root), answers only the local
+  network, and the firewall opens its port to the home network only (never on a cellular connection) and only while a
+  game is hosted. It stops when the duel ends, or within a minute if no game connects.
 
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.

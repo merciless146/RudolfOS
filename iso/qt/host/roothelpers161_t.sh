@@ -80,7 +80,7 @@ case "$n $1" in
 "wifi.sh adapter") [ "$2" = rtest0 ] && echo "Using $2" || { echo "No such adapter: $2"; exit 1; };; "wifi.sh country") echo "Country: $3";;
 "wifi.sh connect") echo "Joining..."; echo "Connected";; "wifi.sh forget") echo "Forgotten";;
 "firewall on"|"firewall off") [ -e $T/fw-fail ] && { echo "nft: no such table" >&2; exit 1; }; echo "turned $1";;
-"firewall status") echo "on 7";; "firewall remote") ;;
+"firewall status") echo "on 7";; "firewall remote") ;; "firewall duel") ;;
 "hotspot status") echo '{"on":false,"can":true}';; "hotspot stop") echo "The hotspot is off";; "hotspot start") echo "Sharing Phone Net (2.4 GHz)";;
 "netplug state") echo '{"ok":true,"connected":true,"metered":false}';; "netplug set") [ "$2" = rtest0 ] || echo "no such adapter";;
 "ip "*) [ -e $T/ip-fail ] && [ "$2" = add ] && { echo "RTNETLINK answers: File exists" >&2; exit 2; };;
@@ -236,6 +236,11 @@ o=$($NW firewall status </dev/null); $NW firewall remote on </dev/null; touch $T
 ok "N6. the firewall (its count, remote access's port, a refusal's words and status), the hotspot (the request on standard input into a file of root's), metered connections: the scripts' own answers" "$([ "$o" = 'on 7' ] && [ $r = 1 ] && [ "$o2" = 'nft: no such table' ] && [ "$o3" = '{"on":false,"can":true}' ] && [ "$o4" = 'Sharing Phone Net (2.4 GHz)' ] && echo "$o5" | grep -q '"metered":false' && [ "$o6" = 'no such adapter' ] && echo "$c" | grep -q "^firewall remote on|$PE" && echo "$c" | grep -q "^hotspot start $T/run/hotspot.req|req=$(printf 'Phone Net\npassword1\n2.4\n' | md5sum | cut -c1-8) 600:0 hotspot.req|" && echo "$c" | grep -q "^netplug set wlan9 on|" && echo 1)" "$o $o2 $o3 $o4 $o5 $o6 $c"
 rm -f $T/run/hotspot.req
 
+# (1.6.2 Part 30: the LAN game relay's port, while a game is hosted)
+calls >/dev/null; $NW firewall duel on 47731 </dev/null; r=$?; $NW firewall duel off </dev/null; r2=$?; c=$(calls)
+b=0; for a in "firewall|duel" "firewall|duel|on" "firewall|duel|on|80" "firewall|duel|on|70000" "firewall|duel|on|47731x" "firewall|duel|on|-1" "firewall|duel|on|4773;1" "firewall|duel|maybe" "firewall|duel|off|1" "firewall|duel|on|47731|x"; do
+	IFS='|'; set -- $a; IFS=$OIFS; $NW "$@" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $a)"; }; done
+ok "N6b. the LAN game relay's port (1.6.2): firewall duel on PORT and off, as they are; a port outside 1024-65535 or not a number, an unknown word, extra arguments: refused, nothing run" "$([ $r$r2 = 00 ] && [ "$(echo "$c" | tr '\n' '#')" = "firewall duel on 47731|$PE#firewall duel off|$PE#" ] && [ $b = 0 ] && [ -z "$(calls)" ] && echo 1)" "$r$r2 $c $b"
 # ---- 1.6.1 devices: the devices helper's checks (Bluetooth, Thunderbolt)
 DV=$T/root/devices
 o=$(env -i LEAKME=1 $DV bt status </dev/null); $DV bt on </dev/null; $DV bt scan 15 </dev/null; o2=$($DV bt pair AA:BB:CC:DD:EE:01 </dev/null); touch $T/bt-noq; $DV bt answer yes </dev/null; r=$?; rm -f $T/bt-noq
