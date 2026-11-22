@@ -1,0 +1,37 @@
+# 1.6.2: Emu's Nintendo 64 and Dreamcast games, played for real in Flathub's Rosalie's Mupen GUI and Flycast, started by
+# the real rudolfd (iso/qt/host/emunat162_t.py): Rudolf's own test games (iso/qt/emu/mkn64.py and mkdc.py, made fresh
+# here: no Nintendo or Sega code, no BIOS, no game) in every N64 byte order and every Dreamcast disc format, on Xvfb with
+# a virtual gamepad. Screenshots and logs are kept as the run's artifact. It never publishes.
+name: Emu native emulators check
+on:
+  workflow_dispatch:
+  push:
+    branches: ['emu-n64-dc-test']
+  pull_request:
+    paths: ['iso/qt/emu/**', 'iso/qt/host/emunat162_t.py', 'iso/sys/rudolfd.c', 'iso/sys/root/usr/lib/rudolf/games-import.sh',
+      'iso/sys/root/usr/lib/rudolf/emu-native-setup', '.github/workflows/emu-native-check.yml']
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq flatpak xvfb dbus-daemon python3-evdev python3-pil python3-xlib mame-tools gcc zlib1g-dev curl >/dev/null
+          sudo modprobe uinput || true; ls -l /dev/uinput
+          id rudolf 2>/dev/null || sudo useradd -M -d /home/rudolf -s /bin/sh -u 1000 rudolf 2>/dev/null || sudo useradd -M -d /home/rudolf -s /bin/sh rudolf; id rudolf
+      - name: The emulators from Flathub (as Emu installs them, system-wide)
+        run: |
+          sudo flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install --system -y --noninteractive flathub com.github.Rosalie241.RMG org.flycast.Flycast
+          flatpak info --system com.github.Rosalie241.RMG | sed -n 's/^ *\(Version\|Commit\|Runtime\):/\1:/p'
+          flatpak info --system org.flycast.Flycast | sed -n 's/^ *\(Version\|Commit\|Runtime\):/\1:/p'
+          flatpak info --system --show-permissions com.github.Rosalie241.RMG; flatpak info --system --show-permissions org.flycast.Flycast
+      - name: Play the test games (emunat162_t.py)
+        run: sudo python3 iso/qt/host/emunat162_t.py "$RUNNER_TEMP/emunat"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: emu-native-screens, path: '${{ runner.temp }}/emunat', if-no-files-found: warn}
