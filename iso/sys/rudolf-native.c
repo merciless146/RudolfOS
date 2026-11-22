@@ -775,6 +775,12 @@ static GtkWidget *on_create(WebKitWebView *v, WebKitNavigationAction *na, gpoint
    got a process of its own, WebKitGTK 2.52, as navigations may change process) */
 static void app_open(const char *k, const char *file) { app_open_ex(k, file, NULL, 0); }
 /* (extra: more of the address, already escaped; hidden: a page the shell asks to do something, never shown) */
+/* 1.6.2 Part 14 (the owner's Vivobook, 2026-11-22: "taskmgr's page is not ready after 2500 ms", then "never said it was ready", while
+   Steam started and the hidden page's desktop/apps took 192 s) an app's page is opened by window.open from the first page with an
+   address (the shell's hidden page, do-bg), so it is in that page's web process (one process for them: their memory), and waits for
+   it: Task Manager, the app for a desktop that is stuck, came as a blank cover, then as it was. Task Manager's page has a web process
+   of its own, as Standard's Task Manager is not held back by another app's work; the other apps' pages stay together. */
+static int own_process(const char *k) { return k && !strcmp(k, "taskmgr"); }
 static void app_open_ex(const char *k, const char *file, const char *extra, int hidden)
 {
 	if (!USER_ID[0] || LOCKED || !key_ok(k)) return;
@@ -791,7 +797,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
 	static int nochrome_said;
 	if (!strcmp(k, "browser") && !hidden) { if (oracle_open(file, extra)) return; if (!nochrome_said++) { char *ex = g_strdup_printf("%s&nochrome=1", extra ? extra : ""); app_open_ex(k, file, ex, hidden); g_free(ex); return; } }
 	ctx_make(); int id = ++NEXTID; char *u = app_url(k, file, id, extra);
-	AppWin *rel = NULL; for (GList *l = WINS; l; l = l->next) { AppWin *x = l->data; if (x->view && webkit_web_view_get_uri(WEBKIT_WEB_VIEW(x->view)) && !x->closing) { rel = x; break; } }
+	AppWin *rel = NULL; if (!own_process(k)) for (GList *l = WINS; l; l = l->next) { AppWin *x = l->data; if (x->view && webkit_web_view_get_uri(WEBKIT_WEB_VIEW(x->view)) && !x->closing) { rel = x; break; } }
 	if (rel) {
 		Pending *p = g_new0(Pending, 1); snprintf(p->k, sizeof p->k, "%s", k); p->id = id; p->hidden = hidden; p->reveal = reveal; g_queue_push_tail(&PENDING, p);
 		char *js = g_strdup_printf("(typeof webNativeOpen=='function'?webNativeOpen:window.open)(%s,'_blank')", "decodeURIComponent('%s')"), *ue = g_uri_escape_string(u, NULL, FALSE), *js2 = g_strdup_printf(js, ue);
@@ -8110,7 +8116,7 @@ static void appwin_wake(AppWin *a)
 	fprintf(stderr, "rudolf-native: %s's window wakes (its page loaded again)\n", a->k);
 	char *u = a->rurl; a->rurl = NULL;
 	/* (opened as every window is, by another window's page (window.open: the same web process), into this window: on_create's into) */
-	AppWin *rel = NULL; for (GList *l = WINS; l; l = l->next) { AppWin *x = l->data; if (x != a && x->view && !x->rest && webkit_web_view_get_uri(WEBKIT_WEB_VIEW(x->view)) && !x->closing) { rel = x; break; } }
+	AppWin *rel = NULL; if (!own_process(a->k)) for (GList *l = WINS; l; l = l->next) { AppWin *x = l->data; if (x != a && x->view && !x->rest && webkit_web_view_get_uri(WEBKIT_WEB_VIEW(x->view)) && !x->closing) { rel = x; break; } }
 	if (rel) { Pending *p = g_new0(Pending, 1); snprintf(p->k, sizeof p->k, "%s", a->k); p->id = a->id; p->into = a; g_queue_push_tail(&PENDING, p);
 		char *ue = g_uri_escape_string(u, NULL, FALSE), *js = g_strdup_printf("(typeof webNativeOpen=='function'?webNativeOpen:window.open)(decodeURIComponent('%s'),'_blank')", ue);
 		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(rel->view), js, -1, NULL, NULL, NULL, NULL, NULL); g_free(js); g_free(ue); }
