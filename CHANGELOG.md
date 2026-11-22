@@ -9,6 +9,12 @@ Summary: In progress.
   reads the log lines with their times, found two pieces of one document's section, both had the same name, and the test
   took the one kept for the one unticked. It now unticks a row by its place and looks for that row's text. Blitzen leaves
   out what is unticked, as it did; nothing in Rudolf OS changed.
+- New: two-player games from the Rudolf OS Library on your home network (docs/plan-1.6.2.md Part 30; Ember Reach 0.5.2's
+  duels). Press Host on this network in the game, and Rudolf OS runs a small relay on this computer while you play,
+  and announces it on the network; on the other computer Find games lists it, and the two games meet through it.
+  Nothing goes over the internet. The relay runs as your account's own user (never as root), answers only the local
+  network, and the firewall opens its port to the home network only (never on a cellular connection) and only while a
+  game is hosted. It stops when the duel ends, or within a minute if no game connects.
 
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.

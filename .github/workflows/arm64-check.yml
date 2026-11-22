@@ -50,6 +50,7 @@ jobs:
           gcc -O2 $HARD -o $B/rudolf-know sys/rudolf-know.c -lcrypto -ldl -lm
           gcc -O2 $HARD -o $B/rudolf-dev sys/rudolf-dev.c -lcrypto -ldl
           gcc -O2 $HARD -o $B/rudolf-print sys/rudolf-print.c -ldl
+          gcc -O2 $HARD -o $B/rudolf-duel sys/rudolf-duel.c
           gcc -O2 $HARD -o $B/rudolf-devlink sys/rudolf-devlink.c -lcrypto -ldl
           gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables -o $B/rudolf-kexec sys/rudolf-kexec.c
           gcc -Os $HARD_STATIC -o $B/rudolf-verity sys/rudolf-verity.c

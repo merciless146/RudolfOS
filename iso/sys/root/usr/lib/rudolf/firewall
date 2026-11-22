@@ -8,9 +8,12 @@
 #   firewall cellular add|del IF  (1.6.0 Part 3) a cellular modem's interface: filtered as every other, and never
 #                           counted as the local network (remote access is not offered on it: an operator's
 #                           private addresses are other subscribers, not this home's devices)
+#   firewall duel on PORT|off  (1.6.2 Part 30) let the local network reach the LAN game relay (rudolf-duel) on PORT
+#                           while a player hosts a game, or no longer (rudolfd: on when it starts, off when it ends)
 # Outgoing connections are all allowed. Incoming: the computer itself (loopback), replies to connections it made,
 # DHCP replies, the ICMP a network needs (ping, too big, unreachable, IPv6 neighbour discovery), and remote access
-# from private addresses while it is on, and (1.6.1 Part 9) multicast DNS's answers to Find printers (the mdns chain: to
+# from private addresses while it is on, the LAN game relay's port from private addresses while a game is hosted (1.6.2
+# Part 30: the duel chain, never on a cellular interface), and (1.6.1 Part 9) multicast DNS's answers to Find printers (the mdns chain: to
 # port 5353 from port 5353, sent to the group 224.0.0.251, which routers never forward, or to this computer by a device
 # on the same link, its TTL 255 unchanged by any router; never on a cellular interface). Everything else is counted and
 # dropped.
@@ -37,12 +40,15 @@ table inet rudolf {
 		udp sport 547 udp dport 546 accept
 		jump remote
 		jump hotspot
+		jump duel
 		jump mdns
 		counter name blocked drop
 	}
 	chain remote {
 	}
 	chain hotspot {
+	}
+	chain duel {
 	}
 	chain mdns {
 		iifname @cellular return
@@ -59,6 +65,14 @@ remote_rules() {
 add rule inet rudolf remote ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } tcp dport 8443 accept
 add rule inet rudolf remote ip6 saddr { fe80::/10, fc00::/7 } tcp dport 8443 accept
 EOF
+}
+DUEL=/run/rudolf/firewall-duel
+duel_rules() {
+	echo "flush chain inet rudolf duel"
+	case "$1" in ""|off|*[!0-9]*) return 0;; esac
+	[ "$1" -ge 1024 ] && [ "$1" -le 65535 ] || return 0
+	echo 'add rule inet rudolf duel iifname @cellular return'
+	printf 'add rule inet rudolf duel ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } tcp dport %s accept\n' "$1"
 }
 CELL=/run/rudolf/firewall-cellular
 cell_rules() { [ -s "$CELL" ] && while read -r i; do printf 'add element inet rudolf cellular { "%s" }\n' "$i"; done < "$CELL"; true; }
@@ -77,11 +91,13 @@ start)
 	rules | nftf || exit 1
 	remote_rules "$([ -f "$REM" ] && echo on)" | nftf; cell_rules | nftf
 	[ -s "$HS" ] && hotspot_rules "$(cat $HS)" | nftf
+	[ -s "$DUEL" ] && duel_rules "$(cat $DUEL)" | nftf
 	exit 0;;
 on)
 	rm -f "$OFF"; rules | nftf || exit 1
 	remote_rules "$([ -f "$REM" ] && echo on)" | nftf; cell_rules | nftf
 	[ -s "$HS" ] && hotspot_rules "$(cat $HS)" | nftf
+	[ -s "$DUEL" ] && duel_rules "$(cat $DUEL)" | nftf
 	exit 0;;
 hotspot)
 	if [ "$2" = off ]; then rm -f "$HS"; else echo "$2" > "$HS"; fi
@@ -89,6 +105,12 @@ hotspot)
 off)
 	mkdir -p /persist/etc 2>/dev/null; [ -d /persist/etc ] && : > "$OFF"
 	loaded && nft delete table inet rudolf; exit 0;;
+duel)
+	if [ "$2" = on ]; then case "$3" in ""|*[!0-9]*) echo "a port" >&2; exit 2;; esac; [ "$3" -ge 1024 ] && [ "$3" -le 65535 ] || { echo "a port" >&2; exit 2; }
+		mkdir -p /run/rudolf; echo "$3" > "$DUEL"; loaded && duel_rules "$3" | nftf
+	elif [ "$2" = off ]; then rm -f "$DUEL"; loaded && duel_rules off | nftf
+	else echo "duel on PORT|off" >&2; exit 2; fi
+	exit 0;;
 remote)
 	if [ "$2" = on ]; then : > "$REM"; else rm -f "$REM"; fi
 	loaded && remote_rules "$2" | nftf; exit 0;;
@@ -98,5 +120,5 @@ cellular)
 	if loaded; then if [ "$2" = add ]; then printf 'add element inet rudolf cellular { "%s" }\n' "$3" | nftf; else printf 'delete element inet rudolf cellular { "%s" }\n' "$3" | nftf 2>/dev/null; fi; fi; exit 0;;
 status)
 	if loaded; then echo "on $(nft list counter inet rudolf blocked 2>/dev/null | sed -n 's/.*packets \([0-9]*\).*/\1/p' | head -1)"; else echo off; fi;;
-*) echo "usage: firewall start|on|off|remote on|off|hotspot IF|off|cellular add|del IF|status" >&2; exit 2;;
+*) echo "usage: firewall start|on|off|remote on|off|hotspot IF|off|cellular add|del IF|duel on PORT|off|status" >&2; exit 2;;
 esac
