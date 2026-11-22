@@ -12,7 +12,7 @@ if [ -e $R/persistent ] && [ -f $P/etc/rudolf-desktop-engine ]; then
 	rm -f $P/etc/rudolf-desktop-engine $P/etc/rudolf-desktop-engine.trying
 	echo "$(date -u +%FT%TZ) $how" > $P/etc/rudolf-desktop-engine.failed; sync
 fi
-echo "$(date) $how - starting the desktop again with the standard engine and no shell" >> $R/session.log
-$HE --health browser "$how, so the desktop was started again with the standard engine and no shell" >/dev/null 2>&1
+echo "$(date) $how - starting the desktop again with the Chromium engine and no shell" >> $R/session.log
+$HE --health browser "$how, so the desktop was started again with the Chromium engine and no shell" >/dev/null 2>&1
 $PK -f '[-]-rudolf-kiosk' >/dev/null 2>&1; sleep 3; $PK -9 -f '[-]-rudolf-kiosk' >/dev/null 2>&1
 echo "the safe desktop is starting"

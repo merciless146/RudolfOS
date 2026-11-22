@@ -452,7 +452,7 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
  if(!app){oaClosed('There is no app called “'+ONEAPP.k+'”.');oaPost({op:'close'});return}
  OA.want=1;
  /* (1.5.9, 12.3c) Oracle without Rudolf's Chromium on the native desktop (none, or it would not start): said once */
- if(ONEAPP.k=='browser'&&ONEAPP.q.get('nochrome')=='1')setTimeout(()=>{try{notify('Oracle','Websites will work better on Standard: Oracle is running without Rudolf\u2019s Chromium here, so some sites cannot open in its tabs.')}catch(e){}},1500);
+ if(ONEAPP.k=='browser'&&ONEAPP.q.get('nochrome')=='1')setTimeout(()=>{try{notify('Oracle','Websites will work better on the Chromium desktop: Oracle is running without Rudolf\u2019s Chromium here, so some sites cannot open in its tabs.')}catch(e){}},1500);
  try{if(act)act();else if(ONEAPP.file&&ONEAPP.k=='explorer'&&typeof explorer=='function'){const p=resolve(ONEAPP.file,['C:']);(async()=>{for(let i=0;i<60&&!isDir(node(p));i++)await new Promise(r=>setTimeout(r,100));explorer(isDir(node(p))?p:p.slice(0,-1))})()}   /* (1.6.0: a folder: tm26.js srOpenFolder; the account's home read first) */
   else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));
   else if(ONEAPP.k=='taskmgr'&&ONEAPP.q.get('urgent')=='1'&&typeof tmUrgent=='function')tmUrgent();   /* (1.6.0: Ctrl+Alt+Del's, tmtop57.js) */

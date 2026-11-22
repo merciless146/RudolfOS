@@ -49,7 +49,7 @@ ok "8. two quick closes: still tried" $([ $ENGINE = native ] && [ ! -e /run/rudo
 desk_exited 8 >/dev/null; start 0
 ok "9. the third quick close in a row: Standard from now on" $([ $ENGINE = chromium ] && [ -e /run/rudolf/native-failed ]; echo $?)
 ok "10. ...for good: the choice removed, why kept for Settings (marked as Native's)" $([ ! -e /persist/etc/rudolf-desktop-engine ] && grep -q 'closed 3 times in a row as it started (Native)$' /persist/etc/rudolf-desktop-engine.failed && [ ! -e /persist/etc/rudolf-desktop-engine.trying ]; echo $?)
-ok "11. ...and System health says so" $(grep -q 'the Native desktop did not start (it closed 3 times in a row as it started), so the standard engine is used from now on' $W/health; echo $?)
+ok "11. ...and System health says so" $(grep -q 'the Native desktop did not start (it closed 3 times in a row as it started), so the Chromium engine is used from now on' $W/health; echo $?)
 native; start 1; rm -f /run/rudolf/native-failed; start 1 >/dev/null
 ok "12. a start that never answered (switched off at a grey screen): given up at the next start" $([ $ENGINE = chromium ] && grep -q 'did not reach the sign-in screen' /persist/etc/rudolf-desktop-engine.failed; echo $?)
 echo webkit > /persist/etc/rudolf-desktop-engine; cp /persist/etc/rudolf-desktop-engine /run/rudolf/engine-choice; rm -f /run/rudolf/*-failed /persist/etc/rudolf-desktop-engine.*; start 1

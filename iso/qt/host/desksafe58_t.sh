@@ -10,7 +10,7 @@ run() { DS_PERSIST=$W/p DS_RUN=$W/run DS_PKILL=$W/pkill DS_HEALTH=$W/health sh $
 o=$(run keys)
 ok "1. Lite and the shell are off at once" $([ -e $W/run/webkit-failed ] && [ -e $W/run/shell-failed ]; echo $?)
 ok "2. Lite is off for good, saying why (Settings › Desktop engine), and its trial mark goes" $([ ! -e $W/p/etc/rudolf-desktop-engine ] && [ ! -e $W/p/etc/rudolf-desktop-engine.trying ] && grep -q 'Ctrl+Alt+Backspace was held' $W/p/etc/rudolf-desktop-engine.failed; echo $?)
-ok "3. the desktop is started again (either engine), and System health and the session log say why" $(grep -q -- '-f \[-\]-rudolf-kiosk' $W/pk && grep -q 'Ctrl+Alt+Backspace was held' $W/he && grep -q 'standard engine and no shell' $W/run/session.log; echo $?)
+ok "3. the desktop is started again (either engine), and System health and the session log say why" $(grep -q -- '-f \[-\]-rudolf-kiosk' $W/pk && grep -q 'Ctrl+Alt+Backspace was held' $W/he && grep -q 'Chromium engine and no shell' $W/run/session.log; echo $?)
 rm -f $W/run/persistent $W/p/etc/rudolf-desktop-engine.failed; echo webkit > $W/p/etc/rudolf-desktop-engine; run devlink >/dev/null
 ok "4. a live start keeps no setting (nothing on the disk changes)" $([ -e $W/p/etc/rudolf-desktop-engine ] && [ ! -e $W/p/etc/rudolf-desktop-engine.failed ]; echo $?)
 run other >/dev/null; ok "5. anything else: usage, exit 2" $([ $? = 2 ]; echo $?)

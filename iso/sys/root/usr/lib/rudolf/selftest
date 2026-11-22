@@ -201,7 +201,7 @@ ML=${ST_LIBDIR:-/usr/lib/x86_64-linux-gnu}
 if [ ! -x "${ST_WEBKIT:-/usr/bin/rudolf-webkit}" ]; then skip lite-engine "not in this Rudolf OS"
 else bad=""; for l in libGLESv2.so.2 libEGL.so.1 libGLdispatch.so.0 libepoxy.so.0; do [ -e "$ML/$l" ] || bad="$bad $l"; done
 	[ -x "$ML/webkit2gtk-4.1/WebKitWebProcess" ] || bad="$bad WebKitWebProcess"
-	if [ -z "$bad" ]; then pass lite-engine "WebKit and the graphics libraries it opens are there"; else fail lite-engine "missing:$bad (Lite would close as it starts; Standard is used)"; fi
+	if [ -z "$bad" ]; then pass lite-engine "WebKit and the graphics libraries it opens are there"; else fail lite-engine "missing:$bad (Lite would close as it starts; Chromium is used)"; fi
 fi
 # 1.5.8: Mesa's GLX: without it GTK finds no OpenGL and WebKit turns its hardware acceleration off (Lite still works,
 # drawing everything with the processor)

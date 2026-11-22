@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Changed: the Standard desktop is now called Chromium (it is the same desktop: the desktop page in Rudolf's Chromium), and
+  Settings › System health › Desktop engine lists the three as Native, Chromium, Lite. A computer on Standard stays on it and
+  shows it as Chromium; nothing saved changes. Help, System health, the self-test, the sign-in's messages and rudolf-fetch say
+  Chromium too.
 - Fixed: the Several monitors check failed on every run although its tests passed: monbeh_t.js named a picture
   "cmp.lock:cover2.diff.png", and GitHub's upload of the pictures refuses a ':' in a file name. Nothing in Rudolf OS changed.
 - Fixed: the Lite engine check's apps' own title bars test (csd161_t.sh, 7) failed whenever it ran after 18:00 UTC: with no
@@ -23,8 +27,8 @@ Summary: In progress.
   slow laptop; the list of installed Linux apps is kept and given again at once until an app is installed, updated or removed; and
   the desktop's icons and Start menu no longer wait minutes for Linux apps' pictures that cannot be had.
 - New: Linux apps' progress on their taskbar buttons (docs/plan-1.6.2.md Part 25b). A Linux app with a download or other work in
-  progress shows it on its taskbar button while its window is minimized (on Standard: while another window or the desktop is in
-  front), with the same fill as Rudolf's own windows and the same Display Properties › Taskbar › Progress colour, on Standard and
+  progress shows it on its taskbar button while its window is minimized (on Chromium: while another window or the desktop is in
+  front), with the same fill as Rudolf's own windows and the same Display Properties › Taskbar › Progress colour, on Chromium and
   on the native desktop alike. Apps that say it with the Unity launcher signal (Chromium-based and Electron apps, and others) are
   heard by your account's own portal on your account's own session bus; Firefox's own progress on its window (the XApp hint) is
   read from the window itself. Only your own apps, and a Flatpak app only if it may talk to com.canonical.Unity and only for its
@@ -36,7 +40,7 @@ Summary: In progress.
 - Fixed: Oracle's status line kept saying "Goes To: <address>" after the mouse left one of Oracle's own pages (its home
   page, the reader) for the rest of the desktop or Oracle's own bar: Chromium does not tell such a page that the mouse
   left it, so the desktop now ends it itself when the mouse arrives on its own page.
-- New: Rudolf's title bar on Standard's windows from outside the page (docs/plan-1.6.2.md Part 29, the owner, 2026-11-21): Linux
+- New: Rudolf's title bar on the Chromium desktop's windows from outside the page (docs/plan-1.6.2.md Part 29, the owner, 2026-11-21): Linux
   apps, the encrypted Oracle and Oracle's Tor windows get the same title bar, buttons, edges and window menu as Rudolf's own windows
   (and as Native's frames), in the title-bar style and colour chosen in Display Properties. Drag the title bar to move them, any edge
   or corner to size them; maximize and restore, minimize (the taskbar button brings them back), close (the app is asked, as by its

@@ -10,7 +10,7 @@ col=1; { [ "$1" = --plain ] || [ -n "${NO_COLOR:-}" ] || ! [ -t 1 ]; } && col=0
 fact() { [ -r $F ] && sed -n "s/^$1=//p" $F | head -1; }
 ver=$(cat $D/VERSION 2>/dev/null); [ -n "$ver" ] || ver=unknown
 eng=$(fact engine); [ -n "$eng" ] || eng=$(cat /run/rudolf/engine-choice 2>/dev/null)
-case "$eng" in native) eng=Native;; webkit) eng=Lite;; ""|chromium|standard) eng=Standard;; esac
+case "$eng" in native) eng=Native;; webkit) eng=Lite;; ""|chromium|standard) eng=Chromium;; esac
 chan=$(fact channel)
 if [ -z "$chan" ]; then u=$(sed -n 's/^url=//p' /persist/os/update.conf 2>/dev/null); case "$u" in */beta) chan=beta;; */stable|"") chan=stable;; *) chan=custom;; esac; fi
 cpu=$(sed -n 's/^model name[[:space:]]*: //p' /proc/cpuinfo 2>/dev/null | head -1 | sed 's/(R)//g; s/(TM)//g; s/  */ /g')

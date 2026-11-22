@@ -3642,7 +3642,7 @@ static void signin_show(int lock)
 	/* the user name: the account signed in last (the page's: the last USER) */
 	const char *pre = ""; for (int i = 0; i < NACC; i++) if (!strcmp(ACC[i].id, LASTACC)) pre = ACC[i].n;
 	snprintf(SN_NAME, sizeof SN_NAME, "%s", lock ? USER_N : pre); explicit_bzero(SN_PASS, sizeof SN_PASS);
-	snprintf(SN_MSG, sizeof SN_MSG, "%s", SETUP || lock ? "" : "Rudolf OS is not set up yet: start it once with the Standard desktop engine.");
+	snprintf(SN_MSG, sizeof SN_MSG, "%s", SETUP || lock ? "" : "Rudolf OS is not set up yet: start it once with the Chromium desktop engine.");
 	SFOC = 1; SHOV = -1;
 	gtk_widget_show_all(SIGN); gtk_window_move(GTK_WINDOW(SIGN), 0, 0); gtk_window_present(GTK_WINDOW(SIGN));
 	GdkWindow *gw = gtk_widget_get_window(SIGN); if (gw) gdk_window_focus(gw, GDK_CURRENT_TIME);

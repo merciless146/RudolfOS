@@ -29,7 +29,7 @@ home office version." So Kryptonite is an edition beside Rudolf OS, not its repl
 - **Work on Rudolf OS's features continues on main as before.** Gaming and mobile work is marked for Kryptonite in its
   plan and PR, with the switch that keeps it out of the home and office edition where it does not belong there.
 
-Why (1.5.9's measurements, docs/plan-1.5.9.md 12.3a): with nothing open Native uses 854 MB against Standard's 1,110 MB,
+Why (1.5.9's measurements, docs/plan-1.5.9.md 12.3a): with nothing open Native uses 854 MB against Chromium's (formerly Standard's) 1,110 MB,
 because no web page runs; each app opened today loads a WebKit page with the desktop's code (Settings: 195 MB). A native
 app of the same kind is typically 15 to 40 MB.
 
@@ -46,9 +46,9 @@ app of the same kind is typically 15 to 40 MB.
   files the web apps see, so a document opened in WordLite's web version and in its native one is one file. Paths are
   shown as the page shows them (C:\\Users\\NAME\\Documents).
 - **Settings and an app's own state** go through rudolfd (`desktop/settings` and a new `apps/state?app=NAME`), never
-  into the web page's storage directly, so the page (Standard and Lite, still there) and native apps stay in step
+  into the web page's storage directly, so the page (Chromium and Lite, still there) and native apps stay in step
   while both exist.
-- **The same look (the owner, 2026-11-14: Rudolf OS on Native appears and works exactly as on Standard):** a native
+- **The same look (the owner, 2026-11-14: Rudolf OS on Native appears and works exactly as on Chromium):** a native
   app is drawn to look like its web version, not like a stock GTK app: librudolf-ui carries a GTK CSS theme made from
   the page's styles (its buttons, fields, menus, scrollbars, tabs, lists, the accent colour, light and dark), and each
   app's windows are screenshot-compared with the web version as in docs/plan-1.6.0.md Part 12's rule (under 2 % of
@@ -57,7 +57,7 @@ app of the same kind is typically 15 to 40 MB.
   shortcuts, its files, its settings, what its browser tests check), screenshots compared side by side under Xvfb.
 - **Until an app is native, its web version opens** in a one-app WebKit window as in 1.6.0. When the native version
   passes, the start menu, the pins, file associations and Open with point to it; its web version stays in the page for
-  Standard and Lite until 2.0 decides their future (below).
+  Chromium and Lite until 2.0 decides their future (below).
 
 ## The order
 Small and much used first, so the way of building is proved on easy apps before the large ones.
@@ -78,7 +78,7 @@ WordPro, SpreadsheetPro, PresentPro, Paint, App Store and Packages, Developer Co
 Settings goes first in this wave: it is opened most, and its page costs the most memory today.
 
 **Staying web pages (decided per app, not rewritten by default)**
-- **Oracle Browser:** a browser is a web engine; it stays Chromium (Standard) or WebKit, framed by the native window
+- **Oracle Browser:** a browser is a web engine; it stays Chromium or WebKit, framed by the native window
   manager, its tabs and menus already its own.
 - **The games and creative tools built on the web:** Board Games, Card Games, Emu, Flash Player, Quake Engine,
   GPU Lab, WOS Galaxy Map, BlockLua Builder, and the screen savers: they draw with canvas and WebGL, a native rewrite
@@ -92,8 +92,8 @@ web version (the PR says both). The release build compiles every native app and 
 layer or over its budget.
 
 ## What 2.0 decides when wave 3 is done
-- Whether Standard and Lite (the web desktop) stay in the system layer as fallbacks, or move to a recovery-only role,
-  or go. Until then they stay, and Native gives up to Standard as in 1.5.9.
+- Whether Chromium and Lite (the web desktop) stay in the system layer as fallbacks, or move to a recovery-only role,
+  or go. Until then they stay, and Native gives up to Chromium as in 1.5.9.
 - Whether the web desktop is kept as the browser build (Rudolf OS in a browser tab) and the phone web app, or retired.
 - Wayland (docs/plan-1.5.9.md 12.2: X11 for now): planned below ("Wayland", added on 2026-11-15); its switch for
   new installations is decided at its stage W5.
@@ -113,9 +113,9 @@ on-screen keyboard as the phone and tablet need them (every Linux phone shell is
 different sizes. Memory: about the same as X11 (the compositor replaces Xorg; Xwayland only while an X11 app runs), to
 be measured (W0).
 
-**What stays the same:** the owner's rule: Rudolf OS on Wayland appears and works exactly as on X11 (and as Standard),
+**What stays the same:** the owner's rule: Rudolf OS on Wayland appears and works exactly as on X11 (and as Chromium),
 checked the same way (same_t.sh's screenshots, the behaviour scripts). Accounts, files, rudolfd, updates, recovery and
-the security model do not change. Standard, Lite and Native all run on it; X11 stays as a fallback session.
+the security model do not change. Native, Chromium and Lite all run on it; X11 stays as a fallback session.
 
 ### What changes, part by part
 - **The compositor: rudolf-native becomes it,** built on wlroots (C, as rudolf-native; small; used by Sway, labwc,
@@ -130,7 +130,7 @@ the security model do not change. Standard, Lite and Native all run on it; X11 s
 - **The screen lock:** ext-session-lock, so a crashing shell can never leave the desktop unlocked.
 - **Several monitors:** docs/plan-1.6.1.md Part 1's design (a workspace per display) carried over to wlroots' outputs;
   per-display scaling (125 %, 150 %) added.
-- **Chromium (Standard's desktop, Oracle, its Tor windows):** Chromium on Wayland (--ozone-platform=wayland); the shell
+- **Chromium (the Chromium desktop, Oracle, its Tor windows):** Chromium on Wayland (--ozone-platform=wayland); the shell
   in Chromium (the Isolated Web App, real tabs) checked unchanged. **WebKit (Lite and the one-app windows):** WebKitGTK
   on Wayland.
 - **X11 apps: Xwayland,** started when the first X11 app opens and stopped after the last: Wine programs, Steam and its
@@ -153,7 +153,7 @@ the security model do not change. Standard, Lite and Native all run on it; X11 s
 ### Tests
 - The host tests that use Xvfb, xdotool and ImageMagick's import get Wayland equivalents: the compositor's headless
   backend (WLR_BACKENDS=headless) for a screen, wlrctl or the virtual input protocols for input, grim (screencopy) for
-  screenshots. same_t.sh compares X11 and Wayland screens as it compares Native and Standard.
+  screenshots. same_t.sh compares X11 and Wayland screens as it compares Native and Chromium.
 - QEMU (the t160 harness): a Wayland session starts, signs in, the account's apps get its Wayland socket and not
   another account's, Xwayland starts for a Wine program and stops after, the lock holds when the shell is killed.
 - Each part's checks run on both sessions until X11 is retired.
@@ -190,9 +190,9 @@ the security model do not change. Standard, Lite and Native all run on it; X11 s
   - **W0 (B), planned: a real Wayland session from a test stick**, so nothing is installed on the laptop.
     - **The build:** a Kryptonite test image built on the `kryptonite` branch (its kernel 7.3.x; or 6.18 for a
       like-for-like comparison, built both ways if it costs little). It adds a wlroots kiosk compositor (Cage) and
-      Xwayland in the image, and a boot entry "Wayland test" that starts Standard's desktop page in Chromium with
+      Xwayland in the image, and a boot entry "Wayland test" that starts the Chromium desktop's page with
       `--ozone-platform=wayland` under Cage instead of Xorg. Native's shell is X11-only until W1, so the comparison is
-      **Standard on Wayland against Standard on X11**, from the same stick.
+      **Chromium on Wayland against Chromium on X11**, from the same stick.
     - **The measurements**, each on X11 and on Wayland:
       - memory at idle, with Oracle, and with a Wine program
       - time to the desktop (the health log)
@@ -205,7 +205,7 @@ the security model do not change. Standard, Lite and Native all run on it; X11 s
       and the go or no-go for W1 are written here.
 - **W1, the compositor:** rudolf-native as a wlroots compositor showing Native's shell exactly as on X11, as a test
   session (Settings › System health › Display: Wayland (test)), falling back to X11 by itself if it does not start,
-  as Native falls back to Standard today.
+  as Native falls back to Chromium today.
 - **W2, the system around it:** input, the idle count, the lock, the emergency keys' watchdog, several monitors, the
   screen capture and remote access, the devlink's screenshot, the portals.
 - **W3, the apps:** Chromium and WebKit on Wayland, Xwayland per account, Flatpak and Debian, Wine and Steam, game mode,
@@ -443,7 +443,7 @@ stage B (items 1 to 3) and its release checks:
 - **Share this connection** with the MiFi's USB tethering as the uplink (1.5.9 Part 4, waiting since then for a data
   plan).
 - **The FCC-unlock path** on a laptop with a WWAN card (a used ThinkPad with a Fibocom L850-GL or Quectel EM05-G).
-- Each checked on Standard and Native (the owner's rule), results in docs/testing.md with the carrier and date.
+- Each checked on Chromium and Native (the owner's rule), results in docs/testing.md with the carrier and date.
 
 #### 9b. The first ARM64 release (from 1.6.1 Part 9)
 - **ARM64 (1.6.0 Part 7 and its stage B item 4):** the first ARM64 release, after one ARM64 computer that starts with

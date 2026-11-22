@@ -8,6 +8,14 @@ but a part is done only with the owner's check on the hardware it names.
 The owner's rule for the native desktop holds for every part: "Rudolf OS on the native desktop should appear and
 function exactly as it does in Chromium mode."
 
+## Names
+- **The Standard desktop is called Chromium from 1.6.2** (the owner, 2026-11-22 08:41 CST: "Rename Standard to Chromium, and
+  have the options changed to Native/Chromium/Lite"). Chromium (formerly Standard) is the desktop page in Rudolf's Chromium;
+  this plan says Chromium for it from here on (quotations and PR titles from before keep the old name). Wherever the three
+  are offered or listed together the order is Native, Chromium, Lite. Only the name and the order changed: the saved values
+  (`chromium`, no /persist/etc/rudolf-desktop-engine), file names, settings keys and which engine is the default stay as
+  they were (Part 14's switch is still the owner's decision).
+
 ## What it needs
 - **The Vivobook (with the owner):** Part 14 (Discord and Steam on Native, then Native the default), Part 12 (kernel
   tuning: the owner's checklist), 21b (the checks after each beta).
@@ -95,7 +103,7 @@ Idle and during the copy every model gave the same numbers (p99 122-158 µs, inp
 - Throughput (gzip beside the loops) did not change with the model.
 
 **Start-up: kept: the kernel packed with zstd, the wired network cards' drivers as modules.** Where the time goes (the new
-start-up steps, `/run/rudolf/startup-times`), Standard, uptime in s:
+start-up steps, `/run/rudolf/startup-times`), Chromium, uptime in s:
 
 | Step | release (1.6.0) | this tree |
 |---|---|---|
@@ -125,8 +133,8 @@ start-up steps, `/run/rudolf/startup-times`), Standard, uptime in s:
   smaller; the wired link still comes up (the e1000 module loaded by modalias, the link there). On a laptop without such a
   card it only makes the kernel smaller. WireGuard stays built in (its tunnels are made through netlink, which would need
   the module loaded on demand).
-- **Native answers about 5 s sooner than Standard** (13 s against 18.5 s, two machines): Chromium's start and the desktop
-  page are most of Standard's last 8 s. (Native is the default for new installations since 1.6.0.)
+- **Native answers about 5 s sooner than Chromium** (13 s against 18.5 s, two machines): Chromium's start and the desktop
+  page are most of the Chromium desktop's last 8 s. (Native is the default for new installations since 1.6.0.)
 - **Xorg's own start takes 2.6 s** between its socket appearing and its first answer (QEMU's bochs driver); the
   Vivobook's steps will show amdgpu's.
 - **The health log's own numbers were late:** "the desktop was ready N s" was written 4 s after the page came up (its
@@ -190,7 +198,7 @@ encrypted folders use fscrypt, not dm-crypt (the list checks fscrypt and its cip
   steps: the time from power-on to the kernel's clock, from the processor's time-stamp counter (a constant, non-stop TSC,
   its rate from the kernel's log), split into the firmware's part and the boot loader's from ACPI's FPDT (the kernel's
   `ACPI_FPDT`, now on), with a handover's first stage (rudolf.t0) taken off. Last starts shows it first and ends with
-  the whole from power-on; the health log's "ready" line adds "N s from power-on" (Standard and Native). Nothing is
+  the whole from power-on; the health log's "ready" line adds "N s from power-on" (Chromium and Native). Nothing is
   shown when neither source gives a believable number (0 to 300 s). Host test boottime61_t.sh (14/14); the check
   workflow boottime-check.yml. What it tells: whether the Vivobook's 27-37 s is mostly firmware (only the firmware's
   own settings can help: Fast Boot, fewer boot entries), the handover (the "skip the handover" idea below), Xorg and
@@ -217,10 +225,10 @@ The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition t
   item 3: its leads, the refused system-API request at 13:10:17, the new log lines "oa: KEY asked of rudolfd N ms after
   its page began"). A devlink read while each loads on Native; the cause proven and fixed; the owner's check.
 - **Then the switch:** install.sh's `NATIVE_DEFAULT=1` (a new installation starts on Native, after the setup wizard on
-  Standard, #467) and rudolfd's `NATIVE_OFFER 1` (Settings offers Native once to a computer updated on Standard); the
+  Chromium, #467) and rudolfd's `NATIVE_OFFER 1` (Settings offers Native once to a computer updated on Chromium); the
   engine page's "A new installation starts with it." back; nativedefault60_t.sh 0 and 0b changed to match.
 - **The owner's checks:** a new stick (Make a USB stick) and Install here: the setup wizard, then Native; an updated
-  computer on Standard: the offer once; Discord, Steam, the icons and Oracle's keys on Native.
+  computer on Chromium: the offer once; Discord, Steam, the icons and Oracle's keys on Native.
 - **Status (2026-11-22, the owner's check on the Vivobook, 1.6.1 stable on Native, 03:45 CST):** Discord opens fine; Steam works
   but is slower to start; both use a lot of memory in the background; Steam is hard to shut down (Task Manager's Force quit works).
   Native's log over that time (devlink 000565) had four findings, each fixed in a PR of its own (scheduled task, unattended):
@@ -236,13 +244,15 @@ The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition t
      when its last window is gone 15 s, and at sign-out, then the existing escalation; a running game keeps it).
   **The switch to Native as the default still waits on the owner's decision** (the owner, 03:49 CST: "Let's do the fixes first
   and then offer me the decision again"): after these PRs are merged, a Steam start timed on Native on the Vivobook first.
+- **Names (2026-11-22):** the Standard desktop is called Chromium from 1.6.2; the choices read Native, Chromium, Lite ("Names"
+  above). The default is unchanged by it.
 
 ### 21b. The checks with the owner (from 1.6.1 Part 21)
-- **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned
-  on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Standard and
+- **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Chromium and Lite turned
+  on; Recovery mode from a stick made from this release and from another build's; two-step sign-in on Chromium and
   Native; calls; a real CAC only when the owner asks.
 - **Blitzen's guards (1.6.1 Part 26), with the owner:** asked for the GitHub token and a key file in several ways, a throwaway
-  test key pasted, a program listing ~/.ssh, on Standard and Native (docs/plan-1.6.1.md Part 26, the owner's checks).
+  test key pasted, a program listing ~/.ssh, on Chromium and Native (docs/plan-1.6.1.md Part 26, the owner's checks).
 
 ### 27. Bring your files: personal files kept from the old system when installing (added on 2026-11-21)
 The owner asked on 2026-11-21: "Would it be possible for someone downloading and installing Rudolf to be able to
@@ -287,7 +297,7 @@ where Rudolf uses it); a BitLocker key is used only to unlock and never stored.
 **Tests:** disk images made in CI (NTFS with a Windows-like Users tree, a dirty NTFS, ext4 with /home, a BitLocker image
 if cryptsetup can make one; APFS: the message only), in QEMU with the real release (iso/qt/sb/) and a second virtual
 disk as the "USB drive": the files found and sized, copied and checked, the install going ahead only after the copy,
-a cancelled copy erasing nothing, the files in the right folders after the first sign-in, Standard and Native the same
+a cancelled copy erasing nothing, the files in the right folders after the first sign-in, Chromium and Native the same
 (the owner's rule). **The owner's checks:** a real old Windows laptop or disk, if one is at hand, with a USB drive.
 
 **Status (2026-11-22, the scheduled task's PR "Bring your files", branch `bring-files`):** items 1-4 built; item 5 not
@@ -295,10 +305,10 @@ a cancelled copy erasing nothing, the files in the right folders after the first
 bring-decide, bring-close, bring-found, bring-import), rudolfd's bring/ requests (rudolfd-bring.inc), install.sh's guard
 (it refuses a disk with personal files until they were copied and checked, or the person chose to erase them), the page's
 step in Settings › Update and recovery › Install here… and Bring in files from the old computer (desktop/bring62.js), the
-same on Standard, Native and Lite. BitLocker needs what the base gains with this PR: dm-crypt in the kernel (kconfig.sh,
+same on Native, Chromium and Lite. BitLocker needs what the base gains with this PR: dm-crypt in the kernel (kconfig.sh,
 DM_CRYPT) and cryptsetup (about 1.3 MB with libcryptsetup, libdevmapper, libjson-c, libargon2 and libpopt, less what the
 base already has). Tested on the host (disk images: an NTFS Windows tree, a dirty and a hibernated NTFS, ext4 Linux, APFS,
-cryptsetup's own BitLocker test image and its recovery key), in Playwright (Standard and Native's app window) and in QEMU on
+cryptsetup's own BitLocker test image and its recovery key), in Playwright (Chromium and Native's app window) and in QEMU on
 the newest beta (bring-check.yml). Not testable before a release has dm-crypt: opening BitLocker for real (the key is
 checked on the host with cryptsetup --test-passphrase). **For the owner:** an old Windows laptop or disk with a USB drive:
 Install here… on it, the folders found and their sizes, Copy and check, then the first sign-in's offer and the files in
@@ -314,65 +324,65 @@ The way that weakens nothing:
   request folder as it leaves its questions (rudolfd's /run/rudolf/portal/req: each request its sender's, 0600);
 - rudolfd passes on only a desktop file id (letters, digits and . - _) and a number, checking the note is from that account's portal
   (its peer check and owner), and the confinement lists (confinepure, winapi) are updated for the new kind;
-- rudolf-native (and Standard's page, through linux26.js's lxtb buttons) maps the desktop file id to the account's window
-  (_GTK_APPLICATION_ID, WM_CLASS, the lx: key) and calls the same fill (tbp_set; winProgress on Standard).
+- rudolf-native (and Chromium's page, through linux26.js's lxtb buttons) maps the desktop file id to the account's window
+  (_GTK_APPLICATION_ID, WM_CLASS, the lx: key) and calls the same fill (tbp_set; winProgress on Chromium).
 A host test with a D-Bus sender on a stand-in account bus; the owner's check: a Firefox download with Firefox minimized.
 
 **Status (2026-11-22, scheduled task, PR `linux-app-progress`): built, tests pass; waiting for the owner's checks.** As planned:
 rudolf-portal (the account's own, on its own bus) hears com.canonical.Unity.LauncherEntry's Update and leaves a note per app in the
 portal's request folder (`lp-UID-PORTALPID-N.prog`, 0600: "ID<tab>PERCENT"); rudolfd's new `portal/progress` (rudolfd-lxprog.inc)
 passes on only notes of the signed-in account's own live portal (owner, its pid's process and user), only an ID and 0-100, with the
-StartupWMClass of Flatpak's exported desktop file; Standard's page (desktop/lxprog62.js) and rudolf-native (lxp_tick) find the app's
+StartupWMClass of Flatpak's exported desktop file; Chromium's page (desktop/lxprog62.js) and rudolf-native (lxp_tick) find the app's
 windows by the same rule (class or instance = the ID, its last part or its StartupWMClass) and use the same fill (tbpState/tbpPaint;
 tbp_set), only while minimized, a percentage only. Flatpak apps: only those allowed to talk to (or own) com.canonical.Unity, or given
 the whole session bus, and only for their own desktop files (ID or ID.*). **Found while building:** Firefox does not send the Unity
 signal on Linux; since Firefox 61 it sets the XApp hint `_NET_WM_XAPP_PROGRESS` (0-100) on its own window (X11 only, Mozilla bug
-1418749). So the window's own hint is read too, and comes first: on Standard by rudolf-display (/run/rudolf/winprog, rudolfd's
+1418749). So the window's own hint is read too, and comes first: on Chromium by rudolf-display (/run/rudolf/winprog, rudolfd's
 "windows"), on Native by rudolf-native itself. Tests: iso/qt/host/lxprog162_t.sh (the real portal and a stand-in app on a private
-bus, Flatpak sandboxes stood in, another account, forged notes; rudolf-display with a stand-in Firefox window; Standard through
+bus, Flatpak sandboxes stood in, another account, forged notes; rudolf-display with a stand-in Firefox window; Chromium through
 Playwright and Native on Xvfb, the same fill on both), iso/qt/shell2/lxprog62_t.js. Left: Chromium and Electron send the signal only
 where they think the desktop is Unity (or KDE/GNOME), which Rudolf's session may not say; a Flatpak app whose permissions lack
 com.canonical.Unity shows nothing (Flatseal, or `flatpak override --talk-name=com.canonical.Unity ID`). The owner's checks on the
-Vivobook: a Firefox download with Firefox minimized (Standard and Native); a Flatpak app's download (Standard and Native).
+Vivobook: a Firefox download with Firefox minimized (Chromium and Native); a Flatpak app's download (Chromium and Native).
 
-### 29. Rudolf's title bar on Standard's windows from outside the page (added on 2026-11-21)
-The owner, 2026-11-21, on 1.6.1 (Standard, the Vivobook), with Oracle open in its own Chromium ("Keep my websites
+### 29. Rudolf's title bar on Chromium's windows from outside the page (added on 2026-11-21)
+The owner, 2026-11-21, on 1.6.1 (Chromium, the Vivobook), with Oracle open in its own Chromium ("Keep my websites
 encrypted with my account" on, #583): "The Oracle browser on Chrome OS does not use the operating system's title bars".
-Asked which windows, the owner chose **every window from outside the page**: Standard's encrypted Oracle, its Tor
+Asked which windows, the owner chose **every window from outside the page**: Chromium's encrypted Oracle, its Tor
 windows (Browse with Tor) and Linux apps, as Native already frames them all.
 
-**Why it is so today.** Standard draws title bars only for its own windows inside the desktop page (and normal Oracle's,
-whose tabs are in the page). Everything else is a separate X window that rudolf-display, Standard's minimal window
-manager, fits above the taskbar with no frame of Rudolf's (1.6.1 Part 15: "Standard frames no Linux app's window"). With no
+**Why it is so today.** The Chromium desktop draws title bars only for its own windows inside the desktop page (and normal Oracle's,
+whose tabs are in the page). Everything else is a separate X window that rudolf-display, the Chromium desktop's minimal window
+manager, fits above the taskbar with no frame of Rudolf's (1.6.1 Part 15, from before the rename: "Standard frames no Linux app's window"). With no
 window manager it knows, Chromium draws its own frame (the shell's colour, "Rudolf OS", ⋮ – ▢ ✕), and Electron and GTK apps
 draw theirs.
 
-**The way (as Native, without changing what Standard's page windows look like):**
+**The way (as Native, without changing what Chromium's page windows look like):**
 1. **A strip for the bar.** rudolf-display places a shown app window below a title-bar strip at the top (the page's own
    title-bar height, from the settings it already reads), above the taskbar. Full-screen windows and games (borderless,
    screen-sized, `_NET_WM_STATE_FULLSCREEN`) keep the whole screen, as now; dialogs stay centred above their window.
 2. **The page draws the bar in that strip.** The desktop page is the full-screen window behind; while an app window is
    shown it draws Rudolf's title bar there with the same code and look as its own windows (style, accent, the account's
    title-bar settings): the window's icon and title (/run/rudolf/windows), minimize (back to the desktop: wm "desktop"),
-   close (wmcmd "close"), and the ⋮ menu where Rudolf's windows have one. Maximize/restore is not offered: Standard shows
+   close (wmcmd "close"), and the ⋮ menu where Rudolf's windows have one. Maximize/restore is not offered: Chromium shows
    one app window at a time, fitted. Clicks on the strip go to the page (it is the page's own pixels).
 3. **The window's own bar off where the app allows.** rudolf-display announces itself as a window manager
    (`_NET_SUPPORTING_WM_CHECK`, as rudolf-native does), so Chromium leaves its own frame off (1.6.1 Part 15's finding);
    the encrypted Oracle's and the Tor windows' profiles get `browser.custom_chrome_frame: false` when the key is missing
    (rudolfd writes the Tor profile's Preferences already; orawin's in the account's folder, once). Part 15 item 1's list
-   (`titlebars`: Chromium-based browsers, VS Code) then applies on Standard too. Apps that always draw their own (Steam,
+   (`titlebars`: Chromium-based browsers, VS Code) then applies on Chromium too. Apps that always draw their own (Steam,
    Discord, Claude) show both, as on Native before Part 15's later items: what Native does for them is followed here.
 4. **Nothing weakened:** the page learns only what /run/rudolf/windows already gives the taskbar; no new rudolfd request
    unless a check finds one is needed (then confinepure/winapi updated, the token and peer check as for every request).
 
 **Tests:** a host test with rudolf-display and a stand-in app (fixtures/xwmclient.c) on Xvfb: the strip, full screen and
 games untouched, a dialog, `_NET_SUPPORTING_WM_CHECK`, close and minimize through wmcmd/wm; the page's bar in Chromium with
-a stand-in rudolfd (title, icon, the title-bar styles); Standard and Native compared (same_t.sh) for an outside window.
+a stand-in rudolfd (title, icon, the title-bar styles); Chromium and Native compared (same_t.sh) for an outside window.
 
-**For the owner, on the Vivobook (Standard):** encrypted Oracle, a Tor window, a Flatpak app (one that asks for a frame,
+**For the owner, on the Vivobook (Chromium):** encrypted Oracle, a Tor window, a Flatpak app (one that asks for a frame,
 one that draws its own), a game in full screen; minimize and close from Rudolf's bar; the title-bar styles and colours.
 
-**Status, 2026-11-22: items 1-3 built (unattended; PR "Rudolf's title bar on Standard's windows from outside the page").**
+**Status, 2026-11-22: items 1-3 built (unattended; PR "Rudolf's title bar on Standard's windows from outside the page", Standard being Chromium's old name).**
 One change from the way above, asked for in the task's prompt and matching Native: the frame is a window of the page's own
 (desktop/xframe62.js: `win()`, so its look, buttons, edges, menu, styles, workspaces and taskbar button are those of Rudolf's
 windows), and the app's X window is placed in its inside, wherever the frame is: so **moving, sizing from every edge and corner,
@@ -394,10 +404,10 @@ Chromium 153 as the desktop page, rudolf-display --input): the stand-ins with an
 3.24.41 and GTK 4.14.5 (gtk3/gtk4-widget-factory), Chromium with the system's title bar (as the encrypted Oracle and Tor windows)
 and as an Electron-style app; rudolfd's own code (R1-R5). Unchanged: titlebar59_t.js 17/17, tbbtn59_t.js 15/15, sethooks61_t.js
 6/6, taskbar144_t.js 30/30, tb_t.js 11/11, tbprog61_t.js 43/43, lx48_t.js 8/8, lxdesk_t.js 4/4, wmfocus_t.sh 20/20, wmdialog_t.sh
-11/11, titlebars161_t.sh 16/16, csd161_t.sh 60/60 (Native and Standard). **Not tested here:** several real monitors (Xvfb has one;
+11/11, titlebars161_t.sh 16/16, csd161_t.sh 60/60 (Native and Chromium). **Not tested here:** several real monitors (Xvfb has one;
 the frame's place is anywhere on the X screen, fitted windows stay on the main monitor as before), Steam, Discord, Firefox and Wine
 themselves, the release in QEMU. **Left:** the app's own maximize and minimize buttons and a drag of its own bar
-(`_NET_WM_MOVERESIZE`) do nothing on Standard yet (Rudolf's bar does them); a window's content is not seen while it is behind the
+(`_NET_WM_MOVERESIZE`) do nothing on Chromium yet (Rudolf's bar does them); a window's content is not seen while it is behind the
 page (its frame shows its name).
 
 ### 30. Two-player Library games on a home network: the LAN game relay (added on 2026-11-22)
@@ -429,7 +439,7 @@ hosts, Rudolf OS runs a small relay on that computer, and the other computer fin
   - rudolfd's `duel/` requests are authorized like the page's other system calls (the token and the peer check: only
     the desktop).
   - The desktop answers the game kit only for the project's own Library apps; an outside developer's app is refused.
-  - Native's game windows are the same page, so it works the same on Standard, Lite and Native.
+  - Native's game windows are the same page, so it works the same on Native, Chromium and Lite.
 - **Tests:**
   - `iso/qt/host/duel162_t.sh`: the real rudolfd and relay in namespaces of the test's own, with the firewall's
     rules, a home network and a cellular one. It covers the token and peer check; the relay's user; the port open only
@@ -453,5 +463,7 @@ hosts, Rudolf OS runs a small relay on that computer, and the other computer fin
 3. 21b after each beta.
 4. 25b (Linux apps' progress on their taskbar buttons), then a Firefox download checked on the Vivobook.
 5. Part 27 (Bring your files) after 1.6.1 is promoted: 1-4 in one or two PRs, 5 only by the owner's decision.
-6. Part 29 (Rudolf's title bar on Standard's windows from outside the page): 1-3 in one PR, then checked on the Vivobook.
+6. Part 29 (Rudolf's title bar on Chromium's windows from outside the page): 1-3 in one PR, then checked on the Vivobook.
 7. Part 30 (the LAN game relay): built with Ember Reach 0.5.2; then the owner's checklist on two computers.
+8. Names (the Standard desktop called Chromium): one PR, then on the Vivobook: Settings › System health › Desktop engine
+   reads Native, Chromium, Lite and shows "In use now: Native" (or Chromium); Help › Keyboard shortcuts says the Chromium engine.

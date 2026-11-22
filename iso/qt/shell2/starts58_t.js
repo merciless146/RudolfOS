@@ -24,7 +24,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('1. System health has "Last starts"', await p.evaluate("!!__hp.querySelector('.hss')&&!__hp.querySelector('.hss').hidden"));
   await p.evaluate("__hp.querySelector('.hss').click()"); await wait(1200);
   const t = await p.evaluate("(()=>{const w=wins.find(w=>/Last starts/.test(w.el.querySelector('.t').textContent));return w?w.body.innerText:''})()");
-  ok('2. a start that came up: when, how soon, with which engine', /The desktop came up after 41 s \(Standard \(Chromium\)\)/.test(t), t);
+  ok('2. a start that came up: when, how soon, with which engine', /The desktop came up after 41 s \(Chromium\)/.test(t), t);
   ok('3. a start whose desktop never came up: said so, with how often the browser started and what was given up', /The desktop never came up/.test(t) && /the browser started 3 times/.test(t) && /closed 3 times in a row/.test(t), t);
   ok('4. Recovery mode and the slot and release are shown', /Recovery mode · system slot A · release 2026111023/.test(t), t);
   ok('5. the start-up\'s lines are shown as text, not as markup', await p.evaluate("(()=>{const w=wins.find(w=>/Last starts/.test(w.el.querySelector('.t').textContent));return !w.body.querySelector('pre b')&&/<b>x<\\/b>/.test(w.body.querySelector('pre').textContent)})()"));
