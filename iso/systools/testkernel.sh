@@ -15,7 +15,11 @@ HERE=$(cd "$(dirname "$0")/.." && pwd); cd "$HERE"
 [ -n "$KERNEL_VERSION" ] && [ -n "$OUT" ] || { echo "KERNEL_VERSION and OUT are needed"; exit 1; }
 W=$(realpath -m work-test); rm -rf "$W"; mkdir -p "$W" "$OUT"
 export SOURCE_DATE_EPOCH=1760000000
+# (2.0, the kryptonite branch: LINUX_SRC, a kernel tree already checked out, as for a bisect: copied, never changed in place)
+if [ -n "$LINUX_SRC" ]; then rm -rf "$W/linux"; cp -a "$LINUX_SRC" "$W/linux"; rm -rf "$W/linux/.git"
+else
 for i in 1 2; do rm -rf "$W/linux"; git clone -q --depth 1 -b "v$KERNEL_VERSION" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "$W/linux" && break; done
+fi
 if [ ! -d "$W/linux/kernel" ]; then
 	KM=${KERNEL_VERSION%%.*}; T=linux-$KERNEL_VERSION.tar.xz
 	curl -fsSL --retry 3 -o "$W/$T" "https://cdn.kernel.org/pub/linux/kernel/v$KM.x/$T"
