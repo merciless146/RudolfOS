@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: the Several monitors check failed on every run although its tests passed: monbeh_t.js named a picture
+  "cmp.lock:cover2.diff.png", and GitHub's upload of the pictures refuses a ':' in a file name. Nothing in Rudolf OS changed.
 - Fixed: the Lite engine check's apps' own title bars test (csd161_t.sh, 7) failed whenever it ran after 18:00 UTC: with no
   theme chosen the native desktop turns dark at night, and the window's edge is then the dark theme's, as it should be.
   The test now chooses the light theme. Nothing in Rudolf OS changed.
