@@ -68,7 +68,7 @@ followed by the session's link when the session gives one.
 
 ## Rudolf OS's own rules
 - **The native desktop:** "Rudolf OS on the native desktop should appear and function exactly as it does in Chromium
-  mode." Every difference is fixed in Native; Standard is never changed to match.
+  mode." Every difference is fixed in Native; Chromium is never changed to match.
 - Keep the security already built: Secure Boot, kernel lockdown, module signing and the signature checks are never
   weakened; the display authorization, the per-account Linux users, the fscrypt homes and Oracle's encrypted folders,
   rudolfd's token, peer check and confinement, programs other than the desktop refused the system API, administrator

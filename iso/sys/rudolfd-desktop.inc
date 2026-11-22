@@ -468,7 +468,7 @@ static int dotp_check(const char *a, const uint8_t pk[32], const char *id, const
 	if (!c || !*c) { snprintf(why, wn, "Enter the 6-digit code from your authenticator app."); return 401; }
 	const char *box = dj_get(a, "otp"); char *iv = box ? dj_str(dj_get(box, "iv")) : NULL, *ct = box ? dj_str(dj_get(box, "ct")) : NULL;
 	uint8_t ivb[16], ctb[128], sec[112]; int il = iv ? db64d(iv, ivb, sizeof ivb) : -1, cl = ct ? db64d(ct, ctb, sizeof ctb) : -1; free(iv); free(ct);
-	if (il != 12 || cl <= 16 || cl - 16 > (int)sizeof sec || daes_gcm_open(pk, ivb, ctb, cl, sec)) { snprintf(why, wn, "This account's authenticator setup could not be read: sign in with the Standard desktop engine."); return 403; }
+	if (il != 12 || cl <= 16 || cl - 16 > (int)sizeof sec || daes_gcm_open(pk, ivb, ctb, cl, sec)) { snprintf(why, wn, "This account's authenticator setup could not be read: sign in with the Chromium desktop engine."); return 403; }
 	char d[8]; int k = 0; for (const char *q = c; *q && k < 7; q++) if (*q >= '0' && *q <= '9') d[k++] = *q; d[k] = 0;
 	long long t = time(NULL) / 30, hit = -1;
 	if (k == 6) for (int dd = 0; dd < 3 && hit < 0; dd++) { long long st = t + (dd == 0 ? 0 : dd == 1 ? -1 : 1); if (dtotp(sec, cl - 16, st) == atoi(d)) hit = st; }
@@ -538,7 +538,7 @@ static void api_desktop_login(struct req *r)
 {
 	int w = dfail_wait();
 	if (w) { char m[120]; snprintf(m, sizeof m, "Too many failed attempts. Please wait %d seconds and try again.", w); reply_err(r->fd, 429, m); return; }
-	dls l; if (!dls_open(&l)) { reply_err(r->fd, 409, "Rudolf OS is not set up yet: start it once with the Standard desktop engine."); return; }
+	dls l; if (!dls_open(&l)) { reply_err(r->fd, 409, "Rudolf OS is not set up yet: start it once with the Chromium desktop engine."); return; }
 	char *list = dls_accounts(&l); dsess s; memset(&s, 0, sizeof s);
 	if (r->body && dj_true(dj_get(r->body, "guest"))) {
 		char *sys = dls_get(&l, "bd95sys"); const char *g = sys ? dj_get(sys, "guest") : NULL; int allowed = !g || dj_true(g); free(sys);
@@ -554,8 +554,8 @@ static void api_desktop_login(struct req *r)
 		char *h = dj_str(dj_get(a, "h")), *nm = dj_str(dj_get(a, "n")), *role = dj_str(dj_get(a, "r"));
 		const char *pkq = dj_get(a, "pk");
 		int st = pkq && *dj_ws(pkq) != 'n' ? -3 : dpw_check(h, pw);
-		const char *why = st == -3 ? "This account signs in with a security key: use the Standard desktop engine for it."
-			: st == -2 ? "This account's password is from an older Rudolf OS: sign in once with the Standard desktop engine." : NULL;
+		const char *why = st == -3 ? "This account signs in with a security key: use the Chromium desktop engine for it."
+			: st == -2 ? "This account's password is from an older Rudolf OS: sign in once with the Chromium desktop engine." : NULL;
 		if (why) { free(h); free(nm); free(role); free(n); dfree_secret(pw); free(list); dls_close(&l); reply_err(r->fd, 409, why); return; }
 		if (st) {
 			dfail_note(0); health_add("signin", "wrong password for the account %.100s (native sign-in)", nm ? nm : n);
@@ -565,7 +565,7 @@ static void api_desktop_login(struct req *r)
 		free(h); free(nm); free(role); free(n);
 		/* the password's key (the account's salt), and the file key it seals */
 		char *ks = dj_str(dj_get(a, "ks")); uint8_t salt[96], pk[32], fk[64]; int sl = ks ? db64d(ks, salt, sizeof salt) : -1, fl = -1; free(ks);
-		if (sl <= 0) { dfree_secret(pw); free(list); dls_close(&l); reply_err(r->fd, 409, "This account has no key yet: sign in once with the Standard desktop engine."); return; }
+		if (sl <= 0) { dfree_secret(pw); free(list); dls_close(&l); reply_err(r->fd, 409, "This account has no key yet: sign in once with the Chromium desktop engine."); return; }
 		dpbkdf2_256(pw, salt, sl, DESK_ROUNDS, pk, 32);
 		/* (1.6.1: a security key, the second step, before anything is opened; its copy of the file key is the one used, so an
 		   account that requires keys never opens with the password alone: rudolfd-fido.inc) */
@@ -584,7 +584,7 @@ static void api_desktop_login(struct req *r)
 			char *iv = dj_str(dj_get(box, "iv")), *ct = dj_str(dj_get(box, "ct")); uint8_t ivb[16], ctb[128];
 			int il = iv ? db64d(iv, ivb, sizeof ivb) : -1, cl = ct ? db64d(ct, ctb, sizeof ctb) : -1; free(iv); free(ct);
 			if (il == 12 && cl > 16 && cl - 16 <= (int)sizeof fk && !daes_gcm_open(pk, ivb, ctb, cl, fk)) { fl = cl - 16; dhex(fk, fl, s.fk); }
-			else { explicit_bzero(pk, sizeof pk); free(list); dls_close(&l); health_add("signin", "the file key of the account %.100s did not open (native sign-in)", s.n); reply_err(r->fd, 500, "This account's key did not open: sign in with the Standard desktop engine."); return; }
+			else { explicit_bzero(pk, sizeof pk); free(list); dls_close(&l); health_add("signin", "the file key of the account %.100s did not open (native sign-in)", s.n); reply_err(r->fd, 500, "This account's key did not open: sign in with the Chromium desktop engine."); return; }
 		}
 		explicit_bzero(pk, sizeof pk);
 		/* an account whose files are on the disk: its encrypted folder, with the key the page makes (home56.js hdKeyHex) */
@@ -774,7 +774,7 @@ static int api_desktop(struct req *r, const char *w, int post)
 		char *id = dbody_field(r, "id"); const char *sq = r->body ? dj_get(r->body, "step") : NULL; long long st = sq ? atoll(dj_ws(sq)) : -1;
 		if (!dsec_id_ok(id)) { free(id); reply_err(r->fd, 400, "id?"); return 1; }
 		int wt = dsec_wait(id); if (wt) { char m[120]; snprintf(m, sizeof m, "Too many wrong attempts. Please wait %d seconds and try again.", wt); free(id); reply_err(r->fd, 429, m); return 1; }
-		if (st < 0) { dsec_fail(id); health_add("signin", "a wrong authenticator code (Standard)"); free(id); reply_err(r->fd, 403, "wrong code"); return 1; }
+		if (st < 0) { dsec_fail(id); health_add("signin", "a wrong authenticator code (Chromium)"); free(id); reply_err(r->fd, 403, "wrong code"); return 1; }
 		int u = dsec_use(id, st); free(id); if (u) { reply_err(r->fd, 409, "That code was used already: wait for the next one."); return 1; }
 		reply_ok(r->fd, "ok"); return 1;
 	}

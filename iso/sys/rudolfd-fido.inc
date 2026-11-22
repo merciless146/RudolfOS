@@ -275,7 +275,7 @@ static int dfido_pw(dls *l, char **list, const char *n, const char *pw, const ch
 	if (!a || !pw) { snprintf(why, wn, "The user name or password is incorrect."); return 403; }
 	dacct_id(a, id, 80); int wt = dsec_wait(id); if (wt) { snprintf(why, wn, "Too many wrong attempts. Please wait %d seconds and try again.", wt); return 429; }
 	char *h = dj_str(dj_get(a, "h")); int st = dpw_check(h, pw); free(h);
-	if (st == -2) { snprintf(why, wn, "This account's password is from an older Rudolf OS: sign in once with the Standard desktop engine."); return 409; }
+	if (st == -2) { snprintf(why, wn, "This account's password is from an older Rudolf OS: sign in once with the Chromium desktop engine."); return 409; }
 	if (st) { dsec_fail(id); snprintf(why, wn, "The user name or password is incorrect."); return 403; }
 	return dfido_pk(a, pw, pk) ? (snprintf(why, wn, "This account has no key yet: sign in once first."), 409) : 0;
 }
@@ -501,7 +501,7 @@ static int dfido_native(struct req *r, const char *a, const char *id, const uint
 	rc = dfido_ksec(&R, id, 30, ksec, path, why, sizeof why);
 	if (!rc && !(!dfido_page_box(a, "fks", pk, pws, 32, &sl) && sl == 32 && !dfido_files(&R, pws, ksec, id, f2, &f2l, pv, &pvl))) {
 		/* (the page's box missing: only while keys are not required, the password's copy; the page makes the box again at its next sign-in) */
-		if (R.req || dfido_page_box(a, "fk", pk, f2, 64, &f2l)) { rc = 409; snprintf(why, sizeof why, "Your files' key box is missing or damaged: sign in with the Standard desktop engine, or ask an administrator."); } }
+		if (R.req || dfido_page_box(a, "fk", pk, f2, 64, &f2l)) { rc = 409; snprintf(why, sizeof why, "Your files' key box is missing or damaged: sign in with the Chromium desktop engine, or ask an administrator."); } }
 	explicit_bzero(pv, sizeof pv); explicit_bzero(pws, sizeof pws); explicit_bzero(ksec, sizeof ksec); explicit_bzero(&R, sizeof R);
 	if (rc) { if (rc == 403) { dsec_fail(id); health_add("signin", "a security key refused at the native sign-in (account %.80s)", id); }
 		dfido_err(r, rc, "key", why); return -1; }

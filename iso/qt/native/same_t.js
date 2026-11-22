@@ -218,7 +218,7 @@ const ENG = {chromium: {choice: 'chromium', now: 'chromium', available: true, na
   native: {choice: 'native', now: 'native', available: true, nativeAvailable: true, failed: false, persistent: true, gaveUp: '', offer: false}};
 const ENGREAD = "(() => { const s = document.querySelector('#eng57'), n = document.querySelector('.eng57 .engnow'); return s ? s.options[s.selectedIndex].text + ' | ' + (n ? n.textContent : '') : 'no panel' })()";
 CASES.push({n: 'engine', set: {dm: 'light'}, more: PINST, app: 'settings', rd: {engine: ENG}, js: "settings('sys')", jswait: 3000, read: ENGREAD,
-  expect: {std: 'Standard (Chromium) | In use now: Standard (Chromium).', nat: 'Native | In use now: Native.'}, parts: []});
+  expect: {std: 'Chromium | In use now: Chromium.', nat: 'Native | In use now: Native.'}, parts: []});
 CASES.push({n: 'tbs-ontop', set: {dm: 'light'}, more: PINST, app: 'notepad', tbmenu: 'Always on top', parts: ['title']});
 CASES.push({n: 'tbs-max', set: {dm: 'light'}, more: PINST, app: 'notepad', tbmenu: 'Maximize', parts: ['title']});
 CASES.push({n: 'tbs-max-top', set: {dm: 'dark', darkui: true, tb: 'top', twstyle: 'candy'}, more: PINST, app: 'notepad', tbmenu: 'Maximize', parts: ['title']});

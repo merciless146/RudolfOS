@@ -25,7 +25,7 @@ ok "2. two quick closes: still tried" $([ $ENGINE = webkit ] && [ ! -e /run/rudo
 desk_exited 8 >/dev/null; start 0
 ok "3. the third quick close in a row: Standard from now on" $([ $ENGINE = chromium ] && [ -e /run/rudolf/webkit-failed ]; echo $?)
 ok "4. ...for good: the choice is removed and why is kept for Settings" $([ ! -e /persist/etc/rudolf-desktop-engine ] && grep -q 'closed 3 times in a row' /persist/etc/rudolf-desktop-engine.failed && [ ! -e /persist/etc/rudolf-desktop-engine.trying ]; echo $?)
-ok "5. ...and the user is told (System health)" $(grep -q 'standard engine is used from now on' $W/health; echo $?)
+ok "5. ...and the user is told (System health)" $(grep -q 'Chromium engine is used from now on' $W/health; echo $?)
 # a slow first start is not a failure: it answered
 lite; FAST=0; start 1; touch /run/rudolf/heartbeat; webkit_trial_ok; desk_exited 8 >/dev/null; desk_exited 8 >/dev/null; desk_exited 8 >/dev/null; rm /run/rudolf/heartbeat
 ok "6. Lite that answered once is kept (the trial ends), and closes after it answered do not count" $([ ! -e /persist/etc/rudolf-desktop-engine.trying ] && [ -e /persist/etc/rudolf-desktop-engine ] && [ $FAST = 0 ]; echo $?)

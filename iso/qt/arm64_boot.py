@@ -96,6 +96,6 @@ finally:
     if not ok and 'PROBE-START' not in buf:
         say('--- the serial console, last lines:'); say('\n'.join(open(os.path.join(out, 'console.txt'), errors='replace').read().split('\n')[-60:]))
         say('--- QEMU:'); say(open(os.path.join(out, 'qemu.txt'), errors='replace').read()[-2000:])
-E = 'Standard (Chromium)' if STD else 'Lite'
+E = 'Chromium' if STD else 'Lite'
 say(f'PASS: the ARM64 system reached the {E} sign-in screen in QEMU' if ok else f'FAIL: the {E} desktop did not answer within 15 minutes')
 sys.exit(0 if ok else 1)

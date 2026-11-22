@@ -246,7 +246,7 @@ native_give_up() {
 	echo "$(date) the Native desktop did not start ($1) - using Chromium"; touch /run/rudolf/native-failed; rm -f /run/rudolf/wm-native
 	if [ -e /run/rudolf/persistent ]; then rm -f /persist/etc/rudolf-desktop-engine /persist/etc/rudolf-desktop-engine.trying
 		echo "$(date -u +%FT%TZ) $1 (Native)" > /persist/etc/rudolf-desktop-engine.failed; sync; fi   # (Settings says which engine)
-	rudolfd --health browser "the Native desktop did not start ($1), so the standard engine is used from now on (Settings › System health › Desktop engine)"
+	rudolfd --health browser "the Native desktop did not start ($1), so the Chromium engine is used from now on (Settings › System health › Desktop engine)"
 }
 native_trial_check() { [ "$FIRST" = 1 ] && [ -e /persist/etc/rudolf-desktop-engine.trying ] && native_usable && native_give_up "it did not reach the sign-in screen at the last start"; return 0; }
 native_trial_mark() { [ $ENGINE = native ] && [ -e /run/rudolf/persistent ] && [ ! -e /persist/etc/rudolf-desktop-engine.trying ] && date -u +%FT%TZ > /persist/etc/rudolf-desktop-engine.trying; return 0; }
@@ -375,7 +375,7 @@ webkit_give_up() {
 	echo "$(date) the WebKit desktop did not start ($1) - using Chromium"; touch /run/rudolf/webkit-failed
 	if [ -e /run/rudolf/persistent ]; then rm -f /persist/etc/rudolf-desktop-engine /persist/etc/rudolf-desktop-engine.trying
 		echo "$(date -u +%FT%TZ) $1" > /persist/etc/rudolf-desktop-engine.failed; sync; fi
-	rudolfd --health browser "the Lite desktop did not start ($1), so the standard engine is used from now on (Settings › System health › Desktop engine)"
+	rudolfd --health browser "the Lite desktop did not start ($1), so the Chromium engine is used from now on (Settings › System health › Desktop engine)"
 }
 # 1.5.7: Lite is on trial until its desktop answers once: a start that never got there (the computer was switched off
 # at a grey screen, say) gives it up at the next start. Checked once per start, before the engine is chosen.
