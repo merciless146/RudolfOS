@@ -42,11 +42,14 @@ def cleanup():
             except Exception: pass
 import atexit; atexit.register(cleanup)
 sh('ip link set lo up')
-for d in ('/run/rudolf', '/home/rudolf', '/persist', '/media', '/usr/share/rudolf/www', '/usr/lib/rudolf', '/run/user/%d' % UID): os.makedirs(d, exist_ok=True)
-for d in ('/run/rudolf', '/home/rudolf', '/persist', '/media', '/run/user/%d' % UID): sh('mount -t tmpfs none ' + d)
+# (all of /run/user: the runner's logind removes /run/user/UID when a su session ends, which would take a mount there away)
+for d in ('/run/rudolf', '/home/rudolf', '/persist', '/media', '/usr/share/rudolf/www', '/usr/lib/rudolf', '/run/user'): os.makedirs(d, exist_ok=True)
+for d in ('/run/rudolf', '/home/rudolf', '/persist', '/media', '/run/user'): sh('mount -t tmpfs none ' + d)
+os.makedirs('/run/user/%d' % UID)
 sh('mount --bind %s/iso/www /usr/share/rudolf/www' % TOP); sh('mount --bind %s/iso/sys/root/usr/lib/rudolf /usr/lib/rudolf' % TOP)
 os.chown('/home/rudolf', UID, GID); os.chmod('/home/rudolf', 0o755); os.chown('/run/user/%d' % UID, UID, GID); os.chmod('/run/user/%d' % UID, 0o700)
 r = sh('gcc -O2 -w -o %s/rudolfd %s/iso/sys/rudolfd.c -lz' % (T, TOP)); ok('rudolfd builds', r.returncode == 0, r.stderr[-800:])
+r = sh('gcc -O2 -w -o %s/rudolf-display %s/iso/sys/rudolf-display.c -lX11 -lXtst -lXfixes -lXrandr -lm' % (T, TOP)); ok('rudolf-display builds', r.returncode == 0, r.stderr[-800:])
 # the test games
 SRC = '/media/emutest'; os.makedirs(SRC + '/dc')
 sh('python3 %s/iso/qt/emu/mkn64.py "%s/Rudolf N64 Test.z64" "%s/Rudolf N64 Test (n64).n64" "%s/Rudolf N64 Test (v64).v64"' % (TOP, SRC, SRC, SRC))
@@ -63,6 +66,10 @@ BUS = '/run/user/%d/bus' % UID
 def as_rudolf(): os.setgid(GID); os.setuid(UID)
 D = subprocess.Popen(['dbus-daemon', '--session', '--address=unix:path=' + BUS, '--nofork', '--nopidfile'], preexec_fn=as_rudolf, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); mine.append(D)
 wait(lambda: os.path.exists(BUS), 10)
+# Rudolf's window manager, as on Xorg (--input: windows and input, the X server draws): what shows a game full screen
+open('/run/rudolf/wm', 'w').write('desktop\n')
+WM = subprocess.Popen([T + '/rudolf-display', '--input'], env=dict(os.environ, DISPLAY=DISP), stdout=open(T + '/display.log', 'w'), stderr=subprocess.STDOUT); mine.append(WM)
+ok('rudolf-display (the window manager) runs', wait(lambda: WM.poll() is None and os.path.exists('/run/rudolf/windows') or None, 10) or WM.poll() is None, open(T + '/display.log').read()[-500:])
 open('/run/rudolf/session.env', 'w').write('DISPLAY=%s XDG_RUNTIME_DIR=/run/user/%d DBUS_SESSION_BUS_ADDRESS=unix:path=%s XDG_CURRENT_DESKTOP=Rudolf\n' % (DISP, UID, BUS))
 RD = subprocess.Popen(['env', 'RUDOLFD_DESKTOP_CG=%s/none' % T, T + '/rudolfd'], stdout=open(T + '/rudolfd.log', 'w'), stderr=subprocess.STDOUT); mine.append(RD)
 def page():
@@ -149,9 +156,9 @@ def is_fullscreen(w):
 def close_window(w):
     ev = xevent.ClientMessage(window=w, client_type=XD.intern_atom('WM_PROTOCOLS'), data=(32, [XD.intern_atom('WM_DELETE_WINDOW'), XX.CurrentTime, 0, 0, 0]))
     w.send_event(ev); XD.flush()
-def theirs():   # the desktop user's processes other than the bus started here
-    o = sh('ps -o pid=,comm=,args= -u %d' % UID).stdout.strip().splitlines()
-    return [l for l in o if 'dbus-daemon --session --address=unix:path=' + BUS not in l and l.strip()]
+def theirs():   # the desktop user's processes other than the session's bus started here and the services it started
+    o = [l.split(None, 2) for l in sh('ps -o pid=,ppid=,args= -u %d' % UID).stdout.strip().splitlines() if l.strip()]
+    return [' '.join(x) for x in o if int(x[0]) != D.pid and int(x[1]) != D.pid]
 def npid():
     try: return open('/run/rudolf/native.pid').read().strip()
     except Exception: return ''
@@ -180,6 +187,10 @@ for sysk in ('n64', 'dc'):
         ok('%s: ...and letting go, red again' % tag, r2 == 'red', colour(shot(fn + '-3rel')))
         press(E.BTN_START, True); b = wait(lambda: (lambda cc: cc if cc == 'blue' else None)(colour(shot(fn + '-4start'))), 8); press(E.BTN_START, False)
         ok('%s: holding Start turns it blue' % tag, b == 'blue', colour(shot(fn + '-4start')))
+        if k == 0:   # the keyboard too: Flycast's own keys (X is A, Return is Start); for RMG the keys Rudolf sets up
+            ka = {'n64': 'x', 'dc': 'x'}[sysk]
+            sh('DISPLAY=%s xdotool keydown %s' % (DISP, ka)); g = wait(lambda: (lambda cc: cc if cc == 'green' else None)(colour(shot(fn + '-2key'))), 8); sh('DISPLAY=%s xdotool keyup %s' % (DISP, ka))
+            ok('%s: the keyboard\'s %s (A) turns it green' % (tag, ka.upper()), g == 'green', colour(shot(fn + '-2key')))
         if sysk == 'n64' and k == 0:
             time.sleep(2)
             eep = sh('find /home/rudolf/.var/app/%s -iname "*.eep*" 2>/dev/null' % app).stdout.split()
@@ -189,14 +200,22 @@ for sysk in ('n64', 'dc'):
         # button does); the others through Emu's native/stop
         if k == 0:
             close_window(aw[0]); s = stopped(20)
-            ok('%s: closing its window ends the emulator, with nothing left running' % tag, s, theirs())
+            ok('%s: closing its window (Rudolf\'s close button) ends the emulator, with nothing left running' % tag, s, theirs())
             if not s: shot(fn + '-5afterclose'); api('native/stop?id=' + app, ''); stopped()
+        elif k == 1 and sysk == 'n64':
+            sh('DISPLAY=%s xdotool key Escape' % DISP); s = stopped(20)
+            ok('%s: Esc (what Emu tells the player ends the game) ends the emulator, with nothing left running' % tag, s, (theirs(), [(x[3], x[1], x[2]) for x in windows()]))
+            if not s: shot(fn + '-5afteresc'); api('native/stop?id=' + app, ''); stopped()
         else:
             c, j = api('native/stop?id=' + app, ''); s = stopped(20)
             ok('%s: native/stop ends it, with nothing left running' % tag, c == 200 and s, (c, j, theirs()))
         open(OUT + '/' + fn + '-native.log', 'w').write(native_log()); print('--- native.log (%s), last lines:\n%s' % (tag, native_log()[-1200:]))
         c, j = api('native/status?id=' + app); ok('%s: ...and native/status says it is not running' % tag, c == 200 and not j.get('running'), j)
 PAD.close()
+for f in ('/home/rudolf/.var/app/com.github.Rosalie241.RMG/config/RMG/mupen64plus.cfg', '/home/rudolf/.var/app/org.flycast.Flycast/config/flycast/emu.cfg'):
+    try: t = open(f).read(); print('--- %s: its sections\n%s' % (f, '\n'.join(l for l in t.splitlines() if l.startswith('['))))
+    except Exception as e: print('--- %s: %s' % (f, e))
+print('--- rudolf-display:\n' + open(T + '/display.log').read()[-1500:])
 shutil.copy(T + '/rudolfd.log', OUT + '/rudolfd.log')
-sh('cp -r /home/rudolf/.var %s/var-app 2>/dev/null; chmod -R a+rX %s' % (OUT, OUT))
+sh('mkdir -p %s/config && cp -r /home/rudolf/.var/app/*/config %s/config/ 2>/dev/null; find /home/rudolf/.var -type f | grep -v -e mesa_shader -e /cache/ > %s/files.txt; chmod -R a+rX %s' % (OUT, OUT, OUT, OUT))
 print('%d/%d passed' % (N - F, N)); sys.exit(1 if F else 0)
