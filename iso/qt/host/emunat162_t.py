@@ -208,9 +208,9 @@ for sysk in ('n64', 'dc'):
             ok('%s: closing its window (Rudolf\'s close button) ends the emulator, with nothing left running' % tag, s, theirs())
             if not s: shot(fn + '-5afterclose'); api('native/stop?id=' + app, ''); stopped()
         elif k == 1 and sysk == 'n64':
-            sh('DISPLAY=%s xdotool key Escape' % DISP); s = stopped(20)
-            ok('%s: Esc (what Emu tells the player ends the game) ends the emulator, with nothing left running' % tag, s, (theirs(), [(x[3], x[1], x[2]) for x in windows()]))
-            if not s: shot(fn + '-5afteresc'); api('native/stop?id=' + app, ''); stopped()
+            sh('DISPLAY=%s xdotool key F12' % DISP); s = stopped(20)
+            ok('%s: F12 (RMG\'s Shutdown, what Emu tells the player ends the game) ends the emulator, with nothing left running' % tag, s, (theirs(), [(x[3], x[1], x[2]) for x in windows()]))
+            if not s: shot(fn + '-5afterf12'); api('native/stop?id=' + app, ''); stopped()
         else:
             c, j = api('native/stop?id=' + app, ''); s = stopped(20)
             ok('%s: native/stop ends it, with nothing left running' % tag, c == 200 and s, (c, j, theirs()))
