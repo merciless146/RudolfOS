@@ -9,6 +9,10 @@ Summary: In progress.
   service. Lua (Command Prompt, BlockLua Builder, Blitzen) always uses Rudolf's own copy of its runtime, never one downloaded from
   a website, and the page now has a security policy that refuses any other site's script. Flash content plays in a sealed-off frame
   of its own: the Flash Player app, and Oracle's pages for Flash files.
+- Faster: on the native desktop a Linux app such as Steam is started as soon as Rudolf knows it, instead of after every list of
+  apps (the Library's, the Linux apps', Debian's) one after another and the Start menu's pictures, which took about 10 seconds on a
+  slow laptop; the list of installed Linux apps is kept and given again at once until an app is installed, updated or removed; and
+  the desktop's icons and Start menu no longer wait minutes for Linux apps' pictures that cannot be had.
 - New: Linux apps' progress on their taskbar buttons (docs/plan-1.6.2.md Part 25b). A Linux app with a download or other work in
   progress shows it on its taskbar button while its window is minimized (on Standard: while another window or the desktop is in
   front), with the same fill as Rudolf's own windows and the same Display Properties › Taskbar › Progress colour, on Standard and

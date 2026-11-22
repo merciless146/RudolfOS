@@ -448,7 +448,7 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
  const app=APPS[ONEAPP.k]||(act?{name:da,open:act}:null);
  /* (2026-11-16, the owner's Vivobook) a Library package's, a Linux app's or a Windows program's key: this page has its app once it has asked
     rudolfd for them (pkgRegister, lxRegister: on Standard long done when anything is opened) */
- if(!app&&!act&&/^(pkg|lx|native|rapp):/.test(ONEAPP.k)&&!OA.waited){OA.waited=1;OA.opened=0;oaAppsReady().then(oaOpen);return}
+ if(!app&&!act&&/^(pkg|lx|native|rapp):/.test(ONEAPP.k)&&!OA.waited){OA.waited=1;OA.opened=0;oaAppsReady(ONEAPP.k).then(oaOpen);return}
  if(!app){oaClosed('There is no app called “'+ONEAPP.k+'”.');oaPost({op:'close'});return}
  OA.want=1;
  /* (1.5.9, 12.3c) Oracle without Rudolf's Chromium on the native desktop (none, or it would not start): said once */
@@ -460,7 +460,7 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
    /* (2026-11-16) a program rudolfd runs (a Linux app, a Windows program, a Library app in full screen) opens no window of this page's: as on
       Standard, once rudolfd has it (its "Starting…" said), this page closes unseen; if it made a window after all, that window stays */
    if(oaExt(ONEAPP.k)){const ms=Math.round(performance.now());if(ms>3000)console.warn('oa: '+ONEAPP.k+' asked of rudolfd '+ms+' ms after its page began');   /* (2026-11-17: the native log says how long the unseen page took on this computer before the program was asked for) */
-    Promise.resolve(r).catch(e=>console.warn(e)).then(()=>setTimeout(()=>{if(!OA.main&&!OA.done)oaDone()},2500));return}}}catch(e){console.warn(e)}
+    Promise.resolve(r).catch(e=>console.warn(e)).then(()=>{if(OA_XGO)OA_XGO.go()}).then(()=>setTimeout(()=>{if(!OA.main&&!OA.done)oaDone()},2500));return}}}catch(e){console.warn(e)}
  /* an app that opens no window (or not yet: a large app loads its files first) */
  setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed(app.name+' did not open a window.');oaPost({op:'close'})}},15000)}
 /* (the start-up page's part: #app=do-start, or the hidden page's with &start=1) */
@@ -704,18 +704,36 @@ function oaExt(k){const a=APPS[k];if(!a)return false;if(a.lxApp||/^native:/.test
  if(a.pkg){try{const p=typeof PKGS=='object'&&PKGS&&(PKGS.installed||[]).find(x=>x.name==a.pkg);return !!(p&&p.kind=='app')}catch(e){}}return false}
 /* the apps rudolfd knows (the Library's packages, the Linux and Windows programs), asked for once: on Standard the desktop has them long
    before anything is opened; each native window is a page of its own that signed in just now */
-let OA_RDY=null;
-function oaAppsReady(){if(!OA_RDY)OA_RDY=Promise.race([(async()=>{if(typeof RD=='undefined'||!RD)return;
-  try{if(typeof pkgStatus=='function')await pkgStatus(true)}catch(e){}try{if(typeof lxInstalled=='function')await lxInstalled(true)}catch(e){}
-  try{if(typeof debApps=='function'){await debApps();if(typeof lxRegister=='function')lxRegister()}}catch(e){}try{if(typeof nativeRegister=='function')nativeRegister()}catch(e){}})(),
- new Promise(r=>setTimeout(r,12000))]);return OA_RDY}
+let OA_RDY=null;const OA_RDYW=[];
+/* (1.6.2 Part 14, the owner's Vivobook on 2026-11-22: "oa: lx:com.valvesoftware.Steam asked of rudolfd 9840 ms after its page began") the
+   listings are asked for together, not one after another (the Library's packages, then the Linux apps, then Debian's: about 10 s on the
+   Vivobook while Steam itself was starting), and a page waiting for one app (k: its window's) opens it as soon as a listing has it */
+function oaAppsHave(){for(let i=OA_RDYW.length-1;i>=0;i--){const w=OA_RDYW[i];if(APPS[w.k]){OA_RDYW.splice(i,1);w.res()}}}
+function oaAppsReady(k){if(!OA_RDY)OA_RDY=Promise.race([(async()=>{if(typeof RD=='undefined'||!RD)return;
+  const one=f=>(async()=>{try{await f()}catch(e){}oaAppsHave()})();
+  await Promise.all([one(async()=>{if(typeof pkgStatus=='function')await pkgStatus(true)}),one(async()=>{if(typeof lxInstalled=='function')await lxInstalled(true)}),
+   one(async()=>{if(typeof debApps=='function'){await debApps();if(typeof lxRegister=='function')lxRegister()}})]);
+  try{if(typeof nativeRegister=='function')nativeRegister()}catch(e){}})(),
+ new Promise(r=>setTimeout(r,12000))]);
+ if(!k||APPS[k])return OA_RDY;return Promise.race([OA_RDY,new Promise(res=>{OA_RDYW.push({k,res});oaAppsHave()})])}
+/* (1.6.2 Part 14) the unseen page of a program rudolfd runs (#app=lx:ID, a Linux app: its window is the program's, the page closes once it
+   has asked for it): the pictures its Start menu and desktop would show, never seen there, one request each (40 apps, 40 requests, as many
+   at once as the engine allows), went before the program's own request, which waited seconds behind them. They wait until it is asked */
+const OA_XGO=ONEAPP&&/^(lx|native|pkg|rapp):/.test(ONEAPP.k)&&typeof lxIcon=='function'?(()=>{let go;const p=new Promise(r=>go=r);p.go=go;setTimeout(go,15000);return p})():null;
+if(OA_XGO){const _li=lxIcon;lxIcon=function(id,icon){return OA_XGO.then(()=>_li(id,icon))}}
 /* an app's own picture that is not one of the page's (a Linux app's or a Windows program's icon, from its package: a.img, lxImg), as a PNG for
-   the native shell, which shows the page's pictures (icons): Standard draws them from the same place */
-const OA_IMG={};
-async function oaImgPng(k){const a=APPS[k];if(!a||typeof a.img!='function')return null;if(OA_IMG[k])return OA_IMG[k];
- const b=document.createElement('b');b.style.cssText='position:fixed;left:-9999px;top:0;width:48px;height:48px';document.body.appendChild(b);
- try{a.img(b);let im=null;for(let i=0;i<60;i++){im=b.querySelector('img');if(im&&im.complete&&im.naturalWidth)break;await new Promise(r=>setTimeout(r,100))}
-  if(!im||!im.naturalWidth)return null;return OA_IMG[k]=await oaPng(im.src,48)}catch(e){return null}finally{b.remove()}}
+   the native shell, which shows the page's pictures (icons): Standard draws them from the same place.
+   (1.6.2 Part 14, the owner's Vivobook on 2026-11-22: "desktop/apps given after 191721 ms") one wait per app, shared by the catalogue's
+   app list, desktop icons and Start menu rows, which each waited 6 s again for a picture that did not come (one after another: 40 apps,
+   4 minutes), and at most 6 s by the clock (a hidden page's timers run late: 60 polls of 100 ms took a minute); a picture that did not
+   come is asked for again only after a minute */
+const OA_IMG={},OA_IMGP={};
+function oaImgPng(k){const a=APPS[k];if(!a||typeof a.img!='function')return Promise.resolve(null);if(OA_IMG[k])return Promise.resolve(OA_IMG[k]);
+ const w=OA_IMGP[k];if(w&&(w.busy||Date.now()-w.at<60000))return w.p;
+ const e={busy:1,at:0};e.p=(async()=>{const b=document.createElement('b');b.style.cssText='position:fixed;left:-9999px;top:0;width:48px;height:48px';document.body.appendChild(b);
+  try{a.img(b);let im=null;const end=Date.now()+6000;for(;;){im=b.querySelector('img');if(im&&im.complete&&im.naturalWidth)break;if(Date.now()>end)break;await new Promise(r=>setTimeout(r,100))}
+   if(!im||!im.naturalWidth)return null;return OA_IMG[k]=await oaPng(im.src,48)}catch(x){return null}finally{b.remove();e.busy=0;e.at=Date.now()}})();
+ OA_IMGP[k]=e;return e.p}
 const oaImgKey=k=>{let h=5381;for(const c of k)h=(h*33+c.codePointAt(0))>>>0;return 'im'+h.toString(36)};
 /* (the catalogue given again, at once, when what it lists changed in this page: the apps rudolfd knows came, a desktop icon was added or
    removed (Desktop icons…, Add to desktop): Standard's one page shows such a change at once; the shell read the catalogue only when a page
