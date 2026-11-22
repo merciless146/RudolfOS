@@ -3,6 +3,17 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.2 (in progress)
+Summary: In progress.
+- New: Rudolf's title bar on Standard's windows from outside the page (docs/plan-1.6.2.md Part 29, the owner, 2026-11-21): Linux
+  apps, the encrypted Oracle and Oracle's Tor windows get the same title bar, buttons, edges and window menu as Rudolf's own windows
+  (and as Native's frames), in the title-bar style and colour chosen in Display Properties. Drag the title bar to move them, any edge
+  or corner to size them; maximize and restore, minimize (the taskbar button brings them back), close (the app is asked, as by its
+  own close button), Always on top and the workspaces from the window's menu. A click on the desktop or another window puts the app
+  behind it, its window keeping its place with the app's name ("Click to show it"). Full-screen videos and games keep the whole
+  screen with no frame; dialogs open in the middle of their window. Chromium-based windows (the encrypted Oracle, Tor windows,
+  Chromium-based browsers) leave their own frame off; apps that always draw their own (Steam, Discord) show both, as on Native.
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
