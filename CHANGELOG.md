@@ -5,6 +5,15 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: on the Native desktop, Task Manager could come up as an empty window for several seconds (or not at all) while the desktop
+  was busy, for example while Steam was starting: its page waited for the desktop's hidden background page. Task Manager now has a
+  page of its own and comes up at once (docs/plan-1.6.2.md Part 14, found on the owner's Vivobook).
+- New: two-player games from the Rudolf OS Library on your home network (docs/plan-1.6.2.md Part 30; Ember Reach 0.5.2's
+  duels). Press Host on this network in the game, and Rudolf OS runs a small relay on this computer while you play,
+  and announces it on the network; on the other computer Find games lists it, and the two games meet through it.
+  Nothing goes over the internet. The relay runs as your account's own user (never as root), answers only the local
+  network, and the firewall opens its port to the home network only (never on a cellular connection) and only while a
+  game is hosted. It stops when the duel ends, or within a minute if no game connects.
 - New: Bring your files (docs/plan-1.6.2.md Part 27). Installing Rudolf OS on a disk that holds another system now looks at it
   first, read-only: Windows (each person's Documents, Pictures, Music, Videos, Desktop and Downloads, OneDrive's folders too),
   Linux (/home and its own folder names) and macOS (said: Rudolf OS cannot read a Mac's disk, and how to copy the files on the
