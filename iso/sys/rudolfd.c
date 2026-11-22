@@ -1452,8 +1452,10 @@ static void api_apps(struct req *r, const char *what)
  * /run/rudolf/portal/resp/<n>.json. While a dialog is open the desktop is shown; afterwards the
  * window that asked comes back. */
 #define PORTALD RUN "/portal"
+static void api_lxprog(struct req *r);   /* 1.6.2 (plan-1.6.2 Part 25b): the apps' progress (rudolfd-lxprog.inc) */
 static void api_portal(struct req *r, const char *what)
 {
+	if (!strcmp(what, "progress")) { api_lxprog(r); return; }
 	if (!strcmp(what, "poll")) {
 		DIR *d = opendir(PORTALD "/req"); str s = {0}; sadd(&s, "{\"ok\":true,\"requests\":["); int n = 0; struct dirent *e;
 		while (d && (e = readdir(d)) && n < 20) {
@@ -4536,6 +4538,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-guard.inc"     /* 1.6.1: Blitzen hardened against giving away secrets (plan-1.6.1 Part 26) */
 #include "rudolfd-dev.inc"       /* 1.6.0: Blitzen as a developer's agent (plan Part 19) */
 #include "rudolfd-game.inc"      /* 1.6.1: game mode (plan-1.6.1 Part 19) */
+#include "rudolfd-lxprog.inc"    /* 1.6.2: Linux apps' progress on their taskbar buttons (plan-1.6.2 Part 25b) */
 #include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */
 #include "rudolfd-duel.inc"      /* 1.6.2: the LAN game relay for two-player Library games (plan-1.6.2 Part 30) */
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */

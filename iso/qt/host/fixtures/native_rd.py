@@ -21,6 +21,7 @@
 #   DIR/stats-on, DIR/shell.json, DIR/lsync.json   (1.6.0) stats answered; the shell's state; the pages' last lsync copy
 #   DIR/health-on, DIR/system.json, DIR/sleep-ms   (1.6.0, hwcnative160_t.sh) the health log, the system's answer, sleep as rudolfd's
 #   DIR/drop-fix       (when there, 1.6.1) fixtures/dropapi.c's command line: desktop/dropped answered by rudolfd's own code
+#   DIR/lxprog-fix     (when there, 1.6.2) fixtures/lxprogapi.c's command line: portal/progress answered by rudolfd's own code
 #   DIR/portal/        (when there, 1.6.0) the Rudolf portal's requests: req/ID.json listed by portal/poll; portal/answer writes
 #                      resp/ID.json, removes the request and adds "ID ANSWER" to portal/answers
 #   DIR/plan.json      (when there, 1.6.0 Part 12 item 12: svc160_t.sh) given as test/plan to the test's script in the pages
@@ -260,6 +261,13 @@ class H(http.server.BaseHTTPRequestHandler):
             rec = {'seq': int(time.time() * 1000), 'at': int(time.time()), 'asked': 10, 'slept_ms': int(ms) if ms else 0, 'ok': bool(ms), 'error': '' if ms else 'Device or resource busy',
                    'success': 1 if ms else 0, 'fail': 0 if ms else 1, 'hw_us': -1, 'mode': 's2idle'}
             open(os.path.join(D, 'sleep.json'), 'w').write(json.dumps(rec)); return self.j({'ok': True, 'message': 'suspending'})
+        # (1.6.2 Part 25b, lxprog162_t.sh) the Linux apps' progress: rudolfd's own portal/progress (fixtures/lxprogapi.c; DIR/lxprog-fix:
+        # its command line, tab-separated), each answer noted in DIR/lxprog.log
+        if w == 'portal/progress' and rd('lxprog-fix'):
+            import subprocess
+            o = subprocess.run(rd('lxprog-fix').decode().strip().split('\t'), capture_output=True, timeout=30).stdout
+            with LOCK: open(os.path.join(D, 'lxprog.log'), 'ab').write(o)
+            return self.send(200, o.strip() or b'{"ok":false}')
         # (1.6.0, nportal160_t.sh, when DIR/portal is there) the Rudolf portal's requests as rudolfd's api_portal: DIR/portal/req/ID.json
         # listed (portal/poll), an answer written to DIR/portal/resp/ID.json and the request gone (portal/answer), each answer noted
         if w.startswith('portal/') and os.path.isdir(os.path.join(D, 'portal')):
