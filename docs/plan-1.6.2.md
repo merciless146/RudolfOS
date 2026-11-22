@@ -341,6 +341,34 @@ a stand-in rudolfd (title, icon, the title-bar styles); Standard and Native comp
 **For the owner, on the Vivobook (Standard):** encrypted Oracle, a Tor window, a Flatpak app (one that asks for a frame,
 one that draws its own), a game in full screen; minimize and close from Rudolf's bar; the title-bar styles and colours.
 
+**Status, 2026-11-22: items 1-3 built (unattended; PR "Rudolf's title bar on Standard's windows from outside the page").**
+One change from the way above, asked for in the task's prompt and matching Native: the frame is a window of the page's own
+(desktop/xframe62.js: `win()`, so its look, buttons, edges, menu, styles, workspaces and taskbar button are those of Rudolf's
+windows), and the app's X window is placed in its inside, wherever the frame is: so **moving, sizing from every edge and corner,
+maximize and restore** are offered (not only the fitted window of item 2). rudolf-display (its own functions, "1.6.2 Part 29"):
+`/run/rudolf/wm` takes "win HEX X Y W H" (the place, kept per window; "win HEX" alone uses the last one, a window never placed is
+fitted below the strip as item 1 says), `/run/rudolf/strut`'s "bar N" (the strip), `_NET_SUPPORTING_WM_CHECK` "rudolf-display"
+(written again when the native desktop's is left), the place read every 15 ms for 1.5 s after one comes (a drag), a dialog centred
+above its placed window. rudolfd: no new request; apps/show takes the place (x, y, w, h: four numbers in range, else as before) and
+web/strut the bar; the Tor windows' Preferences and the encrypted Oracle's (`rudolf-apps chromeframe`, run as its user, only where
+the key is missing) get `browser.custom_chrome_frame: false`. The page: a frame per window in apps/windows (not the browser window
+for sign-in sites, nor a full-screen window or game: those keep the whole screen); the active frame's app is shown in it, anything
+else clicked puts the app behind the page (as before) with its frame left in place showing the app's icon and name ("Click to show
+it"); never shown over the lock screen, the saver, a prompt of the page's, or the frame's own menu where it would cover it. The frame
+around the app is Native's: 1 px at the sides and bottom, 35 px above (Native's `_NET_FRAME_EXTENTS` 1 1 35 1). There is no
+snapping on either engine (1.6.1 Part 15: the page has none), so none here. Apps that always draw their own bar (Steam, Discord,
+Electron's `frame: false`) show both, as on Native for an app off the list; GTK apps with a header bar likewise.
+**Tests:** `iso/qt/host/xframe162_t.sh` (37 + 5 checks; its own workflow, std-titlebars-check.yml): all pass on this host (Xvfb,
+Chromium 153 as the desktop page, rudolf-display --input): the stand-ins with and without their own bar, a game, a dialog, GTK
+3.24.41 and GTK 4.14.5 (gtk3/gtk4-widget-factory), Chromium with the system's title bar (as the encrypted Oracle and Tor windows)
+and as an Electron-style app; rudolfd's own code (R1-R5). Unchanged: titlebar59_t.js 17/17, tbbtn59_t.js 15/15, sethooks61_t.js
+6/6, taskbar144_t.js 30/30, tb_t.js 11/11, tbprog61_t.js 43/43, lx48_t.js 8/8, lxdesk_t.js 4/4, wmfocus_t.sh 20/20, wmdialog_t.sh
+11/11, titlebars161_t.sh 16/16, csd161_t.sh 60/60 (Native and Standard). **Not tested here:** several real monitors (Xvfb has one;
+the frame's place is anywhere on the X screen, fitted windows stay on the main monitor as before), Steam, Discord, Firefox and Wine
+themselves, the release in QEMU. **Left:** the app's own maximize and minimize buttons and a drag of its own bar
+(`_NET_WM_MOVERESIZE`) do nothing on Standard yet (Rudolf's bar does them); a window's content is not seen while it is behind the
+page (its frame shows its name).
+
 ### 30. Two-player Library games on a home network: the LAN game relay (added on 2026-11-22)
 Ember Reach's duels (rudolfos-library, Ember Reach 0.5.2) on a LAN as well as online; the owner: "Go with WebSocket and
 LAN as the selectable options for networking for the player". A game page can't accept connections, so while a player
