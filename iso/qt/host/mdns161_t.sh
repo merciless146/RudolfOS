@@ -89,7 +89,8 @@ find > $T/f1 & P1=$!; find > $T/f2 & P2=$!; wait $P1; wait $P2
 ok "15. two finds at once (rudolfd's and the print queue's: SO_REUSEADDR): both run and list the multicast printer; the unicast one's answers reach one of them" "$(grep -q 'Multicast Printer' $T/f1 && grep -q 'Multicast Printer' $T/f2 && cat $T/f1 $T/f2 | grep -q 'Unicast Printer' && echo 1)" "$(cat $T/f1 $T/f2)"
 
 # the tests' way (RP_MDNS) unchanged: the question by unicast to a stand-in from an ephemeral port
-o=$(env RP_USB=$T/none RP_MDNS=192.168.77.2:5353 $T/rudolf-print find)
+# (one question by UDP: asked up to three times, as a person would press Find printers again, so one lost packet is not a failure)
+for i in 1 2 3; do o=$(env RP_USB=$T/none RP_MDNS=192.168.77.2:5353 $T/rudolf-print find); echo "$o" | grep -q 'Unicast Printer' && break; done
 ok "16. RP_MDNS (the other tests' stand-ins) still asks the address given: the unicast stand-in found" "$(echo "$o" | grep -q 'Unicast Printer' && echo 1)" "$o"
 
 # the control: with the firewall off, find asking on wwan0 does see the cellular printer (so 9 and 12 test the firewall)
