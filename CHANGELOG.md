@@ -3,6 +3,20 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.2 (in progress)
+Summary: In progress.
+- New: Bring your files (docs/plan-1.6.2.md Part 27). Installing Rudolf OS on a disk that holds another system now looks at it
+  first, read-only: Windows (each person's Documents, Pictures, Music, Videos, Desktop and Downloads, OneDrive's folders too),
+  Linux (/home and its own folder names) and macOS (said: Rudolf OS cannot read a Mac's disk, and how to copy the files on the
+  Mac first), each folder with its size. Keep them (the default), choose which, or erase without keeping (said with the size
+  that is lost). Kept files are copied onto a USB drive and every one is read back and checked (SHA-256) before anything is
+  erased; a drive that fills up is followed by another; a copy that fails or is cancelled erases nothing, and the installer
+  itself refuses the disk until the copy (or the choice to erase) is made. A BitLocker disk asks for its recovery key (it is
+  opened read-only and the key is never kept); a Windows that was hibernated or not shut down fully is read read-only and
+  said. After the first sign-in Rudolf OS offers to bring them in (Settings › Update and recovery › Bring in files from the
+  old computer): the old Documents into Documents and so on, into your own encrypted folder, names that clash kept side by
+  side, each file checked again and then by the antivirus. The copy on the drive is left as it is.
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
