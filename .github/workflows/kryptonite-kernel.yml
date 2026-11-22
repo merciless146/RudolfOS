@@ -20,17 +20,17 @@ jobs:
       - uses: actions/checkout@v5
       - id: v
         run: |
-          W=$(sed -n 's/^kernel=//p' .github/kryptonite-kernel.txt | head -1)
-          ALL=$(git ls-remote --tags https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "v${W%%.*}.*" | sed -n 's#.*refs/tags/v\([0-9.]*\)$#\1#p' | sort -V)
-          [ -n "$ALL" ] || ALL=$(curl -fsSL https://www.kernel.org/releases.json | jq -r '.releases[].version')
-          NEWEST=$(echo "$ALL" | grep -E "^$(echo "${W%.*}" | sed 's/\./\\./g')\.[0-9]+(\.[0-9]+)?$" | sort -V | tail -1)
-          case "$W" in *.*.*) KV=$W;; *) KV=$(echo "$ALL" | grep -E "^$(echo "$W" | sed 's/\./\\./g')(\.[0-9]+)?$" | sort -V | tail -1);; esac
+          W=$(sed -n 's/^kernel=//p' .github/kryptonite-kernel.txt | head -1); SER=$(echo "$W" | cut -d. -f1,2); RE=$(echo "$SER" | sed 's/\./\\./g')
+          ALL=$(git ls-remote --tags https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "v$SER*" | sed -n 's#.*refs/tags/v\([0-9.]*\)$#\1#p' | grep -E "^$RE(\.[0-9]+)?$" | sort -V)
+          [ -n "$ALL" ] || ALL=$(curl -fsSL https://www.kernel.org/releases.json | jq -r '.releases[].version' | grep -E "^$RE(\.[0-9]+)?$" | sort -V)
+          NEWEST=$(echo "$ALL" | tail -1)
+          case "$W" in *.*.*) KV=$W;; *) KV=$NEWEST;; esac
           [ -n "$KV" ] || { echo "::error::no Linux $W on kernel.org"; exit 1; }
-          [ "$KV" = "$NEWEST" ] || echo "::warning title=Kryptonite kernel::$KV is pinned; $NEWEST is out"
+          [ "$KV" = "$NEWEST" ] || echo "::warning title=Kryptonite kernel::$KV is pinned in .github/kryptonite-kernel.txt; $NEWEST is out"
           git fetch -q --depth 1 origin gh-pages
           OLD=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); OLD=${OLD%-rudolf}
           echo "kv=$KV" >> $GITHUB_OUTPUT; echo "old=$OLD" >> $GITHUB_OUTPUT
-          echo "::notice title=Kryptonite kernel::Linux $KV (newest ${W}.y: $NEWEST; 1.6.x stable: $OLD); every ${W%.*}.y: $(echo "$ALL" | grep -E "^$(echo "${W%.*}" | sed 's/\./\\./g')\." | tr '\n' ' ')"
+          echo "::notice title=Kryptonite kernel::Linux $KV (newest $SER.y: $NEWEST; 1.6.x stable: $OLD); every $SER.y: $(echo "$ALL" | tr '\n' ' ')"
   kconfig:
     needs: version
     runs-on: ubuntu-24.04
@@ -52,6 +52,15 @@ jobs:
           cp linux-$KV/.config config-$KV.txt; cp linux-$OLD/.config config-$OLD.txt
           [ $RC = 0 ] && echo "::notice title=kconfig.sh::Linux $KV: every option kconfig.sh asks for and checks is there; $(tail -1 new.log)" || { echo "::error title=kconfig.sh::Linux $KV: $(grep 'kconfig.sh:' new.log | tr '\n' ' ')"; exit 1; }
           cd iso && KCONFIG=../linux-$KV/.config sh qt/host/kreq161_t.sh
+      - name: What 7.3 changed where kconfig.sh decides (for the record)
+        if: always()
+        env: {KV: '${{ needs.version.outputs.kv }}', OLD: '${{ needs.version.outputs.old }}'}
+        run: |
+          for v in $OLD $KV; do echo "==== $v"; cd linux-$v
+            grep -E '^CONFIG_(PREEMPT[A-Z_]*|HZ[_0-9]*|X86_INTEL_TSX[A-Z_]*|PROC_MEM[A-Z_]*|SYSCTL|PROC_SYSCTL|SND_SOC_AMD[A-Za-z0-9_]*|SND_SOC_SOF_[A-Z]*LAKE|SCHED_CLASS_EXT|NTSYNC|DRM_NOUVEAU[A-Z_]*|DRM_XE|DRM_AMDGPU[A-Z_]*)=' .config
+            grep -n -i -B1 -A6 'rpl\|rembrandt\|acp6\|acp70\|acp63' sound/soc/amd/Kconfig | head -120
+            ls sound/soc/amd; grep -n 'sysctl' fs/proc/Makefile; grep -n -A8 '^choice' arch/x86/Kconfig | grep -A8 -i tsx | head -20
+            grep -n -A4 '^config HID_CHERRY' drivers/hid/Kconfig; cd ..; done
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: kconfig, retention-days: 14, path: "kconfdiff.txt\nnew.log\nconfig-*.txt"}

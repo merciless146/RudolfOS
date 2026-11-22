@@ -1,5 +1,7 @@
 #!/bin/sh
 # Rudolf OS kernel configuration on top of x86_64_defconfig
+# Rudolf Kryptonite (2.0, the kryptonite branch): Linux 7.3.y (.github/kryptonite-kernel.txt), moved over from 6.18 option by
+# option (iso/systools/kconfdiff.py lists what 7.3 renamed, removed, changed and added; the decisions are marked "2.0 (7.3)")
 set -e
 KDIR=$(cd "$(dirname "$0")" && pwd)   # (1.6.1: for the required features' list, iso/kconfig-required.txt)
 cd "$1"
@@ -59,6 +61,10 @@ y PINCTRL GPIOLIB GPIO_ACPI MFD_INTEL_LPSS_PCI MFD_INTEL_LPSS_ACPI INTEL_IDMA64 
 y PINCTRL_ICELAKE PINCTRL_JASPERLAKE PINCTRL_ELKHARTLAKE PINCTRL_LAKEFIELD PINCTRL_BROXTON PINCTRL_GEMINILAKE PINCTRL_BAYTRAIL PINCTRL_CHERRYVIEW PINCTRL_LYNXPOINT
 y MOUSE_PS2_ELANTECH MOUSE_PS2_ELANTECH_SMBUS MOUSE_ELAN_I2C MOUSE_ELAN_I2C_I2C MOUSE_ELAN_I2C_SMBUS RMI4_CORE RMI4_SMB RMI4_F03 RMI4_F11 RMI4_F12 RMI4_F30
 y HID_ALPS HID_ASUS HID_LENOVO HID_ELAN MOUSE_BCM5974 HID_MAGICMOUSE TOUCHSCREEN_ELAN
+# 2.0 (7.3): the small HID drivers for keyboards and mice with quirks (Cherry, Chicony, ITE, Kensington, A4Tech...) are no
+# longer on by default (6.18 had them on unless EXPERT): kept on, as 1.6.x has them; checked below
+HIDQ="HID_A4TECH HID_BELKIN HID_CHERRY HID_CHICONY HID_CYPRESS HID_EZKEY HID_ITE HID_KENSINGTON HID_MONTEREY HID_REDRAGON"
+y $HIDQ
 # sound
 y SND_HDA_CODEC_REALTEK SND_HDA_CODEC_HDMI SND_HDA_CODEC_CIRRUS PINCTRL_INTEL_PLATFORM SOUND SND SND_PCI SND_HDA_INTEL SND_HDA_GENERIC SND_HDA_CODEC_REALTEK_LIB SND_HDA_CODEC_ALC269 SND_HDA_CODEC_ALC662 SND_HDA_CODEC_ALC882 SND_HDA_CODEC_ALC680 SND_HDA_CODEC_ALC260 SND_HDA_CODEC_ALC262 SND_HDA_CODEC_ALC268 SND_HDA_CODEC_ALC861 SND_HDA_CODEC_ALC861VD SND_HDA_CODEC_ALC880 SND_HDA_CODEC_ANALOG SND_HDA_CODEC_SIGMATEL SND_HDA_CODEC_VIA SND_HDA_CODEC_CONEXANT SND_HDA_CODEC_CMEDIA SND_HDA_CODEC_CA0132 SND_HDA_CODEC_HDMI_GENERIC SND_HDA_CODEC_HDMI_INTEL SND_HDA_CODEC_HDMI_ATI SND_HDA_CODEC_HDMI_NVIDIA SND_USB SND_USB_AUDIO SND_INTEL8X0 SND_ENS1370 SND_HDA_CODEC_CS420X SND_HDA_CODEC_CS8409
 # network
@@ -135,6 +141,8 @@ n TCG_TPM2_HMAC
 # else runs (fixes such as SRSO's "IBPB-extending microcode not applied"). UCODE_DIR: a folder holding
 # amd-ucode/ (the pinned files of firmware-extra.txt); without it the kernel has none, as before.
 y MICROCODE MICROCODE_AMD MICROCODE_INTEL
+# 2.0 (7.3): Intel TSX stays off (TSX Async Abort), as 6.18's default had it; 7.3 changed the default. Checked below
+y X86_INTEL_TSX_MODE_OFF
 if [ -n "$UCODE_DIR" ] && [ -d "$UCODE_DIR/amd-ucode" ]; then
 	$C --set-str EXTRA_FIRMWARE "$(cd "$UCODE_DIR" && ls amd-ucode/microcode_amd*.bin | tr '\n' ' ' | sed 's/ $//')"
 	$C --set-str EXTRA_FIRMWARE_DIR "$UCODE_DIR"
@@ -153,7 +161,8 @@ y CGROUPS MEMCG
 # 1.5.0: the firewall for incoming connections (nftables, /usr/lib/rudolf/firewall) and file encryption for the data
 # on RUDOLFDATA (fscrypt on ext4: /persist/vault, rudolfd unlocks it at sign-in; AES-256-XTS and AES-256-CTS)
 y NETFILTER NETFILTER_ADVANCED NF_CONNTRACK NF_TABLES NF_TABLES_INET NF_TABLES_IPV4 NF_TABLES_IPV6 NFT_CT NFT_LIMIT NFT_LOG NFT_REJECT NFT_REJECT_INET
-y FS_ENCRYPTION CRYPTO_AES CRYPTO_AES_NI_INTEL CRYPTO_XTS CRYPTO_CTS CRYPTO_CBC CRYPTO_ECB CRYPTO_SHA512 CRYPTO_HKDF
+# (2.0 (7.3): CRYPTO_HKDF is gone: fscrypt's key derivation is in the kernel's crypto library now, with no option)
+y FS_ENCRYPTION CRYPTO_AES CRYPTO_AES_NI_INTEL CRYPTO_XTS CRYPTO_CTS CRYPTO_CBC CRYPTO_ECB CRYPTO_SHA512
 # 1.5.1: Bluetooth (controllers, keyboards, mice, headphones): the core built in; the USB adapters' driver as a module, loaded
 # by modalias after the system is up, so the chips' firmware (rtl_bt, intel/ibt, mediatek in the modules layer) is
 # there when it asks; UHID for Bluetooth LE controllers and keyboards (BlueZ's HID over GATT), AF_ALG for BlueZ's own
@@ -165,7 +174,7 @@ m BT_HCIBTUSB BT_HCIVHCI
 # Raptor Lake's ACP 6.x twin, Phoenix/Hawk Point (ACP 6.3). They need no firmware. (Intel SOF, AMD SOF and the
 # speaker amplifiers need firmware: they come with it.) SND_AMD_ACP_CONFIG picks the driver for each computer.
 # (ACP6x has a lower-case x: mk keeps the case, as for MT76x0U)
-ACPMIC="SND_SOC SND_AMD_ACP_CONFIG SND_SOC_AMD_RENOIR SND_SOC_AMD_RENOIR_MACH SND_SOC_AMD_ACP6x SND_SOC_AMD_YC_MACH SND_SOC_AMD_RPL_ACP6x SND_SOC_AMD_ACP63_TOPLEVEL SND_SOC_AMD_PS SND_SOC_AMD_PS_MACH SND_SOC_DMIC"
+ACPMIC="SND_SOC SND_AMD_ACP_CONFIG SND_SOC_AMD_RENOIR SND_SOC_AMD_RENOIR_MACH SND_SOC_AMD_ACP6x SND_SOC_AMD_YC_MACH SND_SOC_AMD_ACP63_TOPLEVEL SND_SOC_AMD_PS SND_SOC_AMD_PS_MACH SND_SOC_DMIC"
 mk $ACPMIC
 # 1.5.4: Intel's sound processor (SOF), Tiger Lake to Panther Lake, with its firmware and topologies (firmware-sof.txt):
 # laptops whose speakers or microphones go through it (DMIC, SoundWire) get SOF, the others stay on HDA
@@ -183,7 +192,8 @@ y $SPIY $SOFY
 m $SPIM
 # the older Intel platforms stay on HDA, as before: their SOF firmware is not shipped, and a laptop with digital
 # microphones would otherwise be given to SOF and stay silent (the kernel's defaults turn them all on with SOF)
-SOFOLD="SND_SOC_SOF_MERRIFIELD SND_SOC_SOF_SKYLAKE SND_SOC_SOF_KABYLAKE SND_SOC_SOF_APOLLOLAKE SND_SOC_SOF_GEMINILAKE SND_SOC_SOF_CANNONLAKE SND_SOC_SOF_COFFEELAKE SND_SOC_SOF_COMETLAKE SND_SOC_SOF_ICELAKE SND_SOC_SOF_JASPERLAKE SND_SOC_SOF_BAYTRAIL SND_SOC_SOF_BROADWELL"
+# (2.0 (7.3): Nova Lake, new in 7.3, likewise: its SOF firmware is not in sof-bin's pinned release, fwextra.py skips nvl)
+SOFOLD="SND_SOC_SOF_NOVALAKE SND_SOC_SOF_MERRIFIELD SND_SOC_SOF_SKYLAKE SND_SOC_SOF_KABYLAKE SND_SOC_SOF_APOLLOLAKE SND_SOC_SOF_GEMINILAKE SND_SOC_SOF_CANNONLAKE SND_SOC_SOF_COFFEELAKE SND_SOC_SOF_COMETLAKE SND_SOC_SOF_ICELAKE SND_SOC_SOF_JASPERLAKE SND_SOC_SOF_BAYTRAIL SND_SOC_SOF_BROADWELL"
 n $SOFOLD
 # 1.5.4: Bluetooth built into the board on a serial line (UART): cheap laptops and tablets (Realtek RTL8723BS/CS,
 # Broadcom, Intel, Qualcomm). serdev attaches the chip the firmware (ACPI) describes; hci_uart drives it.
@@ -247,6 +257,7 @@ for o in SWAP ZSMALLOC ZRAM ZRAM_BACKEND_ZSTD ZRAM_DEF_COMP_ZSTD PSI LRU_GEN LRU
 for o in $SOFM $AMPS $SPIM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the sound driver $o is not a module after olddefconfig"; exit 1; }; done
 for o in $SOFOLD; do grep -qE "^CONFIG_$o=(y|m)$" .config && { echo "kconfig.sh: $o is on: its SOF firmware is not shipped, so it must stay on HDA"; exit 1; }; done
 for o in $SOFY $SPIY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sound option $o is not on after olddefconfig"; exit 1; }; done
+for o in $HIDQ X86_INTEL_TSX_MODE_OFF; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: $o is not on after olddefconfig"; exit 1; }; done
 for o in $GAMES INPUT_UINPUT HIDRAW INPUT_JOYSTICK JOYSTICK_XPAD HID_SONY HID_PLAYSTATION HID_NINTENDO; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the games option $o is not on after olddefconfig"; exit 1; }; done
 for o in $TBY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the Thunderbolt or USB-C option $o is not on after olddefconfig"; exit 1; }; done
 for o in $TBM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the driver $o is not a module after olddefconfig"; exit 1; }; done
