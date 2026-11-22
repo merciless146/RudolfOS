@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.2.md Part 31): zstd compression for the system's images, measured against today's xz
+  in QEMU and on the owner's two computers before anything changes; the kernel learns to read zstd first.
 - Changed: a Library game's save record may now be up to 6 MB (it was 256 KB), so a game with a large world, such as Ember
   Reach's shared galaxy, can keep it in a few records. Saves stay per package, game and account, mirrored and backed up as
   before. The desktop tells a game its limit when it starts, so a game made for this works on older versions too.
