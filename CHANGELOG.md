@@ -3,6 +3,13 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.2 (in progress)
+Summary: In progress.
+- Fixed: the Blitzen knows check's "⚡ Why?" test (bzwhy57_t.js, 4) failed at some times of day: when the search, which
+  reads the log lines with their times, found two pieces of one document's section, both had the same name, and the test
+  took the one kept for the one unticked. It now unticks a row by its place and looks for that row's text. Blitzen leaves
+  out what is unticked, as it did; nothing in Rudolf OS changed.
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
