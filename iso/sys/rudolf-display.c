@@ -45,6 +45,7 @@
 #include <dirent.h>
 #include <signal.h>
 #include <time.h>
+#include <stdarg.h>
 #include <math.h>
 #include <sys/mman.h>
 #include <sys/ioctl.h>
@@ -57,6 +58,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
 #include <X11/Xatom.h>
+#include <X11/keysym.h>
 #include "rrcompat.h"
 
 /* XTest / XFixes prototypes (headers are not needed at run time) */
@@ -1014,7 +1016,7 @@ static int wm_native(void) { return !access("/run/rudolf/wm-native", F_OK); }
  * Full-screen windows and games keep the whole screen as before; a dialog is centred above its placed window. Nothing new
  * is read from the page beyond the place (rudolfd's apps/show, as the taskbar's buttons already ask). */
 #define XF_MAX 64
-static struct { Window w; int x, y, wd, ht; } xf_pl[XF_MAX];
+static struct { Window w; int x, y, wd, ht, max; } xf_pl[XF_MAX];
 static int xf_n, xf_bar;
 static long long xf_recent;   /* when the shown window was last placed: /run/rudolf/wm read more often for a moment (a drag) */
 static int xf_place(Window w, int *x, int *y, int *wd, int *ht)
@@ -1022,20 +1024,28 @@ static int xf_place(Window w, int *x, int *y, int *wd, int *ht)
 	for (int i = 0; i < xf_n; i++) if (xf_pl[i].w == w) { *x = xf_pl[i].x; *y = xf_pl[i].y; *wd = xf_pl[i].wd; *ht = xf_pl[i].ht; return 1; }
 	return 0;
 }
-/* the place in "win HEX X Y W H", kept for the window (inside the X screen, at least 40 px of it on the screen) */
+static int xa_place_held(Window w, int x, int y, int wd, int ht);   /* (1.6.2 Part 29: the app's own drag) */
+static void xa_atoms(void); static Atom A_MR, A_MAXV, A_MAXH, A_HID, A_CHG;
+static void xa_max_mark(Window w, int on);
+/* the place in "win HEX X Y W H" (and " max": the page's frame maximized), kept for the window (inside the X screen, at least
+   40 px of it on the screen) */
 static void xf_mode_place(const char *mode)
 {
-	unsigned long id; int x, y, wd, ht; char tail;
-	if (sscanf(mode, "win %lx %d %d %d %d%c", &id, &x, &y, &wd, &ht, &tail) != 5 || !id) return;
+	unsigned long id; int x, y, wd, ht, n = 0, max = 0;
+	if (sscanf(mode, "win %lx %d %d %d %d%n", &id, &x, &y, &wd, &ht, &n) != 5 || !id || !n) return;
+	const char *rest = mode + n; if (!strncmp(rest, " max", 4)) { max = 1; rest += 4; }
+	if (rest[strspn(rest, " \n")]) return;
 	int W = DisplayWidth(dpy, DefaultScreen(dpy)), H = DisplayHeight(dpy, DefaultScreen(dpy));
 	wd = wd < 40 ? 40 : wd > W ? W : wd;
 	ht = ht < 40 ? 40 : ht > H ? H : ht;
 	x = x > W - 40 ? W - 40 : x < 40 - wd ? 40 - wd : x;
 	y = y > H - 40 ? H - 40 : y < 0 ? 0 : y;
 	int i = 0; while (i < xf_n && xf_pl[i].w != (Window)id) i++;
-	if (i == xf_n) { if (xf_n == XF_MAX) { memmove(xf_pl, xf_pl + 1, sizeof xf_pl[0] * (XF_MAX - 1)); i = --xf_n; } xf_n++; }
-	xf_pl[i].w = (Window)id; xf_pl[i].x = x; xf_pl[i].y = y; xf_pl[i].wd = wd; xf_pl[i].ht = ht;
+	if (i == xf_n) { if (xf_n == XF_MAX) { memmove(xf_pl, xf_pl + 1, sizeof xf_pl[0] * (XF_MAX - 1)); i = --xf_n; } xf_n++; xf_pl[i].max = -1; }
+	if (xf_pl[i].max != max) { xf_pl[i].max = max; xa_max_mark((Window)id, max); }
 	xf_recent = now_ms();
+	if (xa_place_held((Window)id, x, y, wd, ht)) { xf_pl[i].w = (Window)id; return; }   /* (the app's own drag: its place is rudolf-display's until the page has it) */
+	xf_pl[i].w = (Window)id; xf_pl[i].x = x; xf_pl[i].y = y; xf_pl[i].wd = wd; xf_pl[i].ht = ht;
 }
 /* the windows gone are forgotten (apps: the app windows now on the screen) */
 static void xf_forget(const Window *apps, int napps)
@@ -1045,7 +1055,8 @@ static void xf_forget(const Window *apps, int napps)
 	xf_n = k;
 }
 /* the strip for the page's title bar: "bar N" in /run/rudolf/strut */
-static void xf_strut(const char *sb) { const char *b = strstr(sb, " bar "); int v = b ? atoi(b + 5) : 0; xf_bar = v < 0 || v > 120 ? 0 : v; }
+static int xf_frame;   /* (Part 29's left part: the frame's top edge above the app's window, "frame N" before "bar": the page's title bar and its edge) */
+static void xf_strut(const char *sb) { const char *b = strstr(sb, " bar "), *f = strstr(sb, " frame "); int v = b ? atoi(b + 5) : 0, fv = f ? atoi(f + 7) : 0; xf_bar = v < 0 || v > 120 ? 0 : v; xf_frame = fv < 0 || fv > 160 ? 0 : fv; }
 /* where an app window (not a game, not full screen) goes: its place, or fitted below the strip and above the taskbar */
 static void xf_target(Window w, int ax, int ay, int sw, int sh, int *x, int *y, int *wd, int *ht)
 {
@@ -1070,8 +1081,8 @@ static void xf_announce(void)
 	if (XGetWindowProperty(dpy, root, check, 0, 1, False, XA_WINDOW, &type, &fmt, &cnt, &after, &d) == Success && d && cnt == 1) cur = *(Window *)d;
 	if (d) XFree(d);
 	if (cur == chk) return;
-	wm_atoms();
-	Atom s[] = {A_NSTATE, A_FULL, check, name};
+	wm_atoms(); xa_atoms();   /* (and what an app's own bar and buttons ask: GTK moves a window by itself when _NET_WM_MOVERESIZE is not here) */
+	Atom s[] = {A_NSTATE, A_FULL, check, name, A_MR, A_MAXV, A_MAXH, A_HID};
 	XChangeProperty(dpy, root, sup, XA_ATOM, 32, PropModeReplace, (unsigned char *)s, sizeof s / sizeof s[0]);
 	XChangeProperty(dpy, root, check, XA_WINDOW, 32, PropModeReplace, (unsigned char *)&chk, 1);
 }
@@ -1084,6 +1095,159 @@ static int xf_dialog_centre(Window owner, int dw, int dh, int *x, int *y)
 	int ox, oy, ow, oh;
 	if (!owner || !xf_place(owner, &ox, &oy, &ow, &oh)) return 0;
 	*x = ox + (ow - dw) / 2; *y = oy + (oh - dh) / 2; if (*y < 0) *y = 0; if (*x < 0) *x = 0;
+	return 1;
+}
+/* ------------------------------------------------------------ 1.6.2 (docs/plan-1.6.2.md Part 29, its left part): an app's
+ * own buttons and title bar on Chromium, as Native's window manager does them (rudolf-native's csd_moveresize and csd_message,
+ * 1.6.1 Part 15). The page's frame (desktop/xframe62.js) is the window here, so:
+ *   _NET_WM_MOVERESIZE (a drag of the app's own bar or edges, the keyboard's Move and Size): done here as rudolf-native's
+ *       drag_motion does it, which is the page's own drag and addResize (shell25.js): the pointer's way; at least 200 x 120 with
+ *       the frame; the frame's top not above the desktop's; the arrows 10 px a step, Enter, Space or a click ends, Escape puts it
+ *       back. The app's window is moved at once and the page told its place (the ask "at"), so the frame follows; while it is
+ *       dragged, and until the page has that place (2.5 s at most), the page's older places for it are not used.
+ *   _NET_WM_STATE maximized (its maximize button, a double-click on its bar): the page asked to maximize, restore or toggle the
+ *       frame ("max"), as Rudolf's □ does; the window's _NET_WM_STATE says maximized when the page says its frame is (apps/show's
+ *       place with " max"), so the app shows its restore button.
+ *   _NET_WM_STATE_HIDDEN added, WM_CHANGE_STATE iconic (its minimize button): the page asked to minimize the frame ("min"), as _.
+ * The asks: /run/rudolf/wmask, the last 16 lines, "N at HEX X Y W H END", "N max HEX 0|1|2", "N min HEX" (N increasing; X Y W H
+ * the app's window, the frame's inside); rudolfd's apps/windows passes them on, checked, as "asks". Only for a window the page
+ * frames (it gave a place), not full screen, not a game; a maximized frame is not moved by the app's bar, as Rudolf's own bar
+ * does not move it. Snapping: neither engine has any (1.6.1 Part 15). */
+#define XA_N 16
+static char xa_lines[XA_N][112]; static int xa_count, xa_open; static long long xa_seq;
+static struct { Window w; int edge, px, py, x, y, wd, ht, kbd, kx, ky; } XA;
+static Window xa_hold; static int xa_hx, xa_hy, xa_hw, xa_hh; static long long xa_hold_until;
+static void xa_atoms(void)
+{
+	if (A_MR) return;
+	A_MR = XInternAtom(dpy, "_NET_WM_MOVERESIZE", False); A_MAXV = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_VERT", False);
+	A_MAXH = XInternAtom(dpy, "_NET_WM_STATE_MAXIMIZED_HORZ", False); A_HID = XInternAtom(dpy, "_NET_WM_STATE_HIDDEN", False);
+	A_CHG = XInternAtom(dpy, "WM_CHANGE_STATE", False);
+}
+/* one ask for the page (again: in place of this drag's last "at", while the drag goes on) */
+static void xa_ask(int again, const char *fmt, ...)
+{
+	char b[80]; va_list ap; va_start(ap, fmt); vsnprintf(b, sizeof b, fmt, ap); va_end(ap);
+	if (!xa_seq) xa_seq = (long long)time(NULL) * 1000;   /* (above any number the page saw from before a restart) */
+	if (!(again && xa_open && xa_count)) { if (xa_count == XA_N) { memmove(xa_lines, xa_lines + 1, sizeof xa_lines[0] * (XA_N - 1)); xa_count--; } xa_count++; }
+	snprintf(xa_lines[xa_count - 1], sizeof xa_lines[0], "%lld %s\n", ++xa_seq, b);
+	int f = open("/run/rudolf/wmask.tmp", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (f < 0) return;
+	for (int i = 0; i < xa_count; i++) if (write(f, xa_lines[i], strlen(xa_lines[i])) < 0) break;
+	close(f); rename("/run/rudolf/wmask.tmp", "/run/rudolf/wmask");
+}
+/* a window the page frames: its place and whether its frame is maximized */
+static int xa_framed(Window w, int *x, int *y, int *wd, int *ht, int *max)
+{
+	for (int i = 0; i < xf_n; i++) if (xf_pl[i].w == w) { *x = xf_pl[i].x; *y = xf_pl[i].y; *wd = xf_pl[i].wd; *ht = xf_pl[i].ht; *max = xf_pl[i].max > 0; return 1; }
+	return 0;
+}
+static void xa_set(Window w, int x, int y, int wd, int ht) { for (int i = 0; i < xf_n; i++) if (xf_pl[i].w == w) { xf_pl[i].x = x; xf_pl[i].y = y; xf_pl[i].wd = wd; xf_pl[i].ht = ht; } }
+/* (xf_mode_place) the page's place for w is not used now: w is being dragged, or the page has not had its new place yet */
+static int xa_place_held(Window w, int x, int y, int wd, int ht)
+{
+	if (XA.w == w) return 1;
+	if (xa_hold != w) return 0;
+	if (now_ms() > xa_hold_until || (abs(x - xa_hx) <= 2 && abs(y - xa_hy) <= 2 && abs(wd - xa_hw) <= 2 && abs(ht - xa_hh) <= 2)) { xa_hold = 0; return 0; }
+	return 1;
+}
+/* the window's _NET_WM_STATE: maximized as its frame is */
+static void xa_max_mark(Window w, int on)
+{
+	xa_atoms(); Atom a[32]; int n = net_state(w, a), has = 0;
+	for (int i = 0; i < n; i++) if (a[i] == A_MAXV || a[i] == A_MAXH) has = 1;
+	if (on != has) net_state_request(w, on, A_MAXV, A_MAXH);
+}
+/* the frame's top edge above the app's window: the page's title bar and its edges (web/strut's "frame N"; Native's _NET_FRAME_EXTENTS 1 1 35 1) */
+static int xa_top(void) { return xf_frame > 0 ? xf_frame : xf_bar > 0 ? xf_bar + 1 : 35; }
+static int xa_shown(Window w) { return !strncmp(wm_mode, "win ", 4) && (Window)strtoul(wm_mode + 4, NULL, 16) == w; }
+static void xa_begin(Window w, int edge, int rx, int ry, int kbd)
+{
+	int x, y, wd, ht, mx; if (!xa_framed(w, &x, &y, &wd, &ht, &mx)) return;
+	Window root = DefaultRootWindow(dpy);
+	if (XGrabPointer(dpy, root, False, ButtonReleaseMask | PointerMotionMask | (kbd ? ButtonPressMask : 0), GrabModeAsync, GrabModeAsync, None, None, CurrentTime) != GrabSuccess) return;
+	if (kbd && XGrabKeyboard(dpy, root, False, GrabModeAsync, GrabModeAsync, CurrentTime) != GrabSuccess) { XUngrabPointer(dpy, CurrentTime); return; }
+	XA.w = w; XA.edge = edge; XA.px = XA.kx = rx; XA.py = XA.ky = ry; XA.x = x; XA.y = y; XA.wd = wd; XA.ht = ht; XA.kbd = kbd; xa_open = 0;
+}
+/* the pointer at rx, ry: the window's new place (rudolf-native's drag_motion, on the frame's inside: 1 px edges, the bar above) */
+static void xa_motion(int rx, int ry)
+{
+	if (!XA.w) return;
+	int dx = rx - XA.px, dy = ry - XA.py, T = xa_top(), dtop = wm_strut_top, x = XA.x, y = XA.y, w = XA.wd, h = XA.ht;
+	int ow = XA.wd + 2, oh = XA.ht + T + 1, tbh = T - 1, fy = XA.y - T;
+	if (!XA.edge) { x = XA.x + dx; y = XA.y + dy; if (y - T < dtop) y = dtop + T; }
+	else {
+		if (XA.edge & 1) { int nw = ow - dx < 200 ? 200 : ow - dx; w = nw; x = XA.x + (ow - nw); }
+		if (XA.edge & 2) w = ow + dx < 200 ? 200 : ow + dx;
+		if (XA.edge & 4) { int nh = oh - dy < 120 ? 120 : oh - dy, nt = fy + (oh - nh) < dtop ? dtop : fy + (oh - nh); h = oh + fy - nt - tbh; y = nt + T; }
+		if (XA.edge & 8) h = (oh + dy < 120 ? 120 : oh + dy) - tbh;
+	}
+	w = w < 40 ? 40 : w; h = h < 40 ? 40 : h;
+	xa_set(XA.w, x, y, w, h); XMoveResizeWindow(dpy, XA.w, x, y, w, h);
+	xa_ask(1, "at %lx %d %d %d %d 0", (unsigned long)XA.w, x, y, w, h); xa_open = 1;
+}
+static void xa_end(Time t, int cancel)
+{
+	Window w = XA.w; if (!w) return;
+	XUngrabPointer(dpy, t); if (XA.kbd) XUngrabKeyboard(dpy, t);
+	if (cancel) { xa_set(w, XA.x, XA.y, XA.wd, XA.ht); XMoveResizeWindow(dpy, w, XA.x, XA.y, XA.wd, XA.ht); }
+	int x, y, wd, ht, mx; XA.w = 0;
+	if (!xa_framed(w, &x, &y, &wd, &ht, &mx)) return;
+	xa_ask(1, "at %lx %d %d %d %d 1", (unsigned long)w, x, y, wd, ht); xa_open = 0;
+	xa_hold = w; xa_hx = x; xa_hy = y; xa_hw = wd; xa_hh = ht; xa_hold_until = now_ms() + 2500;
+	XFlush(dpy);
+}
+/* the pointer's and keyboard's events while a drag goes on (the grab's) */
+static void xa_event(XEvent *e)
+{
+	if (!XA.w) return;
+	if (e->type == MotionNotify) { XEvent n; while (XCheckTypedEvent(dpy, MotionNotify, &n)) *e = n; if (!XA.kbd) xa_motion(e->xmotion.x_root, e->xmotion.y_root); }
+	else if (e->type == ButtonRelease && !XA.kbd) xa_end(e->xbutton.time, 0);
+	else if (e->type == ButtonPress && XA.kbd) xa_end(e->xbutton.time, 0);
+	else if (e->type == KeyPress && XA.kbd) {
+		KeySym k = XLookupKeysym(&e->xkey, 0);
+		if (k == XK_Return || k == XK_KP_Enter || k == XK_space) { xa_end(e->xkey.time, 0); return; }
+		if (k == XK_Escape) { xa_end(e->xkey.time, 1); return; }
+		if (k == XK_Left || k == XK_KP_Left) XA.kx -= 10; else if (k == XK_Right || k == XK_KP_Right) XA.kx += 10;
+		else if (k == XK_Up || k == XK_KP_Up) XA.ky -= 10; else if (k == XK_Down || k == XK_KP_Down) XA.ky += 10; else return;
+		XWarpPointer(dpy, None, DefaultRootWindow(dpy), 0, 0, 0, 0, XA.kx, XA.ky); xa_motion(XA.kx, XA.ky);
+	}
+}
+/* (fit_windows) the dragged window went away */
+static void xa_gone(const Window *apps, int napps) { if (!XA.w) return; for (int k = 0; k < napps; k++) if (apps[k] == XA.w) return; XUngrabPointer(dpy, CurrentTime); if (XA.kbd) XUngrabKeyboard(dpy, CurrentTime); XA.w = 0; }
+/* _NET_WM_MOVERESIZE: x_root, y_root, direction (0 top-left .. 7 left clockwise, 8 move, 9 size and 10 move with the keyboard,
+   11 cancel), as rudolf-native's csd_moveresize */
+static void xa_moveresize(XClientMessageEvent *m)
+{
+	Window w = m->window; long dir = m->data.l[2]; int x, y, wd, ht, mx;
+	if (dir == 11) { if (XA.w == w) xa_end(CurrentTime, 0); return; }
+	if (XA.w || dir < 0 || dir > 10 || !xa_framed(w, &x, &y, &wd, &ht, &mx) || mx || !xa_shown(w) || is_game(w)) return;
+	static const int ED[9] = {5, 4, 6, 2, 10, 8, 9, 1, 0};   /* (edges: 1 left, 2 right, 4 top, 8 bottom; 0 move) */
+	if (dir >= 9) {
+		int rx = dir == 10 ? x + wd / 2 : x + wd, ry = dir == 10 ? y - xa_top() / 2 : y + ht;   /* (the bar's middle; the frame's bottom-right corner) */
+		XWarpPointer(dpy, None, DefaultRootWindow(dpy), 0, 0, 0, 0, rx, ry); xa_begin(w, dir == 10 ? 0 : 10, rx, ry, 1); return; }
+	Window r, ch; int rx, ry, wx, wy; unsigned mask = 0;
+	XQueryPointer(dpy, DefaultRootWindow(dpy), &r, &ch, &rx, &ry, &wx, &wy, &mask);
+	if (!(mask & (Button1Mask | Button2Mask | Button3Mask))) return;   /* (the button let go before the request came: nothing to drag) */
+	xa_begin(w, ED[dir], (int)m->data.l[0], (int)m->data.l[1], 0);
+}
+/* the app's requests (a client message to the root window): 1 when it was one of these and nothing else is to be done with it */
+static int xa_message(XClientMessageEvent *m)
+{
+	if (wm_native()) return 0;   /* (Native: rudolf-native's own) */
+	xa_atoms(); wm_atoms(); int x, y, wd, ht, mx;
+	if (m->message_type == A_MR) { xa_moveresize(m); return 1; }
+	if (!xa_framed(m->window, &x, &y, &wd, &ht, &mx) || is_game(m->window)) return 0;   /* (not framed by the page: as before) */
+	if (m->message_type == A_CHG) { if (m->data.l[0] == IconicState) xa_ask(0, "min %lx", (unsigned long)m->window); return 1; }
+	if (m->message_type != A_NSTATE) return 0;
+	Atom p1 = (Atom)m->data.l[1], p2 = (Atom)m->data.l[2]; long act = m->data.l[0];
+	int maxq = p1 == A_MAXV || p1 == A_MAXH || p2 == A_MAXV || p2 == A_MAXH, hid = (p1 == A_HID || p2 == A_HID) && act == 1;
+	if (!maxq && !hid) return 0;
+	if (maxq && act >= 0 && act <= 2) xa_ask(0, "max %lx %ld", (unsigned long)m->window, act);
+	if (hid) xa_ask(0, "min %lx", (unsigned long)m->window);
+	/* (another state in the same request, full screen: as before) */
+	Atom o1 = p1 == A_MAXV || p1 == A_MAXH || p1 == A_HID ? 0 : p1, o2 = p2 == A_MAXV || p2 == A_MAXH || p2 == A_HID ? 0 : p2;
+	if (o1 || o2) net_state_request(m->window, act, o1, o2);
 	return 1;
 }
 static void fit_windows(void)
@@ -1148,6 +1312,7 @@ static void fit_windows(void)
 	}
 	memcpy(known, apps, napps * sizeof(Window)); nknown = napps;
 	xf_forget(apps, napps);   /* (1.6.2 Part 29) */
+	xa_gone(apps, napps);
 	memcpy(cur_list, apps, napps * sizeof(Window)); ncur = napps;
 	/* what to show */
 	Window want = 0;
@@ -1691,7 +1856,8 @@ int main(int argc, char **argv)
 			/* 1.5.2: a window that resizes itself (a game going full screen or back to a window) */
 			if (xe.type == ConfigureNotify && xe.xconfigure.window != xe.xconfigure.event && !xe.xconfigure.override_redirect) win_events = 1;
 			/* 1.5.2: full screen (and the other states) asked for by a window, as EWMH says */
-			if (xe.type == ClientMessage && xe.xclient.format == 32) { wm_atoms(); if (xe.xclient.message_type == A_NSTATE) { net_state_request(xe.xclient.window, xe.xclient.data.l[0], (Atom)xe.xclient.data.l[1], (Atom)xe.xclient.data.l[2]); win_events = 1; } }
+			if (xe.type == ClientMessage && xe.xclient.format == 32) { wm_atoms(); if (xa_message(&xe.xclient)) win_events = 1; else if (xe.xclient.message_type == A_NSTATE) { net_state_request(xe.xclient.window, xe.xclient.data.l[0], (Atom)xe.xclient.data.l[1], (Atom)xe.xclient.data.l[2]); win_events = 1; } }
+			if (XA.w && (xe.type == MotionNotify || xe.type == ButtonPress || xe.type == ButtonRelease || xe.type == KeyPress)) xa_event(&xe);   /* (1.6.2 Part 29: the app's own drag) */
 			if (fev && xe.type == fev + 1) { restore_cursor_area(); fetch_cursor(); draw_cursor(); }
 			mon_event(&xe, t);
 		}
