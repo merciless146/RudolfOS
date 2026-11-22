@@ -117,7 +117,7 @@ if up:
     b0 = run('/usr/lib/rudolf/firewall status'); o = run('/usr/bin/rudolf-print find', 60); b1 = run('/usr/lib/rudolf/firewall status')
     run("ip route del 224.0.0.0/4 dev eth0 2>/dev/null || busybox ip route del 224.0.0.0/4 dev eth0")
     num = lambda s: int((re.search(r'on (\d+)', s) or re.search(r'(\d+)', '0')).group(1))
-    ver = run('cat /etc/rudolf-version 2>/dev/null').strip().split()[-1:] or ['0']
+    ver = [mv('version')]   # (the release's own manifest: its version)
     fixed = tuple(int(x) for x in re.findall(r'\d+', ver[0])[:3]) >= (1, 6, 1)   # (#574 shipped in 1.6.1: since its promotion the newest stable has the fix)
     if fixed: ok(f'B. the release as it is ({ver[0]}, with #574), the firewall on: its own find lists both printers', '"name":"QEMU Multicast Printer"' in o and '"ok":true' in o, f'{o} {SEEN} {b0} {b1}')
     else: ok(f'B. the release as it is ({ver[0]}), the firewall on: its find lists no network printer, the answers blocked (the bug)', '"ok":true' in o and 'QEMU' not in o and SEEN['queries'] > 0 and num(b1) > num(b0), f'{o} {SEEN} {b0} {b1}')
