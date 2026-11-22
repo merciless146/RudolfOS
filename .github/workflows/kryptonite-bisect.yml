@@ -1,0 +1,67 @@
+# Rudolf Kryptonite (2.0): a parallel bisect of the 7.x start-up finding (.github/kryptonite-bisect.txt says what). Each point is
+# a mainline commit built by systools/testkernel.sh (this tree's kconfig.sh, a TEST certificate made in its job) and started
+# after the kexec handover at 1.5 GB in QEMU with Secure Boot on (qt/sb/recovery_sb_t.sh, RECSB_ONLY1). Nothing is published,
+# no secret is read, the test keys are deleted with each job. Pull requests into kryptonite that change the list only.
+name: Kryptonite bisect
+on:
+  pull_request:
+    branches: [kryptonite]
+    paths: ['.github/kryptonite-bisect.txt', '.github/workflows/kryptonite-bisect.yml']
+permissions: {contents: read}
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs: {points: '${{ steps.p.outputs.points }}'}
+    steps:
+      - uses: actions/checkout@v5
+      - id: p
+        run: |
+          G=$(sed -n 's/^good=//p' .github/kryptonite-bisect.txt); B=$(sed -n 's/^bad=//p' .github/kryptonite-bisect.txt); N=$(sed -n 's/^points=//p' .github/kryptonite-bisect.txt)
+          git init -q --bare L; cd L
+          ok=""; for u in https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git https://github.com/torvalds/linux.git; do
+            git fetch -q --filter=tree:0 --shallow-since=2025-06-01 "$u" "refs/tags/$G:refs/tags/$G" "refs/tags/$B:refs/tags/$B" 2>/dev/null && { ok=$u; break; }
+            git fetch -q --filter=tree:0 --shallow-since=2025-06-01 "$u" "$G" "$B" 2>/dev/null && { ok=$u; break; }
+          done
+          [ -n "$ok" ] || { echo "::error::mainline could not be fetched"; exit 1; }
+          GS=$(git rev-parse "$G^{commit}"); BS=$(git rev-parse "$B^{commit}")
+          git rev-list --first-parent --reverse "$GS..$BS" > list.txt; T=$(wc -l < list.txt); echo "$T first-parent commits from $G to $B"
+          python3 - "$GS" "$N" "$T" <<'PY' > pts.txt
+          import sys
+          g, n, t = sys.argv[1], int(sys.argv[2]), int(sys.argv[3]); L = open('list.txt').read().split()
+          idx = sorted({round(i * (t - 1) / (n - 2)) for i in range(n - 1)}) if t > 1 else [0]
+          print(g); [print(L[i]) for i in idx]
+          PY
+          J=$(i=0; while read -r c; do printf '{"n":%d,"sha":"%s","what":"%s"},' $i $c "$(git log -1 --format='%cs %s' $c | tr -d '"\\' | cut -c1-90)"; i=$((i+1)); done < pts.txt)
+          echo "points=[${J%,}]" >> $GITHUB_OUTPUT; echo "[${J%,}]"
+  point:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy: {fail-fast: false, matrix: {p: '${{ fromJSON(needs.plan.outputs.points) }}'}}
+    name: point ${{ matrix.p.n }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq squashfs-tools bc flex bison libelf-dev libssl-dev kmod sbsigntool qemu-system-x86 ovmf e2fsprogs mtools cpio nasm python3-cryptography python3-pip >/dev/null
+          command -v virt-fw-vars || sudo pip3 install --break-system-packages -q virt-firmware
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm || echo "no KVM"
+      - name: ${{ matrix.p.sha }} (${{ matrix.p.what }})
+        run: |
+          echo "${{ matrix.p.what }}"
+          git init -q src; for u in https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git https://github.com/torvalds/linux.git; do git -C src fetch -q --depth 1 "$u" ${{ matrix.p.sha }} && break; done
+          git -C src checkout -q FETCH_HEAD; V=$(make -s -C src kernelversion); echo "Linux $V"
+          K=$RUNNER_TEMP/sbtest; mkdir -p $K; chmod 700 $K
+          (cd $K && openssl req -new -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=Rudolf Kryptonite TEST Secure Boot/" -keyout sb.key -out sb.crt \
+            -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=codeSigning" 2>/dev/null)
+          set +e; LINUX_SRC=$PWD/src KERNEL_VERSION=$V TEST_SB_CERT=$K/sb.crt OUT=$PWD/kout bash iso/systools/testkernel.sh > build.log 2>&1; RC=$?; set -e
+          if [ $RC != 0 ]; then tail -30 build.log; rm -rf $K; echo "::warning title=Point ${{ matrix.p.n }}::${{ matrix.p.sha }}: did not build (skip)"; echo "SKIP" > result.txt; exit 0; fi
+          sbsign --key $K/sb.key --cert $K/sb.crt --output kout/vmlinuz.s kout/vmlinuz >/dev/null && mv kout/vmlinuz.s kout/vmlinuz
+          bash iso/qt/sb/kr20_sbparts.sh parts >/dev/null; cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/
+          export PATH=$PATH:/usr/local/bin
+          set +e; SB_PARTS=$PWD/parts KERNEL=$PWD/kout/vmlinuz RECSB_TEST_KEYDIR=$K RECSB_ONLY1=1 RECSB_TIMEOUT=300 RECSB_SERIAL=$PWD/rs sh iso/qt/sb/recovery_sb_t.sh > rs.txt 2>&1; set -e
+          rm -rf $K iso/work-test/linux/certs/signing_key.pem
+          R=$(tail -1 rs.txt); P=$(grep -a -h -m1 -o 'Kernel panic - not syncing: [A-Za-z -]*' rs/boot1.txt 2>/dev/null || true)
+          case "$R" in "4/4 passed") W=GOOD;; *) W=BAD;; esac
+          echo "::notice title=Point ${{ matrix.p.n }} $W::${{ matrix.p.sha }} ($V, ${{ matrix.p.what }}): $R $P"
