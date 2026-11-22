@@ -6,6 +6,7 @@
  *   rudolf-apps installed            installed apps with their names, sizes, launchers and file types
  *   rudolf-apps titlebar ID HOME     (1.6.1 Part 15) ask the app to use the system's title bar, once (see cmd_titlebar)
  *   rudolf-apps steamwatch           (1.6.2 Part 14, tests) Steam's watcher alone (see sq_watch)
+ *   rudolf-apps chromeframe PROFILE  (1.6.2 Part 29) the same for a Chromium profile of Rudolf's own (cmd_chromeframe)
  *
  * RA_APPSTREAM overrides the catalogue file, RA_EXPORTS the exported launchers folder (tests).
  * Copyright (C) 2026 the Rudolf OS authors. SPDX-License-Identifier: GPL-2.0-or-later */
@@ -398,6 +399,32 @@ static void tb_dirs(const char *path)
 	for (char *s = p + 1; (s = strchr(s, '/')); s++) { *s = 0; mkdir(p, 0700); *s = '/'; }
 }
 static int tb_where_ok(const char *w) { return w && *w && *w != '/' && !strstr(w, "..") && strspn(w, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-/ ") == strlen(w); }
+/* one settings file f: the key added where it is missing (chr: Chromium's Preferences, else VS Code's settings.json), the
+   file written beside and renamed, a link never followed; 0 when written, 1 when nothing was to be done or it could not be */
+static int tb_file(const char *f, int chr, const char *id, const char *where)
+{
+	char *t = NULL; int fd = open(f, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+	if (fd >= 0) { struct stat st; if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_size > (64 << 20)) { close(fd); return 1; }
+		str s = {0}; char b[65536]; ssize_t r; while ((r = read(fd, b, sizeof b)) > 0) sput(&s, b, r); close(fd); t = s.b ? s.b : strdup(""); }
+	else if (errno != ENOENT) return 1;
+	char *o = chr ? tb_chromium(t) : tb_vscode(t); free(t);
+	if (!o) { fprintf(stderr, "rudolf-apps: %s keeps its own title bar setting (%s)\n", id, where); return 1; }
+	tb_dirs(f); char tmp[1300]; snprintf(tmp, sizeof tmp, "%s.rudolf-tmp", f); int done = 1;
+	int w = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0600);
+	if (w >= 0) { size_t len = strlen(o); int okw = write(w, o, len) == (ssize_t)len; okw = !fsync(w) && okw; close(w);
+		if (okw && !rename(tmp, f)) { fprintf(stderr, "rudolf-apps: %s asked to use the system's title bar (%s)\n", id, where); done = 0; } else unlink(tmp); }
+	free(o); return done;
+}
+/* 1.6.2 (docs/plan-1.6.2.md Part 29): rudolf-apps chromeframe PROFILE: Rudolf's own Chromium profiles (the encrypted Oracle's,
+   in the account's folder) asked to use the system's title bar, Rudolf's, on Standard as on Native, when the person has not
+   chosen: PROFILE/Default/Preferences's browser.custom_chrome_frame false where it is missing. Run as the profile's user. */
+static int cmd_chromeframe(const char *prof)
+{
+	if (!prof || prof[0] != '/' || strstr(prof, "..") || strlen(prof) > 1000) return 2;
+	char f[1200]; snprintf(f, sizeof f, "%s/Default/Preferences", prof);
+	struct stat st; if (lstat(prof, &st) || !S_ISDIR(st.st_mode)) return 2;   /* (the profile itself, not a link to one) */
+	tb_file(f, 1, "Oracle", "Default/Preferences"); return 0;
+}
 /* one app (a Flatpak ID, or deb:LAUNCHER) for the account whose home is home: 0 done or nothing to do */
 static int cmd_titlebar(const char *id, const char *home)
 {
@@ -414,17 +441,7 @@ static int cmd_titlebar(const char *id, const char *home)
 		int chr = !strcmp(how, "chromium"), vsc = !strcmp(how, "vscode"); if (!chr && !vsc) continue;
 		char f[1200]; if (deb) snprintf(f, sizeof f, "%s/.config/%s", home, where); else snprintf(f, sizeof f, "%s/.var/app/%s/config/%s", home, id, where);
 		any = 1;
-		char *t = NULL; int fd = open(f, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-		if (fd >= 0) { struct stat st; if (fstat(fd, &st) || !S_ISREG(st.st_mode) || st.st_size > (64 << 20)) { close(fd); continue; }
-			str s = {0}; char b[65536]; ssize_t r; while ((r = read(fd, b, sizeof b)) > 0) sput(&s, b, r); close(fd); t = s.b ? s.b : strdup(""); }
-		else if (errno != ENOENT) continue;
-		char *o = chr ? tb_chromium(t) : tb_vscode(t); free(t);
-		if (!o) { fprintf(stderr, "rudolf-apps: %s keeps its own title bar setting (%s)\n", id, where); continue; }
-		tb_dirs(f); char tmp[1300]; snprintf(tmp, sizeof tmp, "%s.rudolf-tmp", f);
-		int w = open(tmp, O_WRONLY | O_CREAT | O_TRUNC | O_NOFOLLOW | O_CLOEXEC, 0600);
-		if (w >= 0) { size_t len = strlen(o); int okw = write(w, o, len) == (ssize_t)len; okw = !fsync(w) && okw; close(w);
-			if (okw && !rename(tmp, f)) fprintf(stderr, "rudolf-apps: %s asked to use the system's title bar (%s)\n", id, where); else unlink(tmp); }
-		free(o);
+		tb_file(f, chr, id, where);
 	}
 	free(list);
 	if (any) { tb_dirs(mark); int m = open(mark, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0600); if (m >= 0) close(m); }
@@ -575,6 +592,7 @@ int main(int argc, char **argv)
 	if (argc >= 3 && !strcmp(argv[1], "launch")) return cmd_launch(argv[2], argc >= 4 ? argv[3] : NULL);
 	if (argc >= 2 && !strcmp(argv[1], "installed")) return cmd_installed();
 	if (argc >= 4 && !strcmp(argv[1], "titlebar")) return cmd_titlebar(argv[2], argv[3]);
-	if (argc >= 2 && !strcmp(argv[1], "steamwatch")) { sq_watch(); return 0; }   /* (1.6.2 Part 14: the host test, iso/qt/host/steamquit_t.sh) */   /* (1.6.1 Part 15: rudolf-debian, as the account's user) */
+	if (argc >= 2 && !strcmp(argv[1], "steamwatch")) { sq_watch(); return 0; }   /* (1.6.2 Part 14: the host test, iso/qt/host/steamquit_t.sh) */
+	if (argc >= 3 && !strcmp(argv[1], "chromeframe")) return cmd_chromeframe(argv[2]);   /* (1.6.2 Part 29: the encrypted Oracle's) */   /* (1.6.1 Part 15: rudolf-debian, as the account's user) */
 	fprintf(stderr, "usage: rudolf-apps catalog [OUT] | info ID | installed\n"); return 2;
 }

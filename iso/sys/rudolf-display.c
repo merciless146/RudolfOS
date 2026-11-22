@@ -91,6 +91,8 @@ static int meta_down;
 static void fit_windows(void);
 static void wm_set(int game);
 static void wm_cycle(void);
+static void xf_mode_place(const char *mode);   /* (1.6.2 Part 29) */
+static void xf_strut(const char *sb);
 
 /* cursor */
 static uint32_t *cimg; static int cw, ch, chx, chy;
@@ -913,11 +915,12 @@ static void wm_read(void)
 	wm_mtime = m;
 	char b[48] = {0};
 	int f = open("/run/rudolf/wm", O_RDONLY); if (f < 0) return;
-	if (read(f, b, sizeof b - 1) > 0) { b[strcspn(b, "\n")] = 0; snprintf(wm_mode, sizeof wm_mode, "%s", b); }
+	if (read(f, b, sizeof b - 1) > 0) { b[strcspn(b, "\n")] = 0; snprintf(wm_mode, sizeof wm_mode, "%s", b); xf_mode_place(wm_mode); }
 	close(f);
 	/* the desktop's taskbar stays visible below (or above) app windows: "bottom 48" or "top 48" */
 	char sb[32] = {0}; f = open("/run/rudolf/strut", O_RDONLY); wm_strut_top = wm_strut_bottom = 0;
 	if (f >= 0) { if (read(f, sb, sizeof sb - 1) > 0) { int v = atoi(sb + (sb[0] == 't' ? 4 : 7)); if (v < 0 || v > 200) v = 0; if (sb[0] == 't') wm_strut_top = v; else if (sb[0] == 'b') wm_strut_bottom = v; } close(f); }
+	xf_strut(sb);   /* (1.6.2 Part 29: the strip for the page's title bar) */
 }
 
 static void close_window(Window w)
@@ -979,9 +982,95 @@ static Window cur_list[MAXWIN]; static int ncur;   /* app windows, bottom to top
 /* 1.5.9 (plan Part 12): the native desktop engine (rudolf-native) is the window manager while the session keeps
    /run/rudolf/wm-native: then this program only feeds input and shows the screen */
 static int wm_native(void) { return !access("/run/rudolf/wm-native", F_OK); }
+
+/* ------------------------------------------------------------ 1.6.2 (docs/plan-1.6.2.md Part 29): Rudolf's title bar on
+ * Standard's windows from outside the page. The desktop page (the full-screen window behind) draws Rudolf's title bar and
+ * the window's edges for each app window in its own pixels (desktop/xframe62.js), where the window is to be:
+ *   /run/rudolf/wm "win HEX X Y W H"   the window shown, its own area at X,Y, W x H (the X screen's pixels: the inside of
+ *                   the page's frame for it). "win HEX" alone: the place last given for that window; a window never placed
+ *                   is fitted as before, below a strip for the bar (/run/rudolf/strut's "bar N": the page's title-bar
+ *                   height, 0 when the page frames nothing) and above the taskbar.
+ *   _NET_SUPPORTING_WM_CHECK names this window manager (as rudolf-native does), so Chromium leaves its own frame off and
+ *                   uses Rudolf's (1.6.1 Part 15's finding).
+ * Full-screen windows and games keep the whole screen as before; a dialog is centred above its placed window. Nothing new
+ * is read from the page beyond the place (rudolfd's apps/show, as the taskbar's buttons already ask). */
+#define XF_MAX 64
+static struct { Window w; int x, y, wd, ht; } xf_pl[XF_MAX];
+static int xf_n, xf_bar;
+static long long xf_recent;   /* when the shown window was last placed: /run/rudolf/wm read more often for a moment (a drag) */
+static int xf_place(Window w, int *x, int *y, int *wd, int *ht)
+{
+	for (int i = 0; i < xf_n; i++) if (xf_pl[i].w == w) { *x = xf_pl[i].x; *y = xf_pl[i].y; *wd = xf_pl[i].wd; *ht = xf_pl[i].ht; return 1; }
+	return 0;
+}
+/* the place in "win HEX X Y W H", kept for the window (inside the X screen, at least 40 px of it on the screen) */
+static void xf_mode_place(const char *mode)
+{
+	unsigned long id; int x, y, wd, ht; char tail;
+	if (sscanf(mode, "win %lx %d %d %d %d%c", &id, &x, &y, &wd, &ht, &tail) != 5 || !id) return;
+	int W = DisplayWidth(dpy, DefaultScreen(dpy)), H = DisplayHeight(dpy, DefaultScreen(dpy));
+	wd = wd < 40 ? 40 : wd > W ? W : wd;
+	ht = ht < 40 ? 40 : ht > H ? H : ht;
+	x = x > W - 40 ? W - 40 : x < 40 - wd ? 40 - wd : x;
+	y = y > H - 40 ? H - 40 : y < 0 ? 0 : y;
+	int i = 0; while (i < xf_n && xf_pl[i].w != (Window)id) i++;
+	if (i == xf_n) { if (xf_n == XF_MAX) { memmove(xf_pl, xf_pl + 1, sizeof xf_pl[0] * (XF_MAX - 1)); i = --xf_n; } xf_n++; }
+	xf_pl[i].w = (Window)id; xf_pl[i].x = x; xf_pl[i].y = y; xf_pl[i].wd = wd; xf_pl[i].ht = ht;
+	xf_recent = now_ms();
+}
+/* the windows gone are forgotten (apps: the app windows now on the screen) */
+static void xf_forget(const Window *apps, int napps)
+{
+	int k = 0;
+	for (int i = 0; i < xf_n; i++) { int on = 0; for (int j = 0; j < napps; j++) if (apps[j] == xf_pl[i].w) on = 1; if (on) xf_pl[k++] = xf_pl[i]; }
+	xf_n = k;
+}
+/* the strip for the page's title bar: "bar N" in /run/rudolf/strut */
+static void xf_strut(const char *sb) { const char *b = strstr(sb, " bar "); int v = b ? atoi(b + 5) : 0; xf_bar = v < 0 || v > 120 ? 0 : v; }
+/* where an app window (not a game, not full screen) goes: its place, or fitted below the strip and above the taskbar */
+static void xf_target(Window w, int ax, int ay, int sw, int sh, int *x, int *y, int *wd, int *ht)
+{
+	if (xf_place(w, x, y, wd, ht)) return;
+	*x = ax; *y = ay + wm_strut_top + xf_bar; *wd = sw; *ht = sh - wm_strut_top - wm_strut_bottom - xf_bar;
+	if (*ht < 40) { *y = ay + wm_strut_top; *ht = sh - wm_strut_top - wm_strut_bottom; }
+}
+/* a window manager is here (EWMH's _NET_SUPPORTING_WM_CHECK, its name rudolf-display) and what it does: written again
+   whenever the root window's mark is not ours (rudolf-native's, left when the native desktop ended) */
+static void xf_announce(void)
+{
+	static Window chk; static Atom check, sup, name, utf8;
+	Window root = DefaultRootWindow(dpy);
+	if (!chk) {
+		check = XInternAtom(dpy, "_NET_SUPPORTING_WM_CHECK", False); sup = XInternAtom(dpy, "_NET_SUPPORTED", False);
+		name = XInternAtom(dpy, "_NET_WM_NAME", False); utf8 = XInternAtom(dpy, "UTF8_STRING", False);
+		chk = XCreateSimpleWindow(dpy, root, -10, -10, 1, 1, 0, 0, 0);
+		XChangeProperty(dpy, chk, check, XA_WINDOW, 32, PropModeReplace, (unsigned char *)&chk, 1);
+		XChangeProperty(dpy, chk, name, utf8, 8, PropModeReplace, (unsigned char *)"rudolf-display", 14);
+	}
+	Atom type; int fmt; unsigned long cnt = 0, after; unsigned char *d = NULL; Window cur = 0;
+	if (XGetWindowProperty(dpy, root, check, 0, 1, False, XA_WINDOW, &type, &fmt, &cnt, &after, &d) == Success && d && cnt == 1) cur = *(Window *)d;
+	if (d) XFree(d);
+	if (cur == chk) return;
+	wm_atoms();
+	Atom s[] = {A_NSTATE, A_FULL, check, name};
+	XChangeProperty(dpy, root, sup, XA_ATOM, 32, PropModeReplace, (unsigned char *)s, sizeof s / sizeof s[0]);
+	XChangeProperty(dpy, root, check, XA_WINDOW, 32, PropModeReplace, (unsigned char *)&chk, 1);
+}
+/* how often /run/rudolf/wm is looked at: every 15 ms for a second and a half after a place came (the page's frame being
+   dragged or sized), else every 100 ms as before */
+static int xf_wm_due(long long t, long long last) { return t - last > (t - xf_recent < 1500 ? 15 : 100); }
+/* a dialog's place: centred above its owner when the page placed the owner (else on the screen, as before) */
+static int xf_dialog_centre(Window owner, int dw, int dh, int *x, int *y)
+{
+	int ox, oy, ow, oh;
+	if (!owner || !xf_place(owner, &ox, &oy, &ow, &oh)) return 0;
+	*x = ox + (ow - dw) / 2; *y = oy + (oh - dh) / 2; if (*y < 0) *y = 0; if (*x < 0) *x = 0;
+	return 1;
+}
 static void fit_windows(void)
 {
 	if (wm_native()) return;
+	xf_announce();   /* (1.6.2 Part 29) */
 	Window root = DefaultRootWindow(dpy), r, p, *kids = NULL, desktop = 0, chromium = 0, tr;
 	unsigned n = 0;
 	int sw = DisplayWidth(dpy, DefaultScreen(dpy)), sh = DisplayHeight(dpy, DefaultScreen(dpy)), ax = 0, ay = 0, dsw = sw, dsh = sh;
@@ -1008,13 +1097,13 @@ static void fit_windows(void)
 			continue;
 		}
 		if (XGetTransientForHint(dpy, kids[i], &tr) && tr) {
-			/* dialog: centre it */
-			int x = ax + (sw - wa.width) / 2, y = ay + (sh - wa.height) / 2;
-			if (wa.width < sw && wa.height < sh && (abs(wa.x - x) > 1 || abs(wa.y - y) > 1)) XMoveWindow(dpy, kids[i], x < ax ? ax : x, y < ay ? ay : y);
+			/* dialog: centre it (1.6.2 Part 29: above its owner when the page placed the owner) */
+			Window o = dlg_owner(tr);
+			int x = ax + (sw - wa.width) / 2, y = ay + (sh - wa.height) / 2, placed = xf_dialog_centre(o, wa.width, wa.height, &x, &y);
+			if ((placed || (wa.width < sw && wa.height < sh)) && (abs(wa.x - x) > 1 || abs(wa.y - y) > 1)) XMoveWindow(dpy, kids[i], placed || x >= ax ? x : ax, placed || y >= ay ? y : ay);
 			/* 1.5.6: and it goes with its owner (raised above it below). A dialog whose owner is not on the screen (a
 			   hidden window, or the root) is shown as a window of its own: Inno Setup's wizard (Starport's installer in
 			   Wine) belongs to a hidden window, and stayed behind the desktop where nobody could answer it */
-			Window o = dlg_owner(tr);
 			if (o && ndlg < MAXWIN) { dlgs[ndlg] = kids[i]; dlg_of[ndlg++] = o; continue; }
 			if (napps >= MAXWIN) continue;
 			apps[napps++] = kids[i]; set_wm_state(kids[i]);
@@ -1029,17 +1118,17 @@ static void fit_windows(void)
 		/* 1.5.2: a borderless window that makes itself the size of the screen is a full-screen game (Starport GE in
 		   Wine, "full screen" in many Windows games, which never send _NET_WM_STATE): marked full screen, and left at
 		   that size; when it makes itself smaller again (windowed), the mark goes */
-		int fy = ay + wm_strut_top, fh = sh - wm_strut_top - wm_strut_bottom, screen_sized = wa.x == ax && wa.y == ay && wa.width == sw && wa.height == sh;
-		if (screen_sized && fh != sh && !is_fullscreen(kids[i]) && borderless(kids[i])) net_state_request(kids[i], 1, A_FULL, 0);
-		else if (!screen_sized && is_fullscreen(kids[i]) && borderless(kids[i]) && !class_has(kids[i], "sober", "roblox") && !(wa.x == ax && wa.y == fy && wa.width == sw && wa.height == fh))
+		/* (1.6.2 Part 29: where it goes: its place given by the page, or fitted below the title bar's strip) */
+		int fx, fy, fw, fh; xf_target(kids[i], ax, ay, sw, sh, &fx, &fy, &fw, &fh);
+		int screen_sized = wa.x == ax && wa.y == ay && wa.width == sw && wa.height == sh;
+		if (screen_sized && (fh != sh || fw != sw) && !is_fullscreen(kids[i]) && borderless(kids[i])) net_state_request(kids[i], 1, A_FULL, 0);
+		else if (!screen_sized && is_fullscreen(kids[i]) && borderless(kids[i]) && !class_has(kids[i], "sober", "roblox") && !(wa.x == fx && wa.y == fy && wa.width == fw && wa.height == fh))
 			net_state_request(kids[i], 0, A_FULL, 0);
 		if (is_game(kids[i])) { if (wa.x != ax || wa.y != ay || wa.width != sw || wa.height != sh) XMoveResizeWindow(dpy, kids[i], ax, ay, sw, sh); }
-		else {
-			int y = ay + wm_strut_top, h = sh - wm_strut_top - wm_strut_bottom;
-			if (wa.x != ax || wa.y != y || wa.width != sw || wa.height != h) XMoveResizeWindow(dpy, kids[i], ax, y, sw, h);
-		}
+		else if (wa.x != fx || wa.y != fy || wa.width != fw || wa.height != fh) XMoveResizeWindow(dpy, kids[i], fx, fy, fw, fh);
 	}
 	memcpy(known, apps, napps * sizeof(Window)); nknown = napps;
+	xf_forget(apps, napps);   /* (1.6.2 Part 29) */
 	memcpy(cur_list, apps, napps * sizeof(Window)); ncur = napps;
 	/* what to show */
 	Window want = 0;
@@ -1562,7 +1651,7 @@ int main(int argc, char **argv)
 		if (t - last_scan > 2000) { scan_devices(); last_scan = t; }
 		power_tick(t);
 		if (t - last_set > 1000) { read_settings(); fit_windows(); if (!input_only) gamma_poll(); last_set = t; }
-		else if (t - last_wmchk > 100) { last_wmchk = t; if (wm_changed()) fit_windows(); }
+		else if (xf_wm_due(t, last_wmchk)) { last_wmchk = t; if (wm_changed()) fit_windows(); }   /* (1.6.2 Part 29: more often during a drag) */
 		mon_tick(t);   /* (1.6.1 Part 1) */
 		struct pollfd pf[MAXDEV + 1];
 		for (int i = 0; i < ndev; i++) pf[i].fd = devs[i].fd, pf[i].events = POLLIN;

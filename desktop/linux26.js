@@ -123,7 +123,8 @@ async function lxWinPoll(){try{const j=await lxApi('apps/windows');const was=LX.
 /* a click on the visible part of the desktop (the taskbar) while an app is in front brings the desktop back. (1.5.9: not in a
    one-app page, a Tor window's on Standard: that page is itself the app window in front, so every click on its bookmarks bar,
    address box or buttons brought the desktop back (the Vivobook, 2026-11-14)) */
-addEventListener('pointerdown',e=>{if(RD&&!(typeof ONEAPP!='undefined'&&ONEAPP)&&LX.mode.startsWith('win')&&!e.target.closest('.lxtb')&&!(TRAYX.web&&TRAYX.web.contains(e.target))){LX.mode='desktop';lxApi('apps/desktop').then(lxWinPoll).catch(()=>{})}},true);
+/* (1.6.2 Part 29: nor a click on Rudolf's frame of an app window, xframe62.js: that shows the app) */
+addEventListener('pointerdown',e=>{if(RD&&!(typeof ONEAPP!='undefined'&&ONEAPP)&&LX.mode.startsWith('win')&&!e.target.closest('.lxtb')&&!e.target.closest('.xfr')&&!(TRAYX.web&&TRAYX.web.contains(e.target))){LX.mode='desktop';lxApi('apps/desktop').then(lxWinPoll).catch(()=>{})}},true);
 /* ---------- the portal: file dialogs, links, notifications from apps ---------- */
 /* (1.6.0, the owner's Vivobook: Sober's keyring prompt never came on Native) only the desktop's own page collects them (Standard's): a
    page of one app (each app's window on Native, a Tor window on Standard) never does, as it may be behind an app, closing, or one of
