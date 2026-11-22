@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 2.0 (Rudolf Kryptonite, in progress)
 Summary: In progress, on the kryptonite branch only (held for 2.0: not in 1.6.x, its releases or the update channels).
+- Kernel: squashfs reads zstd images too (SQUASHFS_ZSTD, x86-64 and ARM64, and a required feature), as the betas move their
+  images from xz to zstd (docs/plan-1.6.2.md Part 31), so the 7.3 kernel keeps starting the newest beta's layers.
 - Kernel: Linux 7.3.5 for x86-64 in place of 6.18 (docs/plan-2.0.md, "Status: the 7.3 kernel"): Rudolf's kernel configuration
   moved over option by option, every Rudolf choice kept (lockdown, module signing, the TPM, zram, MGLRU and PSI, the firmware's
   start-up times, the AMD and Intel processor speed drivers, the graphics drivers for NVK, Intel's cameras, Intel's sound

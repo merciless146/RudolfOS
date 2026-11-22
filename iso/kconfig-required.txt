@@ -61,6 +61,7 @@ DEVTMPFS        y   start-up: /dev
 BLK_DEV_LOOP    y   start-up: the system layers and the disc image through loop devices
 SQUASHFS        y   start-up: the system layers
 SQUASHFS_XZ     y   start-up: the system layers' compression
+SQUASHFS_ZSTD   y   start-up: the system layers' compression (zstd: 1.6.2 Part 31)
 ISO9660_FS      y   start-up: the disc and USB stick image
 EXT4_FS         y   start-up: RUDOLFDATA
 VFAT_FS         y   start-up: the EFI system partition
