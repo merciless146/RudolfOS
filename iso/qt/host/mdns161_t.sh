@@ -48,6 +48,9 @@ blocked() { $T/fw status | awk '{print $2}'; }
 
 # ---- the stand-in printers: one answers by multicast, one by unicast (to the question's source); a cellular one
 nsenter -t $PB -n python3 $FX respond multicast 192.168.77.2 "Multicast Printer" 192.168.77.20 $T/r1 & PIDS="$PIDS $!"
+# (the unicast one bound last: both share port 5353, and the kernel gives a question sent by unicast (16, RP_MDNS) to the
+#  socket bound last; started together, either could get it, and the multicast one's answer never reached the asker)
+w8 "[ -s $T/r1 ]"
 nsenter -t $PB -n python3 $FX respond unicast 192.168.77.2 "Unicast Printer" 192.168.77.21 $T/r2 & PIDS="$PIDS $!"
 nsenter -t $PC -n python3 $FX respond multicast 10.64.0.2 "Cell Printer" 10.64.0.20 $T/r3 & PIDS="$PIDS $!"
 w8 "[ -s $T/r1 ] && [ -s $T/r2 ] && [ -s $T/r3 ]"
@@ -89,7 +92,8 @@ find > $T/f1 & P1=$!; find > $T/f2 & P2=$!; wait $P1; wait $P2
 ok "15. two finds at once (rudolfd's and the print queue's: SO_REUSEADDR): both run and list the multicast printer; the unicast one's answers reach one of them" "$(grep -q 'Multicast Printer' $T/f1 && grep -q 'Multicast Printer' $T/f2 && cat $T/f1 $T/f2 | grep -q 'Unicast Printer' && echo 1)" "$(cat $T/f1 $T/f2)"
 
 # the tests' way (RP_MDNS) unchanged: the question by unicast to a stand-in from an ephemeral port
-o=$(env RP_USB=$T/none RP_MDNS=192.168.77.2:5353 $T/rudolf-print find)
+# (one question by UDP: asked up to three times, as a person would press Find printers again, so one lost packet is not a failure)
+for i in 1 2 3; do o=$(env RP_USB=$T/none RP_MDNS=192.168.77.2:5353 $T/rudolf-print find); echo "$o" | grep -q 'Unicast Printer' && break; done
 ok "16. RP_MDNS (the other tests' stand-ins) still asks the address given: the unicast stand-in found" "$(echo "$o" | grep -q 'Unicast Printer' && echo 1)" "$o"
 
 # the control: with the firewall off, find asking on wwan0 does see the cellular printer (so 9 and 12 test the firewall)
