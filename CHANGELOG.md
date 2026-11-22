@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- New: Flatpak apps that Rudolf OS installs may now show their progress on their taskbar buttons. Each one gets a single extra
+  permission, set by Rudolf OS, to say its progress to the desktop, and nothing else. Apps installed earlier get it at the next
+  Update all. (Chromium-based browsers and most Electron apps today send their progress only on Ubuntu's old Unity desktop with
+  its library inside the app. Rudolf OS cannot provide either, so they still show none; Firefox already does. See
+  docs/plan-1.6.2.md Part 25b.)
 - New: on the Chromium desktop, an app's own title bar and buttons work as on Native (docs/plan-1.6.2.md Part 29). Dragging an
   app's own title bar or edges (Discord, Steam, VS Code, GTK apps with a header bar) moves and sizes it with Rudolf's frame
   following, the same way and with the same limits as on Native; its own maximize button and a double-click on its bar maximize

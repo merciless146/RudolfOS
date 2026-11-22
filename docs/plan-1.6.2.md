@@ -344,6 +344,53 @@ Playwright and Native on Xvfb, the same fill on both), iso/qt/shell2/lxprog62_t.
 where they think the desktop is Unity (or KDE/GNOME), which Rudolf's session may not say; a Flatpak app whose permissions lack
 com.canonical.Unity shows nothing (Flatseal, or `flatpak override --talk-name=com.canonical.Unity ID`). The owner's checks on the
 Vivobook: a Firefox download with Firefox minimized (Chromium and Native); a Flatpak app's download (Chromium and Native).
+**Status, 2026-11-22: the left part (unattended; PR "What Linux apps need to send their progress", branch
+`linux-app-progress-env`).** What Chromium and Electron check, from their sources (raw files of 2026-11-22):
+- **Chromium** (chrome/browser/download/download_status_updater_linux.cc) sends a download's progress only when all three hold:
+  - base::nix::GetDesktopEnvironment says Unity or KDE (XDG_CURRENT_DESKTOP's names in order; Rudolf's "Rudolf:GNOME" is GNOME);
+  - libunity (libunity.so.4, .6 or .9) loads;
+  - libunity's inspector sees Unity running, which means the name com.canonical.Unity is owned on the session bus.
+- **Electron up to 43** (shell/browser/linux/unity_service.cc) needs libunity and that owner, whatever the desktop.
+- **Electron's main branch** (shell/browser/linux/launcher_entry.cc, new in 2026, not in 43) sends the signal straight on the bus,
+  with no check.
+- **Flathub's manifests** of Chromium, Chrome, Brave, Edge, Vivaldi, VS Code and Steam bundle no libunity and have no
+  com.canonical.Unity permission.
+
+So "Unity" in the apps' XDG_CURRENT_DESKTOP would make none of them send. Chromium would still find no libunity, and Electron does
+not read the desktop's name. The change would also alter what other apps take the desktop to be (Chromium's and Qt's Unity paths).
+Owning com.canonical.Unity would be needed as well, and never from the portal's own connection: a Flatpak app allowed to talk to that
+name would then reach the portal's backend. So the session's environment is **not changed** and nothing owns the name.
+
+What helps the apps that send the signal themselves (Electron's next versions, others that use the Unity LauncherEntry directly) is
+**Rudolf's own Flatpak override**: `/usr/lib/rudolf/appprogress ID` adds `flatpak override --system --talk-name=com.canonical.Unity
+ID` and nothing else.
+- rudolfd runs it after an app's install and a native app's install, and `--all` with Update all (for the apps installed before).
+- **Per app Rudolf installs, not for all:** Rudolf vouches only for what it installs, and the override shows in Flatseal beside the
+  app.
+- **It lets an app send a progress value and nothing else:** nothing on Rudolf OS owns com.canonical.Unity, so there is no service to
+  call, and the portal still takes only the app's own desktop files and a percentage.
+
+**Tests:** `iso/qt/host/lxenv162_t.sh` 17/17 here.
+- The stand-in app (fixtures/lpsend.c, with LPSEND_AS following Chromium's, Electron 43's or Electron's newest rule) is started as
+  rudolfd's apps/run starts a Linux app: its user, the session's environment file, `rudolf-apps launch` through its launcher, on the
+  account's own bus with its own rudolf-portal.
+  - Chromium's rule sends nothing with the session's Rudolf:GNOME, with Unity added, or with the desktop user's Rudolf.
+  - Electron 43's sends nothing.
+  - Electron's newest sends, and the portal shows 42 %.
+- appprogress was run with the real flatpak (1.14.6, in a folder of its own): exactly `[Session Bus Policy] com.canonical.Unity=talk`,
+  the same when run again, other apps untouched, `--all` for each installed app, and an ID that is not one refused.
+- A stand-in Flatpak sandbox with that policy in its /.flatpak-info is heard; one without it is not.
+- rudolfd's three places run it.
+
+Unchanged: lxprog162_t.sh, lxprog62_t.js, appextra_t.sh 9/9.
+
+**Left:**
+- Chromium-based Flatpak browsers and Electron apps up to 43 still show no progress; Rudolf cannot add libunity to their sandboxes.
+  Electron apps will show it once built with Electron's next major version.
+- Firefox already shows it through its window's XApp hint.
+- Apps installed before 1.6.2 get the override at the next Update all (or the automatic one).
+
+**For the owner (the Vivobook):** after Update all, a Flatpak app's download minimized (Chromium and Native); Firefox's as before.
 
 ### 29. Rudolf's title bar on Chromium's windows from outside the page (added on 2026-11-21)
 The owner, 2026-11-21, on 1.6.1 (Chromium, the Vivobook), with Oracle open in its own Chromium ("Keep my websites
