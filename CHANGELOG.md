@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: the Lite engine check's apps' own title bars test (csd161_t.sh, 7) failed whenever it ran after 18:00 UTC: with no
+  theme chosen the native desktop turns dark at night, and the window's edge is then the dark theme's, as it should be.
+  The test now chooses the light theme. Nothing in Rudolf OS changed.
 - Safer: no script from another site ever runs in the desktop's page or an app window, which hold the key to the system's own
   service. Lua (Command Prompt, BlockLua Builder, Blitzen) always uses Rudolf's own copy of its runtime, never one downloaded from
   a website, and the page now has a security policy that refuses any other site's script. Flash content plays in a sealed-off frame
