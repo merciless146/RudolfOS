@@ -460,7 +460,7 @@ The NVIDIA driver choice and the game mode are built in 1.6.1; measuring them ne
 **The checklist is written (2026-11-21, branch game-checklist): below; the numbers are the owner's.** It follows the
   NVIDIA driver PR (#544, branch nvidia-driver) and the game mode PR (#546, branch game-mode): run it once both are in a beta.
 
-#### 19b. The owner's checklist: games measured (the Asus desktop live from a stick, as Part 12, and the Vivobook)
+##### 19b. The owner's checklist: games measured (the Asus desktop live from a stick, as Part 12, and the Vivobook)
 What is measured: the same games' frame rates and frame times on the open driver (NVK) and on NVIDIA's driver, each with
 game mode on and off, on the owner's **Asus desktop** (RuckXTrauma: its NVIDIA card must be GeForce 16 or newer for NVIDIA's
 driver to be offered), Rudolf OS running live from a USB stick (nothing on its disk changed), and with game mode on and off
