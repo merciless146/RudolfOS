@@ -377,7 +377,10 @@ copy_main() {
 		T=$DEST/$R; mkdir -p "$(dirname "$T")" 2>/dev/null
 		AV=$(df -Pk "$DEST" | awk 'NR==2 {printf "%.0f", $4 * 1024}')
 		[ "$(awk -v a="${AV:-0}" -v b="$Z" 'BEGIN{print (a < b + 1048576)}')" = 1 ] && { FULL=1; break; }
-		H=$(cat -- "$S" 2>>"$W/rerr" | tee "$T.part" | sha256sum | cut -c1-64)
+		# (a large file in pieces of 64 MB, so that Stop stops it in the middle; one stream, one SHA-256)
+		if [ "$Z" -lt 67108864 ]; then H=$(cat -- "$S" 2>>"$W/rerr" | tee "$T.part" | sha256sum | cut -c1-64)
+		else H=$( { i=0; while [ $((i * 67108864)) -lt "$Z" ]; do dd if="$S" bs=1048576 skip=$((i * 64)) count=64 2>>"$W/rerr" || break; [ -e "$ST/stop" ] && break; i=$((i + 1)); done; } | tee "$T.part" | sha256sum | cut -c1-64); fi
+		[ -e "$ST/stop" ] && { rm -f "$T.part" "$ST/stop"; echo "Cancelled: $DN of $TN files were copied. Nothing is erased: the disk is as it was."; exit 130; }
 		Z2=$(stat -c %s "$T.part" 2>/dev/null || echo -1)
 		if [ "$Z2" != "$Z" ]; then
 			rm -f "$T.part"
@@ -397,6 +400,7 @@ copy_main() {
 	sed 's/^\([0-9a-f]*\)  [0-9]*  /\1  /' "$W/sums" > "$W/check"
 	BAD=$(cd "$DEST" && sha256sum -c "$W/check" 2>&1 | grep -c ': FAILED')
 	if [ "${BAD:-0}" -gt 0 ]; then echo "$BAD files read back from the drive differ from the originals: the drive may be failing. Try another drive. Nothing is erased."; exit 9; fi
+	[ -e "$ST/stop" ] && { rm -f "$ST/stop"; echo "Cancelled: the files were copied but are not counted as kept. Nothing is erased: the disk is as it was."; exit 130; }
 	# the record: added to what an earlier copy of the same selection put in this folder
 	{ cat "$W/head"; echo "last $([ "$FULL" = 1 ] && echo 0 || echo 1)"; } > "$DEST/bring.txt"
 	if [ "$CONT" = 1 ] && [ -f "$DEST/bring.sha256" ] && [ ! -L "$DEST/bring.sha256" ]; then cat "$W/sums" >> "$DEST/bring.sha256"; else cp "$W/sums" "$DEST/bring.sha256"; fi

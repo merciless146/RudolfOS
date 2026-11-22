@@ -28,7 +28,7 @@ disk() { n=$1; shift; mkdir -p $T/sys/block/$n; echo 2097152 > $T/sys/block/$n/s
 usb() { n=$1; truncate -s ${2}M $T/img/$n.img; mkfs.ext4 -q -F -L USB$n -m 0 $T/img/$n.img   # (the drives ext4 here: this kernel has no FAT; FAT32's limit is tested with RUDOLF_BRING_TESTFS)
 	mkdir -p $T/media/$n; mount -o loop,rw $T/img/$n.img $T/media/$n; }
 mk() { # mk IMG: an NTFS image, its tree made by the function named $2 (in the image mounted rw at $T/w)
-	truncate -s ${3:-96}M "$1"; mkntfs -F -Q -q -L Windows "$1" >/dev/null 2>&1; mkdir -p $T/w; ntfs-3g "$1" $T/w || return 1; ( cd $T/w && $2 ); umount $T/w; }
+	truncate -s ${3:-200}M "$1"; mkntfs -F -Q -q -L Windows "$1" >/dev/null 2>&1; mkdir -p $T/w; ntfs-3g "$1" $T/w || return 1; ( cd $T/w && $2 ); umount $T/w; }
 win_tree() {
 	mkdir -p Windows/System32 "Program Files/App" Users/Ann/Documents/Taxes Users/Ann/Pictures/Trip Users/Ann/Desktop Users/Ann/AppData/Local/Temp \
 		Users/Ann/OneDrive/Documents Users/Ann/OneDrive/Notes "Users/Ann/Saved Games" Users/Ann/Music Users/Bob/Videos Users/Public/Documents Users/Default/Documents '$Recycle.Bin'
@@ -37,7 +37,7 @@ win_tree() {
 	echo d > Users/Ann/Pictures/desktop.ini; for i in 1 2 3 4 5; do head -c 300000 /dev/urandom > Users/Ann/Pictures/Trip/IMG_000$i.JPG; done
 	echo note > Users/Ann/Desktop/todo.txt; echo od > Users/Ann/OneDrive/Documents/budget.xlsx; echo n > Users/Ann/OneDrive/Notes/n.txt
 	echo s > "Users/Ann/Saved Games/save1.sav"; echo reg > Users/Ann/NTUSER.DAT; echo song > Users/Ann/Music/song.mp3
-	head -c 900000 /dev/urandom > Users/Bob/Videos/birthday.mp4; echo p > Users/Public/Documents/shared.txt; echo x > Users/Default/Documents/default.txt
+	head -c 900000 /dev/urandom > Users/Bob/Videos/birthday.mp4; head -c 70000000 /dev/urandom > Users/Bob/Videos/long.mp4; echo p > Users/Public/Documents/shared.txt; echo x > Users/Default/Documents/default.txt
 	head -c 64 /dev/zero > hiberfil.sys; echo pf > pagefile.sys; }
 win_hib() { win_tree; printf 'HIBR' | dd of=hiberfil.sys conv=notrunc 2>/dev/null; }
 mk $T/img/win.img win_tree || { echo "FAIL ntfs-3g could not mount the NTFS image here"; exit 1; }
@@ -80,6 +80,7 @@ ok "2. its people: Ann, Bob and Public; not Default" "$( [ "$(J $T/s1 "','.join(
 AF=$(J $T/s1 "','.join(f['k']+':'+str(f['files']) for p in d['systems'][0]['people'] if p['name']=='Ann' for f in p['folders'])")
 ok "3. Ann's folders, sized: Desktop 1, Documents 3 (with OneDrive's), Pictures 5 (no desktop.ini), Music 1, Other 2 (Saved Games, OneDrive's Notes; no AppData, NTUSER.DAT)" "$( [ "$AF" = "Desktop:1,Documents:3,Pictures:5,Music:1,Other:2" ] && echo 1)" "$AF"
 ok "4. the sizes in bytes (Pictures 1,500,000)" "$( [ "$(J $T/s1 "[f['bytes'] for p in d['systems'][0]['people'] if p['name']=='Ann' for f in p['folders'] if f['k']=='Pictures'][0]")" = 1500000 ] && echo 1)" "$(J $T/s1 "d['total']")"
+ok "4b. Bob's videos: 2 files (a 70 MB one: copied in pieces)" "$( [ "$(J $T/s1 "[f['files'] for p in d['systems'][0]['people'] if p['name']=='Bob' for f in p['folders']][0]")" = 2 ] && echo 1)" ""
 ok "5. mounted read-only, without programs, device files or set-user-ID" "$(grep " $T/state/m/old0p2 " /proc/mounts | grep -q 'ro,nosuid,nodev,noexec\|ro,nosuid,nodev,noexec' && echo 1)" "$(grep $T/state/m /proc/mounts)"
 BFX scan dty0 > $T/s2 2>&1; BFX scan hib0 > $T/s3 2>&1
 ok "6. a dirty NTFS (not shut down): found, read read-only, said" "$( [ "$(J $T/s2 "d['systems'][0]['state']")" = dirty ] && echo 1)" "$(tail -2 $T/s2)"
@@ -92,7 +93,7 @@ ok "9. a Mac (APFS): found as a disk Rudolf OS cannot read (the page says how to
 # ---- 2. the installation's guard, a cancelled copy, the copy, then the guard again
 BFX guard /dev/old0 > $T/g1 2>&1; r=$?
 ok "10. the install refused (12) before the files are kept or the person chose" "$( [ $r = 12 ] && grep -q 'Nothing was erased' $T/g1 && echo 1)" "rc $r $(cat $T/g1)"
-usb usb0 64
+usb usb0 160
 ID_ANN=$(J $T/s1 "[p['id'] for p in d['systems'][0]['people'] if p['name']=='Ann'][0]"); ID_BOB=$(J $T/s1 "[p['id'] for p in d['systems'][0]['people'] if p['name']=='Bob'][0]")
 DST="$T/media/usb0/Rudolf OS - Bring your files/Old computer 2026-11-22"
 L() { printf '%s continue=%s\n%s\n' "$1" "$2" "$3" > $T/list; shift 3; for s in "$@"; do printf '%s\n' "$s" >> $T/list; done; }
@@ -102,18 +103,18 @@ L old0 0 "$DST" "$ID_ANN${TB}Documents" "$ID_ANN${TB}Pictures" "$ID_ANN${TB}Desk
 ( BFX copy $T/list > $T/c0 2>&1; echo $? > $T/c0.rc ) & CP=$!
 for i in $(seq 1 200); do grep -q 'to copy into' $T/c0 2>/dev/null && break; timeout 0.05 tail -f /dev/null; done; BFX cancel >/dev/null; wait $CP
 r=$(cat $T/c0.rc); BFX guard /dev/old0 > $T/g2 2>&1; g=$?
-ok "11. a cancelled copy: stopped (130 or done before the stop), nothing marked: the install still refused" "$( { [ "$r" = 130 ] || [ "$r" = 0 -a -z "$(grep Cancelled $T/c0)" ]; } && { [ "$r" = 0 ] || [ $g = 12 ]; } && [ -z "$(find "$T/media/usb0" -name '*.part')" ] && echo 1)" "rc $r guard $g $(tail -2 $T/c0)"
+ok "11. a cancelled copy (in the middle of a 70 MB file): stopped (130), nothing marked: the install still refused" "$( [ "$r" = 130 ] && [ $g = 12 ] && [ -z "$(find "$T/media/usb0" -name '*.part')" ] && echo 1)" "rc $r guard $g $(tail -2 $T/c0)"
 rm -f $T/state/old0.copied
 BFX scan old0 > /dev/null 2>&1; BFX copy $T/list > $T/c1 2>&1; r=$?
-ok "12. copied and checked (read back from the drive): 0" "$( [ $r = 0 ] && grep -q '^Copied and checked: 13 files' $T/c1 && echo 1)" "rc $r $(tail -4 $T/c1)"
+ok "12. copied and checked (read back from the drive): 0" "$( [ $r = 0 ] && grep -q '^Copied and checked: 14 files' $T/c1 && echo 1)" "rc $r $(tail -4 $T/c1)"
 ok "13. the folders on the drive: Ann/Documents/Taxes/return.pdf, Ann/Documents/OneDrive/budget.xlsx, Ann/Other/Saved Games, Bob/Videos" "$( [ -f "$DST/Ann/Documents/Taxes/return.pdf" ] && [ -f "$DST/Ann/Documents/OneDrive/budget.xlsx" ] && [ -f "$DST/Ann/Other/Saved Games/save1.sav" ] && [ -f "$DST/Ann/Other/OneDrive/Notes/n.txt" ] && [ -f "$DST/Bob/Videos/birthday.mp4" ] && echo 1)" "$(cd "$DST" && find . -type f | tr '\n' ' ')"
 ok "14. only personal files: no setup.exe, desktop.ini, AppData, NTUSER.DAT, Windows" "$( [ -z "$(cd "$DST" && find . -iname '*.exe' -o -iname desktop.ini -o -iname appdata -o -iname 'ntuser*' -o -iname windows)" ] && echo 1)" ""
-ok "15. bring.sha256 lists each file with its SHA-256, and it matches" "$( [ "$(grep -c . "$DST/bring.sha256")" = 13 ] && (cd "$DST" && sed 's/^\([0-9a-f]*\)  [0-9]*  /\1  /' bring.sha256 | sha256sum -c --quiet) && grep -q "^person	Ann	Ann$" "$DST/bring.txt" && echo 1)" "$(head -3 "$DST/bring.sha256")"
-ok "16. the progress lines for the page" "$(grep -q '^PROGRESS 13 13 ' $T/c1 && echo 1)" "$(grep PROGRESS $T/c1 | tail -1)"
+ok "15. bring.sha256 lists each file with its SHA-256, and it matches" "$( [ "$(grep -c . "$DST/bring.sha256")" = 14 ] && (cd "$DST" && sed 's/^\([0-9a-f]*\)  [0-9]*  /\1  /' bring.sha256 | sha256sum -c --quiet) && grep -q "^person	Ann	Ann$" "$DST/bring.txt" && echo 1)" "$(head -3 "$DST/bring.sha256")"
+ok "16. the progress lines for the page" "$(grep -q '^PROGRESS 14 14 ' $T/c1 && echo 1)" "$(grep PROGRESS $T/c1 | tail -1)"
 BFX guard /dev/old0 > $T/g3 2>&1; r=$?
 ok "17. the install allowed after the copy (0), the old disk closed (unmounted)" "$( [ $r = 0 ] && ! grep -q "$T/state/m/old0p2 " /proc/mounts && echo 1)" "rc $r $(cat $T/g3)"
 # ---- 3. a drive that fills up, then the next one; FAT32's 4 GB
-usb usb1 34; usb usb2 64; A=$(df -Pk $T/media/usb1 | awk 'NR==2 {print $4}'); dd if=/dev/zero of="$T/media/usb1/filler" bs=1K count=$((A - 2600)) 2>/dev/null
+usb usb1 34; usb usb2 128; A=$(df -Pk $T/media/usb1 | awk 'NR==2 {print $4}'); dd if=/dev/zero of="$T/media/usb1/filler" bs=1K count=$((A - 2600)) 2>/dev/null
 BFX scan old0 > /dev/null 2>&1
 D1="$T/media/usb1/Rudolf OS - Bring your files/Old computer"; L old0 0 "$D1" "$ID_ANN${TB}Pictures" "$ID_BOB${TB}Videos"
 BFX copy $T/list > $T/c2 2>&1; r=$?
@@ -124,7 +125,7 @@ BFX scan old0 > /dev/null 2>&1
 D2="$T/media/usb2/Rudolf OS - Bring your files/Old computer"; L old0 1 "$D2" "$ID_ANN${TB}Pictures" "$ID_BOB${TB}Videos"
 BFX copy $T/list > $T/c3 2>&1; r=$?; n2=$(grep -c . "$D2/bring.sha256" 2>/dev/null)
 BFX guard /dev/old0 > /dev/null 2>&1; g=$?
-ok "19. continued on the next drive: the rest ($n1 + $n2 = 6), then the install allowed" "$( [ $r = 0 ] && [ $((n1 + n2)) = 6 ] && [ $g = 0 ] && echo 1)" "rc $r guard $g $(tail -3 $T/c3)"
+ok "19. continued on the next drive: the rest ($n1 + $n2 = 7), then the install allowed" "$( [ $r = 0 ] && [ $((n1 + n2)) = 7 ] && [ $g = 0 ] && echo 1)" "rc $r guard $g $(tail -3 $T/c3)"
 BFX scan old0 > /dev/null 2>&1; fat4g() { truncate -s 4300000000 Users/Bob/Videos/long.mp4; }
 big_tree() { win_tree; rm -f hiberfil.sys; fat4g; }; mk $T/img/big.img big_tree; disk big0 $T/img/big.img
 BFX scan big0 > $T/s6 2>&1; IDB=$(J $T/s6 "[p['id'] for p in d['systems'][0]['people'] if p['name']=='Bob'][0]")
@@ -160,7 +161,7 @@ else echo "NOTE BitLocker not tested here (cryptsetup or BITLK_IMAGES missing)";
 BFX found > $T/f1 2>&1
 ok "27. the copies on the plugged-in drives found: who and how much" "$(python3 -c "
 import json,sys; d=json.load(open('$T/f1')); s=[x for x in d['sets'] if x['dir'].endswith('Old computer 2026-11-22')][0]
-print(1 if s['system']=='windows' and s['last'] and sorted((p['name'],p['files']) for p in s['people'])==[('Ann',12),('Bob',1)] else 0)" 2>&1)" "$(cat $T/f1)"
+print(1 if s['system']=='windows' and s['last'] and sorted((p['name'],p['files']) for p in s['people'])==[('Ann',12),('Bob',2)] else 0)" 2>&1)" "$(cat $T/f1)"
 H=$T/home; mkdir -p $H/Documents $H/Pictures $H/Desktop $H/Music $H/Videos $H/Downloads $H/.rudolf
 echo "my own letter" > "$H/Documents/Letter to Mary.docx"; cp "$DST/Ann/Desktop/todo.txt" $H/Desktop/todo.txt; chown -R 4321:4321 $H
 U="setpriv --reuid=4321 --regid=4321 --clear-groups"
