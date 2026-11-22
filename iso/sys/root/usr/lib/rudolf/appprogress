@@ -1,0 +1,20 @@
+#!/bin/sh
+# Rudolf OS 1.6.2 (docs/plan-1.6.2.md Part 25b): Linux apps' progress on their taskbar buttons, for Flatpak apps. An app says its
+# progress with the Unity LauncherEntry signal on the account's session bus; the account's own rudolf-portal takes it only from a
+# Flatpak app allowed to talk to com.canonical.Unity (its /.flatpak-info), which Flathub's apps mostly are not. So each app Rudolf
+# installs gets Rudolf's own override with that one permission and nothing else: --talk-name=com.canonical.Unity. Nothing on Rudolf
+# OS owns that name, so the app gains no service to call; what it gains is that its own progress signal is heard (the portal still
+# takes only the app's own desktop files, a percentage). rudolfd runs it after installing an app and after Update all (--all: the
+# apps installed before 1.6.2). Shown in Flatseal as any override; `flatpak override --system --reset ID` removes it.
+#   appprogress ID      that app
+#   appprogress --all   each installed app
+# GPL-2.0-or-later. test hook (iso/qt/host/lxenv162_t.sh): RUDOLF_TEST_PATH
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+one() {
+	case "$1" in ''|.*|-*|*..*|*[!A-Za-z0-9._-]*) echo "appprogress: not an app ID: $1" >&2; return 2;; esac
+	flatpak override --system --talk-name=com.canonical.Unity "$1"
+}
+case "$1" in
+--all) r=0; for a in $(flatpak list --system --app --columns=application 2>/dev/null); do one "$a" || r=1; done; exit $r;;
+*) one "$1";;
+esac

@@ -10,6 +10,26 @@ Summary: In progress.
   diffuser. Each opened read-only with its recovery key, which is stored nowhere. Two fixes: opening no longer waits for ever for
   the system's device manager, and a mistyped recovery key now says "That key does not open it." instead of "BitLocker could not
   be opened here".
+- Changed: a new installation now starts with the Native desktop (the owner's decision, 2026-11-22). Chromium and Lite stay
+  in Settings › System health › Desktop engine; if Native does not start, Chromium is used. A computer updated from 1.6.1
+  keeps the desktop it had.
+- Fixed: the title bars check (std-titlebars-check.yml) passes: Chrome is started without --enable-automation, whose bar on
+  the runner moved the desktop page 56 px down so the test's presses missed (38/38 and 22/22 now).
+- Changed: the plan (docs/plan-1.6.2.md Part 31): zstd compression for the system's images, measured against today's xz
+  in QEMU and on the owner's two computers before anything changes; the kernel learns to read zstd first.
+- Changed: a Library game's save record may now be up to 6 MB (it was 256 KB), so a game with a large world, such as Ember
+  Reach's shared galaxy, can keep it in a few records. Saves stay per package, game and account, mirrored and backed up as
+  before. The desktop tells a game its limit when it starts, so a game made for this works on older versions too.
+- New: Flatpak apps that Rudolf OS installs may now show their progress on their taskbar buttons. Each one gets a single extra
+  permission, set by Rudolf OS, to say its progress to the desktop, and nothing else. Apps installed earlier get it at the next
+  Update all. (Chromium-based browsers and most Electron apps today send their progress only on Ubuntu's old Unity desktop with
+  its library inside the app. Rudolf OS cannot provide either, so they still show none; Firefox already does. See
+  docs/plan-1.6.2.md Part 25b.)
+- New: on the Chromium desktop, an app's own title bar and buttons work as on Native (docs/plan-1.6.2.md Part 29). Dragging an
+  app's own title bar or edges (Discord, Steam, VS Code, GTK apps with a header bar) moves and sizes it with Rudolf's frame
+  following, the same way and with the same limits as on Native; its own maximize button and a double-click on its bar maximize
+  and restore it, and its own minimize button minimizes it, as Rudolf's title bar does. The app's Move and Size from the keyboard
+  work too. Before, these did nothing on Chromium.
 - Changed: the Standard desktop is now called Chromium (it is the same desktop: the desktop page in Rudolf's Chromium), and
   Settings › System health › Desktop engine lists the three as Native, Chromium, Lite. A computer on Standard stays on it and
   shows it as Chromium; nothing saved changes. Help, System health, the self-test, the sign-in's messages and rudolf-fetch say

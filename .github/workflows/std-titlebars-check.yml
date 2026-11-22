@@ -1,10 +1,11 @@
 # Rudolf's title bar on Standard's windows from outside the page (1.6.2, docs/plan-1.6.2.md Part 29): rudolf-display and the desktop
 # page in Chromium on a virtual screen, stand-in apps and GTK 3, GTK 4 and Chromium windows (iso/qt/host/xframe162_t.sh), and
-# rudolfd's own code for the place and the strip. Publishes nothing.
+# rudolfd's own code for the place and the strip; and (Part 29's left part) an app's own title bar and buttons, Chromium against
+# Native (iso/qt/host/xfask162_t.sh). Publishes nothing.
 name: Standard's title bars check
 on:
   push:
-    paths: ['desktop/xframe62.js', 'desktop/linux26.js', 'desktop/web25.js', 'desktop/shell25.js', 'desktop/titlebar59.js', 'iso/sys/rudolf-display.c', 'iso/sys/rudolfd.c', 'iso/qt/host/xframe162_t.sh', 'iso/qt/host/xframe162_t.js', 'iso/qt/host/fixtures/xwmclient.c', '.github/workflows/std-titlebars-check.yml']
+    paths: ['desktop/xframe62.js', 'desktop/linux26.js', 'desktop/web25.js', 'desktop/shell25.js', 'desktop/titlebar59.js', 'iso/sys/rudolf-display.c', 'iso/sys/rudolfd.c', 'iso/qt/host/xframe162_t.sh', 'iso/qt/host/xframe162_t.js', 'iso/qt/host/xfask162_t.sh', 'iso/qt/host/xfask162_t.js', 'iso/sys/rudolf-native.c', 'iso/qt/host/fixtures/xwmclient.c', '.github/workflows/std-titlebars-check.yml']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -16,13 +17,20 @@ jobs:
       - name: Tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq xvfb xdotool x11-utils imagemagick libx11-dev libxtst-dev libxfixes-dev libxrandr-dev zlib1g-dev gtk-3-examples gtk-4-examples >/dev/null
+          sudo apt-get install -y -qq xvfb xdotool x11-utils imagemagick libx11-dev libxtst-dev libxfixes-dev libxrandr-dev zlib1g-dev gtk-3-examples gtk-4-examples libwebkit2gtk-4.1-dev >/dev/null
           mkdir -p pw && cd pw && npm init -y >/dev/null && npm install -s playwright-core@1.56.1 >/dev/null && ln -s playwright-core node_modules/playwright
       - name: Frames drawn by the page around outside windows
         run: |
           sudo env "PATH=$PATH" NODE_PATH=$PWD/pw/node_modules XF_CHROME="$(command -v google-chrome || command -v chromium)" sh iso/qt/host/xframe162_t.sh "$PWD/shots" | tee result.txt
           echo "::notice title=Standard's title bars::$(grep -E 'passed$' result.txt | tr '\n' ' ') — $(grep -E '^FAIL|^SKIP' result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
           ! grep -q '^FAIL' result.txt && [ "$(grep -c ' passed$' result.txt)" = 2 ]
+      # (Part 29's left part: an app's own title bar and buttons, Chromium against Native)
+      - name: An app's own title bar and buttons, as on Native
+        if: always()
+        run: |
+          sudo env "PATH=$PATH" NODE_PATH=$PWD/pw/node_modules XA_CHROME="$(command -v google-chrome || command -v chromium)" sh iso/qt/host/xfask162_t.sh "$PWD/shots-own" | tee result-own.txt
+          echo "::notice title=An app's own title bar::$(grep -E 'passed$' result-own.txt | tr '\n' ' ') — $(grep -E '^FAIL|^SKIP' result-own.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          ! grep -q '^FAIL' result-own.txt && [ "$(grep -c ' passed$' result-own.txt)" = 2 ]
       - if: always()
         uses: actions/upload-artifact@v4
-        with: {name: std-titlebars, retention-days: 7, path: "result.txt\nshots/"}
+        with: {name: std-titlebars, retention-days: 7, path: "result.txt\nresult-own.txt\nshots/\nshots-own/"}

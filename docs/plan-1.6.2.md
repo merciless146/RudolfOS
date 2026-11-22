@@ -17,7 +17,7 @@ function exactly as it does in Chromium mode."
   they were (Part 14's switch is still the owner's decision).
 
 ## What it needs
-- **The Vivobook (with the owner):** Part 14 (Discord and Steam on Native, then Native the default), Part 12 (kernel
+- **The Vivobook (with the owner):** Part 14 (Native the default for new installations: decided 2026-11-22; its checks), Part 12 (kernel
   tuning: the owner's checklist), 21b (the checks after each beta).
 
 ## Parts
@@ -244,6 +244,14 @@ The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition t
      when its last window is gone 15 s, and at sign-out, then the existing escalation; a running game keeps it).
   **The switch to Native as the default still waits on the owner's decision** (the owner, 03:49 CST: "Let's do the fixes first
   and then offer me the decision again"): after these PRs are merged, a Steam start timed on Native on the Vivobook first.
+- **Decided (2026-11-22, 16:50 CST, after the fixes and the beta r2026112222):** the owner: "Yes, native will be the default
+  desktop for new installs and users will still have the option to change between Chromium and Lite." install.sh's
+  `NATIVE_DEFAULT=1` (a new installation starts on Native, on trial at its first start, Chromium if it does not start); the
+  engine page says "A new installation starts with it." again; Settings › System health › Desktop engine still offers
+  Native, Chromium and Lite. A computer updated from 1.6.1 keeps the engine it had: rudolfd's `NATIVE_OFFER` stays 0 (no
+  offer of Native to updated computers) unless the owner asks for it. nativedefault60_t.sh 0 and 0b changed to match (13/13).
+  Left: the owner's checks above (a new stick and Install here: the setup wizard, then Native; Settings › System health ›
+  Desktop engine: Native in use, Chromium and Lite chosen and back).
 - **Names (2026-11-22):** the Standard desktop is called Chromium from 1.6.2; the choices read Native, Chromium, Lite ("Names"
   above). The default is unchanged by it.
 
@@ -313,6 +321,7 @@ the newest beta (bring-check.yml). Not testable before a release has dm-crypt: o
 checked on the host with cryptsetup --test-passphrase). **For the owner:** an old Windows laptop or disk with a USB drive:
 Install here… on it, the folders found and their sizes, Copy and check, then the first sign-in's offer and the files in
 Documents, Pictures…; a BitLocker laptop's recovery key, if one is at hand.
+
 **Status, 2026-11-22: BitLocker checked for real (unattended; PR "BitLocker opened for real", branch `bitlocker-kernel`).**
 
 **The kernel (6.18, iso/kconfig.sh) needs no change.** It already has everything cryptsetup's BITLK asks of it:
@@ -393,6 +402,53 @@ Playwright and Native on Xvfb, the same fill on both), iso/qt/shell2/lxprog62_t.
 where they think the desktop is Unity (or KDE/GNOME), which Rudolf's session may not say; a Flatpak app whose permissions lack
 com.canonical.Unity shows nothing (Flatseal, or `flatpak override --talk-name=com.canonical.Unity ID`). The owner's checks on the
 Vivobook: a Firefox download with Firefox minimized (Chromium and Native); a Flatpak app's download (Chromium and Native).
+**Status, 2026-11-22: the left part (unattended; PR "What Linux apps need to send their progress", branch
+`linux-app-progress-env`).** What Chromium and Electron check, from their sources (raw files of 2026-11-22):
+- **Chromium** (chrome/browser/download/download_status_updater_linux.cc) sends a download's progress only when all three hold:
+  - base::nix::GetDesktopEnvironment says Unity or KDE (XDG_CURRENT_DESKTOP's names in order; Rudolf's "Rudolf:GNOME" is GNOME);
+  - libunity (libunity.so.4, .6 or .9) loads;
+  - libunity's inspector sees Unity running, which means the name com.canonical.Unity is owned on the session bus.
+- **Electron up to 43** (shell/browser/linux/unity_service.cc) needs libunity and that owner, whatever the desktop.
+- **Electron's main branch** (shell/browser/linux/launcher_entry.cc, new in 2026, not in 43) sends the signal straight on the bus,
+  with no check.
+- **Flathub's manifests** of Chromium, Chrome, Brave, Edge, Vivaldi, VS Code and Steam bundle no libunity and have no
+  com.canonical.Unity permission.
+
+So "Unity" in the apps' XDG_CURRENT_DESKTOP would make none of them send. Chromium would still find no libunity, and Electron does
+not read the desktop's name. The change would also alter what other apps take the desktop to be (Chromium's and Qt's Unity paths).
+Owning com.canonical.Unity would be needed as well, and never from the portal's own connection: a Flatpak app allowed to talk to that
+name would then reach the portal's backend. So the session's environment is **not changed** and nothing owns the name.
+
+What helps the apps that send the signal themselves (Electron's next versions, others that use the Unity LauncherEntry directly) is
+**Rudolf's own Flatpak override**: `/usr/lib/rudolf/appprogress ID` adds `flatpak override --system --talk-name=com.canonical.Unity
+ID` and nothing else.
+- rudolfd runs it after an app's install and a native app's install, and `--all` with Update all (for the apps installed before).
+- **Per app Rudolf installs, not for all:** Rudolf vouches only for what it installs, and the override shows in Flatseal beside the
+  app.
+- **It lets an app send a progress value and nothing else:** nothing on Rudolf OS owns com.canonical.Unity, so there is no service to
+  call, and the portal still takes only the app's own desktop files and a percentage.
+
+**Tests:** `iso/qt/host/lxenv162_t.sh` 17/17 here.
+- The stand-in app (fixtures/lpsend.c, with LPSEND_AS following Chromium's, Electron 43's or Electron's newest rule) is started as
+  rudolfd's apps/run starts a Linux app: its user, the session's environment file, `rudolf-apps launch` through its launcher, on the
+  account's own bus with its own rudolf-portal.
+  - Chromium's rule sends nothing with the session's Rudolf:GNOME, with Unity added, or with the desktop user's Rudolf.
+  - Electron 43's sends nothing.
+  - Electron's newest sends, and the portal shows 42 %.
+- appprogress was run with the real flatpak (1.14.6, in a folder of its own): exactly `[Session Bus Policy] com.canonical.Unity=talk`,
+  the same when run again, other apps untouched, `--all` for each installed app, and an ID that is not one refused.
+- A stand-in Flatpak sandbox with that policy in its /.flatpak-info is heard; one without it is not.
+- rudolfd's three places run it.
+
+Unchanged: lxprog162_t.sh, lxprog62_t.js, appextra_t.sh 9/9.
+
+**Left:**
+- Chromium-based Flatpak browsers and Electron apps up to 43 still show no progress; Rudolf cannot add libunity to their sandboxes.
+  Electron apps will show it once built with Electron's next major version.
+- Firefox already shows it through its window's XApp hint.
+- Apps installed before 1.6.2 get the override at the next Update all (or the automatic one).
+
+**For the owner (the Vivobook):** after Update all, a Flatpak app's download minimized (Chromium and Native); Firefox's as before.
 
 ### 29. Rudolf's title bar on Chromium's windows from outside the page (added on 2026-11-21)
 The owner, 2026-11-21, on 1.6.1 (Chromium, the Vivobook), with Oracle open in its own Chromium ("Keep my websites
@@ -459,6 +515,33 @@ themselves, the release in QEMU. **Left:** the app's own maximize and minimize b
 (`_NET_WM_MOVERESIZE`) do nothing on Chromium yet (Rudolf's bar does them); a window's content is not seen while it is behind the
 page (its frame shows its name).
 
+**Status, 2026-11-22: the left part built (unattended; PR "An app's own title bar and buttons on Chromium", branch
+`app-own-buttons`).** rudolf-display (its own functions, `xa_*`) does what an app asks of its window manager as rudolf-native does
+(csd_moveresize, csd_message: 1.6.1 Part 15), and says so in `_NET_SUPPORTED` (`_NET_WM_MOVERESIZE`, `MAXIMIZED_VERT`/`_HORZ`,
+`HIDDEN`: GTK moves a window by itself without it): `_NET_WM_MOVERESIZE` (move, the 8 edges, the keyboard's move and size, cancel) is
+done there with Native's drag_motion rules, which are the page's own drag and addResize (the pointer's way; at least 200 x 120 with
+the frame; the frame's top not above the desktop's: web/strut's new `frame` value, the frame's top edge above the app, kept current
+by the page); the app's window moves at once and the page is told (`/run/rudolf/wmask` "N at HEX X Y W H END", rudolfd's
+apps/windows passes the checked lines on as `asks`), so its frame follows, the page's older places for it being set aside until the
+page has the new one (2.5 s at most); `_NET_WM_STATE` maximized ("N max HEX 0|1|2") and `_NET_WM_STATE_HIDDEN` or `WM_CHANGE_STATE`
+iconic ("N min HEX") are done by the page as its □ and _ do; the frame's maximized state goes back with its place (apps/show's
+`max=1`, " max" in `/run/rudolf/wm`), and the app's window then says `MAXIMIZED_VERT,MAXIMIZED_HORZ`, so the app shows its restore
+button. The page (xframe62.js `xfAsks`) asks apps/windows every 250 ms while an app is shown in its frame and every 40 ms during its
+drag. Only for windows the page frames; full-screen windows and games as before. No new rudolfd request (apps/show's `max`, web/strut's
+`frame` and apps/windows' `asks` are new fields of existing ones; the confinement lists unchanged). There is no snapping on either
+engine. **Tests:** `iso/qt/host/xfask162_t.sh` 28/28 here (three runs): the stand-in drawing its own bar (fixtures/xwmclient.c, with a
+new `hide`) asks each on Chromium (rudolf-display, the page in Chromium) and on Native (rudolf-native, the stand-in given Rudolf's
+title bar there so the frames are the same), and the results are compared line by line (moved, the desktop's top, sized from each of
+the 8 edges, the keyboard's move, size and Escape, maximized: the same place and state, not moved while maximized, restored, minimized
+both ways, brought back): the same; GTK 3.24's widget factory's own header bar dragged and double-clicked; rudolfd's own code (R6-R8).
+Unchanged: xframe162_t.sh 36/36 + 5/5, csd161_t.sh 56/56, titlebar59_t.js 17/17, tbbtn59_t.js 15/15, sethooks61_t.js 6/6,
+taskbar144_t.js 30/30, tb_t.js 11/11, tbprog61_t.js 43/43, lx48_t.js 8/8, lxdesk_t.js 4/4, wmfocus_t.sh 20/20, wmdialog_t.sh 11/11,
+titlebars161_t.sh 16/16. **Not tested here:** Discord, Steam, VS Code and Chromium's own title bars (Electron's and Chromium's custom
+frame ask `_NET_WM_MOVERESIZE` as GTK does), several monitors (the drag's end goes through the page's monDrop, as Rudolf's bar's),
+display scaling above 100 % (the 200 x 120 minimum is taken in the screen's pixels during the drag; the page's frame keeps its own
+minimum after it). **For the owner (the Vivobook, Chromium):** an app's own title bar dragged (Discord or Steam), its own maximize
+and restore, a double-click on its bar, its own minimize and the taskbar button back; a GTK app's header bar (if one is installed).
+
 ### 30. Two-player Library games on a home network: the LAN game relay (added on 2026-11-22)
 Ember Reach's duels (rudolfos-library, Ember Reach 0.5.2) on a LAN as well as online; the owner: "Go with WebSocket and
 LAN as the selectable options for networking for the player". A game page can't accept connections, so while a player
@@ -506,6 +589,45 @@ hosts, Rudolf OS runs a small relay on that computer, and the other computer fin
      listener.
   6. With A on a phone's hotspot or a cellular modem only: Host on this network says it isn't on a home network.
 
+### 31. zstd for the system's images, measured (added on 2026-11-22)
+The owner, 2026-11-22: "Add zstd compression to the plan" (after asking what uncompressing the system would do: more
+disk and slower starts from slow drives and USB sticks, for a small gain on the first read; zstd keeps most of that gain).
+**Today:** the four images (base 297 MB, chromium 131 MB, modules 97 MB, desktop 7 MB in release 2026112219) are made by
+iso/systools/mklayers.sh with `-comp xz -Xbcj x86 -b 1M` (iso/systools/testkernel.sh the same for modules.sfs). xz makes
+the smallest images but is the slowest of squashfs's compressions to read back; each block is unpacked on its first read
+and then kept in memory. The kernel reads xz and zlib only (iso/kconfig.sh line 50: no SQUASHFS_ZSTD yet).
+**Kept only if measured:** as Part 12, a change is kept only if it helps on at least one of the Vivobook and the Asus
+desktop and hurts on neither.
+1. **The kernel first:** SQUASHFS_ZSTD (and ZSTD_DECOMPRESS) built in, on x86-64 and ARM64 (iso/kconfig.sh,
+   iso/kconfig-arm64.sh; Kryptonite's kconfig on its branch too); the images unchanged. This goes out in a release
+   before any image changes, so every system that updates already runs a kernel that can read the new images, and an
+   older kernel never meets a zstd image (the updater checks it too: it refuses an image whose compression the running
+   or next kernel cannot read, and says so).
+2. **Measured in QEMU** (KVM, the release's layers made both ways from the same root, `SOURCE_DATE_EPOCH` kept so both are
+   reproducible): for xz, zstd levels 15, 19 and 22, and lz4 for comparison, each with 1M and 256K blocks: each image's
+   size; the time from start to "the desktop was ready" (the health log, 5 starts each, cold caches); Chromium's first
+   start; Oracle's first page; a Library game's first start; CPU time spent in decompression; memory at idle; with the
+   disk as virtio NVMe, as a slow USB stick (QEMU's throttling at about 30 MB/s) and as an eMMC-like disk (about 150 MB/s).
+   Each desktop engine timed on its own (the owner, 2026-11-22: "Will native and lite benefit from zstd over xz as
+   well?"): Native, Chromium and Lite all start from base.sfs, so all three gain there; only Chromium reads chromium.sfs
+   at start-up, while Native and Lite read it at Oracle's first start (Oracle runs on Rudolf's Chromium on every engine),
+   so for Native and Lite the start-up and the first Oracle start are reported apart.
+3. **zstd for every image, for all three engines** (the owner, 2026-11-22: "Do zstd for all three instead of just
+   chromium"): base.sfs, chromium.sfs, modules.sfs and desktop.sfs all made with zstd, so Native, Chromium and Lite
+   each gain, not only Chromium. The measurements choose the level and the block size (the fastest to read at most
+   about 20% larger than xz overall), not whether an image switches. If an engine or a disk kind comes out slower with
+   zstd than with xz, that is reported to the owner before the switch, with the numbers.
+4. **Updates:** the delta updates (.rzs) send changed blocks only, so the first update after an image's compression
+   changes downloads that image whole (about 0.5 to 0.65 GB): said in the release notes and in the update's size shown
+   before downloading. Later updates are deltas again. Recovery Mode is unaffected (it boots the official stable
+   version's own kernel and images).
+5. **Nothing weakened:** the images stay read-only, signed and checked whole as now; Secure Boot, lockdown and module
+   signing unchanged; the build stays reproducible (two builds give the same images, checked in CI).
+6. **The owner's checklist:** on the Vivobook (its own disk) and on the Asus desktop (live from a USB stick): restart 3
+   times on each build, write down Settings › System health › Last starts, Chromium's and Oracle's first start (a
+   stopwatch is enough), and Settings › System health's memory at idle, on each of Native, Chromium and Lite, in a table:
+   machine, engine, build (xz/zstd), start, first Oracle, memory.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -516,3 +638,5 @@ hosts, Rudolf OS runs a small relay on that computer, and the other computer fin
 7. Part 30 (the LAN game relay): built with Ember Reach 0.5.2; then the owner's checklist on two computers.
 8. Names (the Standard desktop called Chromium): one PR, then on the Vivobook: Settings › System health › Desktop engine
    reads Native, Chromium, Lite and shows "In use now: Native" (or Chromium); Help › Keyboard shortcuts says the Chromium engine.
+9. Part 31 (zstd for the system's images): 1 in one PR (the kernel option, shipped first); 2-3 measured in QEMU in a
+   check workflow; every image switched to zstd in a later PR, at the level the numbers choose; then the owner's checklist on both machines.
