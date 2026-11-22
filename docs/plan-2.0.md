@@ -220,10 +220,26 @@ long-lived `kryptonite` branch (pull requests based on it), never on main, the 1
   kernel checked against the built-in certificate), the same check on the beta's own 6.18 kernel to compare, NVIDIA's
   modules, the firmware, and the test kernel in QEMU on the newest beta's layers next to the beta's kernel
   (qt/sb/kr20_t.py: Standard and Native reaching ready on X11, the self-test, the modules and firmware, kernel warnings).
-RESULTS-PLACEHOLDER
+- **Results (2026-11-22, the pull request's runs):** the configuration passes; the build passes; NVIDIA's modules build;
+  nothing new for firmware-extra.txt. Secure Boot in QEMU with test keys: 6 of 7 (shim, the menu and the signed kernel
+  bundle start the 7.3 kernel under Secure Boot, locked down; system/r is checked and handed over to by kexec, the
+  signature checked against the built-in certificate; a changed layer, a list signed by another key and a changed
+  recovery.efi are refused). The beta's own 6.18.64 passes all 7 on the same check.
+- **Found, and left to settle before Kryptonite ships: a 7.x kernel started other than by its kernel bundle stops at
+  once:** "Kernel panic - not syncing: ZSTD-compressed data is corrupt" (its own built-in start-up image; "XZ-..." when
+  packed with xz). After a kexec handover with 1.5 GB of memory: 7.3.5, 7.2.15, 7.1.13 and 7.0.14 all fail, 6.18.64
+  passes; 6.18 handing over to 7.3 fails, 7.3 to 6.18 passes (so it is the 7.x kernel's own start, not the kexec that
+  loads it); with 3 GB it passes; nokaslr changes nothing. Started directly by QEMU (-kernel, 3.4 GB) on the beta's layers
+  it does not reach the system either, so the desktop checks (Standard and Native ready, the self-test) could not run on
+  7.3 yet: the release kernel passes them on the same machine (22 and 21 self-test checks, both engines ready). Updates on
+  installed computers hand over by kexec, so this blocks the "next" channel. Next: the panic's own messages from the
+  direct start (the serial console read raw), 6.19 tried (6.18 passes, 7.0 fails), then a bisect between them and a
+  report upstream, or a workaround (the start-up image given to the kernel rather than built in, as rudolf-kexec.c can).
 - **ARM64** (kconfig-arm64.sh, systools/arm64_kernel.sh, the ARM64 check): not moved yet; left for a later step.
-- **Next:** Wayland, in its stages W0 to W5 above, on this kernel; and the "next" channel's build switch (the kernel
-  track) once the handover finding is settled.
+- **The point releases to follow:** each 7.3.y as it comes (one line in .github/kryptonite-kernel.txt, the check warns),
+  then 7.4 once it has settled; NVIDIA's modules must build on each before the "next" channel takes it.
+- **Next:** the start-up finding above; then Wayland, which comes next in stages (W0 to W5 above) on this kernel; and the
+  "next" channel's build switch (the kernel track) once the finding is settled.
 
 ## The phone build (added on 2026-11-15)
 Decided on 2026-11-15 (docs/plan-1.6.1.md, "The phone, split in two"): the phone comes in two stages. Stage 1, in

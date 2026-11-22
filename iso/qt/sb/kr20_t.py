@@ -58,8 +58,9 @@ def boot(tag, drv, kernel, append='', secs=300):
     up = False; end = time.time() + secs; seen = ''
     while time.time() < end:
         try:
-            o = g.sh('echo ready', 8); seen = (seen + o)[-200000:]
-            if 'ready' in o: up = True; break
+            # (a token the shell computes, not a word kernel messages on the serial console could hold)
+            o = g.sh('echo kr$((6*7))up', 8); seen = (seen + o)[-200000:]
+            if 'kr42up' in o: up = True; break
         except OSError: pass
         time.sleep(2)
     out(f'start {tag}: serial shell {"up" if up else "NOT up"} after {time.time() - t:.0f} s')
