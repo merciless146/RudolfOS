@@ -62,4 +62,20 @@ for U in infozip busybox; do
 	ok "$U: the count" $(has "$o" "done 9 added, 1 skipped") "$o"
 	ok "$U: saves and states folders for Genesis and PlayStation" $([ -d $GAMES_DIR/MD/Saves ] && [ -d $GAMES_DIR/PS1/States ] && echo 1 || echo 0)
 done
+# (1.6.2) the test games Emu's emulator check plays (iso/qt/emu/n64test.py, dctest.py: made here, no Nintendo or Sega
+# material): every N64 byte order, the Dreamcast .gdi with its three tracks, the .cdi and (with chdman) a real GD-ROM CHD
+if command -v python3 >/dev/null; then
+	E=$HERE/../emu; M=$T/made; mkdir -p $M/RudolfDC
+	python3 $E/n64test.py $M/RudolfN64.z64 --n64 $M/RudolfN64.n64 --v64 $M/RudolfN64.v64 && python3 $E/dctest.py --gdi $M/RudolfDC/RudolfDC.gdi --cdi $M/RudolfDC.cdi
+	C=0; command -v chdman >/dev/null && chdman createcd -i $M/RudolfDC/RudolfDC.gdi -o $M/RudolfDC.chd >/dev/null 2>&1 && C=1
+	export GAMES_DIR=$T/g-made GAMES_TMP=$T/tmp-made GAMES_TEST_SRC=$M; unset GAMES_TEST_PATH
+	printf '%s\n' $M/RudolfN64.z64 $M/RudolfN64.n64 $M/RudolfN64.v64 $M/RudolfDC/RudolfDC.gdi $M/RudolfDC.cdi > $T/list; [ $C = 1 ] && echo $M/RudolfDC.chd >> $T/list
+	o=$($SH $P $T/list 2>&1); G=$GAMES_DIR
+	ok "(1.6.2) the made N64 game in every byte order goes to N64 (three games: their bytes differ)" $(cmp -s $G/N64/RudolfN64.z64 $M/RudolfN64.z64 && cmp -s $G/N64/RudolfN64.n64 $M/RudolfN64.n64 && cmp -s $G/N64/RudolfN64.v64 $M/RudolfN64.v64 && echo 1 || echo 0) "$o"
+	ok "...the made Dreamcast .gdi in DC/RudolfDC/ with its three tracks" $(cmp -s $G/DC/RudolfDC/track03.bin $M/RudolfDC/track03.bin && cmp -s $G/DC/RudolfDC/track02.raw $M/RudolfDC/track02.raw && cmp -s $G/DC/RudolfDC/track01.bin $M/RudolfDC/track01.bin && [ -f $G/DC/RudolfDC/RudolfDC.gdi ] && echo 1 || echo 0) "$o"
+	ok "...its .cdi in DC" $(cmp -s $G/DC/RudolfDC.cdi $M/RudolfDC.cdi && echo 1 || echo 0) "$o"
+	if [ $C = 1 ]; then ok "...and the CHD chdman made of it is a Dreamcast disc (DC, not PS1)" $([ -f $G/DC/RudolfDC.chd ] && [ ! -e $G/PS1/RudolfDC.chd ] && echo 1 || echo 0) "$o"
+	else echo "SKIP the made CHD: no chdman (mame-tools)"; fi
+	ok "...the count" $(has "$o" "done $((5 + C)) added, 0 skipped") "$o"
+fi
 echo "$((N-F))/$N passed"; [ $F = 0 ]

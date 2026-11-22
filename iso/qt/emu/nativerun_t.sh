@@ -19,7 +19,7 @@ T=$(mktemp -d /tmp/nativerun.XXXXXX); chmod 755 $T; RU=$(id -u rudolf)
 ip link set lo up
 mount --make-rprivate / 2>/dev/null
 mkdir -p /run/rudolf /usr/share/rudolf/www /home/rudolf /persist /usr/lib/rudolf
-mount -t tmpfs none /usr/lib/rudolf; cp $SYS/root/usr/lib/rudolf/games-import.sh /usr/lib/rudolf/   # this tree's
+mount -t tmpfs none /usr/lib/rudolf; cp $SYS/root/usr/lib/rudolf/games-import.sh $SYS/root/usr/lib/rudolf/rmg-controller.sh /usr/lib/rudolf/   # this tree's
 mount -t tmpfs none /run/rudolf; mount --bind $HERE/../../www /usr/share/rudolf/www; mount -t tmpfs -o mode=755 none /home/rudolf; mount -t tmpfs none /persist
 chown rudolf: /home/rudolf; mkdir -p /run/user/$RU; chown rudolf: /run/user/$RU; chmod 700 /run/user/$RU
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 800)"; F=$((F+1)); fi; }
@@ -78,7 +78,9 @@ frac() { convert "$OUT/$1.png" -fuzz 12% -fill black +opaque "$2" -fill white -o
 colour_wait() {   # NAME COLOUR SECONDS: until the colour fills most of the screen (> 50%), the last shot as NAME
 	local i=0; while [ $i -lt $(($3 * 2)) ]; do shot "$1"; awk -v f="$(frac "$1" "$2")" 'BEGIN { exit !(f > 0.5) }' && return 0; timeout 0.5 tail -f /dev/null; i=$((i+1)); done; return 1; }
 bigwin() { for w in $(xdotool search --onlyvisible --name '' 2>/dev/null); do eval "$(xdotool getwindowgeometry --shell $w 2>/dev/null)"; echo "$((WIDTH * HEIGHT)) $w"; done | sort -n | tail -1 | cut -d' ' -f2; }
-upprocs() { pgrep -u rudolf -a | grep -v 'dbus-daemon' ; }
+upprocs() { pgrep -u rudolf -a | grep -v 'dbus-daemon\|systemd --user\|(sd-pam)' ; }   # (su's PAM starts systemd --user)
+desc() {   # NAME: the screenshot described in the log, 8x4 cells of colour, and where its pixels are
+	note "$1.png: $(convert "$OUT/$1.png" -scale '8x4!' -depth 8 txt:- 2>/dev/null | sed -n 's/.*#\([0-9A-F]\{6\}\).*/\1/p' | tr '\n' ' ')"; }
 gone() { w8 '[ -z "$(upprocs)" ]' ${1:-40}; }
 key() { local w=$(bigwin); [ -n "$w" ] && xdotool windowfocus --sync $w 2>/dev/null; xdotool keydown $1; }
 unkey() { xdotool keyup $1; }
@@ -105,37 +107,39 @@ screen_full() {   # NAME: the emulator's window covers the screen and asks for f
 
 # ---- Nintendo 64: Rosalie's Mupen GUI
 M=com.github.Rosalie241.RMG; MC=/home/rudolf/.var/app/$M
+note "RMG's options: $(su -s /bin/sh rudolf -c "set -a; . /run/rudolf/session.env; set +a; timeout 20 flatpak run $M --help" 2>&1 | grep -E '^ +-' | tr -s ' ' | tr '\n' '|')"
+# first as 1.6.1's rudolfd started it (its native_game_args, by hand: 1.6.1's native/run never got this far), fresh
+su -s /bin/sh rudolf -c "set -a; . /run/rudolf/session.env; set +a; exec flatpak run --filesystem=/home/rudolf/Games:ro $M --fullscreen --nogui \"$G/N64/RudolfN64.z64\"" > $T/n64-161.log 2>&1 &
+colour_wait n64-161 "$RED" 90; c=$?; desc n64-161
+ok "2. N64 .z64 with 1.6.1's arguments: the test game's red fills the screen within 90 s (its boot code, video, RDP ran)" "$([ $c = 0 ] && echo 1)" "red: $(frac n64-161 "$RED") $(tail -20 $T/n64-161.log)"
+fs=$(screen_full n64-161); ok "...full screen (--fullscreen: the window is the screen's size)" "$(echo "$fs" | grep -q '^1280x720' && echo 1)" "$fs"
+key x; colour_wait n64-161-x "$GREEN" 6; fx=$?; unkey x; key Shift_L; colour_wait n64-161-shift "$GREEN" 4; fsh=$?; unkey Shift_L
+fp=1; [ -n "$PADP" ] && { pad down A; colour_wait n64-161-pad "$GREEN" 6; fp=$?; pad up A; }
+note "N64 as 1.6.1 started it, a fresh install (no controller set up in its settings): keyboard X $([ $fx = 0 ] && echo works || echo 'does nothing'), Left Shift $([ $fsh = 0 ] && echo works || echo 'does nothing'), the gamepad's A $([ $fp = 0 ] && echo works || echo 'does nothing')"
+grep -n 'Input Plugin Profile' $MC/config/RMG/mupen64plus.cfg > $T/prof 2>/dev/null; note "...its settings' controller profiles: $(cat $T/prof | tr '\n' ' ')"
+key Escape; timeout 0.3 tail -f /dev/null; unkey Escape; timeout 6 tail -f /dev/null; shot n64-161-esc; desc n64-161-esc
+note "...after Esc (6 s): $(upprocs | grep -c 'RMG') RMG processes left$(upprocs | grep -q RMG && echo ' (an empty window, no menus: --nogui)')"
+pkill -u rudolf -f 'RMG|flatpak|bwrap' 2>/dev/null; gone 30; pkill -9 -u rudolf -f 'RMG|flatpak|bwrap' 2>/dev/null; gone 10
+cp $MC/config/RMG/mupen64plus.cfg "$OUT/rmg-fresh.cfg" 2>/dev/null; find $MC -maxdepth 5 > "$OUT/rmg-files.txt" 2>/dev/null
+# then by this tree's rudolfd: native/run (controller 1 set up by rmg-controller.sh, --quit-after-emulation)
 r=$(run $M $G/N64/RudolfN64.z64)
-ok "2. N64 .z64: native/run starts Rosalie's Mupen GUI with it" "$(echo "$r" | grep -q '"ok":true' && echo 1)" "$r"
-colour_wait n64-z64 "$RED" 90; c=$?
-ok "...and the test game's red fills the screen within 90 s (the game runs: its boot code, video, RDP)" "$([ $c = 0 ] && echo 1)" "red: $(frac n64-z64 "$RED") $(tail -20 /run/rudolf/native.log)"
-pgrep -u rudolf -a > "$OUT/n64-processes.txt"; cp /run/rudolf/native.log "$OUT/n64-z64.log"
-fs=$(screen_full n64-z64)
-ok "...full screen (--fullscreen: the window is the screen's size)" "$(echo "$fs" | grep -q '^1280x720' && echo 1)" "$fs"
-# a fresh install: is a controller there before its settings are opened?
-key x; colour_wait n64-fresh-x "$GREEN" 6; fx=$?; unkey x; key Shift_L; colour_wait n64-fresh-shift "$GREEN" 4; fsh=$?; unkey Shift_L
-fp=1; [ -n "$PADP" ] && { pad down A; colour_wait n64-fresh-pad "$GREEN" 6; fp=$?; pad up A; }
-note "N64, a fresh install (no controller set up in its settings): keyboard X $([ $fx = 0 ] && echo works || echo 'does nothing'), Left Shift $([ $fsh = 0 ] && echo works || echo 'does nothing'), the gamepad's A $([ $fp = 0 ] && echo works || echo 'does nothing')"
-cp $MC/config/RMG/mupen64plus.cfg "$OUT/rmg-fresh.cfg" 2>/dev/null; find $MC -maxdepth 4 > "$OUT/rmg-files.txt" 2>/dev/null
-# its own way out: Esc ends the game (Emu says so)
-key Escape; timeout 0.3 tail -f /dev/null; unkey Escape; timeout 6 tail -f /dev/null; shot n64-after-esc
-left=$(upprocs | grep -v 'dbus' | head -5); s=$(api "native/status?id=$M")
-ok "...Esc ends the game and closes the emulator (nothing of it left, native/status not running)" "$([ -z "$left" ] && echo "$s" | grep -q '"running":false' && echo 1)" "left: $left; $s"
+ok "3. N64 .z64: native/run starts Rosalie's Mupen GUI with it (it answers: 1.6.1's rudolfd gave an empty answer, freeing a buffer it did not own)" "$(echo "$r" | grep -q '"ok":true' && echo 1)" "$r $(tail -3 $T/rd.log)"
+colour_wait n64-z64 "$RED" 90; c=$?; desc n64-z64; cp /run/rudolf/native.log "$OUT/n64-z64.log"
+ok "...and the test game's red fills the screen within 90 s" "$([ $c = 0 ] && echo 1)" "red: $(frac n64-z64 "$RED") $(tail -20 /run/rudolf/native.log)"
+pgrep -u rudolf -a > "$OUT/n64-processes.txt"
+ok "...controller 1 set up once in its settings (rmg-controller.sh)" "$(grep -q "Input Plugin Profile 0" $MC/config/RMG/mupen64plus.cfg 2>/dev/null && echo 1)" "$(cat $T/prof)"
+inputs n64 RMG x Return
+key Escape; timeout 0.3 tail -f /dev/null; unkey Escape; gone 30; s=$(api "native/status?id=$M")
+ok "...Esc ends the game and closes the emulator (nothing of it left, native/status not running)" "$([ -z "$(upprocs)" ] && echo "$s" | grep -q '"running":false' && echo 1)" "left: $(upprocs | head -5); $s"
 EEP=$(find $MC -iname '*.eep' 2>/dev/null | head -1)
 ok "...the game's EEPROM write is saved by the emulator (its own save folder): RUDOLF64" "$([ -n "$EEP" ] && head -c 8 "$EEP" | grep -q RUDOLF64 && echo 1)" "$(find $MC -ipath '*save*' 2>/dev/null | head)"
-[ -n "$EEP" ] && note "N64 EEPROM save: ${EEP#/home/rudolf/}"
+[ -n "$EEP" ] && note "N64 EEPROM save: ~/${EEP#/home/rudolf/}"
 r=$(stop $M); gone 40
-ok "...and native/stop (Emu's way of stopping it) leaves no process of the desktop's user" "$([ -z "$(upprocs)" ] && echo 1)" "$r $(upprocs)"
-# the controller as Emu sets it up (when a test above found none): then the buttons
-if [ ! -f $MC/config/RMG/mupen64plus.cfg ] || ! grep -q 'Input Plugin Profile 0' $MC/config/RMG/mupen64plus.cfg; then
-	[ -x $SYS/root/usr/lib/rudolf/rmg-controller.sh ] && su -s /bin/sh rudolf -c "HOME=/home/rudolf $SYS/root/usr/lib/rudolf/rmg-controller.sh" && note "N64: rmg-controller.sh set up controller 1"
-fi
 cp $MC/config/RMG/mupen64plus.cfg "$OUT/rmg-after.cfg" 2>/dev/null
-for o in z64 n64 v64; do
-	r=$(run $M $G/N64/RudolfN64.$o); colour_wait n64-$o "$RED" 90; c=$?
-	ok "3. N64 .$o: the test game's red fills the screen" "$([ $c = 0 ] && echo 1)" "$r red: $(frac n64-$o "$RED") $(tail -10 /run/rudolf/native.log)"
-	[ $o = z64 ] && inputs n64 RMG x Return
-	r=$(stop $M); gone 40; ok "...native/stop: nothing left" "$([ -z "$(upprocs)" ] && echo 1)" "$r $(upprocs)"
+for o in n64 v64 z64; do
+	r=$(run $M $G/N64/RudolfN64.$o); colour_wait n64-$o "$RED" 90; c=$?; desc n64-$o
+	ok "4. N64 .$o: the test game's red fills the screen" "$([ $c = 0 ] && echo 1)" "$r red: $(frac n64-$o "$RED") $(tail -10 /run/rudolf/native.log)"
+	r=$(stop $M); gone 40; ok "...native/stop (Emu's way of stopping it): nothing of it left" "$([ -z "$(upprocs)" ] && echo 1)" "$r $(upprocs)"
 done
 
 # ---- Dreamcast: Flycast (its HLE BIOS: no BIOS files anywhere)
@@ -144,7 +148,7 @@ n=0; for f in RudolfDC/RudolfDC.gdi RudolfDC.cdi RudolfDC.chd; do
 	[ $f = RudolfDC.chd ] && [ $HAVECHD = 0 ] && continue
 	x=${f##*.}; r=$(run $FC $G/DC/$f)
 	ok "4. Dreamcast .$x: native/run starts Flycast with it" "$(echo "$r" | grep -q '"ok":true' && echo 1)" "$r"
-	colour_wait dc-$x "$RED" 90; c=$?; cp /run/rudolf/native.log "$OUT/dc-$x.log"
+	colour_wait dc-$x "$RED" 90; c=$?; cp /run/rudolf/native.log "$OUT/dc-$x.log"; desc dc-$x
 	ok "...and the test disc's red fills the screen within 90 s (the HLE BIOS booted its IP.BIN)" "$([ $c = 0 ] && echo 1)" "red: $(frac dc-$x "$RED") $(tail -20 /run/rudolf/native.log)"
 	if [ $x = gdi ]; then pgrep -u rudolf -a > "$OUT/dc-processes.txt"; fs=$(screen_full dc-$x)
 		ok "...full screen (the window is the screen's size)" "$(echo "$fs" | grep -q '^1280x720' && echo 1)" "$fs"
@@ -155,7 +159,9 @@ n=0; for f in RudolfDC/RudolfDC.gdi RudolfDC.cdi RudolfDC.chd; do
 	r=$(stop $FC); gone 40; ok "...native/stop: nothing left" "$([ -z "$(upprocs)" ] && echo 1)" "$r $(upprocs)"
 	s=$(api "native/status?id=$FC"); ok "...native/status: not running" "$(echo "$s" | grep -q '"running":false' && echo 1)" "$s"
 done
+note "Flycast's settings: $(grep -v '^ *$' $FCD/config/flycast/emu.cfg 2>/dev/null | grep -i -E 'fullscreen|cable|region|bios|hle|width|height' | tr '\n' ' ')"
 note "Dreamcast: Flycast's files: $(cd /home/rudolf && find .var/app/$FC -maxdepth 4 -type f 2>/dev/null | tr '\n' ' ')"
 ls -la $FCD/data/flycast 2>/dev/null > "$OUT/flycast-data.txt"
 ok "5. no Dreamcast BIOS files anywhere in Flycast's folders (its HLE BIOS played the disc)" "$(find $FCD -iname 'dc_boot*' 2>/dev/null | grep -q . && echo 0 || echo 1)" "$(find $FCD -iname 'dc_*')"
+echo "---- notes"; cat "$OUT/notes.txt"; [ $F = 0 ] || { echo "---- rudolfd's log"; tail -20 $T/rd.log; echo "---- the emulators' log"; tail -40 /run/rudolf/native.log; }
 echo "$((N-F))/$N passed"; [ $F = 0 ]

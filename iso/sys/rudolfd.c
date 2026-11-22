@@ -1950,7 +1950,9 @@ static const char *const NATIVE_APPS[] = { "org.vinegarhq.Sober", "org.flycast.F
 static const char *native_game_args(const char *id)
 {
 	if (!strcmp(id, "org.flycast.Flycast")) return "--filesystem=/home/rudolf/Games:ro org.flycast.Flycast";
-	if (!strcmp(id, "com.github.Rosalie241.RMG")) return "--filesystem=/home/rudolf/Games:ro com.github.Rosalie241.RMG --fullscreen --nogui";
+	/* (1.6.2) --quit-after-emulation: Esc (its end of the game) closes it too; without, an empty window stayed open full
+	   screen, with neither its menus (--nogui) nor a way back but Super+Esc */
+	if (!strcmp(id, "com.github.Rosalie241.RMG")) return "--filesystem=/home/rudolf/Games:ro com.github.Rosalie241.RMG --fullscreen --nogui --quit-after-emulation";
 	return NULL;
 }
 /* a game for it: a file in Emu's library (/home/rudolf/Games), by a plain path (no shell characters), really there */
@@ -2024,16 +2026,19 @@ static void api_native(struct req *r, const char *what)
 	if (!strcmp(what, "run")) {
 		/* started as the desktop user with the session's display and buses; rudolf-display shows it full screen */
 		/* (1.6.1) an emulator with a game from Emu's library: file=PATH */
-		char *game = qparam(r->query, "file"); char what2[800];
+		/* (1.6.2) qparam's value is one of its own buffers: it was freed here, which aborted the request (glibc's
+		   "free(): invalid pointer"), so no N64 or Dreamcast game ever started */
+		const char *game = qparam(r->query, "file"); char what2[800]; const char *pre = "";
 		if (game && *game) {
 			const char *ga = native_game_args(id);
-			if (!ga || !native_game_ok(game)) { free(game); reply_err(r->fd, 400, "that game cannot be opened (it must be in the game library)"); return; }
+			if (!ga || !native_game_ok(game)) { reply_err(r->fd, 400, "that game cannot be opened (it must be in the game library)"); return; }
 			snprintf(what2, sizeof what2, "%s \"%s\"", ga, game);
+			/* (1.6.2) Rosalie's Mupen GUI: controller 1 set up once (a fresh install has none: rmg-controller.sh) */
+			if (!strcmp(id, "com.github.Rosalie241.RMG") && !access("/usr/lib/rudolf/rmg-controller.sh", X_OK)) pre = "/usr/lib/rudolf/rmg-controller.sh; ";
 		} else snprintf(what2, sizeof what2, "%s", id);
-		free(game);
 		{ char au[32], ae[160]; au_app_user(au, sizeof au, ae, sizeof ae);   /* 1.5.9 (15.3) */
-		  snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh %s -c 'set -a; . %s; set +a; exec flatpak run %s' "
-			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", au, ae, what2); }
+		  snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh %s -c 'set -a; . %s; set +a; %sexec flatpak run %s' "
+			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", au, ae, pre, what2); }
 		if (native_pid()) { write_str(RUN "/wm", "game"); reply_ok(r->fd, "already running"); return; }
 		{ char chk[160]; snprintf(chk, sizeof chk, "flatpak info --system %s >/dev/null 2>&1", id);
 		  if (run(chk)) { reply_err(r->fd, 404, "this app is not installed"); return; } }
