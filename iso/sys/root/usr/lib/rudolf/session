@@ -316,7 +316,8 @@ shell_fix() {
 # 1.5.9 (docs/plan-1.5.9.md 12.3c): Oracle on the native desktop runs in Rudolf's own Chromium with the shell's real tabs,
 # as on Standard: rudolf-native starts it (rudolf-launch --oracle) with what is written here, Standard's profile and flags
 # (the shell's ID, then the program and its arguments, one a line). Not without the shell or Chromium: then Oracle's
-# WebKit window, as before.
+# WebKit window, as before. 1.6.1: written on Standard too, for its encrypted Oracle (rudolfd's orawin, which gives its own
+# --user-data-dir and --class).
 oracle_chrome() {
 	rm -f /run/rudolf/oracle-chrome
 	[ ${#SHELLID} = 56 ] && [ -n "$SHELLINST" ] && [ -x /opt/chromium/chrome ] && [ -x /usr/bin/rudolf-launch ] || return 0
@@ -479,6 +480,10 @@ while :; do
 		su -s /bin/sh rudolf -c "exec env $VLOG /usr/bin/rudolf-webkit --rudolf-kiosk --size=${SCW}x$SCH $WKSOFT $START" >>/run/rudolf/webkit-desktop.log 2>&1 &
 	else
 	webkey_start; shell_fix
+	# 1.6.1 (the owner's photo of 2026-11-21: "Oracle could not open: Oracle needs Rudolf's Chromium with its shell"): Standard's
+	# encrypted Oracle (rudolfd's orawin, "Keep my websites encrypted with my account" on, 1.6.0 Part 22) starts from
+	# oracle-chrome too, which was written on Native only. Its key store and shell fix are the ones just done (once a start).
+	oracle_chrome
 	su -s /bin/sh rudolf -c "exec $LAUNCH /opt/chromium/chrome --rudolf-kiosk --class=RudolfDesktop --kiosk --start-fullscreen \
 		--window-position=0,0 --window-size=$W,$H --user-data-dir=$PROFILE \
 		--no-first-run --no-default-browser-check --noerrdialogs --disable-infobars \
