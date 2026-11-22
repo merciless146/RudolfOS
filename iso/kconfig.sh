@@ -141,8 +141,10 @@ n TCG_TPM2_HMAC
 # else runs (fixes such as SRSO's "IBPB-extending microcode not applied"). UCODE_DIR: a folder holding
 # amd-ucode/ (the pinned files of firmware-extra.txt); without it the kernel has none, as before.
 y MICROCODE MICROCODE_AMD MICROCODE_INTEL
-# 2.0 (7.3): Intel TSX stays off (TSX Async Abort), as 6.18's default had it; 7.3 changed the default. Checked below
+# 2.0 (7.3): Intel TSX stays off (TSX Async Abort), as 6.18's default had it; 7.3's default is AUTO (on where the processor
+# says it is not affected). Checked below
 y X86_INTEL_TSX_MODE_OFF
+n X86_INTEL_TSX_MODE_AUTO X86_INTEL_TSX_MODE_ON
 if [ -n "$UCODE_DIR" ] && [ -d "$UCODE_DIR/amd-ucode" ]; then
 	$C --set-str EXTRA_FIRMWARE "$(cd "$UCODE_DIR" && ls amd-ucode/microcode_amd*.bin | tr '\n' ' ' | sed 's/ $//')"
 	$C --set-str EXTRA_FIRMWARE_DIR "$UCODE_DIR"

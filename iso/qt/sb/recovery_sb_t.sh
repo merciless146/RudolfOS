@@ -20,8 +20,14 @@ KERNEL=$(realpath "$KERNEL"); W=$(mktemp -d /tmp/recsb.XXXXXX); QP=""
 trap '[ -n "$QP" ] && kill $QP 2>/dev/null; [ -n "$RECSB_KEEP" ] || rm -rf "$W"' EXIT
 P=0; F=0; ok() { if [ "$2" = 0 ]; then P=$((P+1)); echo "PASS $1"; else F=$((F+1)); echo "FAIL $1 - $(echo "$3" | tail -c 1500)"; fi; }
 # ---- TEST keys (deleted with W): a Secure Boot key and certificate, a release key
+# (2.0, the kryptonite branch: RECSB_TEST_KEYDIR, a folder with a TEST sb.key and sb.crt the kernel under test was built
+#  to trust (a test build's kernel: .github/workflows/kryptonite-kernel.yml makes them in its job); never the real key)
+if [ -n "$RECSB_TEST_KEYDIR" ]; then cp "$RECSB_TEST_KEYDIR/sb.key" "$RECSB_TEST_KEYDIR/sb.crt" $W/ || { echo "FAIL test key"; exit 1; }
+	openssl x509 -in $W/sb.crt -noout -subject | grep -q TEST || { echo "FAIL RECSB_TEST_KEYDIR: not a TEST certificate"; exit 1; }
+else
 (cd $W && openssl req -new -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=Rudolf OS TEST Secure Boot/" -keyout sb.key -out sb.crt \
 	-addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=codeSigning" >/dev/null 2>&1) || { echo "FAIL test key"; exit 1; }
+fi
 python3 - $W <<'PY' || { echo "FAIL release key"; exit 1; }
 import sys, base64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
