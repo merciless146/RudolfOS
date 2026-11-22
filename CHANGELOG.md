@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.2.md Parts 32 to 34): a VPN for the whole computer (WireGuard, then OpenVPN; an
+  administrator adds them, everyone may turn them on and off unless told otherwise; an optional kill switch), scanners
+  (driverless first, with a Scan app) and network shares (Windows and NAS shares in File Explorer).
 - Changed: a new installation now starts with the Native desktop (the owner's decision, 2026-11-22). Chromium and Lite stay
   in Settings › System health › Desktop engine; if Native does not start, Chromium is used. A computer updated from 1.6.1
   keeps the desktop it had.
