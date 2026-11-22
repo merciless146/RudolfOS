@@ -34,8 +34,14 @@ finishing, it updates that file. Neither this file nor the handoff ever holds a 
 - Other sessions may be working at the same time: check open PRs and branches first; never redo their work or push to
   their branches (a push that is rejected means someone else pushed: fetch and look, never force). When `main` moves and a
   PR conflicts, merge `main` in: CHANGELOG keeps both sides; rebuild the page; regenerate the generated lists.
-- **2.0 (Rudolf Kryptonite)** work goes to the long-lived `kryptonite` branch (PRs with base `kryptonite`), held there until
-  2.0 development starts. Nothing of it reaches `main`, the 1.6.x releases or the update channels.
+- **Two editions, one repository** (the owner, 2026-11-22): **Rudolf OS** (1.6.x and on: the 6.18 longterm kernel and X11)
+  is the main version, the home and office edition; **Rudolf Kryptonite** (2.0: the newest kernel and Wayland) is the
+  gaming and mobile edition. Both are built from `main`: Kryptonite's additions go into `main` behind build switches that
+  keep them out of Rudolf OS's builds, so nothing of Kryptonite reaches Rudolf OS's releases or its update channels, and
+  Kryptonite has its own channel. Work that cannot share `main` yet (today the 7.3 kernel, while its crash after an
+  update's handover is understood) goes to the `kryptonite` branch (PRs with base `kryptonite`) and moves into `main`
+  behind its switch once it is sound. Mark Kryptonite's work as such in its plan (docs/plan-2.0.md) and PR. No separate
+  repository.
 - When a release is promoted to stable, it is published with the ISO, the boot files and the install guide
   (INSTALL.TXT, README.TXT; `rudolf-release.yml` does this).
 - **Recovery Mode always boots the official build's most recent stable version.**

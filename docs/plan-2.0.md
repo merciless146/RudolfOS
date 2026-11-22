@@ -314,3 +314,228 @@ docs/plan-oracle.md: item 4 (a password manager for websites, in the account's k
 suggested for 2.0, and item 5 (ad and tracker blocking) if it is not done in 1.6.1. Item 6 (Oracle's
 extensions, from a reviewed list in the Library, signed with its key) is suggested for 2.0 too; its first stage could
 start in 1.6.1. The owner decides.
+
+## Moved from 1.6.2: the mobile and gaming parts (added on 2026-11-22)
+Moved from docs/plan-1.6.2.md on 2026-11-22: Rudolf Kryptonite is the gaming and mobile edition ("Two editions, one
+repository", above), and the owner said "Yes" to moving these parts here. Their text is as it stood in the 1.6.2 plan,
+with numbers kept so references still point the right way. They are Kryptonite's, built from main behind its build
+switches, or on the `kryptonite` branch while they cannot share main.
+
+**What they need:**
+- **The MiFi 7730L with an active SIM:** Part 8, then Part 7 (T-Mobile-network prepaid SIM).
+- **The first phone (an ARM64 phone; the PinePhone Pro through Tow-Boot) or an ARM64 computer with UEFI:** Part 4,
+  Part 5 (eSIM and 5G hardware), Part 6's items measured on it, and 9b (the first ARM64 release).
+- **The Vivobook and the Asus desktop "RuckXTrauma", with the owner:** 19b (gaming measured).
+
+**Order:** Part 8 with the MiFi, then Part 7. Then the phone: Part 4, Part 6's items measured, 9b, and Part 5 when the
+hardware is there. 19b with the owner whenever games are measured, on Kryptonite's kernel too.
+
+#### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
+The phone's hardware made to work, on today's native desktop; its interface is 2.0's (stage 2).
+- **One well-supported phone first:** a used PinePhone Pro (discontinued in August 2025, but its hardware is the best
+  supported by mainline Linux and its modem, the Quectel EG25-G, has working VoLTE: Part 7), with the OnePlus 6/6T
+  after it (its VoLTE does not work yet in postmarketOS). Bought and chosen by the owner.
+- **Starting:** the ARM64 release from 1.6.0's cellular and ARM64 plan (stage A in QEMU, stage B's first ARM64
+  computer), on the phone through its UEFI-capable boot firmware (Tow-Boot or U-Boot with UEFI on the PinePhone Pro),
+  so it starts as Rudolf OS starts on a computer: the boot menu, Secure Boot where the firmware allows, recovery. The
+  kernel: Rudolf's own build with the phone's drivers (the device tree and options postmarketOS and mainline Linux use
+  for it, written into kconfig-arm64.sh), never a vendor kernel.
+- **The modem:** mobile data, texts and picture messages (1.6.0's Messages), **voice calls** (a call each way, hold,
+  two calls, DTMF tones for menus), and **emergency calls**, which must be checked on each device and carrier before
+  they are offered (Part 7 says how). A minimal call screen in today's desktop (answer, end, mute, speaker, keypad),
+  enough to prove calls; the phone's real dialler is stage 2's.
+- **The call's sound:** the earpiece, the speaker and a headset, with the modem's audio routed (ALSA UCM for the
+  phone's sound card), the microphone, no echo.
+- **Power:** sleep with the modem waking the phone for a call or a text (and the alarm clock), the battery's level,
+  charging and the charger's limit, the screen's brightness, the power key.
+- **The rest of the hardware, at driver level:** the touch screen, Wi-Fi, Bluetooth, the cameras detected by
+  libcamera, the sensors (accelerometer, proximity, light) and GPS readable, vibration. Their apps and behaviour
+  (auto-rotation, the screen off at the ear, a Camera app) are stage 2's.
+- **Today's desktop on a phone screen:** Native on X11, scaled for the screen, the on-screen keyboard (1.6.0's), touch
+  mode: usable for testing, not meant to be a phone's interface.
+- **Done when:** the phone starts Rudolf OS from its storage, makes and takes a call on a T-Mobile-network SIM, sends
+  and receives texts, sleeps and wakes for a call, and its standby battery drain is measured (Part 6), all written in
+  docs/testing.md.
+- **On 1.6's kernel and X11 (2026-11-20):** stage 1 is built on 1.6.x (the 6.18 LTS, X11, ARM64); the phone's own build
+  and interface move to 2.0's "next" channel (the newest kernel, Wayland). A phone with 8 GB for the full desktop and
+  Wayland testing: the OnePlus 6T (8 GB), Snapdragon 845 as the OnePlus 6, started through U-Boot's UEFI from its boot
+  partition; its VoLTE (needed for calls on T-Mobile) does not work yet, so the PinePhone Pro stays the phone for calls.
+  The Fairphone 5 (8 GB) to watch as its mainline support matures. Phones running on Android's drivers (Furi Labs FLX1s+,
+  Volla Phone Quintus) do not fit "never a vendor kernel".
+- Nothing on a phone is flashed or unlocked without the owner's decision.
+
+#### 5. eSIM and 5G (from 1.6.0 "Not in 1.6.0")
+- eSIM provisioning (downloading a carrier's eSIM profile);
+- 5G standalone features beyond what the modem does by itself.
+
+1.6.0 left these without a release; they are here so they are not lost. They need hardware with an eSIM and a 5G
+modem.
+
+#### 6. Closing the gap with Android (added on 2026-11-15)
+Asked for on 2026-11-15, after comparing 1.6.1 with Android: the items that decide whether someone could carry a
+Rudolf phone every day. Each is measured on the first phone (Part 4) and compared with the same phone on Android
+where it can be. **Split (owner, 2026-11-15):** 1.6.1 does what the hardware decides (marked *1.6.1* below: the
+measurements, calls with the carrier, the modem's sleep); the parts people use every day are 2.0's phone build
+(marked *2.0*), since they are built on Wayland and the native apps.
+- *2.0, measured in 1.6.1.* **Android apps through Waydroid, made dependable:** set up from Settings, apps from F-Droid and an app store the
+  owner chooses, their windows and notifications in Rudolf's own; a list of apps that work and that refuse (banking
+  apps that check the device), kept in the docs. Measured on the Vivobook first (docs/plan-1.6.0.md: "Waydroid
+  measured on the Vivobook with Lite before it is offered").
+- *1.6.1 measured and the modem's sleep; the rest 2.0.* **Battery life:** the phone's idle and screen-on drain measured, then: the modem, Wi-Fi and the screen put to sleep
+  when not needed, suspend with the modem waking it for a call or a text, apps in the background held back as
+  Android's Doze does; targets set from the measurements, shown in Settings › Battery.
+- *1.6.1.* **Calls with the carrier:** voice calls over 4G (VoLTE) where the modem and carrier allow, Wi-Fi calling if the
+  carrier offers it, a call to a real phone and an emergency-call check on each device (Part 4), the call's sound
+  through the earpiece, speaker and a headset.
+- *2.0 (the cameras detected in 1.6.1).* **The camera:** photos and video with the phone's cameras (libcamera), in a Camera app; quality compared with
+  Android's on the same phone.
+- *2.0 (readable in 1.6.1).* **The phone's sensors and hardware:** auto-rotation, proximity (the screen off at the ear), brightness, GPS for maps
+  and weather, the fingerprint reader where the phone has one, vibration.
+- *2.0.* **Messaging apps people need:** what works through Waydroid or the web (Signal, WhatsApp Web), and what does not,
+  said plainly in the docs.
+- **Tests:** each measured and written in docs/testing.md; the battery and call results on the owner's phone and
+  carrier.
+
+#### 7. T-Mobile and the prepaid services on its network (added on 2026-11-15)
+Asked for on 2026-11-15: "Plan for T-Mobile and adjacent prepaid service coverage in 1.6.1." The US has no 3G left,
+so calls need VoLTE, and carriers decide which phones get it. T-Mobile's network is the friendliest to Linux phones
+(reports in the Pine64 wiki's carrier list and forum, 2020 to 2024); AT&T and Verizon are later.
+- **The carriers covered:** T-Mobile (postpaid and prepaid), Mint Mobile, Tello, US Mobile on its T-Mobile network,
+  Simple Mobile, Metro by T-Mobile, Ultra Mobile and Google Fi (data and calls; Fi's first activation needs an
+  Android phone and its picture messages do not work: said in Settings). The list is checked again before work
+  starts, since prepaid brands change networks.
+- **The first phone: the PinePhone Pro** (Part 4). Its modem (Quectel EG25-G) has working VoLTE; the OnePlus 6's VoLTE
+  does not work yet in postmarketOS (pmaports issue 1878), so it waits.
+- **Set up by itself:** Settings › Mobile network recognises the carrier from the SIM (its MCC/MNC and its name) and
+  fills in the APN exactly, letters' case included (US Mobile's "PWG" failed in lowercase on a PinePhone Pro; Simple
+  Mobile's is "Simple"), with the picture messages' settings (MMSC, proxy). The APNs come from the operators'
+  database 1.6.0 already ships, with Rudolf's own corrections for these carriers kept beside it.
+- **VoLTE turned on:** the modem's IMS/VoLTE set up for T-Mobile (its carrier profile on the EG25-G), checked after
+  every start and after a SIM change; Settings says whether calls go over 4G.
+- **Wi-Fi calling** where T-Mobile offers it on the phone (VoWiFi through the modem's IMS), else said plainly.
+- **Texts and picture messages:** SMS (1.6.0 Part 6) and MMS through the APN's MMSC, in the Messages app.
+- **Activation help:** what each carrier needs (activate online, the phone's IMEI given to the carrier, support asked
+  to turn VoLTE on for the line), written in the docs and linked from Settings when the SIM has no service.
+- **5G:** not on the PinePhone Pro (an LTE modem). T-Mobile's 5G is tested later with a 5G modem card in a laptop
+  (Part 5).
+- **Tests:** a prepaid Mint or Tello SIM first (cheap, no contract), then T-Mobile itself: data, a call each way, a
+  call to and from a landline, an emergency-call check as Part 4 says, texts and picture messages each way,
+  Wi-Fi calling, roaming off, the APN filled in from a fresh SIM, and a call during a weak signal. Results in
+  docs/testing.md, with the carrier and date. A host test of the APN table (each carrier's MCC/MNC and name gives the
+  right APN, case kept).
+- **Later:** AT&T's network (stricter about devices), then Verizon (approved phones only).
+
+#### 8. Mobile data and the SIM on real hardware (moved from 1.6.0 on 2026-11-16)
+Decided by the owner on 2026-11-16: "For now, move the mobile/SIM testing to 1.6.1." 1.6.0 ships the cellular work
+proven without hardware (its stage A: ModemManager, Settings › Mobile network, the connection and failover, data and
+the monthly limit, the taskbar's signal, Messages, all with host, browser and QEMU tests against a stand-in modem);
+what needs a real modem and SIM is checked here, before 1.6.1's phone work relies on it. From docs/plan-1.6.0.md's
+stage B (items 1 to 3) and its release checks:
+- **The MiFi 7730L** with an active SIM (the owner's choice; the HP desktop user's USB stick only if it is lent again):
+  found in Settings › Network › Cellular modems (maker, model, SIM, operator), no "Invalid rule match" in
+  /run/rudolf/modem.log, the self-test's modem line; the SIM's PIN (never the PUK on a SIM someone needs); the APN filled
+  in (a prepaid T-Mobile-network SIM, Part 7); connected; Wi-Fi failover and back; IPv4 sites on an IPv6-only network
+  (the CLAT); data counted against the operator's own count; the 80 % notice and data off at 100 %; an update offered
+  on mobile data with its size; the bars and type against the device's own; the SIM taken out while running; unplugged
+  and plugged in again; sleep and wake (after 1.6.0's sleep fix for the Vivobook, CONFIG_AMD_PMC).
+- **Messages** to and from a real phone (Unicode, a long one, the delivery report), a sign-in code, the notice with
+  the desktop locked, kept across a restart and in the encrypted folder.
+- **Share this connection** with the MiFi's USB tethering as the uplink (1.5.9 Part 4, waiting since then for a data
+  plan).
+- **The FCC-unlock path** on a laptop with a WWAN card (a used ThinkPad with a Fibocom L850-GL or Quectel EM05-G).
+- Each checked on Standard and Native (the owner's rule), results in docs/testing.md with the carrier and date.
+
+#### 9b. The first ARM64 release (from 1.6.1 Part 9)
+- **ARM64 (1.6.0 Part 7 and its stage B item 4):** the first ARM64 release, after one ARM64 computer that starts with
+  UEFI (or the first phone, Part 4: the PinePhone Pro through Tow-Boot), its own update lists (beta/arm64/,
+  stable/arm64/), the update and recovery checks on it.
+
+
+#### 19b. Gaming measured (from 1.6.1 Part 19)
+The NVIDIA driver choice and the game mode are built in 1.6.1; measuring them needs the owner's computers.
+- **Measured:** the same games' frame rates and frame times on the open and NVIDIA drivers and with game mode on and
+  off, on the owner's Asus desktop (live from a stick, as Part 12) and the Vivobook.
+
+
+**The checklist is written (2026-11-21, branch game-checklist): below; the numbers are the owner's.** It follows the
+  NVIDIA driver PR (#544, branch nvidia-driver) and the game mode PR (#546, branch game-mode): run it once both are in a beta.
+
+##### 19b. The owner's checklist: games measured (the Asus desktop live from a stick, as Part 12, and the Vivobook)
+What is measured: the same games' frame rates and frame times on the open driver (NVK) and on NVIDIA's driver, each with
+game mode on and off, on the owner's **Asus desktop** (RuckXTrauma: its NVIDIA card must be GeForce 16 or newer for NVIDIA's
+driver to be offered), Rudolf OS running live from a USB stick (nothing on its disk changed), and with game mode on and off
+on the **Vivobook** (AMD graphics: no NVIDIA rows). Nothing here was measured by a session: no NVIDIA card or real game is
+reachable from CI.
+
+**Before (once).**
+1. The stick: made with Settings › Update and recovery › Make a stick, with its RUDOLFDATA partition (system extensions and
+   Steam's games are kept there; a stick without one cannot keep NVIDIA's driver). Start the Asus from it; Secure Boot as
+   it is on that computer (with Secure Boot on, the first start asks to enroll the Rudolf OS key: that is the firmware's
+   own list, the disk is not touched; or start with Secure Boot off for these tests).
+2. NVIDIA's driver: after the owner ran **Actions › System extensions › Run workflow** (release = the release's serial,
+   names = `nvidia-driver`), Settings › Update and recovery › System extensions › Install… › NVIDIA's graphics driver
+   (an administrator's password), then restart. Settings › Display › Graphics driver shows the card's name.
+3. The games, the same on both computers where they run (fill in): A ______ (a native Linux game in Steam),
+   B ______ (a Windows game through Proton, DirectX 11/12), C ______ (a Vulkan game or a built-in benchmark), D ______
+   (a browser game in Oracle, WebGL). Each with the same settings every time (resolution ____, quality ____, V-Sync **off**),
+   the same 2-minute scene or the game's own benchmark.
+4. Frame times: Steam (Flatpak) with MangoHud (`flatpak install flathub org.freedesktop.Platform.VulkanLayer.MangoHud`,
+   the game's launch options `MANGOHUD=1 MANGOHUD_CONFIG=autostart_log=1,log_duration=120 %command%`): each run leaves a
+   CSV in ~/.var/app/com.valvesoftware.Steam/ (its summary: average FPS, 1 % low, 0.1 % low). The browser game: Oracle's
+   own frame meter (F12 › Rendering › Frame rendering stats) or the game's counter, average only.
+5. Each line below: 3 runs, the median written; the computer on mains power; nothing else open (Oracle closed for A-C).
+
+**Each run, also look at (write "ok" or what happened):**
+- Game mode on: Settings › System health › Memory › Game mode says "On now" during the game (open it with the game
+  in the background, then go back); on the Vivobook, System health › Power and battery shows the energy preference
+  "performance" during the game and the usual one after; a notification sent during the game (a message, a reminder)
+  is held, and "While you were playing" comes once the game leaves full screen.
+- Game mode off (the same switch): none of that.
+- After each game is closed: Task Manager › System (the desktop's processor time is back), no slow desktop.
+- NVIDIA's driver: Task Manager › System › Graphics names NVIDIA's driver; once, start Recovery mode: it starts on the
+  open driver (the firmware's screen), and the next normal start is back on NVIDIA's.
+- Once, to see the switch back: with NVIDIA's driver chosen, remove the extension (System extensions › Remove) and
+  restart: that start is on the open driver, and a notification says it went back by itself and why.
+
+**The Asus desktop (RuckXTrauma), live from the stick.** CPU ______, memory ______, NVIDIA card ______ (its PCI ID from
+Settings › Display › Graphics driver ______), screen ______ Hz.
+
+| Game | Driver | Game mode | Average FPS | 1 % low FPS | 0.1 % low FPS | Frame time p99 (ms) | Notes (stutter, errors) |
+|---|---|---|---|---|---|---|---|
+| A | Open (NVK) | off | | | | | |
+| A | Open (NVK) | on | | | | | |
+| A | NVIDIA's | off | | | | | |
+| A | NVIDIA's | on | | | | | |
+| B | Open (NVK) | off | | | | | |
+| B | Open (NVK) | on | | | | | |
+| B | NVIDIA's | off | | | | | |
+| B | NVIDIA's | on | | | | | |
+| C | Open (NVK) | off | | | | | |
+| C | Open (NVK) | on | | | | | |
+| C | NVIDIA's | off | | | | | |
+| C | NVIDIA's | on | | | | | |
+| D | Open (NVK) | off | | | | | |
+| D | Open (NVK) | on | | | | | |
+| D | NVIDIA's | off | | | | | |
+| D | NVIDIA's | on | | | | | |
+
+Also on NVIDIA's driver, once: does DLSS (or its frame generation, GeForce 40 and newer) appear in B's or C's settings
+(Proton gives games NVIDIA's DLSS files: the extension carries them), and does ray tracing switch on? ______
+
+**The Vivobook (AMD graphics, amd_pstate).** The games that run on it (A, D, and B or C if they start):
+
+| Game | Game mode | Average FPS | 1 % low FPS | 0.1 % low FPS | Frame time p99 (ms) | Energy preference during the game | Notes |
+|---|---|---|---|---|---|---|---|
+| A | off | | | | | | |
+| A | on | | | | | | |
+| D | off | | | | | | |
+| D | on | | | | | | |
+| B or C | off | | | | | | |
+| B or C | on | | | | | | |
+
+**What decides.** NVIDIA's driver stays an option (never the default) if it starts and runs the games on the Asus; it is
+worth recommending in Settings only where it is clearly faster (more than 10 % average or 1 % low). Game mode stays on by
+default if "on" is never slower than "off" on either computer (within the runs' own spread); if the desktop's
+slowing behind a game ever makes the game itself stutter (a launcher or overlay in the desktop's group), say so: the
+weight (20) is one line in /usr/lib/rudolf/gamemode.
+
