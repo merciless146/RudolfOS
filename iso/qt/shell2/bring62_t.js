@@ -76,6 +76,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
       um:(o.querySelector('.brum')||{}).textContent||'',nt:(o.querySelector('.brnt')||{}).textContent||'',btn:[...o.querySelectorAll('.brr button')].map(x=>x.textContent),bhtml:o.querySelector('legend')?o.querySelector('legend').innerHTML:''}})()`);
   const until = async (pg, f, ms) => { const t = Date.now() + (ms || 8000); for (;;) { const d = await D(pg); if (d && f(d) || Date.now() > t) return d; await wait(200) } };
   const start = pg => pg.evaluate("window.__br=null;bringStep({name:'nvme0n1',model:'Old laptop disk',bytes:5.12e11}).then(v=>window.__br=v);0");
+  const brv = async (pg, v, ms) => { const t = Date.now() + (ms || 6000); for (;;) { const x = await pg.evaluate('window.__br'); if (x === v || Date.now() > t) return x === v; await wait(150) } };
   const click = (pg, sel) => pg.evaluate(`document.querySelector(${JSON.stringify(sel)}).click()`);
   async function flow(pg, tag) {
     reset(); await start(pg); let d = await until(pg, d => d.legends.length);
@@ -98,14 +99,14 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     ok(`${tag} 9. its progress, and a Stop button while it runs`, d && /600 of 2,445 files · 953\.67 MB of 3\.8 GB/.test(d.pt) && !/PROGRESS/.test(d.log) && d.btn.includes('Stop'), d);
     d = await until(pg, d => /Copied and checked/.test(d.msg));
     ok(`${tag} 10. done: copied and checked, Continue to install`, d && d.go == 'Continue to install' && /Copied and checked/.test(d.msg) && await pg.evaluate('window.__br') === null, d);
-    await click(pg, '.brgo'); await wait(300);
-    ok(`${tag} 11. ...then the installation goes on (the step answers yes)`, await pg.evaluate('window.__br') === true && !(await D(pg)));
+    await click(pg, '.brgo');
+    ok(`${tag} 11. ...then the installation goes on (the step answers yes)`, await brv(pg, true) && !(await D(pg)));
     // a cancelled copy: nothing erased, the installation does not go on
     reset(); M.slow = 1; await start(pg); await until(pg, d => d.opts.length > 1); await click(pg, '.brgo'); await until(pg, d => d.btn.includes('Stop'));
     await click(pg, '.brx'); d = await until(pg, d => /Nothing was erased/.test(d.msg)); M.slow = 0;
     ok(`${tag} 12. Stop: bring/cancel, "Nothing was erased", the choice offered again`, d && M.calls.includes('POST bring/cancel') && /Stopped\. Nothing was erased: the disk is as it was/.test(d.msg) && d.go == 'Copy and check', d);
-    await click(pg, '.brx'); await wait(400);
-    ok(`${tag} 13. ...Cancel: the installation does not go on, the old disk closed`, await pg.evaluate('window.__br') === false && M.calls.some(c => /^POST bring\/close\?disk=nvme0n1/.test(c)));
+    await click(pg, '.brx');
+    ok(`${tag} 13. ...Cancel: the installation does not go on, the old disk closed`, await brv(pg, false) && M.calls.some(c => /^POST bring\/close\?disk=nvme0n1/.test(c)));
     // a drive that fills up, then the next one: the same folder and the same selection
     reset(); M.copyEnd = 28; await start(pg); await until(pg, d => d.opts.length > 1); await click(pg, '.brgo'); d = await until(pg, d => /drive is full/.test(d.msg));
     const b1 = M.bodies[0] || '';
@@ -120,15 +121,15 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
     reset(); await start(pg); await until(pg, d => d.legends.length);
     await pg.evaluate("document.querySelectorAll('.brmd')[1].click()"); d = await D(pg);
     ok(`${tag} 16. erase without keeping chosen: the button says so`, d && d.go == 'Erase without keeping', d && d.go);
-    await click(pg, '.brgo'); await wait(500);
-    ok(`${tag} 17. ...bring/decide?what=erase, then the installation goes on`, M.calls.some(c => /^POST bring\/decide\?disk=nvme0n1&what=erase$/.test(c)) && await pg.evaluate('window.__br') === true);
+    await click(pg, '.brgo');
+    ok(`${tag} 17. ...bring/decide?what=erase, then the installation goes on`, await brv(pg, true) && M.calls.some(c => /^POST bring\/decide\?disk=nvme0n1&what=erase$/.test(c)));
     // nothing on the disk: straight on
-    reset(); M.result = {ok: true, disk: 'nvme0n1', found: false, total: 0, systems: [], locked: []}; await start(pg); await wait(2500);
-    ok(`${tag} 18. a disk with no other system: the installation goes straight on`, await pg.evaluate('window.__br') === true && !(await D(pg)));
+    reset(); M.result = {ok: true, disk: 'nvme0n1', found: false, total: 0, systems: [], locked: []}; await start(pg);
+    ok(`${tag} 18. a disk with no other system: the installation goes straight on`, await brv(pg, true, 10000) && !(await D(pg)));
     // Bring in files from the old computer (Settings › Update and recovery), the account keeping its files on the disk
-    reset(); await pg.evaluate("USER.disk=true;HD.acct=uid();settings('upd')"); await wait(1500);
+    reset(); await pg.evaluate("USER.disk=true;HD.acct=uid();settings('upd')"); await pg.waitForSelector('.brin .brlook', {timeout: 10000}).catch(() => {});
     const has = await pg.evaluate("!!document.querySelector('.brin .brlook')");
-    await click(pg, '.brin .brlook'); await wait(800);
+    await click(pg, '.brin .brlook'); await pg.waitForSelector('.brin .brset', {timeout: 8000}).catch(() => {});
     const sets = await pg.evaluate("[...document.querySelectorAll('.brin .brset')].map(f=>f.textContent)");
     ok(`${tag} 19. Settings: Bring in files from the old computer, the copies on the drives (who, how much; the account's own name first)`, has && sets.length == 1 && /Ann <b>'s files — 3\.0 GB \(2,443 files\)/.test(sets[0]) && /Bob's files/.test(sets[0]), sets);
     await pg.evaluate("[...document.querySelectorAll('.brin .brpp')][0].click()"); await click(pg, '.brin .brgoin');
