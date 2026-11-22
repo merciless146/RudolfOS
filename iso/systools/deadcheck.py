@@ -5,7 +5,8 @@ host test. Exits 1 and names what it found:
     one, build19.py's patches or the base page base_v24.html);
   - a C program in sys/ with an unused static function (gcc -Wunused-function);
   - build output committed into sys/root (such as Chromium's _metadata cache of an extension);
-  - a program listed in systools/base-remove.txt that mkrootfs.sh still copies.
+  - a program listed in systools/base-remove.txt that mkrootfs.sh still copies;
+  - a script from another site in the desktop's page or an app window (noremote.py, 1.6.2).
 GPL-2.0-or-later."""
 import glob, os, re, subprocess, sys
 
@@ -65,6 +66,10 @@ for p in rm:
 import subprocess as _sp
 _h = _sp.run([sys.executable, os.path.join(ISO, 'systools', 'htmlsinks.py')], capture_output=True, text=True)
 if _h.returncode: bad.extend(l for l in _h.stdout.splitlines() if 'review the new ones' in l)
+
+# ---- 1.6.2 (docs/plan-1.6.2.md Part 14): no script from another site in the desktop's page or an app window (noremote.py)
+_r = _sp.run([sys.executable, os.path.join(ISO, 'systools', 'noremote.py')], capture_output=True, text=True)
+if _r.returncode: bad.extend('noremote: ' + l for l in _r.stdout.splitlines() if not l.startswith('noremote:'))
 
 for b in bad:
     print('deadcheck:', b)

@@ -1,0 +1,3 @@
+# Bring your files check (bring-check.yml): a change to this file runs its QEMU job. serial= picks a release (empty: the newest beta)
+serial=
+run=3

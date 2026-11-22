@@ -24,7 +24,9 @@ fi
 XC=$T/xc; gcc -O2 -Wall -o $XC $HERE/fixtures/xwmclient.c -lX11 2>$T/cc || { cat $T/cc; echo "FAIL build xwmclient"; exit 1; }
 D=$T/d; mkdir -p $D; node $HERE/fixtures/deskls.js $D/ls.json $D/keys.json || { echo "FAIL node"; exit 1; }
 PW=$(node -e "console.log(require('$D/keys.json').Ann.pw)")
-printf '%s\n' '{"s":{"bs":"solid","b1":"#112233","b2":"#000080","tb":"bottom","accent":"#2563eb","h24":true,"df":"ymd"},"pins":["notepad","calc","settings"],"notes":2,"wallpaper":false}' > $D/settings.json
+# (1.6.2: the light theme, not the clock's: with none chosen, dark comes on at 18:00 and the window's edge is then html.dark's
+#  #334155, not the grey that 7 looks for; GitHub's runner keeps UTC, so this check failed from 18:00 to 06:00 UTC)
+printf '%s\n' '{"s":{"dm":"light","bs":"solid","b1":"#112233","b2":"#000080","tb":"bottom","accent":"#2563eb","h24":true,"df":"ymd"},"pins":["notepad","calc","settings"],"notes":2,"wallpaper":false}' > $D/settings.json
 python3 $HERE/fixtures/native_rd.py $PORT $D > $T/rd.log 2>&1 & RDP=$!
 Xvfb $DSP -screen 0 1280x800x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 export DISPLAY=$DSP LIBGL_ALWAYS_SOFTWARE=1 XWM_DIR=$T/dir

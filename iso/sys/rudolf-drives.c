@@ -22,6 +22,15 @@
  *   drives vault-feature              whether the drive that keeps the files has ext4's encrypt feature
  *   drives vault-prepare              that feature added (Settings' encryption set up: tune2fs -O encrypt)
  *   drives vault-move                 vault-move: Debian, Flatpak's apps and Downloads into the encrypted folder
+ *   drives bring-scan DISK            1.6.2 (docs/plan-1.6.2.md Part 27, Bring your files; bringfiles.sh): the old system's
+ *                                     personal folders on DISK found and sized, its partitions opened read-only
+ *   drives bring-unlock PART          a BitLocker partition opened read-only: the key on standard input, never an argument
+ *   drives bring-copy                 the chosen folders copied onto a USB drive and checked (RUN/bring-copy.list)
+ *   drives bring-cancel | bring-found the copy stopped | the copies on the plugged-in drives
+ *   drives bring-decide DISK erase|partial   erase without keeping (or although some files could not be read)
+ *   drives bring-close DISK           the old disk's partitions closed again
+ *   drives bring-import ACCT DIR PERSON   one person's files from a copy (DIR, on a drive under /media) into the account's
+ *                                     folder, run as the account's own Linux user (never root), the account signed in
  * (the home-* actions: ACCT is checked here, then rudolfd's own functions do the work, built as drives-home:
  * rudolf-drives-home.c)
  *
@@ -41,6 +50,7 @@
 #include "rudolf-root.h"
 #include <ctype.h>
 #include <sys/mount.h>
+#include <grp.h>
 
 #define SYSFS  rr_env("RR_TEST_SYS", "/sys")
 #define LIB    rr_env("RR_TEST_LIB", "/usr/lib/rudolf")
@@ -49,6 +59,7 @@
 #define RUNDIR rr_env("RR_TEST_RUN", "/run/rudolf")
 #define AUMAP  rr_env("RR_TEST_AUMAP", "/persist/etc/rudolf/account-users")
 #define ROOTDIR rr_env("RR_TEST_DIR", RR_DIR)
+#define HOMEROOT rr_env("RR_TEST_HOMEROOT", "/persist/accounts")
 
 static int refuse(const char *what, const char *arg)
 {
@@ -128,9 +139,60 @@ static int run_script(const char *script, char *const args[], const char *sha)
 	execve(path, argv, env); fprintf(stderr, "%s could not be started: %s\n", script, strerror(errno)); return 127;
 }
 
+/* 1.6.2 (docs/plan-1.6.2.md Part 27, Bring your files): bringfiles.sh's actions, the arguments checked here again */
+#define BRING_TOP "/Rudolf OS - Bring your files/"
+static int bring_person_ok(const char *p)
+{
+	size_t n = strlen(p); if (!n || n > 120 || !strcmp(p, ".") || !strcmp(p, "..")) return 0;
+	for (const char *c = p; *c; c++) if ((unsigned char)*c < 32 || *c == '/' || *c == 127) return 0;
+	return 1;
+}
+static int bring_action(const char *op, char **a, int n)
+{
+	const char *sub = op + 6;
+	if (!strcmp(sub, "scan") || !strcmp(sub, "close") || !strcmp(sub, "decide")) {
+		if (n != (!strcmp(sub, "decide") ? 2 : 1) || !rr_dev_ok(a[0], 16)) return refuse("a disk name that is not one", n ? a[0] : "");
+		if (!is_disk(a[0])) return gone("a disk the kernel does not have");
+		if (n == 2 && strcmp(a[1], "erase") && strcmp(a[1], "partial")) return refuse("a choice that is not erase or partial", a[1]);
+		if (!strcmp(sub, "decide")) rr_health("disk", "Bring your files: %s's personal files are to be erased (%s)", a[0], a[1]);
+		char *s[] = { (char *)sub, a[0], n == 2 ? a[1] : NULL, NULL }; return run_script("bringfiles.sh", s, NULL);
+	}
+	if (!strcmp(sub, "unlock")) {
+		if (n != 1 || !rr_dev_ok(a[0], 32)) return refuse("a partition name that is not one", n ? a[0] : "");
+		if (!is_block(a[0])) return gone("a partition the kernel does not have");
+		rr_health("disk", "Bring your files: BitLocker on %s is being opened read-only (the key is not kept)", a[0]);
+		char *s[] = { "unlock", a[0], NULL }; return run_script("bringfiles.sh", s, NULL);   /* (the key: standard input, as it came) */
+	}
+	if (!strcmp(sub, "copy") || !strcmp(sub, "cancel") || !strcmp(sub, "found")) {
+		if (n) return refuse("arguments for Bring your files", op);
+		char l[PATH_MAX]; snprintf(l, sizeof l, "%s/bring-copy.list", RUNDIR);
+		char *s[] = { (char *)sub, !strcmp(sub, "copy") ? l : NULL, NULL }; return run_script("bringfiles.sh", s, NULL);
+	}
+	if (!strcmp(sub, "import")) {
+		if (n != 3 || !acct_ok(a[0])) return refuse("an account name that is not one", n ? a[0] : "");
+		int ret = 0; unsigned au = acct_uid(a[0], &ret); if (ret && !au) return refuse("a removed account", a[0]);
+		/* the account signed in now (its folder open), and its own Linux user (1000 for an account without one) */
+		char p[PATH_MAX], id[80] = ""; snprintf(p, sizeof p, "%s/home-session", RUNDIR);
+		FILE *f = fopen(p, "r"); if (f) { if (!fgets(id, sizeof id, f)) id[0] = 0; fclose(f); } id[strcspn(id, "\r\n")] = 0;
+		if (strcmp(id, a[0])) return refuse("an account that is not signed in", a[0]);
+		unsigned uid = au ? au : RR_DESK_UID;
+		/* the copy: a folder under the drives' folder, in Bring your files' folder, with no link on the way */
+		char m[PATH_MAX], rp[PATH_MAX]; snprintf(m, sizeof m, "%s/", MEDIA);
+		if (strlen(a[1]) >= PATH_MAX - 1 || strncmp(a[1], m, strlen(m)) || !strstr(a[1], BRING_TOP) || strchr(a[1], '\n') || !realpath(a[1], rp) || strcmp(rp, a[1]))
+			return refuse("a copy that is not one on a drive", a[1]);
+		if (!bring_person_ok(a[2])) return refuse("a person's folder that is not one", a[2]);
+		char home[PATH_MAX]; snprintf(home, sizeof home, "%s/%s", HOMEROOT, a[0]);
+		char path[PATH_MAX]; snprintf(path, sizeof path, "%s/bringfiles.sh", LIB);
+		if (setgroups(0, NULL) || setgid(uid) || setuid(uid) || !getuid()) { fprintf(stderr, "could not become the account's user\n"); return 1; }
+		char *argv2[] = { path, "import", a[1], a[2], home, NULL }, *env[] = { RR_PATH, NULL };
+		execve(path, argv2, env); fprintf(stderr, "bringfiles.sh could not be started: %s\n", strerror(errno)); return 127;
+	}
+	return refuse("an unknown action", op);
+}
+
 int main(int argc, char **argv)
 {
-	if (argc < 2) { fprintf(stderr, "usage: drives mount|umount|eject|info|install|bootfiles-write|bootfiles-stage|mkstick|keepfiles|home-unlock|home-lock|home-bind|home-store ...\n"); return 2; }
+	if (argc < 2) { fprintf(stderr, "usage: drives mount|umount|eject|info|install|bootfiles-write|bootfiles-stage|mkstick|keepfiles|home-unlock|home-lock|home-bind|home-store|bring-* ...\n"); return 2; }
 	const char *op = argv[1];
 	/* --sha=HEX, wherever it is; the other arguments in order */
 	const char *sha = NULL; char *a[8]; int n = 0;
@@ -161,6 +223,7 @@ int main(int argc, char **argv)
 		execve(path, argv2, env); fprintf(stderr, "drives-home could not be started: %s\n", strerror(errno));
 		printf("the encrypted folder could not be opened (drives-home did not start)\n"); return 200;
 	}
+	if (!strncmp(op, "bring-", 6)) { if (sha) return refuse("a checksum for Bring your files", op); return bring_action(op, a, n); }
 	if (!strcmp(op, "vault-move")) { if (n || sha) return refuse("arguments for vault-move", op); char *s[] = { NULL }; return run_script("vault-move", s, NULL); }
 	if (!strcmp(op, "info")) {
 		if (n != 1 || !rr_dev_ok(a[0], 16)) return refuse("a disk name that is not one", n ? a[0] : "");

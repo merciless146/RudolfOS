@@ -529,8 +529,14 @@ static void serve_index(struct req *r, const char *root)
 	/* 1.5.9 (plan 15.2): the page's own policy: no plug-in content (object, embed) and no <base> pointing its links
 	   elsewhere. (connect-src is not limited: Oracle's downloads and the apps' imports fetch from any https address,
 	   so a list would stop only plain http; the protection is that nothing a file holds runs here: safeHtml and the
-	   sandboxed frames.) */
-	reply(r->fd, 200, "text/html; charset=utf-8", out, n + il, "Content-Security-Policy: object-src 'none'; base-uri 'self'\r\n");
+	   sandboxed frames.)
+	   1.6.2 (docs/plan-1.6.2.md Part 14): and no script from another site: this page holds the token, and the frames it draws itself
+	   (srcdoc: Oracle's own pages, Blitzen's sandbox) have its policy too. Scripts come only from this address (www/lib, www/a, the
+	   Library's /pkg/), the page's own code and blob: workers; Ruffle plays in its own sandboxed frame (www/lib/ruffle-frame.html).
+	   'unsafe-inline' and 'unsafe-eval' stay for now: the page's inline handlers, Oracle's own pages' scripts and Blitzen's sandbox
+	   use them; the page's own copy says the same (base_v24.html), so the page has it on every engine and on the web too. */
+	reply(r->fd, 200, "text/html; charset=utf-8", out, n + il, "Content-Security-Policy: object-src 'none'; base-uri 'self'; "
+		"script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:\r\n");
 	free(out); free(html); free(inj);
 }
 
@@ -4536,6 +4542,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */
 #include "rudolfd-duel.inc"      /* 1.6.2: the LAN game relay for two-player Library games (plan-1.6.2 Part 30) */
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
+#include "rudolfd-bring.inc"     /* 1.6.2: Bring your files, the installer's step (plan-1.6.2 Part 27) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -4970,6 +4977,8 @@ static void api(struct req *r)
 	   folders chosen on one drive copied into a folder on another, as a job (drivecopy.sh; its log is the progress).
 	   The body: "personal=0|1 continue=0|1", the folder to copy into, then the sources, a line each; all under /media,
 	   the destination not inside a source. */
+	/* 1.6.2 (plan-1.6.2 Part 27): Bring your files (rudolfd-bring.inc) */
+	if (!strncmp(p, "bring/", 6)) { api_bring(r, p + 6, post); return; }
 	if (!strcmp(p, "fs/xcopy")) {
 		if (!post || !r->body || r->blen > 65536) { reply_err(r->fd, 400, "use POST, with what to copy"); return; }
 		if (job_running()) { reply_err(r->fd, 409, "busy: another job is running, try again when it ends"); return; }

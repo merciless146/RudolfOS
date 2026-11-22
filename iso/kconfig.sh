@@ -124,6 +124,9 @@ y SECURITY_YAMA
 y SECURITY_LANDLOCK
 $C --set-str LSM "lockdown,landlock,yama"
 y MD BLK_DEV_DM DM_VERITY CRYPTO_SHA256 EFIVAR_FS
+# 1.6.2 (docs/plan-1.6.2.md Part 27, Bring your files): dm-crypt, for an old Windows disk's BitLocker opened read-only with
+# its recovery key (cryptsetup's BITLK: AES-XTS, and AES-CBC with or without the Elephant diffuser)
+y DM_CRYPT
 # 1.6.1 (docs/plan-1.6.1.md Part 20): the TPM 2.0 (the computer's security chip: AMD's and Intel's firmware TPMs through
 # CRB, discrete chips through TIS; QEMU's swtpm both), for the key the shared browser profile's website data is kept
 # under (rudolf-webkey, sealed to Secure Boot's measurements). Built in, so /dev/tpmrm0 is there before the desktop

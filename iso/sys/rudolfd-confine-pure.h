@@ -58,6 +58,7 @@ static const char *const CONFINE_START[] = {
 	"bootmenu/*",
 	"brightness",
 	"brightness/step",
+	"bring/*",
 	"bt",
 	"bt/*",
 	"camera",

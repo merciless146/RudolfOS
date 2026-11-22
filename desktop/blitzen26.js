@@ -8,7 +8,7 @@ const BLZ_LANGS=[['','Auto'],['blocklua','BlockLua'],['lua','Lua'],['luau','Luau
 async function blzStatus(){if(!RD)return null;try{BLZ.st=await lxApi('ai/status')}catch(e){BLZ.st=null}return BLZ.st}
 function blzGameRunning(){return (typeof EMU!='undefined'&&EMU.players.size>0)||wins.some(w=>{const t=w.el.querySelector('.t');return t&&/Quake/i.test(t.textContent)})}
 /* Lua from this page's own copy of Fengari first (works offline), then the CDN as before */
-{const _lf=loadFengari;loadFengari=function(){if(window.fengari)return Promise.resolve(true);return new Promise(res=>{const s=document.createElement('script');s.src=(RD?'/':'')+'lib/fengari-web.js';s.onload=()=>window.fengari?res(true):_lf().then(res);s.onerror=()=>_lf().then(res);document.head.appendChild(s)})}}
+/* (1.6.2: loadFengari itself now loads only the page's own copy, lib/fengari-web.js: base_v24.html) */
 
 /* ---------- talking to the model ---------- */
 async function blzStream(messages,opt,onText,signal){

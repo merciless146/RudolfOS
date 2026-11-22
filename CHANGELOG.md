@@ -7,6 +7,13 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 Summary: In progress.
 - Fixed: the Several monitors check failed on every run although its tests passed: monbeh_t.js named a picture
   "cmp.lock:cover2.diff.png", and GitHub's upload of the pictures refuses a ':' in a file name. Nothing in Rudolf OS changed.
+- Fixed: the Lite engine check's apps' own title bars test (csd161_t.sh, 7) failed whenever it ran after 18:00 UTC: with no
+  theme chosen the native desktop turns dark at night, and the window's edge is then the dark theme's, as it should be.
+  The test now chooses the light theme. Nothing in Rudolf OS changed.
+- Safer: no script from another site ever runs in the desktop's page or an app window, which hold the key to the system's own
+  service. Lua (Command Prompt, BlockLua Builder, Blitzen) always uses Rudolf's own copy of its runtime, never one downloaded from
+  a website, and the page now has a security policy that refuses any other site's script. Flash content plays in a sealed-off frame
+  of its own: the Flash Player app, and Oracle's pages for Flash files.
 - Fixed: closing Steam's window left Steam running out of sight (it goes to a tray icon, and Rudolf OS has no tray), using memory
   until it was force quit. When its last window is closed, and no game of it is running, Steam is now asked to quit as it quits
   itself, and ended if it has not after 30 s; signing out also asks it to quit first (docs/plan-1.6.2.md Part 14, found on the
@@ -46,6 +53,17 @@ Summary: In progress.
   Nothing goes over the internet. The relay runs as your account's own user (never as root), answers only the local
   network, and the firewall opens its port to the home network only (never on a cellular connection) and only while a
   game is hosted. It stops when the duel ends, or within a minute if no game connects.
+- New: Bring your files (docs/plan-1.6.2.md Part 27). Installing Rudolf OS on a disk that holds another system now looks at it
+  first, read-only: Windows (each person's Documents, Pictures, Music, Videos, Desktop and Downloads, OneDrive's folders too),
+  Linux (/home and its own folder names) and macOS (said: Rudolf OS cannot read a Mac's disk, and how to copy the files on the
+  Mac first), each folder with its size. Keep them (the default), choose which, or erase without keeping (said with the size
+  that is lost). Kept files are copied onto a USB drive and every one is read back and checked (SHA-256) before anything is
+  erased; a drive that fills up is followed by another; a copy that fails or is cancelled erases nothing, and the installer
+  itself refuses the disk until the copy (or the choice to erase) is made. A BitLocker disk asks for its recovery key (it is
+  opened read-only and the key is never kept); a Windows that was hibernated or not shut down fully is read read-only and
+  said. After the first sign-in Rudolf OS offers to bring them in (Settings › Update and recovery › Bring in files from the
+  old computer): the old Documents into Documents and so on, into your own encrypted folder, names that clash kept side by
+  side, each file checked again and then by the antivirus. The copy on the drive is left as it is.
 
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.

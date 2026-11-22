@@ -221,6 +221,21 @@ The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition t
   engine page's "A new installation starts with it." back; nativedefault60_t.sh 0 and 0b changed to match.
 - **The owner's checks:** a new stick (Make a USB stick) and Install here: the setup wizard, then Native; an updated
   computer on Standard: the offer once; Discord, Steam, the icons and Oracle's keys on Native.
+- **Status (2026-11-22, the owner's check on the Vivobook, 1.6.1 stable on Native, 03:45 CST):** Discord opens fine; Steam works
+  but is slower to start; both use a lot of memory in the background; Steam is hard to shut down (Task Manager's Force quit works).
+  Native's log over that time (devlink 000565) had four findings, each fixed in a PR of its own (scheduled task, unattended):
+  1. Steam's app page asked rudolfd 9840 ms after it began, and do-bg's desktop/apps answer took 192 s: the page waited for every
+     list in turn and for the Start menu's pictures, and for Linux apps' pictures it could not have; `rudolf-apps installed` ran
+     `flatpak list` each time: **#603** (stand-in: 7.6 s to 3.3 s; the catalogue with no picture to be had: over 120 s to 7.1 s).
+  2. Task Manager's page never said it was ready: every app page shared the busy hidden page's web process: **#598** (Task
+     Manager in a web process of its own: shown in about 0.7 s with do-bg busy, not within 12 s before).
+  3. base_v24.html loaded fengari-web from cdnjs (jsDelivr and unpkg as fallbacks), and Ruffle from unpkg/jsDelivr, into the
+     page that holds rudolfd's token: **#605** (Lua only from lib/, Ruffle in its own sandboxed frame, a Content-Security-Policy,
+     noremote.py in deadcheck).
+  4. Steam stays in the background after its window is closed (no tray shows it): **#604** (`steam -shutdown` inside its Flatpak
+     when its last window is gone 15 s, and at sign-out, then the existing escalation; a running game keeps it).
+  **The switch to Native as the default still waits on the owner's decision** (the owner, 03:49 CST: "Let's do the fixes first
+  and then offer me the decision again"): after these PRs are merged, a Steam start timed on Native on the Vivobook first.
 
 ### 21b. The checks with the owner (from 1.6.1 Part 21)
 - **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned
@@ -274,6 +289,20 @@ if cryptsetup can make one; APFS: the message only), in QEMU with the real relea
 disk as the "USB drive": the files found and sized, copied and checked, the install going ahead only after the copy,
 a cancelled copy erasing nothing, the files in the right folders after the first sign-in, Standard and Native the same
 (the owner's rule). **The owner's checks:** a real old Windows laptop or disk, if one is at hand, with a USB drive.
+
+**Status (2026-11-22, the scheduled task's PR "Bring your files", branch `bring-files`):** items 1-4 built; item 5 not
+(the owner's decision). bringfiles.sh (run by the drives helper: bring-scan, bring-unlock, bring-copy, bring-cancel,
+bring-decide, bring-close, bring-found, bring-import), rudolfd's bring/ requests (rudolfd-bring.inc), install.sh's guard
+(it refuses a disk with personal files until they were copied and checked, or the person chose to erase them), the page's
+step in Settings › Update and recovery › Install here… and Bring in files from the old computer (desktop/bring62.js), the
+same on Standard, Native and Lite. BitLocker needs what the base gains with this PR: dm-crypt in the kernel (kconfig.sh,
+DM_CRYPT) and cryptsetup (about 1.3 MB with libcryptsetup, libdevmapper, libjson-c, libargon2 and libpopt, less what the
+base already has). Tested on the host (disk images: an NTFS Windows tree, a dirty and a hibernated NTFS, ext4 Linux, APFS,
+cryptsetup's own BitLocker test image and its recovery key), in Playwright (Standard and Native's app window) and in QEMU on
+the newest beta (bring-check.yml). Not testable before a release has dm-crypt: opening BitLocker for real (the key is
+checked on the host with cryptsetup --test-passphrase). **For the owner:** an old Windows laptop or disk with a USB drive:
+Install here… on it, the folders found and their sizes, Copy and check, then the first sign-in's offer and the files in
+Documents, Pictures…; a BitLocker laptop's recovery key, if one is at hand.
 
 ### 25b. Linux apps' progress on their taskbar buttons (from 1.6.1 Part 25, item 5)
 Firefox, Chromium-based apps (Discord, VS Code, Steam's web parts) and others say their downloads' progress with the Unity
