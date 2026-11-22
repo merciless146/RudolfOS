@@ -42,11 +42,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const parts = await q("[...document.querySelectorAll('.bzrev .bzparts > div')].map(d=>({l:d.querySelector('b').textContent,t:d.querySelector('pre').textContent}))");
   ok('2. Blitzen first shows what it will read: what failed, the matching log lines and documents', parts.some(x => x.l == 'What failed') && parts.some(x => /^Log: rudolfd/.test(x.l) && /setup\.deb: not found/.test(x.t)) && parts.some(x => /^Rudolf OS: /.test(x.l)), parts.map(x => x.l));
   ok('3. ...and the toast was closed', await q("![...document.querySelectorAll('.ntoast')].some(t=>/Download not found/.test(t.textContent))"));
-  const docl = parts.find(x => /^Rudolf OS: /.test(x.l)).l;
-  await q(`(()=>{const d=[...document.querySelectorAll('.bzrev .bzparts > div')].find(d=>d.querySelector('b').textContent==${JSON.stringify(docl)});d.querySelector('input').click();document.querySelector('.bzrev .ok').click();return 1})()`);
+  // (1.6.2: the row unticked by its place, and looked for by its text: two pieces of one section have the same name, and then
+  //  the other piece, kept, has it too. That depended on the log lines' times in the search: it failed at 21:11:46 UTC.)
+  const di = parts.findIndex(x => /^Rudolf OS: /.test(x.l)), docl = parts[di].l, doct = parts[di].t;
+  await q(`(()=>{const d=document.querySelectorAll('.bzrev .bzparts > div')[${di}];d.querySelector('input').click();document.querySelector('.bzrev .ok').click();return 1})()`);
   await wait(300);
   const c = await q("CHAT[0]&&{q:CHAT[0].question,ctx:CHAT[0].context,pack:CHAT[0].o.pack,norun:CHAT[0].o.norun}");
-  ok('4. asked with what was kept, not what was unticked', c && /setup\.deb: not found/.test(c.ctx) && !c.ctx.includes(docl) && /^Why did this happen: Download not found/.test(c.q), c);
+  ok('4. asked with what was kept, not what was unticked', c && /setup\.deb: not found/.test(c.ctx) && !c.ctx.includes('### ' + docl + '\n' + doct) && /^Why did this happen: Download not found/.test(c.q), c);
   ok('5. the diagnostics pack, and no code is run from the answer', c && c.pack == 'diag' && c.norun === true, c);
   // 6. the answer's buttons; Draft a report
   await q(`(()=>{const el=document.createElement('div');el.id='ans';el.innerHTML="<div class='blzbody'></div>";document.body.appendChild(el);CHAT[0].o.onAnswer(el,'The download was deleted before it was opened: \`setup.deb: not found\`. Likely.\\n\`\`\`sh\\nrm x\\n\`\`\`');return 1})()`);
