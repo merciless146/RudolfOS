@@ -196,6 +196,11 @@ for sysk in ('n64', 'dc'):
             ka = {'n64': 'x', 'dc': 'x'}[sysk]
             sh('DISPLAY=%s xdotool keydown %s' % (DISP, ka)); g = wait(lambda: (lambda cc: cc if cc == 'green' else None)(colour(shot(fn + '-2key'))), 8); sh('DISPLAY=%s xdotool keyup %s' % (DISP, ka))
             ok('%s: the keyboard\'s %s (A) turns it green' % (tag, ka.upper()), g == 'green', colour(shot(fn + '-2key')))
+        if sysk == 'n64' and k == 2:   # Ctrl+I: RMG's controller settings (what Emu tells the player), a window of their own
+            n0 = len([x for x in windows() if 'rmg' in (x[3][1] or '').lower() or 'rmg' in (x[3][0] or '').lower()])
+            sh('DISPLAY=%s xdotool key ctrl+i' % DISP); more = wait(lambda: len([x for x in windows() if 'rmg' in (x[3][1] or '').lower() or 'rmg' in (x[3][0] or '').lower()]) > n0, 10)
+            ok('%s: Ctrl+I opens RMG\'s controller settings' % tag, more, [(x[3], x[1], x[2]) for x in windows()]); shot(fn + '-4ctrli')
+            if more: sh('DISPLAY=%s xdotool key Escape' % DISP); time.sleep(1)
         if sysk == 'n64' and k == 0:
             time.sleep(2)
             eep = [os.path.join(dp, f) for dp, dn, fs in os.walk('/home/rudolf/.var/app/' + app) for f in fs if '.eep' in f.lower()]
