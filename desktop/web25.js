@@ -36,9 +36,9 @@ function webWatch(){if(WEB_POLL)return;WEB_POLL=setInterval(async()=>{try{const 
 function webStrut(){if(!RD)return;let e=document.getElementById('qsb');if(!e)return;
  while(e.parentElement&&e.parentElement!==document.body&&e.getBoundingClientRect().width<innerWidth-8)e=e.parentElement;
  const r=e.getBoundingClientRect(),dpr=devicePixelRatio||1,top=r.top<innerHeight/2;
- const size=Math.round((top?r.bottom:innerHeight-r.top)*dpr),bar=typeof xfBarPx=='function'?xfBarPx():0,key=(top?'top':'bottom')+size+'/'+bar;if(key==webStrut.last)return;webStrut.last=key;
- /* (1.6.2 Part 29: and the strip for Rudolf's title bar, xframe62.js) */
- rdPost('web/strut?side='+(top?'top':'bottom')+'&size='+Math.max(0,Math.min(200,size))+(bar?'&bar='+bar:'')).catch(()=>{})}
+ const size=Math.round((top?r.bottom:innerHeight-r.top)*dpr),bar=typeof xfBarPx=='function'?xfBarPx():0,fr=bar&&typeof xfFramePx=='function'?xfFramePx():0,key=(top?'top':'bottom')+size+'/'+bar+'/'+fr;if(key==webStrut.last)return;webStrut.last=key;
+ /* (1.6.2 Part 29: and the strip for Rudolf's title bar, xframe62.js; its left part: the frame's top edge above the app) */
+ rdPost('web/strut?side='+(top?'top':'bottom')+'&size='+Math.max(0,Math.min(200,size))+(bar?'&bar='+bar:'')+(fr?'&frame='+fr:'')).catch(()=>{})}
 if(RD){
  /* pages and apps that ask for a new window get the browser window instead of replacing the desktop */
  window.open=function(u,t,f){const s=String(u||'');if(/^https?:/i.test(s)){webOpen(s);return null}return webNativeOpen(u,t,f)};

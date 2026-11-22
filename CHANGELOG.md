@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- New: on the Chromium desktop, an app's own title bar and buttons work as on Native (docs/plan-1.6.2.md Part 29). Dragging an
+  app's own title bar or edges (Discord, Steam, VS Code, GTK apps with a header bar) moves and sizes it with Rudolf's frame
+  following, the same way and with the same limits as on Native; its own maximize button and a double-click on its bar maximize
+  and restore it, and its own minimize button minimizes it, as Rudolf's title bar does. The app's Move and Size from the keyboard
+  work too. Before, these did nothing on Chromium.
 - Changed: the Standard desktop is now called Chromium (it is the same desktop: the desktop page in Rudolf's Chromium), and
   Settings › System health › Desktop engine lists the three as Native, Chromium, Lite. A computer on Standard stays on it and
   shows it as Chromium; nothing saved changes. Help, System health, the self-test, the sign-in's messages and rudolf-fetch say
