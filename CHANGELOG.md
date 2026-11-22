@@ -3,6 +3,16 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.2 (in progress)
+Summary: In progress.
+- New: Linux apps' progress on their taskbar buttons (docs/plan-1.6.2.md Part 25b). A Linux app with a download or other work in
+  progress shows it on its taskbar button while its window is minimized (on Standard: while another window or the desktop is in
+  front), with the same fill as Rudolf's own windows and the same Display Properties › Taskbar › Progress colour, on Standard and
+  on the native desktop alike. Apps that say it with the Unity launcher signal (Chromium-based and Electron apps, and others) are
+  heard by your account's own portal on your account's own session bus; Firefox's own progress on its window (the XApp hint) is
+  read from the window itself. Only your own apps, and a Flatpak app only if it may talk to com.canonical.Unity and only for its
+  own desktop file. A percentage only: the creeping fill stays for Rudolf's own work.
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs

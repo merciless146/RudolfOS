@@ -289,6 +289,23 @@ The way that weakens nothing:
   (_GTK_APPLICATION_ID, WM_CLASS, the lx: key) and calls the same fill (tbp_set; winProgress on Standard).
 A host test with a D-Bus sender on a stand-in account bus; the owner's check: a Firefox download with Firefox minimized.
 
+**Status (2026-11-22, scheduled task, PR `linux-app-progress`): built, tests pass; waiting for the owner's checks.** As planned:
+rudolf-portal (the account's own, on its own bus) hears com.canonical.Unity.LauncherEntry's Update and leaves a note per app in the
+portal's request folder (`lp-UID-PORTALPID-N.prog`, 0600: "ID<tab>PERCENT"); rudolfd's new `portal/progress` (rudolfd-lxprog.inc)
+passes on only notes of the signed-in account's own live portal (owner, its pid's process and user), only an ID and 0-100, with the
+StartupWMClass of Flatpak's exported desktop file; Standard's page (desktop/lxprog62.js) and rudolf-native (lxp_tick) find the app's
+windows by the same rule (class or instance = the ID, its last part or its StartupWMClass) and use the same fill (tbpState/tbpPaint;
+tbp_set), only while minimized, a percentage only. Flatpak apps: only those allowed to talk to (or own) com.canonical.Unity, or given
+the whole session bus, and only for their own desktop files (ID or ID.*). **Found while building:** Firefox does not send the Unity
+signal on Linux; since Firefox 61 it sets the XApp hint `_NET_WM_XAPP_PROGRESS` (0-100) on its own window (X11 only, Mozilla bug
+1418749). So the window's own hint is read too, and comes first: on Standard by rudolf-display (/run/rudolf/winprog, rudolfd's
+"windows"), on Native by rudolf-native itself. Tests: iso/qt/host/lxprog162_t.sh (the real portal and a stand-in app on a private
+bus, Flatpak sandboxes stood in, another account, forged notes; rudolf-display with a stand-in Firefox window; Standard through
+Playwright and Native on Xvfb, the same fill on both), iso/qt/shell2/lxprog62_t.js. Left: Chromium and Electron send the signal only
+where they think the desktop is Unity (or KDE/GNOME), which Rudolf's session may not say; a Flatpak app whose permissions lack
+com.canonical.Unity shows nothing (Flatseal, or `flatpak override --talk-name=com.canonical.Unity ID`). The owner's checks on the
+Vivobook: a Firefox download with Firefox minimized (Standard and Native); a Flatpak app's download (Standard and Native).
+
 ### 29. Rudolf's title bar on Standard's windows from outside the page (added on 2026-11-21)
 The owner, 2026-11-21, on 1.6.1 (Standard, the Vivobook), with Oracle open in its own Chromium ("Keep my websites
 encrypted with my account" on, #583): "The Oracle browser on Chrome OS does not use the operating system's title bars".
