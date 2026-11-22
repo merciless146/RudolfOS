@@ -178,6 +178,9 @@ the security model do not change. Standard, Lite and Native all run on it; X11 s
       zwp_linux_dmabuf_v1 and wp_viewporter. Only warnings appeared (no accessibility bus; no xdg-decoration in
       Weston, so the apps drew their own title bars).
     - **The X11 baseline:** 1,008 MB used of 3,416 MB with nothing open, 10 minutes after start-up.
+    - **The system logs over the test** (000563): no GPU fault, reset or timeout, no crash and no out-of-memory in
+      the kernel's messages. The only entries were from start-up: the laptop's ACPI table warnings, and Xorg's
+      input-driver fallbacks, as on every start.
     - **Not shown by A:**
       - Flatpak apps (Steam, Discord, Sober, Firefox, GIMP), because Flatpak runs outside Debian and cannot reach a
         compositor inside it.
