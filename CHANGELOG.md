@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (in progress)
 Summary: In progress.
+- Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
+  Rudolf's Chromium with its shell, which this computer does not have"): the list it starts from was only made on Native.
 - New: File Explorer to the desktop (docs/plan-1.6.1.md Part 28, the owner, 2026-11-21): items dragged from a File Explorer window
   (one, or several chosen with the selection box, Ctrl or Shift) and dropped on the desktop go into your Desktop folder, as a drop on
   a File Explorer window would put them there: from C: moved (copied with Ctrl), from a USB drive, the Games folder or a folder of
