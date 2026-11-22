@@ -47,6 +47,7 @@ SECURITY_LANDLOCK y security: Landlock (rudolfd's narrow confinement: the folder
 KEYS            y   security: the kernel's keyrings (fscrypt, trusted keys)
 SYSTEM_TRUSTED_KEYRING y security: Rudolf OS's Secure Boot certificate built in
 DM_VERITY       y   security: the system layers checked as they are read (dm-verity)
+DM_CRYPT        y   disks: Bring your files, an old Windows disk's BitLocker opened read-only (cryptsetup BITLK)
 TCG_TPM         y   security: the TPM 2.0 (the website data's key, rudolf-webkey: docs/website-data-key.md)
 TCG_CRB         y   security: firmware TPMs (AMD's, Intel's PTT: the owner's Vivobook)
 TCG_TIS         y   security: discrete TPM chips, and QEMU's

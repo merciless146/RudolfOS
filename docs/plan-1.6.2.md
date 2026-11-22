@@ -290,6 +290,20 @@ disk as the "USB drive": the files found and sized, copied and checked, the inst
 a cancelled copy erasing nothing, the files in the right folders after the first sign-in, Standard and Native the same
 (the owner's rule). **The owner's checks:** a real old Windows laptop or disk, if one is at hand, with a USB drive.
 
+**Status (2026-11-22, the scheduled task's PR "Bring your files", branch `bring-files`):** items 1-4 built; item 5 not
+(the owner's decision). bringfiles.sh (run by the drives helper: bring-scan, bring-unlock, bring-copy, bring-cancel,
+bring-decide, bring-close, bring-found, bring-import), rudolfd's bring/ requests (rudolfd-bring.inc), install.sh's guard
+(it refuses a disk with personal files until they were copied and checked, or the person chose to erase them), the page's
+step in Settings › Update and recovery › Install here… and Bring in files from the old computer (desktop/bring62.js), the
+same on Standard, Native and Lite. BitLocker needs what the base gains with this PR: dm-crypt in the kernel (kconfig.sh,
+DM_CRYPT) and cryptsetup (about 1.3 MB with libcryptsetup, libdevmapper, libjson-c, libargon2 and libpopt, less what the
+base already has). Tested on the host (disk images: an NTFS Windows tree, a dirty and a hibernated NTFS, ext4 Linux, APFS,
+cryptsetup's own BitLocker test image and its recovery key), in Playwright (Standard and Native's app window) and in QEMU on
+the newest beta (bring-check.yml). Not testable before a release has dm-crypt: opening BitLocker for real (the key is
+checked on the host with cryptsetup --test-passphrase). **For the owner:** an old Windows laptop or disk with a USB drive:
+Install here… on it, the folders found and their sizes, Copy and check, then the first sign-in's offer and the files in
+Documents, Pictures…; a BitLocker laptop's recovery key, if one is at hand.
+
 ### 25b. Linux apps' progress on their taskbar buttons (from 1.6.1 Part 25, item 5)
 Firefox, Chromium-based apps (Discord, VS Code, Steam's web parts) and others say their downloads' progress with the Unity
 LauncherEntry D-Bus signal (com.canonical.Unity.LauncherEntry, Update: the app's application://NAME.desktop, "progress" 0-1 and

@@ -1,0 +1,85 @@
+# 1.6.2 (docs/plan-1.6.2.md Part 27): Bring your files. The host tests (bringfiles.sh on disk images made here: NTFS with a
+# Windows-like Users tree, a dirty and a hibernated NTFS, ext4 with /home, a Mac's APFS (the message), cryptsetup's own
+# BitLocker test image (its recovery key); with GNU tools and with BusyBox's; the drives helper's bring-* checks), the page
+# (Playwright: the installer's step and Bring in files, on Standard's page and Native's app window), and in QEMU on the
+# newest beta with this tree's rudolfd, rudolf-rootd, helpers, bringfiles.sh and install.sh put in place (bring62_q.py).
+# The QEMU job runs on a push that changes .github/bring62-run.txt (its line serial=SERIAL picks a release; empty: the
+# newest beta) and by hand. Nothing is published.
+name: Bring your files check
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/bring62-run.txt']
+  pull_request:
+    paths: ['iso/sys/root/usr/lib/rudolf/bringfiles.sh', 'iso/sys/root/usr/lib/rudolf/install.sh', 'iso/sys/rudolf-drives.c', 'iso/sys/rudolfd-bring.inc',
+      'desktop/bring62.js', 'iso/qt/host/bringfiles62_t.sh', 'iso/qt/host/bringhelper62_t.sh', 'iso/qt/shell2/bring62_t.js', 'iso/qt/sb/bring62_q.py',
+      '.github/workflows/bring-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools, and cryptsetup's BitLocker test images
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ntfs-3g dosfstools e2fsprogs cryptsetup-bin busybox >/dev/null
+          mkdir -p bitlk && curl -sSfL --retry 3 https://raw.githubusercontent.com/mbroz/cryptsetup/main/tests/bitlk-images.tar.xz | tar xJ -C bitlk && ls bitlk/bitlk-images | head -3 || echo "the BitLocker images could not be fetched"
+      - name: bringfiles.sh (GNU tools)
+        run: sudo env BITLK_IMAGES=$PWD/bitlk/bitlk-images sh iso/qt/host/bringfiles62_t.sh
+      - name: bringfiles.sh (BusyBox's tools, as Rudolf OS has them)
+        run: |
+          mkdir bb; for a in find stat sed grep awk sort cut head tr dd od sha256sum tee cat mkdir mv rm ls df touch sync mktemp dirname basename wc date rmdir cp chmod; do ln -s "$(which busybox)" bb/$a; done
+          sudo env RUDOLF_TEST_PATH=$PWD/bb BITLK_IMAGES=$PWD/bitlk/bitlk-images sh iso/qt/host/bringfiles62_t.sh
+      - name: The drives helper's bring-* actions
+        run: sudo sh iso/qt/host/bringhelper62_t.sh
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The installer's step and Bring in files (Standard, Native's app window)
+        run: node iso/qt/shell2/bring62_t.js
+  qemu:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: echo "N_serial=$(sed -n 's/^serial=//p' .github/bring62-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs ntfs-3g dosfstools python3-cryptography libssl-dev zlib1g-dev bzip2 >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel; echo "::notice title=Bring your files check::release $S ($(sed -n 's/^version //p' rel/manifest.txt))"
+      - name: This tree's rudolfd, rudolf-rootd, helpers, bringfiles.sh and install.sh (as the release builds them)
+        run: |
+          . iso/systools/hardflags.sh; mkdir -p fix/root fix/lib
+          gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/rudolf-rootd iso/sys/rudolf-rootd.c
+          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c -Wl,-Bstatic -lz -Wl,-Bdynamic; done
+          gcc -O2 $HARD -o fix/root/drives-home iso/sys/rudolf-drives-home.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          cp iso/sys/root/usr/lib/rudolf/bringfiles.sh iso/sys/root/usr/lib/rudolf/install.sh fix/lib/
+          python3 iso/systools/hardcheck.py fix/rudolfd fix/rudolf-rootd fix/root/*; ls -laR fix
+      - name: bring62 in QEMU
+        run: mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} BRING_FIX=$PWD/../fix python3 ../iso/qt/sb/bring62_q.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: bring62, retention-days: 7, path: "run/bring62.txt\nrun/b62*/qemu.log\nrun/b62*/*.png"}
