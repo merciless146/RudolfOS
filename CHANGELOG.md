@@ -8,6 +8,12 @@ Summary: In progress.
 - Fixed: Oracle's status line kept saying "Goes To: <address>" after the mouse left one of Oracle's own pages (its home
   page, the reader) for the rest of the desktop or Oracle's own bar: Chromium does not tell such a page that the mouse
   left it, so the desktop now ends it itself when the mouse arrives on its own page.
+- New: two-player games from the Rudolf OS Library on your home network (docs/plan-1.6.2.md Part 30; Ember Reach 0.5.2's
+  duels). Press Host on this network in the game, and Rudolf OS runs a small relay on this computer while you play,
+  and announces it on the network; on the other computer Find games lists it, and the two games meet through it.
+  Nothing goes over the internet. The relay runs as your account's own user (never as root), answers only the local
+  network, and the firewall opens its port to the home network only (never on a cellular connection) and only while a
+  game is hosted. It stops when the duel ends, or within a minute if no game connects.
 
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
