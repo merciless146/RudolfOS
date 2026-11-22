@@ -155,7 +155,7 @@ jobs:
           : > cross.txt
           for pair in "k618 k618" "k618 k73" "k73 k618" "k73 k73"; do set -- $pair
             set +e; SB_PARTS=$PWD/parts KERNEL=$PWD/$1/vmlinuz RECSB_RKERNEL=$PWD/$2/vmlinuz RECSB_TEST_KEYDIR=$SBT RECSB_ONLY1=1 RECSB_TIMEOUT=300 RECSB_SERIAL=$PWD/cx-$1-$2 sh iso/qt/sb/recovery_sb_t.sh > cx-$1-$2.txt 2>&1; set -e
-            r="$1 -> $2: $(tail -1 cx-$1-$2.txt) $(grep -a -h -m1 -o 'Kernel panic - not syncing: [A-Za-z -]*' cx-$1-$2/boot1.txt 2>/dev/null)"; echo "$r"; echo "$r" >> cross.txt
+            r="$1 -> $2: $(tail -1 cx-$1-$2.txt) $(grep -a -h -m1 -o 'Kernel panic - not syncing: [A-Za-z -]*' cx-$1-$2/boot1.txt 2>/dev/null || true)"; echo "$r"; echo "$r" >> cross.txt
           done
           echo "::notice title=Cross handover (6.18 = k618, 7.3 = k73, at 1.5 GB)::$(tr '\n' ';' < cross.txt)"
       - name: Delete the test keys
