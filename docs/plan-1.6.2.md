@@ -531,6 +531,45 @@ hosts, Rudolf OS runs a small relay on that computer, and the other computer fin
      listener.
   6. With A on a phone's hotspot or a cellular modem only: Host on this network says it isn't on a home network.
 
+### 31. zstd for the system's images, measured (added on 2026-11-22)
+The owner, 2026-11-22: "Add zstd compression to the plan" (after asking what uncompressing the system would do: more
+disk and slower starts from slow drives and USB sticks, for a small gain on the first read; zstd keeps most of that gain).
+**Today:** the four images (base 297 MB, chromium 131 MB, modules 97 MB, desktop 7 MB in release 2026112219) are made by
+iso/systools/mklayers.sh with `-comp xz -Xbcj x86 -b 1M` (iso/systools/testkernel.sh the same for modules.sfs). xz makes
+the smallest images but is the slowest of squashfs's compressions to read back; each block is unpacked on its first read
+and then kept in memory. The kernel reads xz and zlib only (iso/kconfig.sh line 50: no SQUASHFS_ZSTD yet).
+**Kept only if measured:** as Part 12, a change is kept only if it helps on at least one of the Vivobook and the Asus
+desktop and hurts on neither.
+1. **The kernel first:** SQUASHFS_ZSTD (and ZSTD_DECOMPRESS) built in, on x86-64 and ARM64 (iso/kconfig.sh,
+   iso/kconfig-arm64.sh; Kryptonite's kconfig on its branch too); the images unchanged. This goes out in a release
+   before any image changes, so every system that updates already runs a kernel that can read the new images, and an
+   older kernel never meets a zstd image (the updater checks it too: it refuses an image whose compression the running
+   or next kernel cannot read, and says so).
+2. **Measured in QEMU** (KVM, the release's layers made both ways from the same root, `SOURCE_DATE_EPOCH` kept so both are
+   reproducible): for xz, zstd levels 15, 19 and 22, and lz4 for comparison, each with 1M and 256K blocks: each image's
+   size; the time from start to "the desktop was ready" (the health log, 5 starts each, cold caches); Chromium's first
+   start; Oracle's first page; a Library game's first start; CPU time spent in decompression; memory at idle; with the
+   disk as virtio NVMe, as a slow USB stick (QEMU's throttling at about 30 MB/s) and as an eMMC-like disk (about 150 MB/s).
+   Each desktop engine timed on its own (the owner, 2026-11-22: "Will native and lite benefit from zstd over xz as
+   well?"): Native, Chromium and Lite all start from base.sfs, so all three gain there; only Chromium reads chromium.sfs
+   at start-up, while Native and Lite read it at Oracle's first start (Oracle runs on Rudolf's Chromium on every engine),
+   so for Native and Lite the start-up and the first Oracle start are reported apart.
+3. **zstd for every image, for all three engines** (the owner, 2026-11-22: "Do zstd for all three instead of just
+   chromium"): base.sfs, chromium.sfs, modules.sfs and desktop.sfs all made with zstd, so Native, Chromium and Lite
+   each gain, not only Chromium. The measurements choose the level and the block size (the fastest to read at most
+   about 20% larger than xz overall), not whether an image switches. If an engine or a disk kind comes out slower with
+   zstd than with xz, that is reported to the owner before the switch, with the numbers.
+4. **Updates:** the delta updates (.rzs) send changed blocks only, so the first update after an image's compression
+   changes downloads that image whole (about 0.5 to 0.65 GB): said in the release notes and in the update's size shown
+   before downloading. Later updates are deltas again. Recovery Mode is unaffected (it boots the official stable
+   version's own kernel and images).
+5. **Nothing weakened:** the images stay read-only, signed and checked whole as now; Secure Boot, lockdown and module
+   signing unchanged; the build stays reproducible (two builds give the same images, checked in CI).
+6. **The owner's checklist:** on the Vivobook (its own disk) and on the Asus desktop (live from a USB stick): restart 3
+   times on each build, write down Settings › System health › Last starts, Chromium's and Oracle's first start (a
+   stopwatch is enough), and Settings › System health's memory at idle, on each of Native, Chromium and Lite, in a table:
+   machine, engine, build (xz/zstd), start, first Oracle, memory.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -541,3 +580,5 @@ hosts, Rudolf OS runs a small relay on that computer, and the other computer fin
 7. Part 30 (the LAN game relay): built with Ember Reach 0.5.2; then the owner's checklist on two computers.
 8. Names (the Standard desktop called Chromium): one PR, then on the Vivobook: Settings › System health › Desktop engine
    reads Native, Chromium, Lite and shows "In use now: Native" (or Chromium); Help › Keyboard shortcuts says the Chromium engine.
+9. Part 31 (zstd for the system's images): 1 in one PR (the kernel option, shipped first); 2-3 measured in QEMU in a
+   check workflow; every image switched to zstd in a later PR, at the level the numbers choose; then the owner's checklist on both machines.
