@@ -1,0 +1,39 @@
+# 1.6.2: Emu's Nintendo 64 and Dreamcast emulators (Rosalie's Mupen GUI and Flycast, from Flathub) played for real with
+# test games made here (iso/qt/emu/n64test.py, dctest.py: no Nintendo or Sega material, no game committed), started by
+# the real rudolfd with native/run (iso/qt/emu/nativerun_t.sh): screenshots, a held button from the keyboard and a
+# virtual gamepad, full screen, quitting. The screenshots and logs are this run's artifact. It never publishes.
+name: Emu native check
+on:
+  workflow_dispatch:
+  push:
+    branches: [emu-native-run]
+  pull_request:
+    paths: ['iso/qt/emu/**', 'iso/sys/rudolfd.c', 'iso/sys/root/usr/lib/rudolf/games-import.sh', 'iso/sys/root/usr/lib/rudolf/rmg-controller.sh',
+      'desktop/emu26.js', '.github/workflows/emu-native-check.yml']
+permissions: {contents: read}
+jobs:
+  play:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq flatpak xvfb xdotool imagemagick mame-tools python3-evdev python3-xlib \
+            dbus x11-utils zlib1g-dev binutils-mips-linux-gnu binutils-sh4-linux-gnu >/dev/null
+          sudo modprobe uinput || true; ls -la /dev/uinput || true
+          # the desktop's user, as on Rudolf OS (uid 1000 when it is free)
+          if getent passwd 1000 >/dev/null; then sudo useradd -M -s /bin/sh rudolf; else sudo useradd -M -u 1000 -s /bin/sh rudolf; fi; id rudolf
+      - name: The test games' encoders (against GNU binutils' disassemblers)
+        run: python3 iso/qt/emu/n64test.py --check && python3 iso/qt/emu/dctest.py --check
+      - name: The emulators from Flathub (as rudolfd's native/install installs them)
+        run: |
+          sudo flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          for a in com.github.Rosalie241.RMG org.flycast.Flycast; do sudo flatpak install --system -y --noninteractive flathub $a >/dev/null || exit 1; flatpak info --system $a | sed -n 's/^ *\(Version\|Commit\|Runtime\): /  \1: /p'; done
+      - name: Play the test games (nativerun_t.sh)
+        run: sudo bash iso/qt/emu/nativerun_t.sh /tmp/nativerun
+      - name: The screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: emu-native-screenshots, path: /tmp/nativerun, if-no-files-found: warn}
