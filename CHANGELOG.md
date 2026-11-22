@@ -9,6 +9,9 @@ Summary: In progress.
   service. Lua (Command Prompt, BlockLua Builder, Blitzen) always uses Rudolf's own copy of its runtime, never one downloaded from
   a website, and the page now has a security policy that refuses any other site's script. Flash content plays in a sealed-off frame
   of its own: the Flash Player app, and Oracle's pages for Flash files.
+- Fixed: Oracle's status line kept saying "Goes To: <address>" after the mouse left one of Oracle's own pages (its home
+  page, the reader) for the rest of the desktop or Oracle's own bar: Chromium does not tell such a page that the mouse
+  left it, so the desktop now ends it itself when the mouse arrives on its own page.
 - New: Rudolf's title bar on Standard's windows from outside the page (docs/plan-1.6.2.md Part 29, the owner, 2026-11-21): Linux
   apps, the encrypted Oracle and Oracle's Tor windows get the same title bar, buttons, edges and window menu as Rudolf's own windows
   (and as Native's frames), in the title-bar style and colour chosen in Display Properties. Drag the title bar to move them, any edge
