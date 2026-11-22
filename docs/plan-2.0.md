@@ -190,6 +190,41 @@ be done on 1.6's 6.18 LTS with X11 and also on a 7.3 build with Wayland: "Keep t
   the Wayland stages as above. When 2.0 (Rudolf Kryptonite) is released, "next" becomes stable and 1.6.x keeps the LTS for older computers
   for at least two releases.
 
+### Status: the 7.3 kernel (2026-11-22, the kryptonite branch)
+Asked for on 2026-11-21: the 7.3 kernel built now and held in reserve until 2.0 development starts. All of it is on the
+long-lived `kryptonite` branch (pull requests based on it), never on main, the 1.6.x releases or the update channels.
+- **Which kernel:** Linux **7.3.5** (the newest 7.3.y on 2026-11-22), pinned in `.github/kryptonite-kernel.txt`. Each newer
+  7.3.y is taken by changing that line (the check warns when a newer point release is out); 7.4 once it has settled, as
+  above. 1.6.x stays on 6.18.y (6.18.64 in the 2026112201 release).
+- **Done:** iso/kconfig.sh moved over option by option (systools/kconfdiff.py: every option kconfig.sh and
+  kconfig-required.txt name, compared between 6.18.64 and 7.3.5, and the options 7.3 added, dropped or changed): of 596
+  options, two are gone (CRYPTO_HKDF: fscrypt's key derivation is in the kernel's crypto library now; SND_SOC_AMD_RPL_ACP6x:
+  the Raptor Lake twin's ACP 6.2 is driven by ACP6x's own driver), two defaults changed and are kept as 1.6.x has them
+  (the small HID drivers for keyboards and mice with quirks, now off by default: kept on; Intel TSX, now AUTO: kept off),
+  one is new and kept off (Nova Lake's SOF: no firmware shipped, as the older platforms); 7.3's other changes taken as they
+  are (preemption: PREEMPT_LAZY replaces VOLUNTARY, with PREEMPT_DYNAMIC so preempt=full stays a start-up option; HZ 1000
+  unchanged; /proc/PID/mem writes need ptrace rights (PROC_MEM_FORCE_PTRACE), stricter than 6.18). Every Rudolf choice is
+  checked as before (lockdown, module signing, the TPM, zram/MGLRU/PSI, ACPI_FPDT, AMD and Intel P-state, NVK's nouveau,
+  IPU6/7, SOF, the Bluetooth chips) and the 79 required features (kconfig-required.txt) are there.
+- **Built as the release builds it** (systools/testkernel.sh, the kernel part of ci_release.sh): 13 MB, modules 98 MB,
+  every module signed with a key made for the build; the module-signing and Secure Boot design unchanged.
+- **The firmware:** 7.3's drivers ask for 96 firmware names 6.18's did not (3 already listed, 78 in the base layer); none is in a family firmware-extra.txt takes
+  (systools/kfwdiff.py), so the list and its R line (linux-firmware 0af0ecfd) stay as they are. Intel Wi-Fi asks for
+  newer firmware (API 107 and 89) than the base layer has; the driver falls back to the older files, which load. The
+  base layer's Wi-Fi firmware (wififw.py) is to be refreshed with the "next" channel's first build.
+- **Out-of-tree:** NVIDIA's open kernel modules (595.112.07, the system extension nvidia-driver) build against 7.3.5.
+  NVK itself is Mesa's (user space): nothing to move. No Library package builds against the kernel.
+- **The checks** (`.github/workflows/kryptonite-kernel.yml`, on the kryptonite branch and its pull requests only,
+  publishing nothing): the configuration (kconfdiff.py, kreq), the build, Secure Boot on in QEMU with test keys made in
+  the job (qt/sb/recovery_sb_t.sh: shim, the menu and the kernel bundle signed with sbsign, lockdown, the handover to a
+  kernel checked against the built-in certificate), the same check on the beta's own 6.18 kernel to compare, NVIDIA's
+  modules, the firmware, and the test kernel in QEMU on the newest beta's layers next to the beta's kernel
+  (qt/sb/kr20_t.py: Standard and Native reaching ready on X11, the self-test, the modules and firmware, kernel warnings).
+RESULTS-PLACEHOLDER
+- **ARM64** (kconfig-arm64.sh, systools/arm64_kernel.sh, the ARM64 check): not moved yet; left for a later step.
+- **Next:** Wayland, in its stages W0 to W5 above, on this kernel; and the "next" channel's build switch (the kernel
+  track) once the handover finding is settled.
+
 ## The phone build (added on 2026-11-15)
 Decided on 2026-11-15 (docs/plan-1.6.1.md, "The phone, split in two"): the phone comes in two stages. Stage 1, in
 1.6.1, makes one ARM64 phone's hardware work under today's native desktop (the modem's data, texts and calls,

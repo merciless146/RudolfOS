@@ -5,7 +5,7 @@
 # 2026-11-12: allocation profiling (/proc/allocinfo: how much memory each place in the kernel holds), to name the
 # 140 to 180 MB that no counter shows on the Vivobook (docs/plan-memdebug.md).
 # The kernel part of ci_release.sh, kept apart so that a test option can never reach a release.
-# Environment: KERNEL_VERSION (6.18.y), EXTRA (kconfig options to turn on, by name), OUT. GPL-2.0-or-later.
+# Environment: KERNEL_VERSION (6.18.y; 7.3.y on the kryptonite branch), EXTRA (kconfig options to turn on, by name), OUT. GPL-2.0-or-later.
 # 1.6.1 (plan Part 12, kernel tuning: .github/workflows/kernel-tuning.yml, which publishes nothing): OFF (options to turn
 # off, as HZ_1000 for HZ_250), MOD (options to build as modules instead of into the kernel), EXTRA may be empty (this tree's kconfig.sh as it is), and REPRO=1 (the build's date, user
 # and machine fixed, and $OUT/repro.txt: a checksum of each part of the kernel and of each module without its signature,
@@ -45,7 +45,9 @@ SB=$W/sof-bin; for i in 1 2 3; do rm -rf "$SB"; git clone -q --filter=blob:none 
 awk '$1=="F"{print "/"$4}' firmware-sof.txt | git -C "$SB" sparse-checkout set --no-cone --stdin; git -C "$SB" checkout -q fcd5ae85ead7ecd67ff199335b61fac825843ca0
 python3 systools/fwextra.py copy firmware-sof.txt "$SB" "$W/fw"
 # the Rudolf OS certificate built in as trusted, as in a release (public: the certificate only, never the key)
-export SB_CERT=$(realpath boot/sb/rudolf-sb.crt)
+# (2.0, the kryptonite branch: TEST_SB_CERT, a TEST certificate made by the check itself, for Secure Boot in QEMU with test
+#  keys only: .github/workflows/kryptonite-kernel.yml; never the real key)
+export SB_CERT=$(realpath "${TEST_SB_CERT:-boot/sb/rudolf-sb.crt}")
 UCODE_DIR="$W/fw" ./kconfig.sh "$W/linux" "$HERE/initramfs $HERE/initramfs.list"
 # the test options, on top of the release's configuration
 for o in $EXTRA; do "$W/linux/scripts/config" --file "$W/linux/.config" --enable "$o"; done

@@ -20,8 +20,14 @@ KERNEL=$(realpath "$KERNEL"); W=$(mktemp -d /tmp/recsb.XXXXXX); QP=""
 trap '[ -n "$QP" ] && kill $QP 2>/dev/null; [ -n "$RECSB_KEEP" ] || rm -rf "$W"' EXIT
 P=0; F=0; ok() { if [ "$2" = 0 ]; then P=$((P+1)); echo "PASS $1"; else F=$((F+1)); echo "FAIL $1 - $(echo "$3" | tail -c 1500)"; fi; }
 # ---- TEST keys (deleted with W): a Secure Boot key and certificate, a release key
+# (2.0, the kryptonite branch: RECSB_TEST_KEYDIR, a folder with a TEST sb.key and sb.crt the kernel under test was built
+#  to trust (a test build's kernel: .github/workflows/kryptonite-kernel.yml makes them in its job); never the real key)
+if [ -n "$RECSB_TEST_KEYDIR" ]; then cp "$RECSB_TEST_KEYDIR/sb.key" "$RECSB_TEST_KEYDIR/sb.crt" $W/ || { echo "FAIL test key"; exit 1; }
+	openssl x509 -in $W/sb.crt -noout -subject | grep -q TEST || { echo "FAIL RECSB_TEST_KEYDIR: not a TEST certificate"; exit 1; }
+else
 (cd $W && openssl req -new -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=Rudolf OS TEST Secure Boot/" -keyout sb.key -out sb.crt \
 	-addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=codeSigning" >/dev/null 2>&1) || { echo "FAIL test key"; exit 1; }
+fi
 python3 - $W <<'PY' || { echo "FAIL release key"; exit 1; }
 import sys, base64
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -37,7 +43,7 @@ gcc -Os -static -o $W/ov/bin/rudolf-verity $R/sys/rudolf-verity.c && strip $W/ov
 gcc -Os -static -nostdlib -fno-builtin -fno-stack-protector -fno-asynchronous-unwind-tables -o $W/ov/bin/rudolf-kexec $R/sys/rudolf-kexec.c && strip $W/ov/bin/rudolf-kexec || { echo "FAIL rudolf-kexec"; exit 1; }
 (cd $W/ov && find . | cpio -o -H newc --quiet -R 0:0 > $W/ov.cpio)
 # ---- the boot files: mkefi.sh, as a disc's; then the menu set to Recovery mode at once
-RUDOLF_TEST_KEYS=$W/rel.pub RUDOLF_UKI_TEST_INITRD=$W/ov.cpio RUDOLF_UKI_TEST_CMDLINE="console=ttyS0 ignore_loglevel earlyprintk=serial,ttyS0,115200" SB_KEY=$W/sb.key SB_CERT=$W/sb.crt \
+RUDOLF_TEST_KEYS=$W/rel.pub RUDOLF_UKI_TEST_INITRD=$W/ov.cpio RUDOLF_UKI_TEST_CMDLINE="console=ttyS0 ignore_loglevel earlyprintk=serial,ttyS0,115200${RECSB_APPEND:+ $RECSB_APPEND}" SB_KEY=$W/sb.key SB_CERT=$W/sb.crt \
 	bash $R/systools/mkefi.sh $KERNEL 1.5.9 $SB_PARTS $W/EFIBOOT.IMG > $W/mkefi.log 2>&1 || { cat $W/mkefi.log; echo "FAIL mkefi.sh"; exit 1; }
 mdir -i $W/EFIBOOT.IMG ::/EFI/rudolf > $W/esp.txt 2>&1
 ok "0. mkefi.sh: recovery.efi beside rudolf.efi on the boot files, both signed; Recovery mode's entry names it" $(grep -qi 'recovery efi' $W/esp.txt && mcopy -n -i $W/EFIBOOT.IMG ::/EFI/rudolf/recovery.efi $W/recovery.efi && sbverify --cert $W/sb.crt $W/recovery.efi >/dev/null 2>&1 && mtype -i $W/EFIBOOT.IMG ::/loader/entries/rudolf-recovery.conf | grep -q '^efi /EFI/rudolf/recovery.efi'; echo $?) "$(cat $W/esp.txt)"
@@ -51,7 +57,7 @@ mkiso() {
 mkiso $W/EFIBOOT.IMG $W/boot.iso || { echo "FAIL the boot image"; exit 1; }
 # ---- RUDOLFDATA with system/r: the released kernel and stand-in layers, signed by the test release key
 mkdata() {
-	rm -rf $W/data; S=$W/data/os/system; mkdir -p $S/r; cp $KERNEL $S/r/vmlinuz
+	rm -rf $W/data; S=$W/data/os/system; mkdir -p $S/r; cp ${RECSB_RKERNEL:-$KERNEL} $S/r/vmlinuz
 	for n in base chromium desktop modules; do head -c 1048576 /dev/urandom > $S/r/$n.sfs; done
 	python3 - $S/r $W/rel.key <<'PY'
 import sys, os, hashlib
@@ -73,13 +79,15 @@ virt-fw-vars --input $OV/OVMF_VARS_4M.ms.fd --output $VARS0 --add-db 0f4b3c3a-00
 # boot ISO WAIT_FOR TIMEOUT: serial output in $W/serial.txt
 boot() {
 	cp $VARS0 $W/vars.fd; : > $W/serial.txt
-	qemu-system-x86_64 -machine q35,smm=on -global driver=cfi.pflash01,property=secure,value=on -m 1536 -smp 2 \
+	qemu-system-x86_64 -machine q35,smm=on -global driver=cfi.pflash01,property=secure,value=on -m ${RECSB_MEM:-1536} -smp 2 \
 		-drive if=pflash,format=raw,unit=0,file=$OV/OVMF_CODE_4M.secboot.fd,readonly=on -drive if=pflash,format=raw,unit=1,file=$W/vars.fd \
 		-drive file=$1,media=cdrom,if=none,id=cd -device ide-cd,drive=cd,bootindex=0 -drive file=$W/data.img,format=raw,if=virtio \
 		-display none -serial file:$W/serial.txt -monitor none -no-reboot > $W/qemu.log 2>&1 & QP=$!
-	i=0; while [ $i -lt $3 ]; do grep -qa "$2" $W/serial.txt && break; kill -0 $QP 2>/dev/null || break; timeout 2 tail -f /dev/null; i=$((i + 2)); done
+	i=0; while [ $i -lt $3 ]; do grep -qa "$2" $W/serial.txt && break; grep -qa "end Kernel panic" $W/serial.txt && break; kill -0 $QP 2>/dev/null || break; timeout 2 tail -f /dev/null; i=$((i + 2)); done
 	timeout 3 tail -f /dev/null; kill $QP 2>/dev/null; wait $QP 2>/dev/null; QP=""
 	tr -d '\r' < $W/serial.txt | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' > $W/s.txt
+	# (2.0, the kryptonite branch: RECSB_SERIAL, a folder that keeps each start's serial output for the check's log)
+	[ -n "$RECSB_SERIAL" ] && { mkdir -p "$RECSB_SERIAL"; NB=$((${NB:-0} + 1)); cp $W/s.txt "$RECSB_SERIAL/boot$NB.txt"; }
 }
 T=${RECSB_TIMEOUT:-900}
 # 1. a good system/r
@@ -90,6 +98,10 @@ o=$(cat $W/s.txt); NK=$(grep -c 'Linux version' $W/s.txt)
 ok "1. Secure Boot on (the kernel locked down): the menu's Recovery mode started recovery.efi (the recovery mark)" $(grep -q 'Secure boot enabled' $W/s.txt && grep -q 'Kernel is locked down' $W/s.txt && grep -q 'checking the official recovery system: vmlinuz' $W/s.txt; echo $?) "$o"
 ok "...system/r checked (each file) and started: the kernel handed over to system/r's (signed, under lockdown)" $([ "$(grep -c 'checking the official recovery system: ' $W/s.txt)" = 5 ] && grep -q 'starting the official recovery system (release 2026111599, checked)' $W/s.txt && [ "$NK" -ge 2 ] && grep -q 'Command line:.* rudolf.slot=r rudolf.official=1 rudolf.sb=1 lockdown=integrity' $W/s.txt; echo $?) "$o"
 ok "...and system/r's own start-up ran (no stale initramfs: the empty one given at the handover)" $(! grep -q 'Cannot find place for new RAMDISK' $W/s.txt && grep -q "Rudolf OS: the system layer '[a-z]*' did not pass the check" $W/s.txt; echo $?) "$o"
+# (2.0, the kryptonite branch: RECSB_RKERNEL, another kernel for system/r than the boot files' (which kernel hands over to
+#  which); RECSB_ONLY1=1 stops here, for comparing start-up options (RECSB_APPEND, more options on the
+#  test kernel bundle's command line) and memory sizes (RECSB_MEM, MiB) on the handover alone)
+[ -n "$RECSB_ONLY1" ] && { echo "$P/$((P+F)) passed"; [ $F = 0 ]; exit; }
 # 2. a changed layer
 mkdata 'printf X | dd of=$S/r/chromium.sfs bs=1 seek=5000 conv=notrunc 2>/dev/null'; boot $W/boot.iso 'Press Enter to restart' $T
 o=$(cat $W/s.txt)

@@ -3,6 +3,15 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 2.0 (Rudolf Kryptonite, in progress)
+Summary: In progress, on the kryptonite branch only (held for 2.0: not in 1.6.x, its releases or the update channels).
+- Kernel: Linux 7.3.5 for x86-64 in place of 6.18 (docs/plan-2.0.md, "Status: the 7.3 kernel"): Rudolf's kernel configuration
+  moved over option by option, every Rudolf choice kept (lockdown, module signing, the TPM, zram, MGLRU and PSI, the firmware's
+  start-up times, the AMD and Intel processor speed drivers, the graphics drivers for NVK, Intel's cameras, Intel's sound
+  processor, the Bluetooth chips), and the keyboards and mice with quirks and Intel TSX kept as 1.6.x has them. Built and
+  checked on GitHub's runners on this branch only: the configuration, the build, Secure Boot in QEMU with test keys, NVIDIA's
+  driver modules, the firmware, and the desktop on Standard and Native (X11).
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs

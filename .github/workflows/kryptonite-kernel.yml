@@ -1,0 +1,253 @@
+# Rudolf Kryptonite (2.0, docs/plan-2.0.md "The newest kernel"): Linux 7.3.y for x86-64, checked on the kryptonite branch
+# only. Nothing is published: no release, no gh-pages, no channel, no secret; the kernel is built with a TEST Secure Boot
+# key made in the job and thrown away with it. Runs on pushes to kryptonite and on pull requests into kryptonite (the
+# branches of its work, kryp-*), never on main.
+name: Kryptonite kernel
+on:
+  push:
+    branches: [kryptonite]
+    paths: ['iso/kconfig.sh', 'iso/kconfig-required.txt', 'iso/systools/kreq.sh', 'iso/systools/kconfdiff.py', 'iso/systools/kfwdiff.py', 'iso/systools/testkernel.sh',
+      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/sys/rudolf-kexec.c', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/kr20_sbparts.sh', 'iso/qt/sb/recovery_sb_t.sh',
+      'iso/ext/nvidia-driver/**', '.github/kryptonite-kernel.txt', '.github/workflows/kryptonite-kernel.yml']
+  pull_request:
+    branches: [kryptonite]
+    paths: ['iso/kconfig.sh', 'iso/kconfig-required.txt', 'iso/systools/kreq.sh', 'iso/systools/kconfdiff.py', 'iso/systools/kfwdiff.py', 'iso/systools/testkernel.sh',
+      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/sys/rudolf-kexec.c', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/kr20_sbparts.sh', 'iso/qt/sb/recovery_sb_t.sh',
+      'iso/ext/nvidia-driver/**', '.github/kryptonite-kernel.txt', '.github/workflows/kryptonite-kernel.yml']
+permissions: {contents: read}
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs: {kv: '${{ steps.v.outputs.kv }}', old: '${{ steps.v.outputs.old }}'}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        run: |
+          W=$(sed -n 's/^kernel=//p' .github/kryptonite-kernel.txt | head -1); SER=$(echo "$W" | cut -d. -f1,2); RE=$(echo "$SER" | sed 's/\./\\./g')
+          ALL=$(git ls-remote --tags https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "v$SER*" | sed -n 's#.*refs/tags/v\([0-9.]*\)$#\1#p' | grep -E "^$RE(\.[0-9]+)?$" | sort -V)
+          [ -n "$ALL" ] || ALL=$(curl -fsSL https://www.kernel.org/releases.json | jq -r '.releases[].version' | grep -E "^$RE(\.[0-9]+)?$" | sort -V)
+          NEWEST=$(echo "$ALL" | tail -1)
+          case "$W" in *.*.*) KV=$W;; *) KV=$NEWEST;; esac
+          [ -n "$KV" ] || { echo "::error::no Linux $W on kernel.org"; exit 1; }
+          [ "$KV" = "$NEWEST" ] || echo "::warning title=Kryptonite kernel::$KV is pinned in .github/kryptonite-kernel.txt; $NEWEST is out"
+          git fetch -q --depth 1 origin gh-pages
+          OLD=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); OLD=${OLD%-rudolf}
+          echo "kv=$KV" >> $GITHUB_OUTPUT; echo "old=$OLD" >> $GITHUB_OUTPUT
+          echo "::notice title=Kryptonite kernel::Linux $KV (newest $SER.y: $NEWEST; 1.6.x stable: $OLD); every $SER.y: $(echo "$ALL" | tr '\n' ' ')"
+  kconfig:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bc flex bison libelf-dev libssl-dev >/dev/null
+      - name: kconfig.sh on ${{ needs.version.outputs.kv }} and on 1.6.x's ${{ needs.version.outputs.old }}
+        env: {KV: '${{ needs.version.outputs.kv }}', OLD: '${{ needs.version.outputs.old }}'}
+        run: |
+          for v in $KV $OLD; do git clone -q --depth 1 -b "v$v" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-$v; done
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem -days 1 -subj /CN=kconfig-check 2>/dev/null; rm -f /tmp/k.pem
+          (cd iso && SB_CERT=/tmp/c.pem sh kconfig.sh ../linux-$OLD /tmp/none) > old.log 2>&1 || { cat old.log; echo "::error::kconfig.sh fails on $OLD"; exit 1; }
+          set +e; (cd iso && SB_CERT=/tmp/c.pem sh kconfig.sh ../linux-$KV /tmp/none) > new.log 2>&1; RC=$?; set -e
+          cat new.log
+          python3 iso/systools/kconfdiff.py linux-$OLD linux-$KV > kconfdiff.txt; cat kconfdiff.txt
+          cp linux-$KV/.config config-$KV.txt; cp linux-$OLD/.config config-$OLD.txt
+          [ $RC = 0 ] && echo "::notice title=kconfig.sh::Linux $KV: every option kconfig.sh asks for and checks is there; $(tail -1 new.log)" || { echo "::error title=kconfig.sh::Linux $KV: $(grep 'kconfig.sh:' new.log | tr '\n' ' ')"; exit 1; }
+          cd iso && KCONFIG=../linux-$KV/.config sh qt/host/kreq161_t.sh
+      - name: What 7.3 changed where kconfig.sh decides (for the record)
+        if: always()
+        env: {KV: '${{ needs.version.outputs.kv }}', OLD: '${{ needs.version.outputs.old }}'}
+        run: |
+          for v in $OLD $KV; do echo "==== $v"; cd linux-$v
+            grep -E '^CONFIG_(PREEMPT[A-Z_]*|HZ[_0-9]*|X86_INTEL_TSX[A-Z_]*|PROC_MEM[A-Z_]*|SYSCTL|PROC_SYSCTL|SND_SOC_AMD[A-Za-z0-9_]*|SND_SOC_SOF_[A-Z]*LAKE|SCHED_CLASS_EXT|NTSYNC|DRM_NOUVEAU[A-Z_]*|DRM_XE|DRM_AMDGPU[A-Z_]*)=' .config
+            grep -n -i -B1 -A6 'rpl\|rembrandt\|acp6\|acp70\|acp63' sound/soc/amd/Kconfig | head -120
+            ls sound/soc/amd; grep -n 'sysctl' fs/proc/Makefile; grep -n -A8 '^choice' arch/x86/Kconfig | grep -A8 -i tsx | head -20
+            grep -n -A4 '^config HID_CHERRY' drivers/hid/Kconfig
+            grep -rn -i 'rpl\|0x62\|acp62\|ACP6_2\|rembrandt' sound/soc/amd/yc/*.c sound/soc/amd/acp/*.c sound/soc/amd/acp/Kconfig sound/soc/amd/Makefile 2>/dev/null | head -30; cd ..; done
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: kconfig, retention-days: 14, path: "kconfdiff.txt\nnew.log\nconfig-*.txt"}
+  build:
+    # the kernel as the release builds it (systools/testkernel.sh: kconfig.sh, the same initramfs, firmware and module signing
+    # with a key made for this build only), its certificate a TEST one made here; then Secure Boot in QEMU with those test keys
+    # (qt/sb/recovery_sb_t.sh: shim, the menu and the kernel bundle made by mkefi.sh and signed with sbsign, OVMF with Secure
+    # Boot on, lockdown, the handover (kexec) to a kernel checked against the built-in certificate). The test keys stay in
+    # this job's temporary folder and are deleted with it; only the kernel and its modules go on (an artifact for 3 days).
+    # (a variant: matrix.k with a name, kconfig options turned on (extra) or off (off), for the Secure Boot check only. 2026-11-22:
+    #  xz instead of zstd, which did not change the handover's result: 7.3's second start found its own start-up image corrupt
+    #  with either)
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    #  2026-11-22, the handover's second start at 1.5 GB by kernel series (kv: another version): 7.2.15, 7.1.13 and 7.0.14 fail as
+    #  7.3.5 does; 6.18.64 passes (sb-release)
+    strategy: {fail-fast: false, matrix: {k: [{name: '', kv: '', extra: '', off: ''}]}}
+    name: build ${{ matrix.k.name }}
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq squashfs-tools bc flex bison libelf-dev libssl-dev kmod sbsigntool qemu-system-x86 ovmf e2fsprogs mtools cpio nasm python3-cryptography python3-pip >/dev/null
+          command -v virt-fw-vars || sudo pip3 install --break-system-packages -q virt-firmware
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm || echo "no KVM: QEMU's own (slow)"
+      - name: TEST Secure Boot key (this job only)
+        run: |
+          K=$RUNNER_TEMP/sbtest; mkdir -p $K; chmod 700 $K
+          (cd $K && openssl req -new -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=Rudolf Kryptonite TEST Secure Boot/" -keyout sb.key -out sb.crt \
+            -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=codeSigning" 2>/dev/null)
+          echo "SBT=$K" >> $GITHUB_ENV; openssl x509 -in $K/sb.crt -noout -subject -fingerprint -sha256
+      - name: Build Linux ${{ needs.version.outputs.kv }}
+        env: {KERNEL_VERSION: '${{ matrix.k.kv || needs.version.outputs.kv }}', EXTRA: '${{ matrix.k.extra }}', OFF: '${{ matrix.k.off }}'}
+        run: |
+          S=$(date +%s); TEST_SB_CERT=$SBT/sb.crt OUT=$PWD/kout bash iso/systools/testkernel.sh
+          sbsign --key $SBT/sb.key --cert $SBT/sb.crt --output kout/vmlinuz.signed kout/vmlinuz; sbverify --cert $SBT/sb.crt kout/vmlinuz.signed
+          mv kout/vmlinuz.signed kout/vmlinuz; (cd kout && sha256sum vmlinuz modules.sfs rudolf-kexec > SHA256SUMS)
+          L=$(sed -n 's/^CONFIG_LOCALVERSION=//p' kout/config.txt)
+          for o in MODULE_SIG MODULE_SIG_FORCE MODULE_SIG_ALL SECURITY_LOCKDOWN_LSM KEXEC_SIG KEXEC_BZIMAGE_VERIFY_SIG; do grep -q "^CONFIG_$o=y$" kout/config.txt || { echo "::error::$o is not on"; exit 1; }; done
+          M=$(find iso/work-test/mods -name '*.ko' | wc -l); U=$(for f in $(find iso/work-test/mods -name '*.ko' | head -50); do tail -c 28 $f | grep -q 'Module signature appended' || echo $f; done | wc -l)
+          [ "$U" = 0 ] || { echo "::error::$U of the first 50 modules are not signed"; exit 1; }
+          grep -E '^CONFIG_(HZ|PREEMPT[A-Z_]*)=' kout/config.txt
+          echo "::notice title=Build ${{ matrix.k.name }}::Linux $(ls iso/work-test/mods/lib/modules) ($L): vmlinuz $(du -m kout/vmlinuz | cut -f1) MB, modules.sfs $(du -m kout/modules.sfs | cut -f1) MB, $M modules (signed), built in $(( $(date +%s) - S )) s; $(grep -E '^CONFIG_(HZ|PREEMPT_[A-Z]*)=' kout/config.txt | tr '\n' ' ')"
+          find iso/work-test/mods/lib/modules -name '*.ko' | sed 's#.*/lib/modules/[^/]*/##' | sort > kout/modules.txt
+      - if: matrix.k.name == ''
+        uses: actions/upload-artifact@v4
+        with: {name: kernel-kryptonite, retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\nkout/modules.txt\nkout/SHA256SUMS"}
+      - name: Secure Boot on in QEMU with the test keys (recovery_sb_t.sh)
+        env: {KERNEL_VERSION: '${{ matrix.k.kv || needs.version.outputs.kv }}'}
+        run: |
+          bash iso/qt/sb/kr20_sbparts.sh parts
+          cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/
+          export PATH=$PATH:/usr/local/bin
+          if [ -n "${{ matrix.k.name }}" ]; then export RECSB_ONLY1=1 RECSB_TIMEOUT=300; W=4/4; else W=7/7; fi
+          SB_PARTS=$PWD/parts KERNEL=$PWD/kout/vmlinuz RECSB_TEST_KEYDIR=$SBT RECSB_SERIAL=$PWD/recsb-serial sh iso/qt/sb/recovery_sb_t.sh 2>&1 | tee recsb.txt
+          for f in recsb-serial/*.txt; do echo "==== $f"; grep -a -E 'Linux version|Command line|Unpacking|initramfs|initrd|RAMDISK|panic|corrupt|kexec|Lockdown|locked down|Secure boot|Rudolf OS' $f | cut -c1-300 | head -60; done
+          grep -q "^$W passed" recsb.txt || { echo "::error title=Secure Boot ${{ matrix.k.name }}::Linux $KERNEL_VERSION: $(grep '^FAIL' recsb.txt | cut -c1-200 | tr '\n' ' ')"; exit 1; }
+          echo "::notice title=Secure Boot ${{ matrix.k.name }}::Linux $KERNEL_VERSION under Secure Boot (test keys): $(tail -1 recsb.txt)"
+      - name: The handover's second start, compared (start-up options, memory)
+        if: always() && matrix.k.name == ''
+        run: |
+          export PATH=$PATH:/usr/local/bin
+          awk '/Linux version/{n++} n==2' recsb-serial/boot1.txt | grep -a -v '^\s*$' | cut -c1-220 | head -400
+          grep -E '^CONFIG_(KEXEC[A-Z_]*|KEXEC_HANDOVER[A-Z_]*|RANDOMIZE_[A-Z]*|PHYSICAL_[A-Z]*|RELOCATABLE|EFI_[A-Z_]*|X86_NEED_RELOCS|CRASH_[A-Z]*)=' kout/config.txt
+          while read -r tag mem app; do
+            rm -rf rs-$tag; set +e; SB_PARTS=$PWD/parts KERNEL=$PWD/kout/vmlinuz RECSB_TEST_KEYDIR=$SBT RECSB_ONLY1=1 RECSB_TIMEOUT=300 RECSB_MEM=$mem RECSB_APPEND="${app#-}" RECSB_SERIAL=$PWD/rs-$tag sh iso/qt/sb/recovery_sb_t.sh > rs-$tag.txt 2>&1; set -e
+            echo "==== $tag (memory $mem MiB, options: ${app#-}): $(tail -1 rs-$tag.txt) $(grep -a -m1 -o 'Kernel panic.*' rs-$tag/boot1.txt)"
+            echo "$tag: $(tail -1 rs-$tag.txt)" >> exp.txt
+          done <<'X'
+          nokaslr 1536 nokaslr
+          mem3g 3072 -
+          mem3gnokaslr 3072 nokaslr
+          X
+          echo "::notice title=Handover experiments::$(cat exp.txt | tr '\n' ';')"
+      - name: The handover between 6.18 and 7.3 (which kernel's side fails)
+        if: always() && matrix.k.name == ''
+        run: |
+          # a 6.18 test kernel (the 1.6.x stable's version, this tree's kconfig.sh, the same TEST certificate), then each
+          # kernel handing over to the other at 1.5 GB
+          export PATH=$PATH:/usr/local/bin; OLD='${{ needs.version.outputs.old }}'
+          mkdir -p k73 && cp kout/vmlinuz k73/
+          set +e; KERNEL_VERSION=$OLD TEST_SB_CERT=$SBT/sb.crt OUT=$PWD/k618 bash iso/systools/testkernel.sh > k618.log 2>&1; RC=$?; set -e
+          [ $RC = 0 ] || { tail -30 k618.log; echo "::warning title=Cross handover::the $OLD test kernel did not build"; exit 0; }
+          sbsign --key $SBT/sb.key --cert $SBT/sb.crt --output k618/vmlinuz.s k618/vmlinuz && mv k618/vmlinuz.s k618/vmlinuz
+          : > cross.txt
+          for pair in "k618 k618" "k618 k73" "k73 k618" "k73 k73"; do set -- $pair
+            set +e; SB_PARTS=$PWD/parts KERNEL=$PWD/$1/vmlinuz RECSB_RKERNEL=$PWD/$2/vmlinuz RECSB_TEST_KEYDIR=$SBT RECSB_ONLY1=1 RECSB_TIMEOUT=300 RECSB_SERIAL=$PWD/cx-$1-$2 sh iso/qt/sb/recovery_sb_t.sh > cx-$1-$2.txt 2>&1; set -e
+            r="$1 -> $2: $(tail -1 cx-$1-$2.txt) $(grep -a -h -m1 -o 'Kernel panic - not syncing: [A-Za-z -]*' cx-$1-$2/boot1.txt 2>/dev/null || true)"; echo "$r"; echo "$r" >> cross.txt
+          done
+          echo "::notice title=Cross handover (6.18 = k618, 7.3 = k73, at 1.5 GB)::$(tr '\n' ';' < cross.txt)"
+      - name: Delete the test keys
+        if: always()
+        run: rm -rf "$SBT" iso/work-test/linux/certs/signing_key.pem
+  sb-release:
+    # the same Secure Boot check on the newest beta's own kernel (1.6.x, 6.18.y, signed with the official key, which it
+    # trusts): what the test kernel's result is compared with. Test keys only for the boot files; nothing published.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sbsigntool qemu-system-x86 ovmf e2fsprogs mtools cpio nasm python3-cryptography python3-pip >/dev/null
+          command -v virt-fw-vars || sudo pip3 install --break-system-packages -q virt-firmware
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm || echo "no KVM: QEMU's own (slow)"
+      - name: recovery_sb_t.sh on the beta's kernel
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages; S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz; KR=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^kernel //p')
+          bash iso/qt/sb/kr20_sbparts.sh parts; cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/
+          export PATH=$PATH:/usr/local/bin
+          SB_PARTS=$PWD/parts KERNEL=$PWD/rel/vmlinuz RECSB_SERIAL=$PWD/recsb-serial sh iso/qt/sb/recovery_sb_t.sh 2>&1 | tee recsb.txt
+          for f in recsb-serial/*.txt; do echo "==== $f"; grep -a -E 'Linux version|Command line|Unpacking|initramfs|initrd|RAMDISK|panic|corrupt|kexec|Lockdown|locked down|Secure boot|Rudolf OS' $f | cut -c1-300 | head -60; done
+          echo "::notice title=Secure Boot (the beta's $KR)::$(tail -1 recsb.txt) $(grep '^FAIL' recsb.txt | cut -c1-160 | tr '\n' ' ')"
+  nvidia:
+    # NVIDIA's open kernel modules (the system extension nvidia-driver, docs/plan-1.6.1.md Part 19) built against this
+    # kernel: the "next" channel takes a new kernel only once they build. Not signed (no key is used); nothing published.
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bc flex bison libelf-dev libssl-dev kmod squashfs-tools >/dev/null
+      - name: NVIDIA's open modules on Linux ${{ needs.version.outputs.kv }}
+        run: |
+          V=$(awk '$1=="V"{print $2}' iso/ext/nvidia-driver/nvidia.txt)
+          S=$(date +%s); KVER=${{ needs.version.outputs.kv }}-rudolf WORK=$RUNNER_TEMP/nv sh iso/ext/nvidia-driver/build.sh $RUNNER_TEMP/nvout 2>&1 | tail -40
+          ls -la $RUNNER_TEMP/nvout/lib/modules/*/extra/nvidia/
+          echo "::notice title=NVIDIA::$V's open kernel modules build on Linux ${{ needs.version.outputs.kv }} ($(( $(date +%s) - S )) s): $(modinfo -F vermagic $RUNNER_TEMP/nvout/lib/modules/*/extra/nvidia/nvidia.ko)"
+  qemu:
+    # the test build's kernel on the newest beta's layers in QEMU (X11), next to the beta's own kernel: Standard and Native
+    # reach ready, the self-test, the modules and the firmware (qt/sb/kr20_t.py); and the firmware 7.3's drivers ask for
+    # against firmware-extra.txt (systools/kfwdiff.py)
+    needs: [version, build]
+    if: always() && needs.version.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs bzip2 squashfs-tools kmod >/dev/null
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "::warning::no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV; mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - name: The newest beta
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          echo "release $S ($(sed -n 's/^version //p' rel/manifest.txt), $(sed -n 's/^kernel //p' rel/manifest.txt))"
+      - uses: actions/download-artifact@v4
+        with: {name: kernel-kryptonite, path: K}
+      - name: The firmware 7.3's drivers ask for (kfwdiff.py)
+        run: |
+          sudo unsquashfs -q -d om rel/modules.sfs usr/lib/modules >/dev/null; sudo unsquashfs -q -d nm K/modules.sfs usr/lib/modules >/dev/null
+          unsquashfs -l rel/base.sfs usr/lib/firmware | sed -n 's#^squashfs-root/usr/lib/firmware/##p' > basefw.txt
+          set +e; python3 iso/systools/kfwdiff.py om/usr/lib/modules/* nm/usr/lib/modules/* iso/firmware-extra.txt basefw.txt | tee kfwdiff.txt; RC=${PIPESTATUS[0]}; set -e
+          echo "::notice title=Firmware::$(grep -c '^LISTED' kfwdiff.txt || true) new names listed, $(grep -c '^BASE' kfwdiff.txt || true) in the base layer, $(grep -c '^REGENERATE' kfwdiff.txt || true) to add, $(grep -c '^NOT-SHIPPED' kfwdiff.txt || true) outside what Rudolf ships"
+          [ $RC = 0 ] || { echo "::error title=Firmware::firmware-extra.txt must be made again: $(grep '^REGENERATE' kfwdiff.txt | cut -d' ' -f2 | tr '\n' ' ')"; exit 1; }
+      - name: Standard and Native on the test kernel (kr20_t.py)
+        run: |
+          mkdir -p run && cd run
+          sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} KV=${{ needs.version.outputs.kv }} \
+            timeout 8000 python3 ../iso/qt/sb/kr20_t.py ../rel ../K 2>&1 | tee job.log; RC=${PIPESTATUS[0]}
+          { echo '```'; sed -n '/^==== SUMMARY/,$p' job.log; echo '```'; } >> $GITHUB_STEP_SUMMARY || true
+          echo "::notice title=QEMU::$(tail -1 job.log)"
+          [ $RC = 0 ] || echo "::error title=QEMU::$(grep '^FAIL' job.log | cut -c1-300 | tr '\n' ' ')"
+          exit $RC
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: kr20, retention-days: 14, path: "run/kr20/kr20.txt\nrun/kr20*/qemu.log\nrun/kr20*/*.png\nrun/job.log\nkfwdiff.txt"}
