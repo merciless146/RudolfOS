@@ -77,7 +77,8 @@ jobs:
     needs: version
     runs-on: ubuntu-24.04
     timeout-minutes: 150
-    strategy: {fail-fast: false, matrix: {k: [{name: '', extra: '', off: ''}]}}
+    #  2026-11-22, the handover's second start at 1.5 GB, by kernel series (which one brought it): h7.2, h7.1, h7.0
+    strategy: {fail-fast: false, matrix: {k: [{name: '', kv: '', extra: '', off: ''}, {name: h7.2, kv: 7.2.15, extra: '', off: ''}, {name: h7.1, kv: 7.1.13, extra: '', off: ''}, {name: h7.0, kv: 7.0.14, extra: '', off: ''}]}}
     name: build ${{ matrix.k.name }}
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
@@ -95,7 +96,7 @@ jobs:
             -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=codeSigning" 2>/dev/null)
           echo "SBT=$K" >> $GITHUB_ENV; openssl x509 -in $K/sb.crt -noout -subject -fingerprint -sha256
       - name: Build Linux ${{ needs.version.outputs.kv }}
-        env: {KERNEL_VERSION: '${{ needs.version.outputs.kv }}', EXTRA: '${{ matrix.k.extra }}', OFF: '${{ matrix.k.off }}'}
+        env: {KERNEL_VERSION: '${{ matrix.k.kv || needs.version.outputs.kv }}', EXTRA: '${{ matrix.k.extra }}', OFF: '${{ matrix.k.off }}'}
         run: |
           S=$(date +%s); TEST_SB_CERT=$SBT/sb.crt OUT=$PWD/kout bash iso/systools/testkernel.sh
           sbsign --key $SBT/sb.key --cert $SBT/sb.crt --output kout/vmlinuz.signed kout/vmlinuz; sbverify --cert $SBT/sb.crt kout/vmlinuz.signed
@@ -111,16 +112,18 @@ jobs:
         uses: actions/upload-artifact@v4
         with: {name: kernel-kryptonite, retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\nkout/modules.txt\nkout/SHA256SUMS"}
       - name: Secure Boot on in QEMU with the test keys (recovery_sb_t.sh)
+        env: {KERNEL_VERSION: '${{ matrix.k.kv || needs.version.outputs.kv }}'}
         run: |
           bash iso/qt/sb/kr20_sbparts.sh parts
           cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/
           export PATH=$PATH:/usr/local/bin
+          if [ -n "${{ matrix.k.name }}" ]; then export RECSB_ONLY1=1 RECSB_TIMEOUT=300; W=4/4; else W=7/7; fi
           SB_PARTS=$PWD/parts KERNEL=$PWD/kout/vmlinuz RECSB_TEST_KEYDIR=$SBT RECSB_SERIAL=$PWD/recsb-serial sh iso/qt/sb/recovery_sb_t.sh 2>&1 | tee recsb.txt
           for f in recsb-serial/*.txt; do echo "==== $f"; grep -a -E 'Linux version|Command line|Unpacking|initramfs|initrd|RAMDISK|panic|corrupt|kexec|Lockdown|locked down|Secure boot|Rudolf OS' $f | cut -c1-300 | head -60; done
-          grep -q '^7/7 passed' recsb.txt || { echo "::error title=Secure Boot ${{ matrix.k.name }}::$(grep '^FAIL' recsb.txt | cut -c1-200 | tr '\n' ' ')"; exit 1; }
-          echo "::notice title=Secure Boot ${{ matrix.k.name }}::Linux ${{ needs.version.outputs.kv }} under Secure Boot (test keys): $(tail -1 recsb.txt)"
+          grep -q "^$W passed" recsb.txt || { echo "::error title=Secure Boot ${{ matrix.k.name }}::Linux $KERNEL_VERSION: $(grep '^FAIL' recsb.txt | cut -c1-200 | tr '\n' ' ')"; exit 1; }
+          echo "::notice title=Secure Boot ${{ matrix.k.name }}::Linux $KERNEL_VERSION under Secure Boot (test keys): $(tail -1 recsb.txt)"
       - name: The handover's second start, compared (start-up options, memory)
-        if: always()
+        if: always() && matrix.k.name == ''
         run: |
           export PATH=$PATH:/usr/local/bin
           awk '/Linux version/{n++} n==2' recsb-serial/boot1.txt | grep -a -v '^\s*$' | cut -c1-220 | head -400
