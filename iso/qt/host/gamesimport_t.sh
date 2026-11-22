@@ -62,4 +62,18 @@ for U in infozip busybox; do
 	ok "$U: the count" $(has "$o" "done 9 added, 1 skipped") "$o"
 	ok "$U: saves and states folders for Genesis and PlayStation" $([ -d $GAMES_DIR/MD/Saves ] && [ -d $GAMES_DIR/PS1/States ] && echo 1 || echo 0)
 done
+# (1.6.2) Rudolf's own N64 and Dreamcast test games (iso/qt/emu/: what emunat162_t.py plays): the three byte orders,
+# a .gdi whose tracks are .iso and .raw files, a DiscJuggler .cdi and, with chdman, a .chd made from the .gdi
+if command -v python3 >/dev/null; then
+	M=$T/made; mkdir -p $M/dc; python3 $HERE/../emu/mkn64.py "$M/Made N64.z64" "$M/Made N64.n64" "$M/Made N64.v64"; python3 $HERE/../emu/mkdc.py $M/dc
+	set -- "$M/Made N64.z64" "$M/Made N64.n64" "$M/Made N64.v64" "$M/dc/gdi/Rudolf DC Test.gdi" "$M/dc/Rudolf DC Test.cdi"; W=5
+	command -v chdman >/dev/null && chdman createcd -i "$M/dc/gdi/Rudolf DC Test.gdi" -o "$M/Made Disc.chd" >/dev/null 2>&1 && { set -- "$@" "$M/Made Disc.chd"; W=6; }
+	export GAMES_DIR=$T/g-made GAMES_TMP=$T/tmp-made GAMES_TEST_SRC=$M; unset GAMES_TEST_PATH
+	printf '%s\n' "$@" > $T/list; o=$($SH $P $T/list 2>&1)
+	ok "made: the N64 test game in each byte order goes to N64, as it is" $(cmp -s "$GAMES_DIR/N64/Made N64.z64" "$M/Made N64.z64" && cmp -s "$GAMES_DIR/N64/Made N64.n64" "$M/Made N64.n64" && cmp -s "$GAMES_DIR/N64/Made N64.v64" "$M/Made N64.v64" && echo 1 || echo 0) "$o"
+	ok "made: the Dreamcast .gdi goes to DC/Rudolf DC Test/ with its .iso and .raw tracks" $(cmp -s "$GAMES_DIR/DC/Rudolf DC Test/track03.iso" "$M/dc/gdi/track03.iso" && cmp -s "$GAMES_DIR/DC/Rudolf DC Test/track02.raw" "$M/dc/gdi/track02.raw" && [ -f "$GAMES_DIR/DC/Rudolf DC Test/track01.iso" ] && [ -f "$GAMES_DIR/DC/Rudolf DC Test/Rudolf DC Test.gdi" ] && echo 1 || echo 0) "$o"
+	ok "made: the .cdi goes to DC" $(cmp -s "$GAMES_DIR/DC/Rudolf DC Test.cdi" "$M/dc/Rudolf DC Test.cdi" && echo 1 || echo 0) "$o"
+	if [ $W = 6 ]; then ok "made: chdman's .chd of the .gdi is a GD-ROM: it goes to DC, not PS1" $([ -f "$GAMES_DIR/DC/Made Disc.chd" ] && [ ! -e "$GAMES_DIR/PS1/Made Disc.chd" ] && echo 1 || echo 0) "$o"; else echo "(no chdman: the .chd is not tried)"; fi
+	ok "made: the count" $(has "$o" "done $W added, 0 skipped") "$o"
+fi
 echo "$((N-F))/$N passed"; [ $F = 0 ]

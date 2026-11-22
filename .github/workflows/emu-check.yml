@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
   pull_request:
     paths: ['desktop/emu26.js', 'desktop/files25.js', 'iso/www/index.html', 'iso/sys/root/usr/lib/rudolf/games-import.sh',
-      'iso/qt/host/gamesimport_t.sh', 'iso/sys/rudolfd.c', 'iso/sys/root/usr/lib/rudolf/emu-native-setup', 'iso/qt/host/emunatsetup162_t.sh',
+      'iso/qt/host/gamesimport_t.sh', 'iso/qt/emu/**', 'iso/sys/rudolfd.c', 'iso/sys/root/usr/lib/rudolf/emu-native-setup', 'iso/qt/host/emunatsetup162_t.sh',
       'iso/qt/host/emunatrun162_t.sh', 'iso/qt/shell2/emugb_t.js', 'iso/qt/shell2/emunative61_t.js', 'iso/qt/shell2/emuopen61_t.js', 'desktop/picker26.js', 'iso/qt/shell2/emulr61_t.js', 'desktop/styles25.css',
       '.github/workflows/emu-check.yml']
 permissions: {contents: read}
@@ -23,7 +23,7 @@ jobs:
         with: {node-version: 22}
       - name: Tools
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq zip unzip busybox >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq zip unzip busybox mame-tools >/dev/null
           npm install --no-save playwright@1 >/dev/null && npx playwright install --with-deps chromium >/dev/null
       - name: Add games (gamesimport_t.sh)
         run: sudo sh iso/qt/host/gamesimport_t.sh   # (as root, as rudolfd runs it: it gives each game to the desktop user)
