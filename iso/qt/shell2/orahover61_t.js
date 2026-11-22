@@ -51,6 +51,9 @@ const prep = "(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=
   ok('B1. Oracle\'s home page: over "Wikipedia", the status line says "Goes To: https://…wikipedia.org…"', /^Goes To: https:\/\/[a-z.]*wikipedia\.org/.test(await stat()), await stat());
   await p.mouse.move(5, 5); await p.waitForTimeout(200);
   ok('B2. ...the mouse leaves the page: it says what it said before', await stat() === before, [before, await stat()]);
+  // (1.6.2: Chromium keeps the sandboxed frame in a process of its own and does not tell it the mouse left: the desktop's page sees it arrive)
+  await fr.locator('a', {hasText: 'Wikipedia'}).first().hover(); await p.waitForTimeout(200); await p.hover('.win.act .ad'); await p.waitForTimeout(200);
+  ok('B2b. ...over a link again, then onto Oracle\'s own address bar: it says what it said before', await stat() === before, [before, await stat()]);
   // real tabs (rudolf-webkit's protocol; the shell's is the same tabev)
   await q("wins.slice().forEach(w=>w.close());__rwkIn({rudolfShell:'hello',version:'webkit-1.6.1',caps:['tabs']})"); await p.waitForTimeout(200);
   await q("browser('https://example.com/')"); await p.waitForTimeout(600);
