@@ -82,7 +82,8 @@ jobs:
     timeout-minutes: 150
     #  2026-11-22, the handover's second start at 1.5 GB by kernel series (kv: another version): 7.2.15, 7.1.13 and 7.0.14 fail as
     #  7.3.5 does; 6.18.64 passes (sb-release)
-    strategy: {fail-fast: false, matrix: {k: [{name: '', kv: '', extra: '', off: ''}]}}
+    #  2026-11-22 (second run): 6.19.y, the series between them (kv without a point release: its newest)
+    strategy: {fail-fast: false, matrix: {k: [{name: '', kv: '', extra: '', off: ''}, {name: h6.19, kv: '6.19', extra: '', off: ''}]}}
     name: build ${{ matrix.k.name }}
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
@@ -102,6 +103,8 @@ jobs:
       - name: Build Linux ${{ needs.version.outputs.kv }}
         env: {KERNEL_VERSION: '${{ matrix.k.kv || needs.version.outputs.kv }}', EXTRA: '${{ matrix.k.extra }}', OFF: '${{ matrix.k.off }}'}
         run: |
+          case "$KERNEL_VERSION" in *.*.*) ;; *) KERNEL_VERSION=$(git ls-remote --tags https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "v$KERNEL_VERSION*" | sed -n 's#.*refs/tags/v\([0-9.]*\)$#\1#p' | grep -E "^$(echo "$KERNEL_VERSION" | sed 's/\./\\./g')(\.[0-9]+)?$" | sort -V | tail -1);; esac
+          echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV; echo "Linux $KERNEL_VERSION"
           S=$(date +%s); TEST_SB_CERT=$SBT/sb.crt OUT=$PWD/kout bash iso/systools/testkernel.sh
           sbsign --key $SBT/sb.key --cert $SBT/sb.crt --output kout/vmlinuz.signed kout/vmlinuz; sbverify --cert $SBT/sb.crt kout/vmlinuz.signed
           mv kout/vmlinuz.signed kout/vmlinuz; (cd kout && sha256sum vmlinuz modules.sfs rudolf-kexec > SHA256SUMS)
@@ -116,7 +119,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with: {name: kernel-kryptonite, retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\nkout/modules.txt\nkout/SHA256SUMS"}
       - name: Secure Boot on in QEMU with the test keys (recovery_sb_t.sh)
-        env: {KERNEL_VERSION: '${{ matrix.k.kv || needs.version.outputs.kv }}'}
         run: |
           bash iso/qt/sb/kr20_sbparts.sh parts
           cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/
