@@ -457,6 +457,33 @@ themselves, the release in QEMU. **Left:** the app's own maximize and minimize b
 (`_NET_WM_MOVERESIZE`) do nothing on Chromium yet (Rudolf's bar does them); a window's content is not seen while it is behind the
 page (its frame shows its name).
 
+**Status, 2026-11-22: the left part built (unattended; PR "An app's own title bar and buttons on Chromium", branch
+`app-own-buttons`).** rudolf-display (its own functions, `xa_*`) does what an app asks of its window manager as rudolf-native does
+(csd_moveresize, csd_message: 1.6.1 Part 15), and says so in `_NET_SUPPORTED` (`_NET_WM_MOVERESIZE`, `MAXIMIZED_VERT`/`_HORZ`,
+`HIDDEN`: GTK moves a window by itself without it): `_NET_WM_MOVERESIZE` (move, the 8 edges, the keyboard's move and size, cancel) is
+done there with Native's drag_motion rules, which are the page's own drag and addResize (the pointer's way; at least 200 x 120 with
+the frame; the frame's top not above the desktop's: web/strut's new `frame` value, the frame's top edge above the app, kept current
+by the page); the app's window moves at once and the page is told (`/run/rudolf/wmask` "N at HEX X Y W H END", rudolfd's
+apps/windows passes the checked lines on as `asks`), so its frame follows, the page's older places for it being set aside until the
+page has the new one (2.5 s at most); `_NET_WM_STATE` maximized ("N max HEX 0|1|2") and `_NET_WM_STATE_HIDDEN` or `WM_CHANGE_STATE`
+iconic ("N min HEX") are done by the page as its □ and _ do; the frame's maximized state goes back with its place (apps/show's
+`max=1`, " max" in `/run/rudolf/wm`), and the app's window then says `MAXIMIZED_VERT,MAXIMIZED_HORZ`, so the app shows its restore
+button. The page (xframe62.js `xfAsks`) asks apps/windows every 250 ms while an app is shown in its frame and every 40 ms during its
+drag. Only for windows the page frames; full-screen windows and games as before. No new rudolfd request (apps/show's `max`, web/strut's
+`frame` and apps/windows' `asks` are new fields of existing ones; the confinement lists unchanged). There is no snapping on either
+engine. **Tests:** `iso/qt/host/xfask162_t.sh` 28/28 here (three runs): the stand-in drawing its own bar (fixtures/xwmclient.c, with a
+new `hide`) asks each on Chromium (rudolf-display, the page in Chromium) and on Native (rudolf-native, the stand-in given Rudolf's
+title bar there so the frames are the same), and the results are compared line by line (moved, the desktop's top, sized from each of
+the 8 edges, the keyboard's move, size and Escape, maximized: the same place and state, not moved while maximized, restored, minimized
+both ways, brought back): the same; GTK 3.24's widget factory's own header bar dragged and double-clicked; rudolfd's own code (R6-R8).
+Unchanged: xframe162_t.sh 36/36 + 5/5, csd161_t.sh 56/56, titlebar59_t.js 17/17, tbbtn59_t.js 15/15, sethooks61_t.js 6/6,
+taskbar144_t.js 30/30, tb_t.js 11/11, tbprog61_t.js 43/43, lx48_t.js 8/8, lxdesk_t.js 4/4, wmfocus_t.sh 20/20, wmdialog_t.sh 11/11,
+titlebars161_t.sh 16/16. **Not tested here:** Discord, Steam, VS Code and Chromium's own title bars (Electron's and Chromium's custom
+frame ask `_NET_WM_MOVERESIZE` as GTK does), several monitors (the drag's end goes through the page's monDrop, as Rudolf's bar's),
+display scaling above 100 % (the 200 x 120 minimum is taken in the screen's pixels during the drag; the page's frame keeps its own
+minimum after it). **For the owner (the Vivobook, Chromium):** an app's own title bar dragged (Discord or Steam), its own maximize
+and restore, a double-click on its bar, its own minimize and the taskbar button back; a GTK app's header bar (if one is installed).
+
 ### 30. Two-player Library games on a home network: the LAN game relay (added on 2026-11-22)
 Ember Reach's duels (rudolfos-library, Ember Reach 0.5.2) on a LAN as well as online; the owner: "Go with WebSocket and
 LAN as the selectable options for networking for the player". A game page can't accept connections, so while a player

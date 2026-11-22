@@ -1296,7 +1296,27 @@ static void apps_show_place(const char *query, unsigned long x, char *b, size_t 
 		if (!q || !*q || strlen(q) > 6) return;
 		v[i] = strtol(q, &e, 10); if (*e || v[i] < (i < 2 ? -16384 : 40) || v[i] > 16384) return;
 	}
-	snprintf(b, n, "win %lx %ld %ld %ld %ld\n", x, v[0], v[1], v[2], v[3]);
+	const char *mx = qparam(query, "max");   /* (Part 29's left part: the frame maximized, for the app's own maximize button) */
+	snprintf(b, n, "win %lx %ld %ld %ld %ld%s\n", x, v[0], v[1], v[2], v[3], mx && !strcmp(mx, "1") ? " max" : "");
+}
+/* 1.6.2 (docs/plan-1.6.2.md Part 29, its left part): what apps asked with their own bar and buttons on Chromium, from
+   rudolf-display's /run/rudolf/wmask ("N at HEX X Y W H END", "N max HEX 0|1|2", "N min HEX"), each line checked: numbers only,
+   in range; anything else is left out */
+static void apps_asks(str *s)
+{
+	char *a = slurp(RUN "/wmask", NULL); int n = 0; sadd(s, ",\"asks\":[");
+	for (char *sv, *l = a ? strtok_r(a, "\n", &sv) : NULL; l; l = strtok_r(NULL, "\n", &sv)) {
+		long long q; char k[4]; unsigned long w; int v[5], c = 0, used = 0;
+		if (strlen(l) > 100 || strspn(l, "0123456789abcdefmaxtin -") != strlen(l)) continue;
+		if (sscanf(l, "%lld %3s %lx%n", &q, k, &w, &used) != 3 || q <= 0 || !w) continue;
+		const char *r = l + used;
+		if (!strcmp(k, "at")) { if (sscanf(r, " %d %d %d %d %d%n", &v[0], &v[1], &v[2], &v[3], &v[4], &c) != 5 || r[c] || v[2] < 40 || v[3] < 40 || v[2] > 16384 || v[3] > 16384 || v[0] < -16384 || v[0] > 16384 || v[1] < -16384 || v[1] > 16384 || (v[4] != 0 && v[4] != 1)) continue;
+			sadd(s, "%s{\"n\":%lld,\"k\":\"at\",\"win\":\"%lx\",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"end\":%s}", n++ ? "," : "", q, w, v[0], v[1], v[2], v[3], v[4] ? "true" : "false"); }
+		else if (!strcmp(k, "max")) { if (sscanf(r, " %d%n", &v[0], &c) != 1 || r[c] || v[0] < 0 || v[0] > 2) continue;
+			sadd(s, "%s{\"n\":%lld,\"k\":\"max\",\"win\":\"%lx\",\"act\":%d}", n++ ? "," : "", q, w, v[0]); }
+		else if (!strcmp(k, "min")) { if (*r) continue; sadd(s, "%s{\"n\":%lld,\"k\":\"min\",\"win\":\"%lx\"}", n++ ? "," : "", q, w); }
+	}
+	sadd(s, "]"); free(a);
 }
 
 static void api_apps(struct req *r, const char *what)
@@ -1348,7 +1368,7 @@ static void api_apps(struct req *r, const char *what)
 			sadd(&s, "%s{\"win\":", n++ ? "," : ""); sjson(&s, f[0]); sadd(&s, ",\"web\":%s,\"shown\":%s,\"fullscreen\":%s,\"class\":", !strcmp(f[1], "1") ? "true" : "false", strtoul(f[0], NULL, 16) == shown ? "true" : "false", !strcmp(f[4], "1") ? "true" : "false");
 			sjson(&s, f[2]); sadd(&s, ",\"instance\":"); sjson(&s, f[3]); sadd(&s, ",\"title\":"); sjson(&s, k > 5 ? f[5] : ""); sadd(&s, "}");
 		}
-		sadd(&s, "],\"mode\":"); if (m) m[strcspn(m, "\n")] = 0; sjson(&s, m ? m : "desktop"); sadd(&s, "}");
+		sadd(&s, "],\"mode\":"); if (m) m[strcspn(m, "\n")] = 0; sjson(&s, m ? m : "desktop"); apps_asks(&s); sadd(&s, "}");
 		free(w); free(m); reply_json(r->fd, &s); return;
 	}
 	/* 1.5.6: and "kill": ends the program behind the window (the installation wizard's "Stop the installer") */
@@ -1697,7 +1717,9 @@ static void api_web(struct req *r, const char *what)
 		const char *sd = qparam(r->query, "side"); char side[8]; snprintf(side, sizeof side, "%s", sd && !strcmp(sd, "top") ? "top" : "bottom");
 		const char *sz = qparam(r->query, "size"); int n = sz ? atoi(sz) : 0; if (n < 0 || n > 200) n = 0;
 		char b[32]; snprintf(b, sizeof b, "%s %d\n", side, n);
-		{ const char *bq = qparam(r->query, "bar"); int bh = bq ? atoi(bq) : 0; if (bh > 0 && bh <= 120) snprintf(b, sizeof b, "%s %d bar %d\n", side, n, bh); }   /* (1.6.2 Part 29: the strip for Rudolf's title bar) */
+		{ const char *bq = qparam(r->query, "bar"); int bh = bq ? atoi(bq) : 0; if (bh > 0 && bh <= 120) snprintf(b, sizeof b, "%s %d bar %d\n", side, n, bh);   /* (1.6.2 Part 29: the strip for Rudolf's title bar) */
+		  /* (and its frame's top edge above the app, Part 29's left part: where an app's own drag stops at the desktop's top) */
+		  const char *fq = qparam(r->query, "frame"); int fr = fq ? atoi(fq) : 0; if (bh > 0 && bh <= 120 && fr > 0 && fr <= 160) snprintf(b, sizeof b, "%s %d frame %d bar %d\n", side, n, fr, bh); }
 		write_str(RUN "/strut", b);
 		char *m = slurp(RUN "/wm", NULL); write_str(RUN "/wm", m && *m ? m : "desktop\n"); free(m);   /* the window manager re-reads both */
 		reply_ok(r->fd, "ok"); return;
