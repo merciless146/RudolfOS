@@ -7,6 +7,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 Summary: In progress.
 - Fixed: the Several monitors check failed on every run although its tests passed: monbeh_t.js named a picture
   "cmp.lock:cover2.diff.png", and GitHub's upload of the pictures refuses a ':' in a file name. Nothing in Rudolf OS changed.
+- Fixed: closing Steam's window left Steam running out of sight (it goes to a tray icon, and Rudolf OS has no tray), using memory
+  until it was force quit. When its last window is closed, and no game of it is running, Steam is now asked to quit as it quits
+  itself, and ended if it has not after 30 s; signing out also asks it to quit first (docs/plan-1.6.2.md Part 14, found on the
+  owner's Vivobook). Task Manager's Force quit is unchanged.
 - Faster: on the native desktop a Linux app such as Steam is started as soon as Rudolf knows it, instead of after every list of
   apps (the Library's, the Linux apps', Debian's) one after another and the Start menu's pictures, which took about 10 seconds on a
   slow laptop; the list of installed Linux apps is kept and given again at once until an app is installed, updated or removed; and
