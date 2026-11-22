@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <zlib.h>
 #include <fcntl.h>
 #include <signal.h>
@@ -271,9 +272,60 @@ static char *slurp(const char *p)
 	FILE *f = fopen(p, "r"); if (!f) return NULL; str s = {0}; char b[8192]; size_t n;
 	while ((n = fread(b, 1, sizeof b, f)) > 0) sput(&s, b, n); fclose(f); return s.b ? s.b : strdup("");
 }
+/* 1.6.2 (docs/plan-1.6.2.md Part 14, the owner's Vivobook on 2026-11-22: a Linux app's window waited ~10 s for the lists, and the hidden
+   page's catalogue took minutes, while Steam was starting): the list is kept (FP_DIR/rudolf-installed.json) with what it was made from, and
+   given again at once while that is the same: each installed app's deployed version (app/ID/current and its active, as installing,
+   updating, uninstalling or changing the branch replace them: their targets, inodes and times) and the exported launchers' folders.
+   `flatpak list` (seconds on a slow computer, and asked for by every page that signs in) runs only when something changed. */
+#define FP_DIR "/var/lib/flatpak"
+static void sig_link(str *s, const char *p)
+{
+	struct stat st; char t[512]; ssize_t n = readlink(p, t, sizeof t - 1); if (n < 0) n = 0; t[n] = 0;
+	if (lstat(p, &st)) { sadd(s, "-\n"); return; }
+	char b[800]; snprintf(b, sizeof b, "%s %lu %lld.%09ld\n", t, (unsigned long)st.st_ino, (long long)st.st_mtim.tv_sec, st.st_mtim.tv_nsec); sadd(s, b);
+}
+static char *installed_sig(const char *fp, const char *ex)
+{
+	str s = {0}; sadd(&s, "rudolf-installed 1\n"); char p[1200];
+	snprintf(p, sizeof p, "%s/app", fp); DIR *d = opendir(p); if (!d) { free(s.b); return NULL; }
+	/* (sorted: readdir's order is the folder's) */
+	char **nm = NULL; size_t n = 0, cap = 0; struct dirent *e;
+	while ((e = readdir(d))) { if (e->d_name[0] == '.') continue; if (n == cap) { cap = cap * 2 + 16; nm = realloc(nm, cap * sizeof *nm); } nm[n++] = strdup(e->d_name); }
+	closedir(d);
+	for (size_t i = 0; i < n; i++) for (size_t j = i + 1; j < n; j++) if (strcmp(nm[i], nm[j]) > 0) { char *t = nm[i]; nm[i] = nm[j]; nm[j] = t; }
+	for (size_t i = 0; i < n; i++) {
+		sadd(&s, nm[i]); sadd(&s, "\n");
+		snprintf(p, sizeof p, "%s/app/%s/current", fp, nm[i]); sig_link(&s, p);
+		snprintf(p, sizeof p, "%s/app/%s/current/active", fp, nm[i]); sig_link(&s, p);
+		free(nm[i]);
+	}
+	free(nm);
+	const char *dirs[] = { "", "/applications", "/icons" };
+	for (int i = 0; i < 3; i++) { struct stat st; snprintf(p, sizeof p, "%s%s", ex, dirs[i]); char b[200];
+		if (stat(p, &st)) snprintf(b, sizeof b, "%s -\n", dirs[i]); else snprintf(b, sizeof b, "%s %lu %lld.%09ld\n", dirs[i], (unsigned long)st.st_ino, (long long)st.st_mtim.tv_sec, st.st_mtim.tv_nsec);
+		sadd(&s, b); }
+	return s.b;
+}
+static int list_installed(const char *ex, str *out);
 static int cmd_installed(void)
 {
-	const char *ex = getenv("RA_EXPORTS") ? getenv("RA_EXPORTS") : EXPORTS;
+	const char *ex = getenv("RA_EXPORTS") ? getenv("RA_EXPORTS") : EXPORTS, *fp = getenv("RA_FLATPAK_DIR") ? getenv("RA_FLATPAK_DIR") : FP_DIR;
+	char cf[1200]; snprintf(cf, sizeof cf, "%s/rudolf-installed.json", fp);
+	char *sig = installed_sig(fp, ex);
+	/* the kept list: its first line is the signature's length, then the signature, then the list */
+	char *c = sig ? slurp(cf) : NULL;
+	if (c) { size_t sl = strtoul(c, NULL, 10); char *nl = strchr(c, '\n');
+		if (nl && sl == strlen(sig) && strlen(nl + 1) > sl && !memcmp(nl + 1, sig, sl) && nl[1 + sl] == '{') { fputs(nl + 1 + sl, stdout); free(c); free(sig); return 0; } }
+	free(c);
+	str s = {0}; int r = list_installed(ex, &s);
+	fwrite(s.b, 1, s.n, stdout);
+	/* (kept only when the list was made: flatpak ran, the folders read; written whole, then put in place) */
+	if (!r && sig) { char tmp[1300]; snprintf(tmp, sizeof tmp, "%s.%d", cf, (int)getpid()); FILE *f = fopen(tmp, "w");
+		if (f) { int ok = fprintf(f, "%zu\n%s", strlen(sig), sig) > 0 && fwrite(s.b, 1, s.n, f) == s.n; ok = !fclose(f) && ok; if (!ok || rename(tmp, cf)) unlink(tmp); } }
+	free(s.b); free(sig); return 0;
+}
+static int list_installed(const char *ex, str *out)
+{
 	FILE *p = popen("LANG=C.UTF-8 flatpak list --system --app --columns=application,name,version,size,origin 2>/dev/null", "r");
 	str s = {0}; sadd(&s, "{\"ok\":true,\"apps\":["); int first = 1;
 	char line[1200];
@@ -305,8 +357,8 @@ static int cmd_installed(void)
 		if (d) closedir(d);
 		sadd(&s, "]}");
 	}
-	if (p) pclose(p);
-	sadd(&s, "]}\n"); fwrite(s.b, 1, s.n, stdout); return 0;
+	int st = p ? pclose(p) : -1;
+	sadd(&s, "]}\n"); *out = s; return st == 0 ? 0 : 1;
 }
 
 
