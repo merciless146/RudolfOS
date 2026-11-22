@@ -495,6 +495,43 @@ The way that weakens nothing:
   (_GTK_APPLICATION_ID, WM_CLASS, the lx: key) and calls the same fill (tbp_set; winProgress on Standard).
 A host test with a D-Bus sender on a stand-in account bus; the owner's check: a Firefox download with Firefox minimized.
 
+### 29. Rudolf's title bar on Standard's windows from outside the page (added on 2026-11-21)
+The owner, 2026-11-21, on 1.6.1 (Standard, the Vivobook), with Oracle open in its own Chromium ("Keep my websites
+encrypted with my account" on, #583): "The Oracle browser on Chrome OS does not use the operating system's title bars".
+Asked which windows, the owner chose **every window from outside the page**: Standard's encrypted Oracle, its Tor
+windows (Browse with Tor) and Linux apps, as Native already frames them all.
+
+**Why it is so today.** Standard draws title bars only for its own windows inside the desktop page (and normal Oracle's,
+whose tabs are in the page). Everything else is a separate X window that rudolf-display, Standard's minimal window
+manager, fits above the taskbar with no frame of Rudolf's (1.6.1 Part 15: "Standard frames no Linux app's window"). With no
+window manager it knows, Chromium draws its own frame (the shell's colour, "Rudolf OS", ⋮ – ▢ ✕), and Electron and GTK apps
+draw theirs.
+
+**The way (as Native, without changing what Standard's page windows look like):**
+1. **A strip for the bar.** rudolf-display places a shown app window below a title-bar strip at the top (the page's own
+   title-bar height, from the settings it already reads), above the taskbar. Full-screen windows and games (borderless,
+   screen-sized, `_NET_WM_STATE_FULLSCREEN`) keep the whole screen, as now; dialogs stay centred above their window.
+2. **The page draws the bar in that strip.** The desktop page is the full-screen window behind; while an app window is
+   shown it draws Rudolf's title bar there with the same code and look as its own windows (style, accent, the account's
+   title-bar settings): the window's icon and title (/run/rudolf/windows), minimize (back to the desktop: wm "desktop"),
+   close (wmcmd "close"), and the ⋮ menu where Rudolf's windows have one. Maximize/restore is not offered: Standard shows
+   one app window at a time, fitted. Clicks on the strip go to the page (it is the page's own pixels).
+3. **The window's own bar off where the app allows.** rudolf-display announces itself as a window manager
+   (`_NET_SUPPORTING_WM_CHECK`, as rudolf-native does), so Chromium leaves its own frame off (1.6.1 Part 15's finding);
+   the encrypted Oracle's and the Tor windows' profiles get `browser.custom_chrome_frame: false` when the key is missing
+   (rudolfd writes the Tor profile's Preferences already; orawin's in the account's folder, once). Part 15 item 1's list
+   (`titlebars`: Chromium-based browsers, VS Code) then applies on Standard too. Apps that always draw their own (Steam,
+   Discord, Claude) show both, as on Native before Part 15's later items: what Native does for them is followed here.
+4. **Nothing weakened:** the page learns only what /run/rudolf/windows already gives the taskbar; no new rudolfd request
+   unless a check finds one is needed (then confinepure/winapi updated, the token and peer check as for every request).
+
+**Tests:** a host test with rudolf-display and a stand-in app (fixtures/xwmclient.c) on Xvfb: the strip, full screen and
+games untouched, a dialog, `_NET_SUPPORTING_WM_CHECK`, close and minimize through wmcmd/wm; the page's bar in Chromium with
+a stand-in rudolfd (title, icon, the title-bar styles); Standard and Native compared (same_t.sh) for an outside window.
+
+**For the owner, on the Vivobook (Standard):** encrypted Oracle, a Tor window, a Flatpak app (one that asks for a frame,
+one that draws its own), a game in full screen; minimize and close from Rudolf's bar; the title-bar styles and colours.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist and 19b's measurements with the owner, after the 1.6.1 beta.
@@ -502,3 +539,4 @@ A host test with a D-Bus sender on a stand-in account bus; the owner's check: a 
 4. 21b after each beta.
 5. 25b (Linux apps' progress on their taskbar buttons), then a Firefox download checked on the Vivobook.
 6. Part 27 (Bring your files) after 1.6.1 is promoted: 1-4 in one or two PRs, 5 only by the owner's decision.
+7. Part 29 (Rudolf's title bar on Standard's windows from outside the page): 1-3 in one PR, then checked on the Vivobook.
