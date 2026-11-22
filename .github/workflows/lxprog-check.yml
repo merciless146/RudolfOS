@@ -1,0 +1,48 @@
+# 1.6.2 (docs/plan-1.6.2.md Part 25b): Linux apps' progress on their taskbar buttons. Checks only, nothing published.
+#   host:   the real rudolf-portal and a stand-in app on a private session bus, rudolfd's own portal/progress, stand-in Flatpak
+#           sandboxes, another account, forged notes; rudolf-display with a stand-in Firefox window (_NET_WM_XAPP_PROGRESS);
+#           Standard's page (Playwright) and the native desktop (Xvfb) with the stand-in app, the same fill on both
+#   page:   the page's side by itself, and 1.6.1 Part 25's taskbar progress as before
+name: Linux apps' progress check
+on:
+  workflow_dispatch:
+  push:
+    branches: ['linux-app-progress*']
+    paths: ['iso/sys/rudolf-portal.c', 'iso/sys/rudolfd-lxprog.inc', 'iso/sys/rudolfd.c', 'iso/sys/rudolf-native.c', 'iso/sys/rudolf-display.c',
+      'desktop/lxprog62.js', 'desktop/tbprog61.js', 'desktop/linux26.js', 'iso/qt/host/lxprog162_t.sh', 'iso/qt/host/fixtures/lpsend.c',
+      'iso/qt/host/fixtures/lxprogapi.c', 'iso/qt/host/fixtures/lxwin.c', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/shell2/lxprog62_t.js',
+      'iso/qt/shell2/tbprog61_t.js', '.github/workflows/lxprog-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libglib2.0-dev libssl-dev zlib1g-dev dbus libwebkit2gtk-4.1-dev libxtst-dev libxfixes-dev libxrandr-dev xvfb xdotool imagemagick >/dev/null
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: Through the real listener (root for a private /run/rudolf and two test users)
+        run: sudo -E env PATH="$PATH" NODE_PATH="$PWD/node_modules" sh iso/qt/host/lxprog162_t.sh
+      - name: rudolfd, rudolf-portal and rudolf-display build (the release's flags)
+        run: |
+          . iso/systools/hardflags.sh
+          gcc -O2 $HARD -Wall -o /tmp/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic; python3 iso/systools/hardcheck.py /tmp/rudolfd
+          gcc -O2 $HARD -o /tmp/rudolf-portal iso/sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
+          gcc -O2 $HARD -o /tmp/rudolf-display iso/sys/rudolf-display.c -lX11 -lXtst -lXfixes -lXrandr -lm
+      - name: The portal's other parts as before
+        run: |
+          sh iso/qt/host/gamemodeportal161_t.sh
+          sh iso/qt/host/inhibit60_t.sh
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: Linux apps' progress in the page
+        run: node iso/qt/shell2/lxprog62_t.js
+      - name: Rudolf's own taskbar progress as before (1.6.1 Part 25)
+        run: node iso/qt/shell2/tbprog61_t.js

@@ -977,6 +977,25 @@ static Window dlg_owner(Window t)
 	return 0;
 }
 static Window known[MAXWIN]; static int nknown;
+/* 1.6.2 (docs/plan-1.6.2.md Part 25b): the apps' windows' own progress, the XApp hint _NET_WM_XAPP_PROGRESS (a CARDINAL 0-100 on the
+   app's window: Firefox's downloads say it so on X11, since Firefox 61), for their taskbar buttons: /run/rudolf/winprog lists
+   "ID<tab>PERCENT" for each app window that has one above 0 (0, or none: no progress; _NET_WM_XAPP_PROGRESS_PULSE, progress with
+   no percentage, is not used: the creeping fill is for Rudolf's own work), rewritten when it changes. rudolfd's portal/progress
+   passes it on (rudolfd-lxprog.inc); rudolf-native reads the same hint itself (lxp_tick). */
+static void xapp_progress_write(const Window *apps, int napps)
+{
+	static Atom A_XPROG; static char last[4096] = "-"; char buf[4096]; size_t o = 0;
+	if (!A_XPROG) A_XPROG = XInternAtom(dpy, "_NET_WM_XAPP_PROGRESS", False);
+	for (int k = 0; k < napps && o < sizeof buf - 40; k++) {
+		Atom type; int fmt; unsigned long n = 0, after; unsigned char *d = NULL; unsigned long v = 0;
+		if (XGetWindowProperty(dpy, apps[k], A_XPROG, 0, 1, False, XA_CARDINAL, &type, &fmt, &n, &after, &d) == Success && d) { if (n == 1 && fmt == 32) v = *(unsigned long *)d; XFree(d); }
+		if (v > 0 && v <= 100) o += snprintf(buf + o, sizeof buf - o, "%lx\t%lu\n", (unsigned long)apps[k], v);
+	}
+	buf[o] = 0; if (!strcmp(buf, last)) return;
+	memcpy(last, buf, o + 1);
+	int f = open("/run/rudolf/winprog.tmp", O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	if (f >= 0) { if (write(f, buf, o) < 0) {} close(f); rename("/run/rudolf/winprog.tmp", "/run/rudolf/winprog"); }
+}
 static Window cur_list[MAXWIN]; static int ncur;   /* app windows, bottom to top */
 
 /* 1.5.9 (plan Part 12): the native desktop engine (rudolf-native) is the window manager while the session keeps
@@ -1163,6 +1182,7 @@ static void fit_windows(void)
 			if (f >= 0) { if (write(f, buf, o) < 0) {} close(f); rename("/run/rudolf/windows.tmp", "/run/rudolf/windows"); }
 		}
 	}
+	xapp_progress_write(apps, napps);   /* (1.6.2 Part 25b: their own progress, for their taskbar buttons) */
 	Window top = 0;
 	for (unsigned i = n; i-- > 0;) {                  /* topmost viewable normal window */
 		XWindowAttributes wa;
