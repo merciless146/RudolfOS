@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables iproute2 util-linux python3 gcc zlib1g-dev curl >/dev/null
-      - name: duel161_t.sh (as root: its own network and mount namespaces)
+      - name: "duel161_t.sh (as root: its own network and mount namespaces)"
         run: sudo sh iso/qt/host/duel161_t.sh
       - name: listeners59_t.sh
         run: sh iso/qt/host/listeners59_t.sh
