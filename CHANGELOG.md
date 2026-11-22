@@ -8,6 +8,10 @@ Summary: In progress.
 - Fixed: the Lite engine check's apps' own title bars test (csd161_t.sh, 7) failed whenever it ran after 18:00 UTC: with no
   theme chosen the native desktop turns dark at night, and the window's edge is then the dark theme's, as it should be.
   The test now chooses the light theme. Nothing in Rudolf OS changed.
+- Faster: on the native desktop a Linux app such as Steam is started as soon as Rudolf knows it, instead of after every list of
+  apps (the Library's, the Linux apps', Debian's) one after another and the Start menu's pictures, which took about 10 seconds on a
+  slow laptop; the list of installed Linux apps is kept and given again at once until an app is installed, updated or removed; and
+  the desktop's icons and Start menu no longer wait minutes for Linux apps' pictures that cannot be had.
 - New: Linux apps' progress on their taskbar buttons (docs/plan-1.6.2.md Part 25b). A Linux app with a download or other work in
   progress shows it on its taskbar button while its window is minimized (on Standard: while another window or the desktop is in
   front), with the same fill as Rudolf's own windows and the same Display Properties › Taskbar › Progress colour, on Standard and
