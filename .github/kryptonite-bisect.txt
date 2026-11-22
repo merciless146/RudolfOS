@@ -2,6 +2,10 @@
 # .github/workflows/kryptonite-bisect.yml: POINTS commits evenly along Linux's mainline (first parent) from GOOD to BAD, each
 # built with this tree's kconfig.sh and started after the handover at 1.5 GB (qt/sb/recovery_sb_t.sh, test keys). Each round
 # narrows GOOD and BAD to the two neighbours where the result changes. 6.18.64 passes, 6.19.14 and 7.0 to 7.3 fail.
-good=v6.18
-bad=v6.19-rc1
+# (When BAD itself passes, the change is in the stable updates: GOOD=v6.19, BAD=v6.19.14.)
+# Round 1 (2026-11-22, v6.18 to v6.19-rc1, 12 points): every point GOOD, v6.19-rc1 included: the change came after rc1
+# (in 6.19's release candidates, or in 6.19.y's stable updates: the stable tree is fetched first, so its tags work too).
+# Round 2: v6.19-rc1 to v6.19.
+good=v6.19-rc1
+bad=v6.19
 points=12

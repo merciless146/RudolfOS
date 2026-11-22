@@ -18,7 +18,7 @@ jobs:
         run: |
           G=$(sed -n 's/^good=//p' .github/kryptonite-bisect.txt); B=$(sed -n 's/^bad=//p' .github/kryptonite-bisect.txt); N=$(sed -n 's/^points=//p' .github/kryptonite-bisect.txt)
           git init -q --bare L; cd L
-          ok=""; for u in https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git https://github.com/torvalds/linux.git; do
+          ok=""; for u in https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git https://github.com/torvalds/linux.git; do
             git fetch -q --filter=tree:0 --shallow-since=2025-06-01 "$u" "refs/tags/$G:refs/tags/$G" "refs/tags/$B:refs/tags/$B" 2>/dev/null && { ok=$u; break; }
             git fetch -q --filter=tree:0 --shallow-since=2025-06-01 "$u" "$G" "$B" 2>/dev/null && { ok=$u; break; }
           done
@@ -50,7 +50,7 @@ jobs:
       - name: ${{ matrix.p.sha }} (${{ matrix.p.what }})
         run: |
           echo "${{ matrix.p.what }}"
-          git init -q src; for u in https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git https://github.com/torvalds/linux.git; do git -C src fetch -q --depth 1 "$u" ${{ matrix.p.sha }} && break; done
+          git init -q src; for u in https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git https://github.com/torvalds/linux.git; do git -C src fetch -q --depth 1 "$u" ${{ matrix.p.sha }} && break; done
           git -C src checkout -q FETCH_HEAD; V=$(make -s -C src kernelversion); echo "Linux $V"
           K=$RUNNER_TEMP/sbtest; mkdir -p $K; chmod 700 $K
           (cd $K && openssl req -new -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=Rudolf Kryptonite TEST Secure Boot/" -keyout sb.key -out sb.crt \
