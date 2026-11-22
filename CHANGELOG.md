@@ -3,6 +3,13 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.2 (in progress)
+Summary: In progress.
+- Safer: no script from another site ever runs in the desktop's page or an app window, which hold the key to the system's own
+  service. Lua (Command Prompt, BlockLua Builder, Blitzen) always uses Rudolf's own copy of its runtime, never one downloaded from
+  a website, and the page now has a security policy that refuses any other site's script. Flash content plays in a sealed-off frame
+  of its own: the Flash Player app, and Oracle's pages for Flash files.
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
