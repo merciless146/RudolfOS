@@ -4517,6 +4517,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-game.inc"      /* 1.6.1: game mode (plan-1.6.1 Part 19) */
 #include "rudolfd-lxprog.inc"    /* 1.6.2: Linux apps' progress on their taskbar buttons (plan-1.6.2 Part 25b) */
 #include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */
+#include "rudolfd-duel.inc"      /* 1.6.2: the LAN game relay for two-player Library games (plan-1.6.2 Part 30) */
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
@@ -5167,6 +5168,7 @@ static void api(struct req *r)
 		  if (st) reply_err(r->fd, 500, "could not set brightness"); else reply_ok(r->fd, "ok"); }
 		return;
 	}
+	if (!strncmp(p, "duel/", 5)) { api_duel(r, p + 5, post); return; }   /* 1.6.2 (plan-1.6.2 Part 30: GET status and find too) */
 	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
 	/* ---- actions ---- */
 	if (!strcmp(p, "proc/end")) { api_proc_end(r); return; }
