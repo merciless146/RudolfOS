@@ -1279,6 +1279,19 @@ static int apps_locked(void)
 	if (stat("/var/lib/flatpak", &a) || stat("/var/lib", &b)) return 1;
 	return a.st_dev == b.st_dev;   /* not a mount point: the folder is not open */
 }
+/* 1.6.2 (docs/plan-1.6.2.md Part 29): apps/show?win=HEX&x=&y=&w=&h=: the shown window's place, the inside of Rudolf's frame
+   the desktop page draws for it (in the X screen's pixels): "win HEX X Y W H" for rudolf-display. Only numbers, each in
+   range; anything else leaves "win HEX" alone (the window's last place, or fitted as before). */
+static void apps_show_place(const char *query, unsigned long x, char *b, size_t n)
+{
+	const char *k[4] = {"x", "y", "w", "h"}; long v[4];
+	for (int i = 0; i < 4; i++) {
+		const char *q = qparam(query, k[i]); char *e;
+		if (!q || !*q || strlen(q) > 6) return;
+		v[i] = strtol(q, &e, 10); if (*e || v[i] < (i < 2 ? -16384 : 40) || v[i] > 16384) return;
+	}
+	snprintf(b, n, "win %lx %ld %ld %ld %ld\n", x, v[0], v[1], v[2], v[3]);
+}
 
 static void api_apps(struct req *r, const char *what)
 {
@@ -1337,6 +1350,7 @@ static void api_apps(struct req *r, const char *what)
 		const char *wq = qparam(r->query, "win"); char *e; unsigned long x = wq ? strtoul(wq, &e, 16) : 0;
 		if (!x || *e) { reply_err(r->fd, 400, "bad window"); return; }
 		char b[64]; snprintf(b, sizeof b, "%s %lx\n", !strcmp(what, "show") ? "win" : what, x);
+		if (!strcmp(what, "show")) apps_show_place(r->query, x, b, sizeof b);   /* (1.6.2 Part 29: and where, Rudolf's frame's inside) */
 		write_str(!strcmp(what, "show") ? RUN "/wm" : RUN "/wmcmd", b); reply_ok(r->fd, "ok"); return;
 	}
 	if (!strcmp(what, "desktop")) { write_str(RUN "/wm", "desktop"); reply_ok(r->fd, "ok"); return; }
@@ -1671,7 +1685,9 @@ static void api_web(struct req *r, const char *what)
 	if (!strcmp(what, "strut")) {
 		const char *sd = qparam(r->query, "side"); char side[8]; snprintf(side, sizeof side, "%s", sd && !strcmp(sd, "top") ? "top" : "bottom");
 		const char *sz = qparam(r->query, "size"); int n = sz ? atoi(sz) : 0; if (n < 0 || n > 200) n = 0;
-		char b[32]; snprintf(b, sizeof b, "%s %d\n", side, n); write_str(RUN "/strut", b);
+		char b[32]; snprintf(b, sizeof b, "%s %d\n", side, n);
+		{ const char *bq = qparam(r->query, "bar"); int bh = bq ? atoi(bq) : 0; if (bh > 0 && bh <= 120) snprintf(b, sizeof b, "%s %d bar %d\n", side, n, bh); }   /* (1.6.2 Part 29: the strip for Rudolf's title bar) */
+		write_str(RUN "/strut", b);
 		char *m = slurp(RUN "/wm", NULL); write_str(RUN "/wm", m && *m ? m : "desktop\n"); free(m);   /* the window manager re-reads both */
 		reply_ok(r->fd, "ok"); return;
 	}
@@ -1771,7 +1787,8 @@ static int torwin_start(void)
 	/* (1.6.0, plan Part 20: a HOME of its own, so Chromium's certificate database there (~/.pki/nssdb) is new and empty:
 	   no smart card module, so a website reached through Tor is never offered the card) */
 	mkdir(TORWIN_PROF "/home", 0700); if (chown(TORWIN_PROF "/home", pw->pw_uid, pw->pw_gid)) {}
-	write_str(TORWIN_PROF "/Default/Preferences", "{\"webrtc\":{\"ip_handling_policy\":\"disable_non_proxied_udp\",\"multiple_routes_enabled\":false,\"nonproxied_udp_enabled\":false}}\n");
+	/* (1.6.2 Part 29: and the system's title bar, Rudolf's, on Standard too: "Use system title bar and borders") */
+	write_str(TORWIN_PROF "/Default/Preferences", "{\"browser\":{\"custom_chrome_frame\":false},\"webrtc\":{\"ip_handling_policy\":\"disable_non_proxied_udp\",\"multiple_routes_enabled\":false,\"nonproxied_udp_enabled\":false}}\n");
 	if (chown(TORWIN_PROF "/Default/Preferences", pw->pw_uid, pw->pw_gid)) {}
 	char *env = slurp(RUN "/session.env", NULL);
 	pid_t c = fork();

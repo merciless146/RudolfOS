@@ -1,0 +1,28 @@
+# Rudolf's title bar on Standard's windows from outside the page (1.6.2, docs/plan-1.6.2.md Part 29): rudolf-display and the desktop
+# page in Chromium on a virtual screen, stand-in apps and GTK 3, GTK 4 and Chromium windows (iso/qt/host/xframe162_t.sh), and
+# rudolfd's own code for the place and the strip. Publishes nothing.
+name: Standard's title bars check
+on:
+  push:
+    paths: ['desktop/xframe62.js', 'desktop/linux26.js', 'desktop/web25.js', 'desktop/shell25.js', 'desktop/titlebar59.js', 'iso/sys/rudolf-display.c', 'iso/sys/rudolfd.c', 'iso/qt/host/xframe162_t.sh', 'iso/qt/host/xframe162_t.js', 'iso/qt/host/fixtures/xwmclient.c', '.github/workflows/std-titlebars-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xdotool x11-utils imagemagick libx11-dev libxtst-dev libxfixes-dev libxrandr-dev zlib1g-dev gtk-3-examples gtk-4-examples >/dev/null
+          mkdir -p pw && cd pw && npm init -y >/dev/null && npm install -s playwright-core@1.56.1 >/dev/null && ln -s playwright-core node_modules/playwright
+      - name: Frames drawn by the page around outside windows
+        run: |
+          sudo env "PATH=$PATH" NODE_PATH=$PWD/pw/node_modules XF_CHROME="$(command -v google-chrome || command -v chromium)" sh iso/qt/host/xframe162_t.sh "$PWD/shots" | tee result.txt
+          echo "::notice title=Standard's title bars::$(grep -E 'passed$' result.txt | tr '\n' ' ') — $(grep -E '^FAIL|^SKIP' result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          ! grep -q '^FAIL' result.txt && [ "$(grep -c ' passed$' result.txt)" = 2 ]
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: std-titlebars, retention-days: 7, path: "result.txt\nshots/"}
