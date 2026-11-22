@@ -3,6 +3,12 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.2 (in progress)
+Summary: In progress.
+- Fixed: Oracle's status line kept saying "Goes To: <address>" after the mouse left one of Oracle's own pages (its home
+  page, the reader) for the rest of the desktop or Oracle's own bar: Chromium does not tell such a page that the mouse
+  left it, so the desktop now ends it itself when the mouse arrives on its own page.
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
