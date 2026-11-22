@@ -81,6 +81,8 @@ int main(int argc, char **argv)
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	if (!strcmp(argv[1], "csd") && argc > 3) return csd_app(d, argc, argv);
 	if (!strcmp(argv[1], "max") && argc > 3) { cmsg(d, strtoul(argv[2], NULL, 0), "_NET_WM_STATE", atoi(argv[3]), XInternAtom(d, "_NET_WM_STATE_MAXIMIZED_VERT", False), XInternAtom(d, "_NET_WM_STATE_MAXIMIZED_HORZ", False), 1, 0); return 0; }
+	/* (1.6.2 Part 29: minimize asked with _NET_WM_STATE_HIDDEN, as some toolkits do) */
+	if (!strcmp(argv[1], "hide") && argc > 2) { cmsg(d, strtoul(argv[2], NULL, 0), "_NET_WM_STATE", 1, XInternAtom(d, "_NET_WM_STATE_HIDDEN", False), 0, 1, 0); return 0; }
 	if (!strcmp(argv[1], "iconify") && argc > 2) { XIconifyWindow(d, strtoul(argv[2], NULL, 0), DefaultScreen(d)); XSync(d, False); return 0; }
 	if (!strcmp(argv[1], "menu") && argc > 4) { cmsg(d, strtoul(argv[2], NULL, 0), "_GTK_SHOW_WINDOW_MENU", 2, atol(argv[3]), atol(argv[4]), 0, 0); return 0; }
 	if (!strcmp(argv[1], "mr") && argc > 5) { cmsg(d, strtoul(argv[2], NULL, 0), "_NET_WM_MOVERESIZE", atol(argv[3]), atol(argv[4]), atol(argv[5]), 1, 1); return 0; }

@@ -23,6 +23,12 @@ function xfBlocked(){return !USER||(typeof LOCKED!='undefined'&&LOCKED)||(typeof
 function xfBarPx(){if(!xfOn())return 0;let tb=document.querySelector('#desk .win>.tb');let probe=null;
  if(!tb){probe=document.createElement('div');probe.className='win';probe.style.cssText='position:absolute;left:-9999px;top:0;width:300px;visibility:hidden';probe.appendChild(document.createElement('div')).className='tb';probe.firstChild.textContent='x';document.getElementById('desk').appendChild(probe);tb=probe.firstChild}
  const h=tb.getBoundingClientRect().height;if(probe)probe.remove();return Math.max(0,Math.min(120,Math.round(h*(devicePixelRatio||1))))}
+/* (Part 29's left part) the frame's top edge above the app's window in the screen's pixels: its title bar and edges (xfRect's top
+   less the frame's), for rudolf-display's own drag of an app (its frame's top not above the desktop's) */
+function xfFramePx(){if(!xfOn())return 0;let el=document.querySelector('#desk .win.xfr'),probe=null;
+ if(!el){probe=el=document.createElement('div');el.className='win xfr';el.style.cssText='position:absolute;left:-9999px;top:0;width:300px;height:200px;visibility:hidden';
+  el.appendChild(document.createElement('div')).className='tb';el.firstChild.textContent='x';el.appendChild(document.createElement('div')).className='body';document.getElementById('desk').appendChild(el)}
+ const t=el.querySelector('.body').getBoundingClientRect().top-el.getBoundingClientRect().top;if(probe)probe.remove();return Math.max(0,Math.min(160,Math.round(t*(devicePixelRatio||1))))}
 /* the frame's inside (the app's place) in the X screen's pixels: below Rudolf's title bar, inside the frame's 1 px edge, as Native
    frames a window (_NET_FRAME_EXTENTS 1 1 35 1); the sizing edges reach 3 px beyond the frame, where only the page has pixels
    (XF.IN: px kept free inside as well, none) */
@@ -63,9 +69,9 @@ function xfSoon(){if(XF.raf)return;XF.raf=requestAnimationFrame(()=>{XF.raf=0;xf
 /* rudolf-display told what the page wants: the active frame's app shown in it, or the desktop when a frame's app was shown */
 function xfReconcile(){if(!xfOn())return;const xs=XF.map.get(XF.lastX);if(xs&&xs.full)return;   /* (full screen: rudolf-display's) */
  const F=xfWant();let q='';
- if(F&&!F.full){const g=xfRect(F);if(g)q='apps/show?win='+F.id+'&x='+g[0]+'&y='+g[1]+'&w='+g[2]+'&h='+g[3]}
+ if(F&&!F.full){const g=xfRect(F);if(g)q='apps/show?win='+F.id+'&x='+g[0]+'&y='+g[1]+'&w='+g[2]+'&h='+g[3]+(F.W.el.classList.contains('max')?'&max=1':'')}
  else if(xs)q='apps/desktop';
- if(!q||q==XF.sent)return;XF.sent=q;XF.lastX=F&&q.startsWith('apps/show')?F.id:'';xfSend(q)}
+ if(!q||q==XF.sent)return;XF.sent=q;XF.lastX=F&&q.startsWith('apps/show')?F.id:'';xfSend(q);xfAskTick()}
 function xfSend(q){if(XF.busy){XF.next=q;return}XF.busy=1;
  lxApi(q).catch(()=>{XF.sent=''}).finally(()=>{XF.busy=0;XF.sendT=Date.now();if(XF.next){const n=XF.next;XF.next='';if(n!=q)xfSend(n)}})}
 /* each time the taskbar's list of windows is read (lxWinPoll, every 1.5 s and after each action): frames made, kept current,
@@ -76,12 +82,13 @@ function xfSync(){if(!xfOn()){if(XF.map.size)for(const F of [...XF.map.values()]
  for(const w of list){let F=XF.map.get(w.win);if(!F){F=xfMake(w);fresh.add(w.win)}xfTitle(F,w);xfButton(F);
   const full=!!w.fullscreen;if(full!=!!F.full){F.full=full;F.W.el.classList.toggle('xffull',full)}}
  const sh=list.find(w=>w.shown),xs=sh?sh.win:'';
+ if(XF.map.size&&typeof webStrut=='function'){const fp=xfFramePx();if(fp!=XF.framePx){XF.framePx=fp;webStrut()}}   /* (Part 29's left part: the title bar's style changed) */
  /* what rudolf-display shows changed elsewhere (read after the page's last word, so not one of its own on the way) */
  if(cur&&(xs!==XF.lastX||fresh.has(xs))){XF.lastX=xs;XF.sent='';
   const F=XF.map.get(xs);if(F){if(F.W.min||!F.W.el.classList.contains('act'))F.W.focus()}else xfDeact()}
  xfReconcile()}
 (function(){/* (when each list was asked for: one asked before the page's last word may not have it yet) */
- lxApi=(function(o){return function(p){const t=Date.now(),r=o.apply(this,arguments);return p==='apps/windows'?r.then(v=>{XF.pollT=t;return v}):r}})(lxApi);
+ lxApi=(function(o){return function(p){const t=Date.now(),r=o.apply(this,arguments);return p==='apps/windows'?r.then(v=>{XF.pollT=t;try{xfAsks(v&&v.asks)}catch(e){console.warn('xframe asks',e)}return v}):r}})(lxApi);
  lxTaskbar=__after(lxTaskbar,function(){try{xfSync()}catch(e){console.warn('xframe',e)}},'xframe62.js');
  /* a workspace changed, a window focused, closed or minimized: the taskbar is drawn again (shell25.js) */
  tbRefreshNow=__after(tbRefreshNow,function(){if(XF.map.size)xfSoon()},'xframe62.js');
@@ -96,3 +103,31 @@ function xfSync(){if(!xfOn()){if(XF.map.size)for(const F of [...XF.map.values()]
 .xfph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:#4b5563;font-size:14px;pointer-events:none}
 .xfph .xfpi{font-size:40px;line-height:1}.xfph .xfpi img{width:56px;height:56px}.xfph .xfpm{font-size:12px;opacity:.75}
 .xfr>.tb>span:first-child img{width:16px;height:16px;vertical-align:-3px}.xfr.xffull{visibility:hidden}`;document.head.appendChild(st)})();
+/* ===== 1.6.2 (docs/plan-1.6.2.md Part 29, its left part): an app's own maximize and minimize buttons and a drag of its own title
+   bar or edges, as on Native. rudolf-display does what the app asks as Native's window manager does it (the drag: the app's window
+   moved and sized at once, by Native's rules, which are the page's own) and asks the page (apps/windows' "asks"):
+   - "at": the app's window's new place: its frame follows (the frame's inside where the app is); at the drag's end the monitor it
+     was let go on, as a drag of Rudolf's title bar (mon61.js);
+   - "max": maximize, restore or toggle the frame, as its □ (the frame's state goes back with its place: apps/show's max=1, and
+     rudolf-display marks the app's window maximized, so the app shows its restore button);
+   - "min": minimize it, as its _.
+   Asked again quickly while an app is shown (every 250 ms) and during its drag (every 40 ms); asks from before the page was loaded
+   are not done again. ===== */
+XF.askN=-1;XF.drag='';XF.dragT=0;XF.askT=0;
+function xfAsks(a){if(!Array.isArray(a))return;const top=a.reduce((m,x)=>Math.max(m,+x.n||0),0);
+ if(XF.askN<0){XF.askN=top;return}
+ for(const x of a){if(!(+x.n>XF.askN))continue;XF.askN=+x.n;const F=XF.map.get(String(x.win));if(!F||F.full)continue;
+  try{if(x.k=='at')xfAskAt(F,x);else if(x.k=='max')xfAskMax(F,+x.act);else if(x.k=='min')xfAskMin(F)}catch(e){console.warn('xframe ask',e)}}
+ if(XF.drag&&Date.now()-XF.dragT>3000)XF.drag='';xfAskTick()}
+/* the frame placed so that its inside is g (the X screen's pixels), as xfRect reads it */
+function xfInside(F,g){const el=F.W.el,k=devicePixelRatio||1,zf=parseFloat(document.documentElement.style.zoom)||1,r=F.W.body.getBoundingClientRect(),i=XF.IN;
+ const d=[(g[0]/k-i-r.left)/zf,(g[1]/k-r.top)/zf,(g[2]/k+2*i-r.width)/zf,(g[3]/k+i-r.height)/zf];if(d.every(v=>Math.abs(v)<.5))return;
+ const cs=getComputedStyle(el);el.style.left=(el.offsetLeft+d[0])+'px';el.style.top=(el.offsetTop+d[1])+'px';el.style.width=(parseFloat(cs.width)+d[2])+'px';el.style.height=(parseFloat(cs.height)+d[3])+'px'}
+function xfAskAt(F,x){if(F.W.el.classList.contains('max')||F.W.min)return;const g=[+x.x,+x.y,+x.w,+x.h];if(!g.every(Number.isFinite))return;
+ xfInside(F,g);XF.drag=x.end?'':F.id;XF.dragT=Date.now();
+ if(x.end&&typeof MON_ON!='undefined'&&MON_ON&&typeof monDrop=='function')setTimeout(()=>monDrop(F.W),0)}
+function xfAskMax(F,act){const W=F.W,on=W.el.classList.contains('max'),want=act==2?!on:act==1;if(want==on||W.min)return;W.focus();W.el.querySelector('.mx').click()}
+function xfAskMin(F){if(!F.W.min)F.W.el.querySelector('.mn').click()}
+/* asked again soon while an app is shown in its frame (quickly while it is dragged) */
+function xfAskTick(){clearTimeout(XF.askT);XF.askT=0;if(!xfOn()||!XF.map.size)return;const sh=XF.map.get(XF.lastX),d=XF.drag?40:sh&&!sh.full?250:0;if(!d)return;
+ XF.askT=setTimeout(()=>{XF.askT=0;lxApi('apps/windows').catch(()=>{}).finally(()=>{if(!XF.askT)xfAskTick()})},d)}

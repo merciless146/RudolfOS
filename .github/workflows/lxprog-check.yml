@@ -2,6 +2,7 @@
 #   host:   the real rudolf-portal and a stand-in app on a private session bus, rudolfd's own portal/progress, stand-in Flatpak
 #           sandboxes, another account, forged notes; rudolf-display with a stand-in Firefox window (_NET_WM_XAPP_PROGRESS);
 #           Standard's page (Playwright) and the native desktop (Xvfb) with the stand-in app, the same fill on both
+#           what apps need to send it (lxenv162_t.sh: the session's environment, Chromium's and Electron's rules, appprogress)
 #   page:   the page's side by itself, and 1.6.1 Part 25's taskbar progress as before
 name: Linux apps' progress check
 on:
@@ -11,7 +12,8 @@ on:
     paths: ['iso/sys/rudolf-portal.c', 'iso/sys/rudolfd-lxprog.inc', 'iso/sys/rudolfd.c', 'iso/sys/rudolf-native.c', 'iso/sys/rudolf-display.c',
       'desktop/lxprog62.js', 'desktop/tbprog61.js', 'desktop/linux26.js', 'iso/qt/host/lxprog162_t.sh', 'iso/qt/host/fixtures/lpsend.c',
       'iso/qt/host/fixtures/lxprogapi.c', 'iso/qt/host/fixtures/lxwin.c', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/shell2/lxprog62_t.js',
-      'iso/qt/shell2/tbprog61_t.js', '.github/workflows/lxprog-check.yml']
+      'iso/qt/shell2/tbprog61_t.js', 'iso/qt/host/lxenv162_t.sh', 'iso/sys/root/usr/lib/rudolf/appprogress', 'iso/sys/rudolf-apps.c',
+      '.github/workflows/lxprog-check.yml']
 permissions: {contents: read}
 jobs:
   host:
@@ -20,11 +22,13 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: Packages
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq libglib2.0-dev libssl-dev zlib1g-dev dbus libwebkit2gtk-4.1-dev libxtst-dev libxfixes-dev libxrandr-dev xvfb xdotool imagemagick >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libglib2.0-dev libssl-dev zlib1g-dev dbus libwebkit2gtk-4.1-dev libxtst-dev libxfixes-dev libxrandr-dev xvfb xdotool imagemagick flatpak >/dev/null
       - name: Chromium (Playwright's)
         run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
       - name: Through the real listener (root for a private /run/rudolf and two test users)
         run: sudo -E env PATH="$PATH" NODE_PATH="$PWD/node_modules" sh iso/qt/host/lxprog162_t.sh
+      - name: What the apps need to send it (the session's environment, Chromium's and Electron's rules, Rudolf's Flatpak override)
+        run: sudo -E env PATH="$PATH" sh iso/qt/host/lxenv162_t.sh
       - name: rudolfd, rudolf-portal and rudolf-display build (the release's flags)
         run: |
           . iso/systools/hardflags.sh
