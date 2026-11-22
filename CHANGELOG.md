@@ -9,6 +9,12 @@ Summary: In progress.
   apps (the Library's, the Linux apps', Debian's) one after another and the Start menu's pictures, which took about 10 seconds on a
   slow laptop; the list of installed Linux apps is kept and given again at once until an app is installed, updated or removed; and
   the desktop's icons and Start menu no longer wait minutes for Linux apps' pictures that cannot be had.
+- New: two-player games from the Rudolf OS Library on your home network (docs/plan-1.6.2.md Part 30; Ember Reach 0.5.2's
+  duels). Press Host on this network in the game, and Rudolf OS runs a small relay on this computer while you play,
+  and announces it on the network; on the other computer Find games lists it, and the two games meet through it.
+  Nothing goes over the internet. The relay runs as your account's own user (never as root), answers only the local
+  network, and the firewall opens its port to the home network only (never on a cellular connection) and only while a
+  game is hosted. It stops when the duel ends, or within a minute if no game connects.
 
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
