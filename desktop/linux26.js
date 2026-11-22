@@ -22,7 +22,12 @@ function jobCrashText(j){if(!j||!j.crashed)return'';const c=(j.crashes||[])[0];r
 let lxJobWait=onLine=>new Promise(res=>{let seen=0;const iv=setInterval(async()=>{let j;try{j=await rd('job')}catch(e){return}const ls=(j.log||'').split('\n');if(onLine)for(;seen<ls.length-1;seen++)onLine(ls[seen]);if(!j.running&&j.status>=0){clearInterval(iv);res(j)}},900)});
 /* ---------- installed apps: Start menu, search, launching ---------- */
 const LXK='bd95lx';
+/* (1.6.2 Part 14, the owner's Vivobook on 2026-11-22: a native window's page asked for the list four times in its first 3 s, each a
+   `flatpak list` on rudolfd's side, and its own requests waited behind them) a list being asked for is shared; force 2 (after sign-in,
+   when the encrypted folder has just opened) asks anew */
 async function lxInstalled(force){if(!RD)return[];if(!force&&LX.inst&&Date.now()-LX.instAt<20000)return LX.inst;
+ if(LX.instP&&force!==2)return LX.instP;const p=lxInstalled0();LX.instP=p;try{return await p}finally{if(LX.instP===p)LX.instP=null}}
+async function lxInstalled0(){
  try{const j=await lxApi('apps/installed');LX.inst=j.apps||[];LX.instAt=Date.now();LX.ok=1;svj(LXK,LX.inst.map(a=>({id:a.id,name:a.name,launchers:a.launchers})));lxRegister();try{deskApply()}catch(e){}lxRedraw()}
  /* 1.5.6: not to be had (the encrypted folder not open yet): the list saved last time, not an empty one */
  catch(e){if(!LX.inst){LX.inst=ld(LXK,[]);lxRegister()}}return LX.inst}
@@ -30,7 +35,7 @@ async function lxInstalled(force){if(!RD)return[];if(!force&&LX.inst&&Date.now()
    at sign-in, and the list asked for at start-up could not be had. Every 3 s until it comes, for at most 90 s; the
    desktop's app icons and the Start menu are then drawn again (their pictures too) */
 function lxRedraw(){document.querySelectorAll('#desk > .ic[data-app^="lx:"] > b').forEach(b=>{if(b.querySelector('img'))return;const a=APPS[b.parentElement.dataset.app];if(a&&a.img)try{a.img(b)}catch(e){}})}
-async function lxAfterSignIn(){LX.ok=0;for(let i=0;i<30&&!LX.ok;i++){await lxInstalled(true);if(LX.ok)break;await new Promise(r=>setTimeout(r,3000))}
+async function lxAfterSignIn(){LX.ok=0;for(let i=0;i<30&&!LX.ok;i++){await lxInstalled(i?true:2);if(LX.ok)break;await new Promise(r=>setTimeout(r,3000))}
  /* and Debian's apps (Wine programs such as Starport GE), also in the encrypted folder: its status asked again */
  if(typeof debApps=='function')for(let i=0;i<30;i++){DEB.st=null;DEB.appsAt=0;await debApps();if(DEB.st){lxRegister();try{deskApply()}catch(e){}lxRedraw();break}await new Promise(r=>setTimeout(r,3000))}}
 (function(){const o=userLogin;userLogin=async function(){const r=await o.apply(this,arguments);if(RD)setTimeout(lxAfterSignIn,1500);return r}})();
