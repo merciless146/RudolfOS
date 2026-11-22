@@ -269,14 +269,16 @@ unlock_main() {
 	R=$(printf '%s' "$K" | tr -d ' -')
 	case "$R" in *[!0-9]*) ;; *) [ ${#R} = 48 ] && K=$(printf '%s' "$R" | sed 's/\(......\)/\1-/g; s/-$//');; esac
 	[ -n "$K" ] || die 2 "No key."
-	if [ -n "$RUDOLF_BRING_TESTKEY" ]; then   # (host tests: no device mapper there; the key is checked, nothing opened)
-		printf '%s' "$K" | cryptsetup open --type bitlk --readonly --test-passphrase --key-file=- "$DEVD/$P" >/dev/null 2>&1; R=$?
-	else
-		[ -b "$DEVD/mapper/rbl-$P" ] && { K=; echo "already open"; exit 0; }
+	[ -z "$RUDOLF_BRING_TESTKEY" ] && [ -b "$DEVD/mapper/rbl-$P" ] && { K=; echo "already open"; exit 0; }
+	# the key checked first, in cryptsetup alone (no device mapper: also the host tests' RUDOLF_BRING_TESTKEY): a wrong password
+	# is 2, a wrong recovery key 1 (cryptsetup says nothing then); either is "does not open it", never "could not be opened here"
+	printf '%s' "$K" | cryptsetup open --type bitlk --readonly --test-passphrase --key-file=- "$DEVD/$P" >/dev/null 2>"$ST/unlock.err"; R=$?
+	if [ $R = 0 ] && [ -z "$RUDOLF_BRING_TESTKEY" ]; then
 		printf '%s' "$K" | DM_DISABLE_UDEV=1 cryptsetup open --type bitlk --readonly --key-file=- "$DEVD/$P" "rbl-$P" 2>"$ST/unlock.err"; R=$?
+		[ $R = 0 ] || R=5
 	fi
 	K=; R2=$R
-	case $R2 in 0) echo "opened (read-only)"; exit 0;; 2) echo "That key does not open it."; exit 3;;
+	case $R2 in 0) echo "opened (read-only)"; exit 0;; 1|2) echo "That key does not open it."; exit 3;;
 	*) echo "BitLocker could not be opened here: $(head -c 200 "$ST/unlock.err" 2>/dev/null)"; exit 5;; esac
 }
 
