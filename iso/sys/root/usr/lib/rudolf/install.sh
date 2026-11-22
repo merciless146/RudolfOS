@@ -41,6 +41,10 @@ N=${DEV##*/}
 BUSY=/run/rudolf/busy/$N
 if [ ! -e $BUSY ]; then mkdir -p /run/rudolf/busy; : > $BUSY; trap "rm -f $BUSY" EXIT; fi
 /usr/lib/rudolf/devplug release $N 2>/dev/null || { echo "$DEV is in use: a file on it is still open. Close File Explorer and any app using the drive, then try again."; exit 4; }
+# 1.6.2 (docs/plan-1.6.2.md Part 27, Bring your files): a disk that holds another system's personal files is written only
+# once they were copied onto a USB drive and checked, or the person chose to erase them (bringfiles.sh guard: it then
+# closes what it opened of the old disk, read-only until now). Not for Make a stick (MKSTICK).
+if [ -z "$MKSTICK" ]; then ${RUDOLF_LIB:-/usr/lib/rudolf}/bringfiles.sh guard "$DEV" || exit 12; fi
 # 1.6.1: Settings' own look at an older Rudolf OS stick (mkstick.sh --info, read-only) left behind by 1.6.0's: unmounted
 for _m in $(awk -v p="/run/rudolf/stkinfo-$N/" 'index($2,p)==1{print $2}' /proc/mounts | sort -r); do umount "$_m" 2>/dev/null || true; done
 grep -qE "^${DEV}p?[0-9]* " /proc/mounts && { echo "$DEV is in use (mounted at $(grep -E "^${DEV}p?[0-9]* " /proc/mounts | awk '{print $2}' | head -1)). Unmount it first."; exit 4; }
