@@ -50,7 +50,7 @@ def make_drive(path, kernel, engine):
     os.remove(D)
 
 INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()"
-def boot(tag, drv, kernel, append='', secs=600):
+def boot(tag, drv, kernel, append='', secs=300):
     extra = ['-drive', f'file={drv},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf20',
              '-kernel', f'{kernel or REL}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1 {append}'.strip()]
     vm = sbvm.VM('kr20' + tag, PARTS, [], secure=False, mem=MEM, extra=extra); t = time.time()
@@ -68,21 +68,23 @@ def boot(tag, drv, kernel, append='', secs=600):
         except Exception: pass
         open(f'{W}/serial-{tag}.txt', 'w').write(seen); out(f'{tag}: the serial line said (last lines):\n' + '\n'.join(seen.replace('\r', '').splitlines()[-80:]))
     return vm, g, up
+DIAG = [('pad', 'rudolf.pad=' + 'x' * 60), ('ttyS0', 'console=ttyS0,115200'),
+        ('serial', 'console=ttyS0,115200 ignore_loglevel earlyprintk=serial,ttyS0,115200')]
+FINDINGS = []
 def diagnose(tag, drv, kernel):
-    """a start that did not reach the serial shell, again with the kernel's messages on the serial line"""
-    vm, g, up = boot(tag + 'diag', drv, kernel, 'console=ttyS0,115200 ignore_loglevel earlyprintk=serial,ttyS0,115200', 180)
-    stop(vm, g)
-def run(g, c, t=60):
-    f = os.path.join(W, 'c20.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/c20.sh', '644')
-    o = g.sh('sh /tmp/c20.sh 2>&1', t); out('$', c[:160].replace('\n', ' ; '), quiet=True); out(o.rstrip()[-12000:], quiet=True); return o
-def wait_desktop(g, secs=420):
-    o = run(g, f"i=0; while [ $i -lt {secs} ] && [ ! -e /run/rudolf/bootok ]; do sleep 1; i=$((i+1)); done; [ -e /run/rudolf/bootok ] && echo DESKTOP-UP || echo NO-DESKTOP", secs + 30)
-    return 'DESKTOP-UP' in o
-def stop(vm, g):
-    try: g.sh('sync', 30)
-    except Exception: pass
-    vm.stop(); time.sleep(2)
-
+    """a start that did not reach the serial shell, again: with a longer command line of no meaning (does the place of things
+    in memory matter?), with the serial line as the console, and with the kernel's messages on it. Returns the options of
+    the first that starts, so the checks go on with it (the finding is reported)."""
+    first = None
+    for name, app in DIAG:
+        vm, g, up = boot(f'{tag}{name}', drv, kernel, app, 240)
+        if up:
+            o = run(g, "uname -r; cat /proc/cmdline; dmesg | grep -iE 'ttyS|8250|serial|console|initramfs|Unpacking|corrupt' | head -30", 60)
+            out(f'{tag}: started with {app!r}:\n{o[-3000:]}')
+        FINDINGS.append(f'{tag}: {"starts" if up else "does not start"} with {app!r}')
+        stop(vm, g)
+        if up and first is None: first = app
+    return first
 LOOK = r'''
 echo "UNAME $(uname -r)"
 echo "ENGINE $(cat /run/rudolf/desktop-engine 2>/dev/null) (chosen: $(cat /run/rudolf/engine-choice 2>/dev/null))"
@@ -113,15 +115,21 @@ def look(o):
             if m: r['st'][m.group(2)] = (m.group(1), m.group(3)[:200])
     return r
 
+APP = {}
 def one(name, kernel, engine):
-    drv = os.path.join(W, f'{name}-{engine}.img'); make_drive(drv, kernel, engine)
-    vm, g, up = boot(f'{name}{engine}0', drv, kernel)   # the first start: the first-time setup
-    if not up: stop(vm, g); diagnose(f'{name}{engine}', drv, kernel); return {'up': False}
+    drv = os.path.join(W, f'{name}-{engine}.img'); make_drive(drv, kernel, engine); app = APP.get(name, '')
+    vm, g, up = boot(f'{name}{engine}0', drv, kernel, app)   # the first start: the first-time setup
+    if not up:
+        stop(vm, g); app = diagnose(f'{name}{engine}', drv, kernel)
+        if app is None: return {'up': False}
+        APP[name] = app; FINDINGS.append(f'{name}: the checks go on with {app!r} on the command line')
+        vm, g, up = boot(f'{name}{engine}0', drv, kernel, app)
+        if not up: stop(vm, g); return {'up': False}
     if up:
         wait_desktop(g); g.js(INIT_JS, 60); run(g, 'sleep 20; cat /run/rudolf/desktop-engine', 40)
     stop(vm, g)
-    vm, g, up = boot(f'{name}{engine}1', drv, kernel)
-    if not up: stop(vm, g); diagnose(f'{name}{engine}', drv, kernel); return {'up': False}
+    vm, g, up = boot(f'{name}{engine}1', drv, kernel, app)
+    if not up: stop(vm, g); return {'up': False}
     d = wait_desktop(g); run(g, 'sleep 30', 50)
     r = look(run(g, LOOK, 400)); r['up'] = True; r['desktop'] = d
     try: vm.shot(f'{name}-{engine}')
@@ -145,6 +153,7 @@ try:
     for engine in ENGINES:
         rel = one('release', '', engine); new = one('test', KDIR, engine)
         e = engine.capitalize()
+        ok(f'{e}: the test kernel starts as the release kernel does (no start-up options added)', not APP.get('test'), f'only with {APP.get("test")!r}' if APP.get('test') else '')
         if not new.get('up'): ok(f'{e}: the test kernel starts (the serial shell)', False, 'not up'); continue
         ok(f'{e}: the test kernel is the one started ({new["uname"]})', new['uname'].startswith(KV) and new['uname'].endswith('-rudolf-test'), new['uname'])
         ok(f'{e}: modules signed and enforced (sig_enforce Y, nothing refused)', new['sigenf'] == 'Y' and not new['sig'], f'{new["sigenf"]} {new["sig"]}')
@@ -165,6 +174,7 @@ try:
         ok(f'{e}: every module the release kernel loads is loaded (or built in)', not miss, ' '.join(miss))
 finally:
     print('==== SUMMARY kr20')
+    for l in FINDINGS: print('FINDING', l)
     for l in LINES: print(l)
     print(f'{P}/{P + F} passed'); LOG.write('\n'.join(LINES) + f'\n{P}/{P + F} passed\n'); LOG.close()
 sys.exit(0 if F == 0 and P > 0 else 1)
