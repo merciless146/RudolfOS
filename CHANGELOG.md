@@ -13,6 +13,9 @@ Summary: In progress.
   behind it, its window keeping its place with the app's name ("Click to show it"). Full-screen videos and games keep the whole
   screen with no frame; dialogs open in the middle of their window. Chromium-based windows (the encrypted Oracle, Tor windows,
   Chromium-based browsers) leave their own frame off; apps that always draw their own (Steam, Discord) show both, as on Native.
+- Fixed: on the Native desktop, Task Manager could come up as an empty window for several seconds (or not at all) while the desktop
+  was busy, for example while Steam was starting: its page waited for the desktop's hidden background page. Task Manager now has a
+  page of its own and comes up at once (docs/plan-1.6.2.md Part 14, found on the owner's Vivobook).
 - New: two-player games from the Rudolf OS Library on your home network (docs/plan-1.6.2.md Part 30; Ember Reach 0.5.2's
   duels). Press Host on this network in the game, and Rudolf OS runs a small relay on this computer while you play,
   and announces it on the network; on the other computer Find games lists it, and the two games meet through it.
