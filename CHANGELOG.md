@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Changed: a Library game's save record may now be up to 6 MB (it was 256 KB), so a game with a large world, such as Ember
+  Reach's shared galaxy, can keep it in a few records. Saves stay per package, game and account, mirrored and backed up as
+  before. The desktop tells a game its limit when it starts, so a game made for this works on older versions too.
 - New: Flatpak apps that Rudolf OS installs may now show their progress on their taskbar buttons. Each one gets a single extra
   permission, set by Rudolf OS, to say its progress to the desktop, and nothing else. Apps installed earlier get it at the next
   Update all. (Chromium-based browsers and most Electron apps today send their progress only on Ubuntu's old Unity desktop with

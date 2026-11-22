@@ -77,6 +77,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 	await p.evaluate(() => { S.lang = 'de' }); await wait(2300);
 	const h1 = await hello();
 	ok('5b. the hello tells a game the language (shared by default)', h1.ok && h1.lang == 'de' && h1.locale == 'de-DE' && 'dark' in h1, h1);
+	ok('5c. (1.6.2) ...and a save\'s limit, 6 MB, so the game kit sizes its saves by it', h1.maxSave == 6 * 1048576, h1.maxSave);
 	await pushed(); await p.evaluate(() => { S.lang = 'ja' }); await wait(2300);
 	const ps = await g.evaluate(() => __pushed.slice(-1)[0]);
 	ok('5c. ...and a changed language is sent to it', ps && ps.lang == 'ja' && ps.locale == 'ja-JP', ps);
@@ -92,8 +93,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 	await wait(300);
 	const kv = await p.evaluate(() => kvGet('game:rudolf-faultlines:fault-lines:' + uid())); const key = await p.evaluate(() => uid());
 	ok('6. a save is kept in the desktop\'s database (mirrored by rudolfd) for this account', kv && kv.best && kv.best.small == 42.5 && key != 'nobody', {kv, key});
-	const big = await g.evaluate(() => RG.save({x: 'a'.repeat(300000)}).then(() => 'took', e => e.message));
-	ok('7. a save over 256 KB is refused', /too large/.test(big), big);
+	/* (1.6.2) the desktop's own limit, 6 MB a record: asked directly, past the game kit (whose limit is its own) */
+	const raw = n => g.evaluate(n => new Promise(res => { const id = 'raw' + Math.random(); addEventListener('message', e => { if (e.data && e.data.op == 'reply' && e.data.id == id) res(e.data) }); parent.postMessage({rudolfGame: 1, op: 'save', id, game: 'fault-lines-big', data: {x: 'a'.repeat(n)}}, '*') }), n);
+	const big = await raw(6.5 * 1048576), mid = await raw(1048576);
+	const kept = await p.evaluate(() => kvGet('game:rudolf-faultlines:fault-lines-big:' + uid()).then(v => v && v.x ? v.x.length : 0));
+	ok('7. a save over 6 MB is refused; one of 1 MB (over the old 256 KB) is kept', !big.ok && /too large/.test(big.error) && mid.ok && kept == 1048576, {big, mid, kept});
 	/* closed and opened again: the save comes back */
 	await p.evaluate(() => wins.slice().forEach(w => w.close())); await p.evaluate(() => launch('faultlines')); await wait(2500);
 	for (let i = 0; i < 40 && !(fr() && await fr().evaluate(() => !!window.__fl).catch(() => false)); i++) await wait(100);
