@@ -48,6 +48,9 @@ blocked() { $T/fw status | awk '{print $2}'; }
 
 # ---- the stand-in printers: one answers by multicast, one by unicast (to the question's source); a cellular one
 nsenter -t $PB -n python3 $FX respond multicast 192.168.77.2 "Multicast Printer" 192.168.77.20 $T/r1 & PIDS="$PIDS $!"
+# (the unicast one bound last: both share port 5353, and the kernel gives a question sent by unicast (16, RP_MDNS) to the
+#  socket bound last; started together, either could get it, and the multicast one's answer never reached the asker)
+w8 "[ -s $T/r1 ]"
 nsenter -t $PB -n python3 $FX respond unicast 192.168.77.2 "Unicast Printer" 192.168.77.21 $T/r2 & PIDS="$PIDS $!"
 nsenter -t $PC -n python3 $FX respond multicast 10.64.0.2 "Cell Printer" 10.64.0.20 $T/r3 & PIDS="$PIDS $!"
 w8 "[ -s $T/r1 ] && [ -s $T/r2 ] && [ -s $T/r3 ]"
