@@ -7564,6 +7564,58 @@ static gboolean gm61_tick(gpointer d)
 }
 /* a pop-up held while a game is full screen (kept in the centre by whoever sent it, as with Do not disturb) */
 static int gm61_hold(const char *kind) { if (!GM61_ON || !strcmp(kind, "error")) return 0; GM61_HELD++; return 1; }
+
+/* ---- 1.6.2 (docs/plan-1.6.2.md Part 25b): Linux apps' progress on their taskbar buttons, as Standard's page draws it
+   (lxprog62.js): rudolfd's portal/progress lists the signed-in account's apps showing progress (their desktop file ID, its
+   StartupWMClass when Flatpak exports one, a whole percentage: rudolfd-lxprog.inc); each Linux app's window (no page of
+   Rudolf's, not Oracle's) whose class or instance (WM_CLASS) is the ID, the ID's last part (of more than 2 letters) or its
+   StartupWMClass, ignoring case, gets the same fill as Rudolf's own windows (tbp_set: only while minimized; a percentage,
+   never the creeping fill; done: to 100 %, then it fades). A window's own progress (the XApp hint _NET_WM_XAPP_PROGRESS, which
+   Firefox sets on X11) comes first, on that window alone. Asked once a second, only while there is such a window. */
+static GHashTable *LXP_ON;   /* (the windows whose fill is their app's progress) */
+static int lxp_match(const char *id, const char *wc, const char *cls, const char *inst)
+{
+	if (!id || !id[0] || ((!cls || !cls[0]) && (!inst || !inst[0]))) return 0;
+	const char *last = strrchr(id, '.'); last = last ? last + 1 : id;
+	const char *ks[3] = { id, strlen(last) > 2 ? last : NULL, wc && wc[0] ? wc : NULL };
+	for (int i = 0; i < 3; i++) if (ks[i] && ((cls && cls[0] && !g_ascii_strcasecmp(ks[i], cls)) || (inst && inst[0] && !g_ascii_strcasecmp(ks[i], inst)))) return 1;
+	return 0;
+}
+/* the window's own progress: the XApp hint _NET_WM_XAPP_PROGRESS (1-100; 0 or none: no progress), which Firefox sets on X11
+   rather than sending the signal (rudolf-display reads the same for Standard) */
+static long lxp_xapp(Window w)
+{
+	static Atom A_XPROG; if (!A_XPROG) A_XPROG = XInternAtom(DPY, "_NET_WM_XAPP_PROGRESS", False);
+	Atom type; int fmt; unsigned long n = 0, after; unsigned char *d = NULL; long v = 0;
+	if (XGetWindowProperty(DPY, w, A_XPROG, 0, 1, False, XA_CARDINAL, &type, &fmt, &n, &after, &d) == Success && d) { if (n == 1 && fmt == 32) v = (long)*(unsigned long *)d; XFree(d); }
+	return v >= 1 && v <= 100 ? v : 0;
+}
+static int lxp_linux(Client *c) { return c && !c->app && !c->ak[0] && !c->trans; }
+static gboolean lxp_tick(gpointer d)
+{
+	(void)d; if (!LXP_ON) LXP_ON = g_hash_table_new(NULL, NULL);
+	if (!WM_OK || !DPY) return G_SOURCE_CONTINUE;
+	int any = 0; for (GList *l = CLIENTS; l; l = l->next) if (lxp_linux(l->data)) any = 1;
+	/* (windows gone: forgotten) */
+	GHashTableIter hi; gpointer k; g_hash_table_iter_init(&hi, LXP_ON);
+	while (g_hash_table_iter_next(&hi, &k, NULL)) { Client *c = client_of((Window)(uintptr_t)k); if (!c || c->w != (Window)(uintptr_t)k) g_hash_table_iter_remove(&hi); }
+	if (!any) return G_SOURCE_CONTINUE;
+	JV *apps = NULL, *v = NULL;
+	if (USER_ID[0]) { GByteArray *b = NULL; if (http("POST", "/api/portal/progress", NULL, 0, &b) == 200 && b) { g_byte_array_append(b, (const guint8 *)"", 1); v = jparse((char *)b->data); }
+		if (b) g_byte_array_free(b, TRUE); apps = jprop(v, "apps"); if (apps && apps->t != 4) apps = NULL; }
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!lxp_linux(c)) continue;
+		XClassHint ch = {0}; XGetClassHint(DPY, c->w, &ch); int sum = 0, n = 0;
+		for (int i = 0; apps && i < apps->len; i++) { JV *a = apps->v[i]; char id[128] = "", wc[128] = ""; if (!a || a->t != 5) continue;
+			jstr(a, "id", id, sizeof id); jstr(a, "wmclass", wc, sizeof wc); double pv = jnum(a, "v", -1);
+			if (pv < 0 || pv > 100 || pv != (int)pv) continue;
+			if (lxp_match(id, wc, ch.res_class, ch.res_name)) { sum += (int)pv; n++; } }
+		if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class);
+		{ long own = lxp_xapp(c->w); if (own > 0) { sum = (int)own; n = 1; } }   /* (the window's own first: it is exactly that window's) */
+		gpointer key = (gpointer)(uintptr_t)c->w;
+		if (n) { char t[8]; snprintf(t, sizeof t, "%d", (sum + n / 2) / n); tbp_set(c, t); g_hash_table_add(LXP_ON, key); }
+		else if (g_hash_table_contains(LXP_ON, key)) { tbp_set(c, ""); g_hash_table_remove(LXP_ON, key); } }
+	jfree(v); return G_SOURCE_CONTINUE;
+}
 static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 {
 	if (!USER_ID[0]) return; if (NTST == 8) { memmove(&TST[0], &TST[1], 7 * sizeof TST[0]); NTST--; }
@@ -8243,6 +8295,7 @@ int main(int argc, char **argv)
 	g_thread_unref(g_thread_new("events", ev_thread, NULL));
 	g_thread_unref(g_thread_new("portal", pt_thread, NULL));   /* (1.6.0: the portal's requests, collected here) */
 	g_timeout_add_seconds(2, gm61_tick, NULL);   /* (1.6.1 Part 19: game mode) */
+	g_timeout_add_seconds(1, lxp_tick, NULL);   /* (1.6.2 Part 25b: Linux apps' progress on their taskbar buttons) */
 	g_timeout_add_seconds(2, svc_tick, NULL);   /* (1.6.0 Part 12, item 12: the desktop's service page, kept open while an account is signed in) */
 	g_timeout_add_seconds(2, rest_tick, NULL);   /* (1.6.1 Part 23 C: idle windows give their memory back) */
 	teval_init(); clip_init();
