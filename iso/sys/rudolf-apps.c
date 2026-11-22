@@ -5,6 +5,7 @@
  *   rudolf-apps info ID              one app in full: description, screenshots, release, links
  *   rudolf-apps installed            installed apps with their names, sizes, launchers and file types
  *   rudolf-apps titlebar ID HOME     (1.6.1 Part 15) ask the app to use the system's title bar, once (see cmd_titlebar)
+ *   rudolf-apps steamwatch           (1.6.2 Part 14, tests) Steam's watcher alone (see sq_watch)
  *
  * RA_APPSTREAM overrides the catalogue file, RA_EXPORTS the exported launchers folder (tests).
  * Copyright (C) 2026 the Rudolf OS authors. SPDX-License-Identifier: GPL-2.0-or-later */
@@ -23,6 +24,20 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <zlib.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <strings.h>
+#include <time.h>
+#include <unistd.h>
+#include <sys/file.h>
+#include <sys/wait.h>
+#include "rudolf-steamquit.h"
+#if __has_include(<X11/Xlib.h>)
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+#include <dlfcn.h>
+#define SQ_X 1
+#endif
 
 #define APPSTREAM "/var/lib/flatpak/appstream/flathub/" FP_ARCH "/active/appstream.xml.gz"
 #define EXPORTS "/var/lib/flatpak/exports/share"
@@ -429,6 +444,93 @@ static void titlebar_flatpak(const char *desk)
 	}
 }
 
+/* ---------------- 1.6.2 Part 14: Steam asked to quit when its last window is closed (rudolf-steamquit.h says why)
+   A watcher beside the launched Steam, as the account's own user, with its display: once a window of Steam's has been there (shown,
+   minimised, or on another workspace: its own window still mapped) and none has been for RA_STEAM_GRACE_MS (15 s: Steam's own windows
+   come and go while it starts or updates), and no game of Steam's runs, "steam -shutdown" inside its Flatpak; if it is still there
+   30 s later, TERM, then KILL (sq_end). One watcher per user (a lock in its runtime folder); it ends with Steam. Nothing is done without
+   the display (its library not there) or when Steam's sandbox is never seen. Tests: RA_PROC (a folder in place of /proc), RA_STEAM_CMD
+   (the command in place of the shutdown), RA_STEAM_GRACE_MS, RA_STEAM_POLL_MS, RA_STEAM_WAIT_MS, RA_STEAM_QUIT_MS. */
+static long long sq_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000; }
+static void sq_pause(int ms) { struct timespec t = { ms / 1000, (long)(ms % 1000) * 1000000 }; nanosleep(&t, NULL); }
+static long sq_env(const char *k, long d) { const char *v = getenv(k); long x = v && *v ? atol(v) : 0; return x > 0 ? x : d; }
+#ifdef SQ_X
+static struct { void *h; Display *(*open)(const char *); int (*close)(Display *); Status (*tree)(Display *, Window, Window *, Window *, Window **, unsigned *);
+	Status (*cls)(Display *, Window, XClassHint *); Status (*attr)(Display *, Window, XWindowAttributes *); int (*prop)(Display *, Window, Atom, long, long, Bool, Atom, Atom *, int *, unsigned long *, unsigned long *, unsigned char **);
+	Atom (*atom)(Display *, const char *, Bool); int (*xfree)(void *); XErrorHandler (*err)(XErrorHandler); } SQX;
+static int sq_xerr(Display *d, XErrorEvent *e) { (void)d; (void)e; return 0; }   /* (a window gone while it is looked at) */
+static int sq_xload(void)
+{
+	if (SQX.h) return 1; void *h = dlopen("libX11.so.6", RTLD_NOW | RTLD_LOCAL); if (!h) return 0;
+	SQX.open = dlsym(h, "XOpenDisplay"); SQX.close = dlsym(h, "XCloseDisplay"); SQX.tree = dlsym(h, "XQueryTree"); SQX.cls = dlsym(h, "XGetClassHint");
+	SQX.attr = dlsym(h, "XGetWindowAttributes"); SQX.prop = dlsym(h, "XGetWindowProperty"); SQX.atom = dlsym(h, "XInternAtom"); SQX.xfree = dlsym(h, "XFree"); SQX.err = dlsym(h, "XSetErrorHandler");
+	if (!SQX.open || !SQX.close || !SQX.tree || !SQX.cls || !SQX.attr || !SQX.prop || !SQX.atom || !SQX.xfree || !SQX.err) { dlclose(h); return 0; }
+	SQX.h = h; SQX.err(sq_xerr); return 1;
+}
+static int sq_name_is(const char *a) { return a && (!strcasecmp(a, "steam") || !strcasecmp(a, "steamwebhelper")); }
+/* (one of Steam's own windows there: mapped by Steam itself (shown, or hidden by the window manager: another workspace), or minimised;
+   -1: not a client's window (no class): its children are looked at) */
+static int sq_win_there(Display *d, Window w, Atom wms)
+{
+	XClassHint ch = {0}; int st = 0; if (!SQX.cls(d, w, &ch)) return -1;
+	int steam = sq_name_is(ch.res_class) || sq_name_is(ch.res_name); if (ch.res_name) SQX.xfree(ch.res_name); if (ch.res_class) SQX.xfree(ch.res_class);
+	if (!steam) return 0;
+	XWindowAttributes wa; if (SQX.attr(d, w, &wa) && wa.map_state != IsUnmapped) return 1;
+	Atom t; int f; unsigned long n = 0, af; unsigned char *p = NULL;
+	if (SQX.prop(d, w, wms, 0, 2, False, AnyPropertyType, &t, &f, &n, &af, &p) == Success && p) { if (n) st = (int)((long *)p)[0]; SQX.xfree(p); }
+	return st == IconicState;
+}
+static int sq_tree(Display *d, Window w, Atom wms, int depth)
+{
+	Window r, pa, *k = NULL; unsigned n = 0; int any = 0; if (!SQX.tree(d, w, &r, &pa, &k, &n)) return 0;
+	for (unsigned i = 0; i < n && !any; i++) { int x = sq_win_there(d, k[i], wms); if (x > 0) any = 1; else if (x < 0 && depth < 3) any = sq_tree(d, k[i], wms, depth + 1); }
+	if (k) SQX.xfree(k); return any;
+}
+/* 1: a window of Steam's is there; 0: none; -1: the display cannot be read */
+static int sq_windows(void)
+{
+	if (!sq_xload()) return -1; Display *d = SQX.open(NULL); if (!d) return -1;
+	int any = sq_tree(d, DefaultRootWindow(d), SQX.atom(d, "WM_STATE", False), 0); SQX.close(d); return any;
+}
+#else
+static int sq_windows(void) { return -1; }
+#endif
+/* (a command of its own, waited for at most 15 s: the shutdown hands Steam the request and ends) */
+static void sq_run(char *const *av)
+{
+	pid_t p = fork(); if (p < 0) return;
+	if (!p) { int nf = open("/dev/null", O_RDWR); if (nf >= 0) { dup2(nf, 0); close(nf); } execvp(av[0], av); _exit(127); }
+	for (int i = 0; i < 150; i++) { int st; if (waitpid(p, &st, WNOHANG) == p) return; sq_pause(100); }
+	kill(p, SIGKILL); waitpid(p, NULL, 0);
+}
+static void sq_watch(void)
+{
+	const char *proc = getenv("RA_PROC") && *getenv("RA_PROC") ? getenv("RA_PROC") : "/proc", *rt = getenv("XDG_RUNTIME_DIR");
+	long grace = sq_env("RA_STEAM_GRACE_MS", 15000), poll = sq_env("RA_STEAM_POLL_MS", 2000), wait0 = sq_env("RA_STEAM_WAIT_MS", 180000);
+	char lk[600]; snprintf(lk, sizeof lk, "%s/rudolf-steamquit.lock", rt && *rt ? rt : "/tmp");
+	int lf = open(lk, O_RDWR | O_CREAT | O_CLOEXEC, 0600); if (lf < 0 || flock(lf, LOCK_EX | LOCK_NB)) return;   /* (one watcher) */
+	unsigned uid = getuid(); long long t0 = sq_now(), gone = 0; int seen = 0, game = 0;
+	while (!sq_pids(proc, uid, NULL, 0, NULL)) { if (sq_now() - t0 > wait0) return; sq_pause((int)poll); }   /* (Steam's sandbox, once it starts) */
+	while (sq_pids(proc, uid, NULL, 0, &game)) {
+		int w = sq_windows(); if (w < 0) return;
+		if (w || game) { seen |= w; gone = 0; }
+		else if (seen) {
+			if (!gone) gone = sq_now();
+			else if (sq_now() - gone >= grace) {
+				fprintf(stderr, "rudolf-apps: Steam's last window was closed: Steam is asked to quit (steam -shutdown)\n");
+				const char *c = getenv("RA_STEAM_CMD"); char *dav[] = { "flatpak", "run", "--command=steam", SQ_APP, "-shutdown", NULL }, *tav[] = { "/bin/sh", "-c", (char *)c, NULL };
+				int these[512], n = sq_pids(proc, uid, these, 512, NULL); if (n > 512) n = 512;   /* (the Steam asked: not one started again after) */
+				sq_run(c && *c ? tav : dav);
+				long q = sq_env("RA_STEAM_QUIT_MS", 30000); for (long i = 0; i < q / 100 && (n = sq_left(proc, uid, these, n)); i++) sq_pause(100);
+				if (n) { fprintf(stderr, "rudolf-apps: Steam did not quit within %ld s: ended (TERM, then KILL)\n", q / 1000); sq_end(proc, uid, these, n, sq_pause); }
+				return;
+			}
+		}
+		sq_pause((int)poll);
+	}
+}
+static int sq_is(const char *desk) { size_t n = strlen(SQ_APP); return !strncmp(desk, SQ_APP, n) && (!desk[n] || desk[n] == '.'); }
+
 /* ---------------- starting an app through its launcher, as the desktop user */
 static int cmd_launch(const char *desk, const char *argfile)
 {
@@ -462,6 +564,7 @@ static int cmd_launch(const char *desk, const char *argfile)
 	argv[n] = NULL;
 	titlebar_flatpak(desk);   /* (1.6.1 Part 15, item 1) */
 	fprintf(stderr, "rudolf-apps: starting %s%s%s\n", desk, *file ? " with " : "", file);
+	if (sq_is(desk)) { fflush(NULL); pid_t w = fork(); if (!w) { sq_watch(); _exit(0); } }   /* (1.6.2 Part 14: Steam's watcher, beside it) */
 	execvp(argv[0], argv); perror(argv[0]); return 127;
 }
 
@@ -471,6 +574,7 @@ int main(int argc, char **argv)
 	if (argc >= 3 && !strcmp(argv[1], "info")) return cmd_info(argv[2], argc >= 4 && !strcmp(argv[3], "--remote"));
 	if (argc >= 3 && !strcmp(argv[1], "launch")) return cmd_launch(argv[2], argc >= 4 ? argv[3] : NULL);
 	if (argc >= 2 && !strcmp(argv[1], "installed")) return cmd_installed();
-	if (argc >= 4 && !strcmp(argv[1], "titlebar")) return cmd_titlebar(argv[2], argv[3]);   /* (1.6.1 Part 15: rudolf-debian, as the account's user) */
+	if (argc >= 4 && !strcmp(argv[1], "titlebar")) return cmd_titlebar(argv[2], argv[3]);
+	if (argc >= 2 && !strcmp(argv[1], "steamwatch")) { sq_watch(); return 0; }   /* (1.6.2 Part 14: the host test, iso/qt/host/steamquit_t.sh) */   /* (1.6.1 Part 15: rudolf-debian, as the account's user) */
 	fprintf(stderr, "usage: rudolf-apps catalog [OUT] | info ID | installed\n"); return 2;
 }

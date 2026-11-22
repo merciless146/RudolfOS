@@ -16,7 +16,7 @@ printf '#!/bin/sh\nif [ "$1" = --keyring-list ]; then echo "{\\"ok\\":true,\\"ke
 # 1.6.1 (docs/plan-1.6.1.md Part 11, accounts): US_VIA=helper: the users made, removed and moved, and the keyring, by the
 # accounts helper (built with -DRR_TEST, its places in its configuration), as rudolfd does on the system: every check the same
 RDIR=; [ "$US_VIA" = helper ] && { RDIR="-DRD_ROOT_DIR=\"$T/root\""; mkdir -p $T/root; echo "(through the accounts helper)"; }
-gcc -O1 -w $RDIR -DAU_KEYRING="\"$T/kr\"" -DAU_KEYRING_DAEMON="\"$T/kr\"" -DAU_PORTAL="\"$T/rp\"" -o $T/t $HERE/fixtures/usersapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
+gcc -O1 -w $RDIR -DAU_KEYRING="\"$T/kr\"" -DAU_KEYRING_DAEMON="\"$T/kr\"" -DAU_PORTAL="\"$T/rp\"" -DAU_PROC="\"$T/proc\"" -DAU_FLATPAK="\"$T/bin/flatpak\"" -o $T/t $HERE/fixtures/usersapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 node $HERE/fixtures/deskls.js $T/ls.json $T/keys.json || { echo "FAIL node"; exit 1; }
 truncate -s 64M $T/img; mkfs.ext4 -q -F $T/img; mkdir $T/m; mount -o loop $T/img $T/m || { echo "SKIP: no loop device"; exit 0; }
 # (the users must be real for setpriv: this namespace's /etc is a copy, which rudolfd writes as it writes the system's)
@@ -70,7 +70,12 @@ setpriv --reuid=1001 --regid=1001 --init-groups sleep 300 & P1=$!; setpriv --reu
 setpriv --reuid=1002 --regid=1002 --init-groups sleep 300 & P3=$!; timeout 1 tail -f /dev/null
 o=$(t rebind uAnnA1b2); timeout 0.5 tail -f /dev/null
 ok "6b. rudolfd started again while the account is signed in: its programs go on, its session as it was" "$(echo "$o" | grep -q 'rebind 0' && kill -0 $P1 2>/dev/null && [ -e /run/rudolf/acct-session.env ] && [ "$(grep -c "$HM/acct1001" /proc/self/mountinfo)" = 1 ] && echo 1)" "$o $(grep acct1001 /proc/self/mountinfo)"
-o=$(t session-stop uAnnA1b2 appuser); timeout 1 tail -f /dev/null
+# (1.6.2 Part 14) a stand-in for Steam running as the account's user (its sandbox's /.flatpak-info, in a folder in place of /proc), and a
+# stand-in for flatpak that says who ran it, in which session, with what, and does as Steam does when asked to quit: it ends
+setpriv --reuid=1001 --regid=1001 --init-groups sleep 300 & P5=$!; mkdir -p $T/proc/$P5/root; printf '[Application]\nname=com.valvesoftware.Steam\n' > $T/proc/$P5/root/.flatpak-info; chown -R 1001:1001 $T/proc/$P5
+mkdir -p $T/bin; printf '#!/bin/sh\necho "$(id -u) $HOME $*" >> %s/fplog\nkill %s\n' $T $P5 > $T/bin/flatpak; chmod 755 $T/bin/flatpak; : > $T/fplog; chmod 666 $T/fplog
+S0=$(date +%s); o=$(t session-stop uAnnA1b2 appuser); S1=$(date +%s); timeout 1 tail -f /dev/null
+ok "7b. (1.6.2 Part 14) signing out asks Steam to quit first, as Steam quits itself (steam -shutdown in its Flatpak, as the account's user, in its session)" "$(grep -qx "1001 $HM/acct1001 run --command=steam com.valvesoftware.Steam -shutdown" $T/fplog && ! kill -0 $P5 2>/dev/null && [ $((S1 - S0)) -lt 12 ] && echo 1)" "$(cat $T/fplog) $((S1 - S0)) s"
 ok "7. signing out stops every program of the account's user (one that ignores TERM too)" "$(! kill -0 $P1 2>/dev/null && ! kill -0 $P2 2>/dev/null && echo 1)" "$(ps -o pid,user,cmd -p $P1,$P2)"
 ok "...not another account's" "$(kill -0 $P3 2>/dev/null && echo 1)"; kill $P3 2>/dev/null
 ok "...its keyring stopped with it (shut away until the next sign-in)" "$([ -n "$KRP" ] && ! kill -0 $KRP 2>/dev/null && echo 1)" "KRP=$KRP $(ps -u 1001 -o pid,cmd 2>&1)"

@@ -3,6 +3,13 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.2 (in progress)
+Summary: In progress.
+- Fixed: closing Steam's window left Steam running out of sight (it goes to a tray icon, and Rudolf OS has no tray), using memory
+  until it was force quit. When its last window is closed, and no game of it is running, Steam is now asked to quit as it quits
+  itself, and ended if it has not after 30 s; signing out also asks it to quit first (docs/plan-1.6.2.md Part 14, found on the
+  owner's Vivobook). Task Manager's Force quit is unchanged.
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
