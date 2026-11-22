@@ -8,6 +8,11 @@
 # copied and checked; the old disk unchanged (its SHA-256); an account's folder opened and the files brought into it
 # (Documents into Documents, the rest into Documents/From the old computer, as the account's user); then the
 # installation going ahead (past the guard).   python3 bring62_q.py REL-DIR   (SB_PARTS and QEMU as for r161; root)
+# 1.6.2 (Part 27's BitLocker): BRING_KERNEL, a folder with a kernel built from this tree (iso/systools/testkernel.sh: vmlinuz and
+# modules.sfs, dm-crypt built in) started in place of the release's; BRING_BITLK, cryptsetup's BitLocker test images (its
+# tests/bitlk-images: made by Windows; cryptsetup cannot make one), three of them as the partitions of a third disk (AES-XTS,
+# AES-CBC, AES-CBC with the Elephant diffuser), opened read-only through rudolfd's bring/unlock with their recovery keys; and
+# cryptsetup with the libraries the release's base lacks in BRING_FIX/cs (as ci_release.sh adds it to the base layer).
 import os, sys, time, re, subprocess, shutil, struct, json
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
@@ -15,6 +20,8 @@ import sbvm
 from guest import Guest
 from ser import Ser
 REL = os.path.abspath(sys.argv[1]); PARTS = os.environ.get('SB_PARTS', '/nonexistent'); FIX = os.environ.get('BRING_FIX', '')
+KERN = os.environ.get('BRING_KERNEL', ''); BITLK = os.environ.get('BRING_BITLK', '')   # (Part 27's BitLocker)
+KDIR = os.path.abspath(KERN) if KERN else REL
 LOG = open('bring62.txt', 'w'); R = []; T0 = time.time()
 def out(*a):
     s = ' '.join(str(x) for x in a); s = f'[{int(time.time() - T0):5d}s] ' + s; print(s, flush=True); LOG.write(s + '\n'); LOG.flush()
@@ -37,7 +44,7 @@ def make_drive(path):
     with open(path, 'wb') as f: f.truncate((2048 + DMB * 2048 + 2048) * 512)
     T = path + '.tree'; shutil.rmtree(T, ignore_errors=True); os.makedirs(f'{T}/home/rudolf'); os.makedirs(f'{T}/etc')
     d = f'{T}/os/system/a'; os.makedirs(d)
-    for n in ('vmlinuz', 'base.sfs', 'chromium.sfs', 'desktop.sfs', 'modules.sfs', 'manifest.txt', 'manifest.sig'): shutil.copy(f'{REL}/{n}', f'{d}/{n}')
+    for n in ('vmlinuz', 'base.sfs', 'chromium.sfs', 'desktop.sfs', 'modules.sfs', 'manifest.txt', 'manifest.sig'): shutil.copy(f'{KDIR if n in ("vmlinuz", "modules.sfs") else REL}/{n}', f'{d}/{n}')
     open(f'{d}/RELEASE', 'w').write(f"serial {mv('serial')}\nversion {mv('version')}\nreleased {mv('released')}\nchromium {mv('chromium')}\nkernel {mv('kernel')}\nnotes test\n"); open(f'{d}/complete', 'w').write('1\n')
     open(f'{T}/os/system/state', 'w').write('good=a\nprev=\nnext=\ntries=0\nfailed=\n')
     sh_('chown', '-R', '1000:1000', f'{T}/home/rudolf')
@@ -69,12 +76,25 @@ FIXIMG = ''
 if FIX:
     FD = os.path.join(W, 'fix'); shutil.copytree(FIX, FD); FIXIMG = os.path.abspath('b62fix.img'); sh_('truncate', '-s', '64M', FIXIMG)
     sh_('mkfs.ext4', '-q', '-F', '-L', 'R161FIX', '-d', FD, FIXIMG)
+# (Part 27's BitLocker) a disk of three BitLocker partitions, cryptsetup's own test images: [(image, recovery key, cipher)]
+BLK = ''; BLV = []
+if BITLK:
+    conf = open(f'{BITLK}/images.conf').read()
+    def rp(n, k='RP'): return re.search(rf'^\[{re.escape(n)}\]\n(?:[^\[].*\n)*?{k}=(\S+)', conf, re.M).group(1)
+    BLSUM = {n: rp(n, 'SHA256SUM') for n in ('bitlk-aes-xts-128', 'bitlk-aes-cbc-128', 'bitlk-aes-cbc-elephant-128')}   # (the decrypted volume's, cryptsetup's tests check it)
+    BLV = [(n, rp(n), c) for n, c in (('bitlk-aes-xts-128', 'aes-xts-plain64'), ('bitlk-aes-cbc-128', 'aes-cbc-eboiv'), ('bitlk-aes-cbc-elephant-128', 'aes-cbc-elephant'))]
+    BLK = os.path.abspath('b62bitlk.img'); st = 2048; parts = []
+    for n, _, _ in BLV:
+        sz = os.path.getsize(f'{BITLK}/{n}.img') // 512; shutil.copy(f'{BITLK}/{n}.img', BLK + '.' + n); parts.append((st, sz, 0x07, BLK + '.' + n)); st += sz
+    with open(BLK, 'wb') as f: f.truncate((st + 2048) * 512)
+    mbr(BLK, parts)
 def boot(tag):
     extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf162',
              '-drive', f'file={OLD},format=raw,if=none,id=old', '-device', 'nvme,drive=old,serial=oldlaptop',
-             '-kernel', f'{REL}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1',
+             '-kernel', f'{KDIR}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1',
              '-device', 'qemu-xhci,id=xh', '-drive', f'file={USB},format=raw,if=none,id=us', '-device', 'usb-storage,bus=xh.0,drive=us,serial=b62usb']
     if FIXIMG: extra += ['-drive', f'file={FIXIMG},format=raw,if=none,id=fx,readonly=on', '-device', 'nvme,drive=fx,serial=b62fix']
+    if BLK: extra += ['-drive', f'file={BLK},format=raw,if=none,id=bl', '-device', 'nvme,drive=bl,serial=bitlkdisk']
     vm = sbvm.VM('b62' + tag, PARTS, [], secure=False, mem=MEM, extra=extra)
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
     time.sleep(30); end = time.time() + 900; up = False
@@ -102,6 +122,43 @@ def job(sh, name, t=900):
         m = re.search(r'STATUS=(-?\d+)', o)
         if m: return int(m.group(1)), o
     return None, o
+def bitlocker(sh):
+    """(Part 27's BitLocker) the three BitLocker partitions opened read-only through rudolfd, as the page asks with the recovery key"""
+    o = sh("uname -r; grep -c device-mapper /proc/misc; ls /dev/mapper/control; "
+           "[ -x /tmp/fx/cs/cryptsetup ] && { cp /tmp/fx/cs/cryptsetup /usr/sbin/cryptsetup; chmod 755 /usr/sbin/cryptsetup; for l in /tmp/fx/cs/lib/*; do [ -e /usr/lib/x86_64-linux-gnu/${l##*/} ] || [ -e /lib/x86_64-linux-gnu/${l##*/} ] || cp $l /usr/lib/x86_64-linux-gnu/; done; echo cs-in; }; "
+           "cryptsetup --version; ls /usr/lib/udev/rules.d | grep -c 'dm\\|lvm'; pidof systemd-udevd >/dev/null && echo udevd-runs", 120)
+    ok('B0. the kernel built from this tree: the device mapper (/dev/mapper/control); cryptsetup in place', '/dev/mapper/control' in o and re.search(r'cryptsetup 2\.\d', o), o)
+    o = sh("for b in /sys/block/nvme*n1; do echo ${b##*/} $(cat $b/device/serial 2>/dev/null); done")
+    m = re.search(r'^(nvme\dn1) bitlkdisk', o, re.M); BD = m.group(1) if m else 'nvme3n1'; P = [f'{BD}p{i}' for i in (1, 2, 3)]
+    o = api(sh, f'bring/scan?disk={BD}', True); st, lg = job(sh, 'bring-scan', 300)
+    o2 = api(sh, f'bring/result?disk={BD}')
+    ok('B1. the disk scanned: its three partitions BitLocker, locked (their key asked for)', st == 0 and all(f'"part":"{p}","kind":"bitlocker"' in o2 for p in P), [st, lg[-400:], o2[-800:]])
+    o = api(sh, f'bring/unlock?part={P[0]}', True, '111111-222222-333333-444444-555555-666666-777777-888888')
+    ok('B2. a wrong recovery key: refused as "That key does not open it." (403), nothing opened', ('does not open it' in o or ' 403' in o) and f'rbl-{P[0]}' not in sh('ls /dev/mapper', 30, False), o[-300:])
+    for (n, key, ci), p in zip(BLV, P):
+        o = api(sh, f'bring/unlock?part={p}', True, key)
+        o2 = sh(f"DM_DISABLE_UDEV=1 cryptsetup status rbl-{p}; for d in /sys/block/dm-*; do [ \"$(cat $d/dm/name)\" = rbl-{p} ] && cat $d/ro; done; dd if=/dev/mapper/rbl-{p} bs=512 count=1 2>/dev/null | head -c 11 | tail -c 8; echo; sha256sum /dev/mapper/rbl-{p} | cut -c1-64", 120)
+        ok(f'B3. {n} ({ci}): opened read-only with its recovery key; decrypted right (its NTFS boot sector, and the whole volume\'s SHA-256 as cryptsetup\'s tests know it)', 'opened (read-only)' in o and f'cipher:  {ci}' in o2 and re.search(r'mode: +readonly', o2) and re.search(r'^1$', o2, re.M) and 'NTFS    ' in o2 and BLSUM[n] in o2, [o[-300:], o2[-800:], BLSUM[n]])
+    o = sh("grep -A3 -E '^name +: (xts|cbc|ecb)\\(aes\\)' /proc/crypto | grep -E '^(name|module)'")
+    ok('B3b. the kernel\'s own ciphers did it: xts(aes), cbc(aes) and ecb(aes) (the Elephant diffuser\'s), built in (no module: the drives helper may load none)', all(re.search(rf'name +: {m}\(aes\)\nmodule +: kernel', o) for m in ('xts', 'cbc', 'ecb')), o)
+    o = api(sh, f'bring/scan?disk={BD}', True); st, lg = job(sh, 'bring-scan', 300); o2 = sh("grep '/dev/mapper/rbl-' /proc/mounts")
+    # (cryptsetup's test images hold no whole NTFS inside: ntfs-3g refuses dislocker's decryption of them the same way ($MFTMirr), so
+    #  the opened volumes are read as NTFS that cannot be mounted; a real Windows disk is the owner's check)
+    ok('B4. scanned again: each opened volume read through its mapping, as the NTFS inside (here "ntfs-unreadable": the test images\' NTFS is not whole), never mounted writable', st == 0 and all(f'"part":"{p}","kind":"ntfs-unreadable"' in lg or re.search(rf'/dev/mapper/rbl-{p} \S+ ntfs3 ro,nosuid,nodev,noexec', o2) for p in P) and ' rw,' not in o2, [st, lg[-500:], o2])
+    sh("rm -f /tmp/b62.body", 10, False)
+    keys = '|'.join(k.replace('-', '') for _, k, _ in BLV) + '|' + '|'.join(k for _, k, _ in BLV)
+    o = sh(f"grep -rlsE '{keys}' /persist /run /tmp /var /etc /home 2>/dev/null | grep -vx /tmp/c62.sh | head; echo grep-done; tail -5 /run/rudolf/health.log /persist/var/log/health.log 2>/dev/null | grep -i bitlocker", 300)
+    ok('B5. the recovery keys are stored nowhere (not in /persist, /run, /tmp, /var, /etc, /home, but for this command itself: the files, logs and health log say only that it was opened)', re.search(r'^grep-done$', o, re.M) and not re.search(r'^/', o.split('grep-done')[0], re.M) and 'opened read-only' in o, o[-800:])
+    o = api(sh, f'bring/close?disk={BD}', True); o2 = sh("echo MAP $(ls /dev/mapper) MOUNTS $(grep -c '/dev/mapper/rbl-' /proc/mounts)")
+    ok('B6. closed (bring/close): unmounted, the BitLocker volumes closed (only /dev/mapper/control left)', 'MAP control MOUNTS 0' in o2, [o[-300:], o2])
+    # (what DM_DISABLE_UDEV in bringfiles.sh is for: cryptsetup asked without it, as before this change, the right key, in the
+    #  background so a wait for udev cannot hold the serial shell: cryptsetup blocks signals while it waits, so only KILL ends it)
+    f = os.path.join(W, 'k'); open(f, 'w').write(BLV[0][1]); g.put(f, '/tmp/b62.k', '600'); os.remove(f)
+    o = sh(f"( timeout -s KILL 40 cryptsetup open --type bitlk --readonly --key-file=/tmp/b62.k /dev/{P[0]} rbltest; echo rc=$? > /tmp/b62.rc ) >/dev/null 2>&1 & "
+           "for i in $(seq 1 50); do [ -s /tmp/b62.rc ] && break; sleep 1; done; cat /tmp/b62.rc; rm -f /tmp/b62.k; DM_DISABLE_UDEV=1 cryptsetup close rbltest 2>/dev/null; echo MAP $(ls /dev/mapper)", 120)
+    m = re.search(r'rc=(\d+)', o)
+    out(f'(cryptsetup without DM_DISABLE_UDEV, udev running without the device mapper\'s rules: {"it waited for udev until killed after 40 s" if m and m.group(1) == "137" else "returned " + (m.group(1) if m else "nothing")}; {o.strip().splitlines()[-1] if o.strip() else ""})')
+    ok('B7. ...which is why bringfiles.sh asks it with DM_DISABLE_UDEV: without it cryptsetup never returns here (killed after 40 s); the test\'s mapping closed again', m and m.group(1) == '137' and 'MAP control' in o, o[-400:])
 make_drive(DRV)
 vm = None
 try:
@@ -118,6 +175,7 @@ try:
     ok('1. the old disk and the USB stick are there (the stick mounted by Rudolf OS)', m and f'/media/{UP} vfat rw' in o, o)
     s0 = sh(f"head -c 754974720 /dev/{OD} | sha256sum | cut -c1-64", 600, False).strip().split('\n')[-1]
     ok('1b. the old disk as made (its SHA-256 in the guest is the image\'s)', s0 == OLDSUM, [s0, OLDSUM])
+    if BLV: bitlocker(sh)
     # found and sized
     o = api(sh, f'bring/scan?disk={OD}', True); st, lg = job(sh, 'bring-scan', 600)
     o2 = api(sh, f'bring/result?disk={OD}'); m = re.search(r'\{"ok":true.*\}', o2); res = json.loads(m.group(0)) if m else {}
