@@ -198,7 +198,7 @@ for sysk in ('n64', 'dc'):
             ok('%s: the keyboard\'s %s (A) turns it green' % (tag, ka.upper()), g == 'green', colour(shot(fn + '-2key')))
         if sysk == 'n64' and k == 0:
             time.sleep(2)
-            eep = sh('find /home/rudolf/.var/app/%s -iname "*.eep*" 2>/dev/null' % app).stdout.split()
+            eep = [os.path.join(dp, f) for dp, dn, fs in os.walk('/home/rudolf/.var/app/' + app) for f in fs if '.eep' in f.lower()]
             data = open(eep[0], 'rb').read(8) if eep else b''
             ok('%s: the EEPROM save (A pressed: RUDOLF64 in block 0) is in the emulator\'s own folder' % tag, data == b'RUDOLF64', (eep, data, sh('find /home/rudolf/.var/app/%s -newer /run/rudolf/session.env -type f | head -40' % app).stdout))
         # how it ends: the first game of each through the emulator's own way out (its window closed, as Rudolf's close
