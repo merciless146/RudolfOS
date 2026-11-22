@@ -5,7 +5,16 @@
 # (When BAD itself passes, the change is in the stable updates: GOOD=v6.19, BAD=v6.19.14.)
 # Round 1 (2026-11-22, v6.18 to v6.19-rc1, 12 points): every point GOOD, v6.19-rc1 included: the change came after rc1
 # (in 6.19's release candidates, or in 6.19.y's stable updates: the stable tree is fetched first, so its tags work too).
-# Round 2: v6.19-rc1 to v6.19.
-good=v6.19-rc1
-bad=v6.19
+# Round 2 (run 45008953588, v6.19-rc1 to v6.19): GOOD up to 7893cc12251f (2026-01-10, "erofs: fix file-backed mounts..."),
+# BAD from 353c6f43ab69 (2026-01-16, "Merge tag 'xfs-fixes-6.19-rc6'") on.
+# Round 3: the 27 first-parent commits between them (12 points), and inside the one merge there that touches the EFI start
+# (bc08b658803, efi-fixes-for-v6.19-2): its first commit 6e62d1c6f2c7 ("efi: Wipe INITRD config table from memory after
+# consumption", which writes to the previous kernel's INITRD table after a kexec), that commit's parent, and the round's
+# BAD end with that one line taken back out (test=SHA PATCH: the patch applied before the build).
+good=7893cc12251f
+bad=353c6f43ab69
 points=12
+test=bc08b658803
+test=6e62d1c6f2c7
+test=cfe54f4591e6
+test=353c6f43ab69 iso/systools/kpatches/bisect/revert-6e62d1c6f2c7.patch
