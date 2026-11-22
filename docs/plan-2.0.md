@@ -163,6 +163,43 @@ the security model do not change. Standard, Lite and Native all run on it; X11 s
   today's X11: memory at idle, with Oracle, with a Wine program (Xwayland), start to the desktop, battery; Chromium,
   WebKitGTK, Steam, Wine, Flatpak apps and the calls sites checked on Wayland; written into this plan with a
   go or no-go for W1.
+  - **W0 (A), done 2026-11-22 on the Vivobook (1.6.1, kernel 6.18.64, Native on X11), with the owner present, over
+    the devlink (commands 000555-000562):**
+    - **Method:** Weston 14 was run nested in an X11 window (x11 backend, with Xwayland), inside the Debian sandbox,
+      with Cage, Xwayland, Foot, Weston, wayland-utils, Chromium, Epiphany, the GTK 4 demos and the X11 test apps
+      installed there (the owner allowed it; Rudolf itself was not changed).
+    - **Every app tried ran on Wayland:**
+      - Foot (Wayland-native)
+      - GTK 4 (gtk4-demo)
+      - WebKitGTK (Epiphany, the engine behind Lite and Native's windows)
+      - Chromium with `--ozone-platform=wayland`
+      - an X11 app (xeyes) and a Windows program (Wine's Notepad), both through Xwayland
+    - **The owner looked and found it working fine.** The compositor offered wl_compositor, xdg_wm_base,
+      zwp_linux_dmabuf_v1 and wp_viewporter. Only warnings appeared (no accessibility bus; no xdg-decoration in
+      Weston, so the apps drew their own title bars).
+    - **The X11 baseline:** 1,008 MB used of 3,416 MB with nothing open, 10 minutes after start-up.
+    - **Not shown by A:**
+      - Flatpak apps (Steam, Discord, Sober, Firefox, GIMP), because Flatpak runs outside Debian and cannot reach a
+        compositor inside it.
+      - Fair memory, start-up and battery numbers: nested, Weston and Xwayland add about 220 MB on top of X11.
+    - The test's apps were closed afterwards. The packages stay in the owner's Debian sandbox and can be removed with
+      apt.
+  - **W0 (B), planned: a real Wayland session from a test stick**, so nothing is installed on the laptop.
+    - **The build:** a Kryptonite test image built on the `kryptonite` branch (its kernel 7.3.x; or 6.18 for a
+      like-for-like comparison, built both ways if it costs little). It adds a wlroots kiosk compositor (Cage) and
+      Xwayland in the image, and a boot entry "Wayland test" that starts Standard's desktop page in Chromium with
+      `--ozone-platform=wayland` under Cage instead of Xorg. Native's shell is X11-only until W1, so the comparison is
+      **Standard on Wayland against Standard on X11**, from the same stick.
+    - **The measurements**, each on X11 and on Wayland:
+      - memory at idle, with Oracle, and with a Wine program
+      - time to the desktop (the health log)
+      - battery drain over 15 minutes idle and 15 minutes of video
+      - Flatpak apps on Wayland: Steam, Discord, Sober, Firefox
+      - a calls site
+    - **The rules:** the stick never writes to the laptop's disk. The test session falls back to X11 if Cage does not
+      start. Secure Boot with the test keys only.
+    - **Done when:** the owner boots the stick and runs the checklist with Claude over the devlink, then the numbers
+      and the go or no-go for W1 are written here.
 - **W1, the compositor:** rudolf-native as a wlroots compositor showing Native's shell exactly as on X11, as a test
   session (Settings › System health › Display: Wayland (test)), falling back to X11 by itself if it does not start,
   as Native falls back to Standard today.
