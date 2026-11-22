@@ -147,8 +147,8 @@ def bitlocker(sh):
     ok('B4. scanned again: each opened volume read through its mapping, as the NTFS inside (here "ntfs-unreadable": the test images\' NTFS is not whole), never mounted writable', st == 0 and all(f'"part":"{p}","kind":"ntfs-unreadable"' in lg or re.search(rf'/dev/mapper/rbl-{p} \S+ ntfs3 ro,nosuid,nodev,noexec', o2) for p in P) and ' rw,' not in o2, [st, lg[-500:], o2])
     sh("rm -f /tmp/b62.body", 10, False)
     keys = '|'.join(k.replace('-', '') for _, k, _ in BLV) + '|' + '|'.join(k for _, k, _ in BLV)
-    o = sh(f"grep -rlsE '{keys}' /persist /run /tmp /var /etc /home 2>/dev/null | head; echo grep-done; tail -5 /run/rudolf/health.log /persist/var/log/health.log 2>/dev/null | grep -i bitlocker", 300)
-    ok('B5. the recovery keys are stored nowhere (not in /persist, /run, /tmp, /var, /etc, /home: the files, logs and health log say only that it was opened)', re.search(r'^grep-done$', o, re.M) and not re.search(r'^/', o.split('grep-done')[0], re.M) and 'opened read-only' in o, o[-800:])
+    o = sh(f"grep -rlsE '{keys}' /persist /run /tmp /var /etc /home 2>/dev/null | grep -vx /tmp/c62.sh | head; echo grep-done; tail -5 /run/rudolf/health.log /persist/var/log/health.log 2>/dev/null | grep -i bitlocker", 300)
+    ok('B5. the recovery keys are stored nowhere (not in /persist, /run, /tmp, /var, /etc, /home, but for this command itself: the files, logs and health log say only that it was opened)', re.search(r'^grep-done$', o, re.M) and not re.search(r'^/', o.split('grep-done')[0], re.M) and 'opened read-only' in o, o[-800:])
     o = api(sh, f'bring/close?disk={BD}', True); o2 = sh("echo MAP $(ls /dev/mapper) MOUNTS $(grep -c '/dev/mapper/rbl-' /proc/mounts)")
     ok('B6. closed (bring/close): unmounted, the BitLocker volumes closed (only /dev/mapper/control left)', 'MAP control MOUNTS 0' in o2, [o[-300:], o2])
     # (what DM_DISABLE_UDEV in bringfiles.sh is for: cryptsetup asked without it, as before this change, the right key, in the

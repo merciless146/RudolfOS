@@ -2,4 +2,4 @@
 # bitlocker=1: and the bitlocker job (this tree's kernel, cryptsetup's BitLocker test images; 1.6.2 Part 27)
 serial=
 bitlocker=1
-run=5
+run=6
