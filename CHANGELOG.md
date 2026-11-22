@@ -8,6 +8,9 @@ Summary: In progress.
 - Fixed: the Lite engine check's apps' own title bars test (csd161_t.sh, 7) failed whenever it ran after 18:00 UTC: with no
   theme chosen the native desktop turns dark at night, and the window's edge is then the dark theme's, as it should be.
   The test now chooses the light theme. Nothing in Rudolf OS changed.
+- Fixed: Oracle's status line kept saying "Goes To: <address>" after the mouse left one of Oracle's own pages (its home
+  page, the reader) for the rest of the desktop or Oracle's own bar: Chromium does not tell such a page that the mouse
+  left it, so the desktop now ends it itself when the mouse arrives on its own page.
 - New: Rudolf's title bar on Standard's windows from outside the page (docs/plan-1.6.2.md Part 29, the owner, 2026-11-21): Linux
   apps, the encrypted Oracle and Oracle's Tor windows get the same title bar, buttons, edges and window menu as Rudolf's own windows
   (and as Native's frames), in the title-bar style and colour chosen in Display Properties. Drag the title bar to move them, any edge
