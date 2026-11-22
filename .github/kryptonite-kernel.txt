@@ -2,3 +2,7 @@
 # (1.6.x on main keeps the 6.18 longterm kernel). A line kernel=7.3.N pins a point release; kernel=7.3 takes the newest
 # 7.3.y on kernel.org (the check then says which, and warns when a pinned one has a newer point release).
 kernel=7.3.5
+# patch=FILE: a kernel patch the 7.3 build carries (systools/testkernel.sh KPATCHES), each with its reason in its header.
+# 2026-11-22: the 7.x start after a kexec handover (docs/plan-2.0.md "Status: the 7.3 kernel"): a kernel started by
+# kexec neither uses nor wipes the previous kernel's INITRD table (the write since 6.19-rc6 corrupted its own initramfs).
+patch=systools/kpatches/efi-initrd-table-kexec.patch

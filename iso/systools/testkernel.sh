@@ -27,6 +27,10 @@ if [ ! -d "$W/linux/kernel" ]; then
 	[ "$(awk -v f="$T" '$2==f{print $1}' "$W/sha256sums.asc")" = "$(sha256sum "$W/$T" | cut -c1-64)" ] || { echo "kernel: checksum"; exit 1; }
 	rm -rf "$W/linux"; mkdir -p "$W/linux" && tar -xJf "$W/$T" -C "$W/linux" --strip-components=1
 fi
+# (2.0, the kryptonite branch: KPATCHES, kernel patches (paths from iso/, or absolute) applied to the tree before it is
+#  configured, each with its reason in its own header: systools/kpatches/, those the 7.3 build carries named by
+#  .github/kryptonite-kernel.txt's patch= lines; 1.6.x's builds pass none)
+for p in $KPATCHES; do patch -d "$W/linux" -p1 --forward --batch < "$p" || { echo "testkernel: $p does not apply"; exit 1; }; echo "testkernel: applied $(basename "$p")"; done
 BB_COMMIT=1a64f6a20aaf6ea4dbba68bbfa8cc1ab7e5c57c4
 if [ ! -x initramfs/bin/busybox ]; then
 	for u in https://git.busybox.net/busybox https://github.com/mirror/busybox; do
