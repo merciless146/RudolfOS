@@ -4,7 +4,7 @@
      it (libNeed, as Quake does); the system download does not grow with games.
    - The games use the game kit (rudolfos-library lib/gamekit), which runs in the package's sandboxed frame and talks
      to the desktop with messages {rudolfGame: 1, op, id, game}. Any web-app package frame may use them:
-       hello  -> {dark, reduceFlash}             the desktop's theme and Reduce motion
+       hello  -> {dark, reduceFlash, maxSave}    the desktop's theme and Reduce motion, and (1.6.2) a save's limit
        load   -> {data}                          the game's save, for this account
        save   {data} -> {}                       kept in the desktop's database (mirrored by rudolfd, backed up),
                                                  one record per package, game and account; up to 6 MB
@@ -54,7 +54,7 @@ addEventListener('message',async e=>{const m=e.data;if(!m||m.rudolfGame!==1||typ
  const reply=o=>{try{e.source.postMessage(Object.assign({rudolfGame:1,op:'reply',id:m.id},o),'*')}catch(x){}};
  if(typeof m.game!='string'||!/^[a-z0-9-]{2,40}$/.test(m.game))return reply({ok:false,error:'bad game id'});
  if(!GAME_FRAMES.has(at.f))GAME_FRAMES.set(at.f,{pkg:at.pkg,paused:false});
- if(m.op=='hello')return reply(Object.assign({ok:true},gameSet()));
+ if(m.op=='hello')return reply(Object.assign({ok:true,maxSave:GAME_MAX},gameSet()));   /* (1.6.2: maxSave, so the kit knows; older desktops say nothing, and the kit takes 256 KB) */
  /* 1.5.9 (plan 8.2): an outside developer's app keeps saves only when the person allowed it (pkgbox59.js) */
  if((m.op=='load'||m.op=='save')&&at.f.dataset.dev=='1'&&!(at.f.dataset.grants||'').split(' ').includes('saves'))return reply({ok:false,error:'saves were not allowed for this app'});
  if(m.op=='load'){let v;try{v=await kvGet(gameKey(at.pkg,m.game))}catch(x){}return reply({ok:true,data:v===undefined?null:v})}

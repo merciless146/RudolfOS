@@ -77,6 +77,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 	await p.evaluate(() => { S.lang = 'de' }); await wait(2300);
 	const h1 = await hello();
 	ok('5b. the hello tells a game the language (shared by default)', h1.ok && h1.lang == 'de' && h1.locale == 'de-DE' && 'dark' in h1, h1);
+	ok('5c. (1.6.2) ...and a save\'s limit, 6 MB, so the game kit sizes its saves by it', h1.maxSave == 6 * 1048576, h1.maxSave);
 	await pushed(); await p.evaluate(() => { S.lang = 'ja' }); await wait(2300);
 	const ps = await g.evaluate(() => __pushed.slice(-1)[0]);
 	ok('5c. ...and a changed language is sent to it', ps && ps.lang == 'ja' && ps.locale == 'ja-JP', ps);

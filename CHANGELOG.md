@@ -7,7 +7,7 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 Summary: In progress.
 - Changed: a Library game's save record may now be up to 6 MB (it was 256 KB), so a game with a large world, such as Ember
   Reach's shared galaxy, can keep it in a few records. Saves stay per package, game and account, mirrored and backed up as
-  before.
+  before. The desktop tells a game its limit when it starts, so a game made for this works on older versions too.
 - Changed: the Standard desktop is now called Chromium (it is the same desktop: the desktop page in Rudolf's Chromium), and
   Settings › System health › Desktop engine lists the three as Native, Chromium, Lite. A computer on Standard stays on it and
   shows it as Chromium; nothing saved changes. Help, System health, the self-test, the sign-in's messages and rudolf-fetch say
