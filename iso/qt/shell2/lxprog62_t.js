@@ -74,7 +74,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('8. back to the desktop (minimized again): where the work is now (60 %)', f && Math.abs(f.frac - .6) < .01, f);
   // 9. done: to 100 %, fades, gone
   M.prog = {ok: true, apps: []}; await wait(1150); f = await lx('1e00001');
-  ok('9. the app done (its progress hidden): the fill completes (to 100 %)', f && f.frac > .9 && /width: calc\(100% - 6px\)/.test(f.html), f);
+  ok('9. the app done (its progress hidden): the fill completes (heads for 100 %: its width set to the whole button, moving there from 60 %)', f && f.frac >= .59 && /width: calc\(100% - 6px\)/.test(f.html) && !/opacity: 0\.[0-4]/.test(f.html), f);
   await wait(1500); ok('10. ...then fades and is gone', (await lx('1e00001')) == null);
   // 11. StartupWMClass: Chrome's (com.google.Chrome, class Google-chrome)
   M.prog = {ok: true, apps: [{id: 'com.google.Chrome', wmclass: 'google-chrome', v: 25}]}; await wait(2200); f = await lx('1e00002');
