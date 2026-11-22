@@ -176,6 +176,8 @@ m BT_HCIBTUSB BT_HCIVHCI
 # Raptor Lake's ACP 6.x twin, Phoenix/Hawk Point (ACP 6.3). They need no firmware. (Intel SOF, AMD SOF and the
 # speaker amplifiers need firmware: they come with it.) SND_AMD_ACP_CONFIG picks the driver for each computer.
 # (ACP6x has a lower-case x: mk keeps the case, as for MT76x0U)
+# (2.0 (7.3): SND_SOC_AMD_RPL_ACP6x is gone: the Raptor Lake twin's ACP 6.2 (PCI revision 0x62) is driven by ACP6x's own
+#  driver now, sound/soc/amd/yc/pci-acp6x.c, so ACP6x covers it)
 ACPMIC="SND_SOC SND_AMD_ACP_CONFIG SND_SOC_AMD_RENOIR SND_SOC_AMD_RENOIR_MACH SND_SOC_AMD_ACP6x SND_SOC_AMD_YC_MACH SND_SOC_AMD_ACP63_TOPLEVEL SND_SOC_AMD_PS SND_SOC_AMD_PS_MACH SND_SOC_DMIC"
 mk $ACPMIC
 # 1.5.4: Intel's sound processor (SOF), Tiger Lake to Panther Lake, with its firmware and topologies (firmware-sof.txt):

@@ -102,9 +102,22 @@ jobs:
           grep -E '^CONFIG_(HZ|PREEMPT[A-Z_]*)=' kout/config.txt
           echo "::notice title=Build::Linux $(ls iso/work-test/mods/lib/modules) ($L): vmlinuz $(du -m kout/vmlinuz | cut -f1) MB, modules.sfs $(du -m kout/modules.sfs | cut -f1) MB, $M modules (signed), built in $(( $(date +%s) - S )) s; $(grep -E '^CONFIG_(HZ|PREEMPT_[A-Z]*)=' kout/config.txt | tr '\n' ' ')"
           find iso/work-test/mods/lib/modules -name '*.ko' | sed 's#.*/lib/modules/[^/]*/##' | sort > kout/modules.txt
+      - uses: actions/upload-artifact@v4
+        with: {name: kernel-kryptonite, retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\nkout/modules.txt\nkout/SHA256SUMS"}
       - name: Secure Boot on in QEMU with the test keys (recovery_sb_t.sh)
         run: |
           bash iso/systools/sb_fetch.sh parts >/dev/null
+          # (the parts pinned by iso/boot/sb/parts.txt: when Ubuntu has a newer package than the pinned one, the pinned version's
+          #  package from Launchpad's archive, which keeps every published version; the files are checked against the pins either way)
+          sed -n 's/^#.*\(shim-signed [^ ,]*\), \(systemd-boot-efi [^ ]*\)\. .*/\1\n\2/p' iso/boot/sb/parts.txt | while read -r P V; do
+            echo "pinned: $P $V"; need=0
+            case $P in shim-signed) F="shimx64.efi:shimx64.efi.signed.latest mmx64.efi:mmx64.efi";; *) F="systemd-bootx64.efi:systemd-bootx64.efi linuxx64.efi.stub:linuxx64.efi.stub";; esac
+            for f in $F; do grep " ${f%%:*}\$" iso/boot/sb/parts.txt | (cd parts && sha256sum -c --quiet) 2>/dev/null || need=1; done
+            [ $need = 0 ] && continue
+            echo "$P: Ubuntu's is newer; taking the pinned $V from Launchpad"
+            curl -fsSL --retry 3 -o p.deb "https://launchpad.net/ubuntu/+archive/primary/+files/${P}_${V}_amd64.deb"; rm -rf px; dpkg-deb -x p.deb px
+            for f in $F; do x=$(find px -name "${f#*:}" | head -1); [ -n "$x" ] && cp "$x" "parts/${f%%:*}"; done
+          done
           (cd parts && for f in shimx64.efi mmx64.efi systemd-bootx64.efi linuxx64.efi.stub; do grep " $f\$" ../iso/boot/sb/parts.txt | sha256sum -c --quiet || { echo "::error::$f is not the pinned one"; exit 1; }; done)
           cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/
           export PATH=$PATH:/usr/local/bin
@@ -114,8 +127,6 @@ jobs:
       - name: Delete the test keys
         if: always()
         run: rm -rf "$SBT" iso/work-test/linux/certs/signing_key.pem
-      - uses: actions/upload-artifact@v4
-        with: {name: kernel-kryptonite, retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\nkout/modules.txt\nkout/SHA256SUMS"}
   nvidia:
     # NVIDIA's open kernel modules (the system extension nvidia-driver, docs/plan-1.6.1.md Part 19) built against this
     # kernel: the "next" channel takes a new kernel only once they build. Not signed (no key is used); nothing published.
@@ -138,6 +149,7 @@ jobs:
     # reach ready, the self-test, the modules and the firmware (qt/sb/kr20_t.py); and the firmware 7.3's drivers ask for
     # against firmware-extra.txt (systools/kfwdiff.py)
     needs: [version, build]
+    if: always() && needs.version.result == 'success'
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
