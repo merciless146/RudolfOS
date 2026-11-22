@@ -1,16 +1,19 @@
 # Rudolf Kryptonite (2.0, docs/plan-2.0.md "The newest kernel"): Linux 7.3.y for x86-64, checked on the kryptonite branch
 # only. Nothing is published: no release, no gh-pages, no channel, no secret; the kernel is built with a TEST Secure Boot
-# key made in the job and thrown away with it. Runs on pushes to kryptonite and kryp-* branches and on pull requests into
-# kryptonite, never on main.
+# key made in the job and thrown away with it. Runs on pushes to kryptonite and on pull requests into kryptonite (the
+# branches of its work, kryp-*), never on main.
 name: Kryptonite kernel
 on:
   push:
-    branches: [kryptonite, 'kryp-*']
-    paths: ['iso/kconfig.sh', 'iso/kconfig-required.txt', 'iso/systools/kreq.sh', 'iso/systools/kconfdiff.py', 'iso/systools/testkernel.sh',
-      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/recovery_sb_t.sh',
+    branches: [kryptonite]
+    paths: ['iso/kconfig.sh', 'iso/kconfig-required.txt', 'iso/systools/kreq.sh', 'iso/systools/kconfdiff.py', 'iso/systools/kfwdiff.py', 'iso/systools/testkernel.sh',
+      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/sys/rudolf-kexec.c', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/kr20_sbparts.sh', 'iso/qt/sb/recovery_sb_t.sh',
       'iso/ext/nvidia-driver/**', '.github/kryptonite-kernel.txt', '.github/workflows/kryptonite-kernel.yml']
   pull_request:
     branches: [kryptonite]
+    paths: ['iso/kconfig.sh', 'iso/kconfig-required.txt', 'iso/systools/kreq.sh', 'iso/systools/kconfdiff.py', 'iso/systools/kfwdiff.py', 'iso/systools/testkernel.sh',
+      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/sys/rudolf-kexec.c', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/kr20_sbparts.sh', 'iso/qt/sb/recovery_sb_t.sh',
+      'iso/ext/nvidia-driver/**', '.github/kryptonite-kernel.txt', '.github/workflows/kryptonite-kernel.yml']
 permissions: {contents: read}
 jobs:
   version:
