@@ -1,0 +1,57 @@
+Rudolf Kryptonite (2.0), the kryptonite branch only: carried by the 7.3 build (.github/kryptonite-kernel.txt, patch=).
+GPL-2.0 (a change to Linux). Reason: docs/plan-2.0.md, "Status: the 7.3 kernel".
+
+efi: a kernel started by kexec neither uses nor wipes the INITRD config table
+
+Since 6e62d1c6f2c7 ("efi: Wipe INITRD config table from memory after
+consumption", v6.19-rc6), efi_config_parse_tables() writes zeros to the
+LINUX_EFI_INITRD_MEDIA table's base and size. The table is allocated by
+the EFI stub of the kernel the firmware started, as EFI_LOADER_DATA,
+which that kernel takes over as free memory. EFI config tables are
+passed across kexec (x86: SETUP_EFI), so a kernel started by kexec
+finds the previous kernel's table and writes 16 bytes into memory that
+may now belong to anything: here, the new kernel's own built-in
+initramfs, which then fails to unpack ("Kernel panic - not syncing:
+ZSTD-compressed data is corrupt") whenever the previous boot loader
+gave its kernel an initrd (a UKI's .initrd) and the memory map puts the
+table under the new kernel (QEMU with 1.5 GB). Reading the stale table
+was already wrong for the same reason (the case the wipe was meant to
+fix). A kexec loader passes any initrd in boot_params, so a kexec'd
+kernel ignores the table altogether.
+
+--- a/drivers/firmware/efi/efi.c
++++ b/drivers/firmware/efi/efi.c
+@@ -706,6 +706,15 @@
+ 	memblock_reserve(start, end - start);
+ }
+ 
++static bool __init efi_booted_by_kexec(void)
++{
++#ifdef CONFIG_X86
++	return efi_setup != 0;
++#else
++	return false;
++#endif
++}
++
+ int __init efi_config_parse_tables(const efi_config_table_t *config_tables,
+ 				   int count,
+ 				   const efi_config_table_type_t *arch_tables)
+@@ -816,8 +825,16 @@
+ 		}
+ 	}
+ 
++	/*
++	 * A kernel started by kexec must neither use nor wipe the INITRD table:
++	 * it is the previous kernel's, in memory that kernel took over as free
++	 * (EFI_LOADER_DATA) and may have given to anything since, this kernel's
++	 * own image and built-in initramfs included. A kexec loader passes any
++	 * initrd in boot_params (x86: a kexec'd kernel is given SETUP_EFI).
++	 */
+ 	if (IS_ENABLED(CONFIG_BLK_DEV_INITRD) &&
+-	    initrd != EFI_INVALID_TABLE_ADDR && phys_initrd_size == 0) {
++	    initrd != EFI_INVALID_TABLE_ADDR && phys_initrd_size == 0 &&
++	    !efi_booted_by_kexec()) {
+ 		struct linux_efi_initrd *tbl;
+ 
+ 		tbl = early_memremap(initrd, sizeof(*tbl));

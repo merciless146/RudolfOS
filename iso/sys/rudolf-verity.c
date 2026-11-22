@@ -7,6 +7,9 @@
  *
  *   rudolf-verity check MANIFEST SIG KEYS              exit 0: signed by a trusted key
  *   rudolf-verity open MANIFEST SIG KEYS NAME LOOPDEV  prints /dev/dm-N, the checked device
+ *   rudolf-verity close NAME                           removes that checked device again (2.0, the kryptonite branch:
+ *     the start-up script's unchecked start with Secure Boot off, which mounts the loop device itself, found it held
+ *     by a checked device that had been set up and then failed: "Device or resource busy")
  * Exit codes: 0 ok, 2 not signed, 3 no V line for that layer (an older release), 4 the device could not be
  * set up (5: the layer is not the one the list describes: its size), 1 usage. Ed25519 verification follows TweetNaCl (public domain; Bernstein, van Gastel, Janssen,
  * Lange, Schwabe, Smetsers). Static, no libraries. */
@@ -297,8 +300,22 @@ static int verity_open(const char *name, const char *loop, unsigned long long bl
 	return 0;
 }
 
+static int verity_close(const char *name)
+{
+	int c = open("/dev/mapper/control", O_RDWR);
+	if (c < 0) { perror("rudolf-verity: /dev/mapper/control"); return 1; }
+	char dn[64]; snprintf(dn, sizeof dn, "rudolf-%s", name);
+	union { struct dm_ioctl d; char b[1024]; } u;
+	memset(&u, 0, sizeof u);
+	int r = dm(c, DM_DEV_REMOVE, &u.d, dn, sizeof u);
+	if (r) fprintf(stderr, "rudolf-verity: %s: the checked device could not be removed (%s)\n", name, strerror(errno));
+	close(c);
+	return r ? 4 : 0;
+}
+
 int main(int argc, char **argv)
 {
+	if (argc == 3 && !strcmp(argv[1], "close")) return verity_close(argv[2]);
 	if (argc == 5 && !strcmp(argv[1], "check")) return signed_ok(argv[2], argv[3], argv[4]) ? 0 : 2;
 	if (argc == 7 && !strcmp(argv[1], "open")) {
 		if (!signed_ok(argv[2], argv[3], argv[4])) { fprintf(stderr, "rudolf-verity: the release list is not signed by a trusted key\n"); return 2; }
@@ -322,6 +339,6 @@ int main(int argc, char **argv)
 		fprintf(stderr, "rudolf-verity: the release list has no hash for %s\n", argv[5]);
 		return 3;
 	}
-	fprintf(stderr, "usage: rudolf-verity check MANIFEST SIG KEYS | open MANIFEST SIG KEYS NAME LOOPDEV\n");
+	fprintf(stderr, "usage: rudolf-verity check MANIFEST SIG KEYS | open MANIFEST SIG KEYS NAME LOOPDEV | close NAME\n");
 	return 1;
 }

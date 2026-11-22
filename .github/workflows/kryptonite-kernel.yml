@@ -7,12 +7,12 @@ on:
   push:
     branches: [kryptonite]
     paths: ['iso/kconfig.sh', 'iso/kconfig-required.txt', 'iso/systools/kreq.sh', 'iso/systools/kconfdiff.py', 'iso/systools/kfwdiff.py', 'iso/systools/testkernel.sh',
-      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/sys/rudolf-kexec.c', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/kr20_sbparts.sh', 'iso/qt/sb/recovery_sb_t.sh',
+      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/sys/rudolf-kexec.c', 'iso/sys/rudolf-verity.c', 'iso/systools/kpatches/**', 'iso/qt/host/verityfallback20_t.sh', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/kr20_sbparts.sh', 'iso/qt/sb/recovery_sb_t.sh',
       'iso/ext/nvidia-driver/**', '.github/kryptonite-kernel.txt', '.github/workflows/kryptonite-kernel.yml']
   pull_request:
     branches: [kryptonite]
     paths: ['iso/kconfig.sh', 'iso/kconfig-required.txt', 'iso/systools/kreq.sh', 'iso/systools/kconfdiff.py', 'iso/systools/kfwdiff.py', 'iso/systools/testkernel.sh',
-      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/sys/rudolf-kexec.c', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/kr20_sbparts.sh', 'iso/qt/sb/recovery_sb_t.sh',
+      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/sys/rudolf-kexec.c', 'iso/sys/rudolf-verity.c', 'iso/systools/kpatches/**', 'iso/qt/host/verityfallback20_t.sh', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/kr20_sbparts.sh', 'iso/qt/sb/recovery_sb_t.sh',
       'iso/ext/nvidia-driver/**', '.github/kryptonite-kernel.txt', '.github/workflows/kryptonite-kernel.yml']
 permissions: {contents: read}
 jobs:
@@ -83,7 +83,9 @@ jobs:
     #  2026-11-22, the handover's second start at 1.5 GB by kernel series (kv: another version): 7.2.15, 7.1.13 and 7.0.14 fail as
     #  7.3.5 does; 6.18.64 passes (sb-release)
     #  2026-11-22 (second run): 6.19.y, the series between them (kv without a point release: its newest)
-    strategy: {fail-fast: false, matrix: {k: [{name: '', kv: '', extra: '', off: ''}, {name: h6.19, kv: '6.19', extra: '', off: ''}]}}
+    #  2026-11-22 (the fix): the build carries .github/kryptonite-kernel.txt's patches; "unpatched" is the same kernel without
+    #  them, for the record (the handover's second start fails there as before)
+    strategy: {fail-fast: false, matrix: {k: [{name: '', kv: '', extra: '', off: '', nopatch: ''}, {name: unpatched, kv: '', extra: '', off: '', nopatch: '1'}]}}
     name: build ${{ matrix.k.name }}
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
@@ -105,7 +107,8 @@ jobs:
         run: |
           case "$KERNEL_VERSION" in *.*.*) ;; *) KERNEL_VERSION=$(git ls-remote --tags https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "v$KERNEL_VERSION*" | sed -n 's#.*refs/tags/v\([0-9.]*\)$#\1#p' | grep -E "^$(echo "$KERNEL_VERSION" | sed 's/\./\\./g')(\.[0-9]+)?$" | sort -V | tail -1);; esac
           echo "KERNEL_VERSION=$KERNEL_VERSION" >> $GITHUB_ENV; echo "Linux $KERNEL_VERSION"
-          S=$(date +%s); TEST_SB_CERT=$SBT/sb.crt OUT=$PWD/kout bash iso/systools/testkernel.sh
+          KP=""; [ -n "${{ matrix.k.nopatch }}" ] || KP=$(sed -n 's/^patch=//p' .github/kryptonite-kernel.txt | tr '\n' ' '); echo "patches: ${KP:-none}"
+          S=$(date +%s); KPATCHES=$KP TEST_SB_CERT=$SBT/sb.crt OUT=$PWD/kout bash iso/systools/testkernel.sh
           sbsign --key $SBT/sb.key --cert $SBT/sb.crt --output kout/vmlinuz.signed kout/vmlinuz; sbverify --cert $SBT/sb.crt kout/vmlinuz.signed
           mv kout/vmlinuz.signed kout/vmlinuz; (cd kout && sha256sum vmlinuz modules.sfs rudolf-kexec > SHA256SUMS)
           L=$(sed -n 's/^CONFIG_LOCALVERSION=//p' kout/config.txt)
@@ -113,7 +116,7 @@ jobs:
           M=$(find iso/work-test/mods -name '*.ko' | wc -l); U=$(for f in $(find iso/work-test/mods -name '*.ko' | head -50); do tail -c 28 $f | grep -q 'Module signature appended' || echo $f; done | wc -l)
           [ "$U" = 0 ] || { echo "::error::$U of the first 50 modules are not signed"; exit 1; }
           grep -E '^CONFIG_(HZ|PREEMPT[A-Z_]*)=' kout/config.txt
-          echo "::notice title=Build ${{ matrix.k.name }}::Linux $(ls iso/work-test/mods/lib/modules) ($L): vmlinuz $(du -m kout/vmlinuz | cut -f1) MB, modules.sfs $(du -m kout/modules.sfs | cut -f1) MB, $M modules (signed), built in $(( $(date +%s) - S )) s; $(grep -E '^CONFIG_(HZ|PREEMPT_[A-Z]*)=' kout/config.txt | tr '\n' ' ')"
+          echo "::notice title=Build ${{ matrix.k.name }}::Linux $(ls iso/work-test/mods/lib/modules) ($L, patches: ${KP:-none}): vmlinuz $(du -m kout/vmlinuz | cut -f1) MB, modules.sfs $(du -m kout/modules.sfs | cut -f1) MB, $M modules (signed), built in $(( $(date +%s) - S )) s; $(grep -E '^CONFIG_(HZ|PREEMPT_[A-Z]*)=' kout/config.txt | tr '\n' ' ')"
           find iso/work-test/mods/lib/modules -name '*.ko' | sed 's#.*/lib/modules/[^/]*/##' | sort > kout/modules.txt
       - if: matrix.k.name == ''
         uses: actions/upload-artifact@v4
@@ -163,6 +166,20 @@ jobs:
       - name: Delete the test keys
         if: always()
         run: rm -rf "$SBT" iso/work-test/linux/certs/signing_key.pem
+  host:
+    # the start-up script's unchecked start with Secure Boot off (qt/host/verityfallback20_t.sh: the checked device removed
+    # before the loop device is mounted; kr20_t.py's finding b). Root on the runner, a throwaway key; nothing published.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: verityfallback20_t.sh
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools python3-cryptography >/dev/null
+          sudo sh iso/qt/host/verityfallback20_t.sh 2>&1 | tee vfb.txt
+          grep -q '^\([0-9]*\)/\1 passed$' vfb.txt || { echo "::error title=verityfallback20_t.sh::$(grep '^FAIL\|^SKIP' vfb.txt | tr '\n' ' ')"; exit 1; }
+          echo "::notice title=Unchecked start (Secure Boot off)::$(tail -1 vfb.txt)"
+          sh iso/qt/host/veritysize59_t.sh
   sb-release:
     # the same Secure Boot check on the newest beta's own kernel (1.6.x, 6.18.y, signed with the official key, which it
     # trusts): what the test kernel's result is compared with. Test keys only for the boot files; nothing published.

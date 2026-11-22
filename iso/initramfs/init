@@ -497,7 +497,9 @@ for L in desktop chromium modules base; do
 		say "Rudolf OS: the system layer '$L' did not pass the check ($WHY). With Secure Boot on, only a checked system starts."
 		[ -n "$SLOT" ] && slot_bad; fail
 	else
-		[ -n "$DEV" ] && WHY="it does not match its signed hash"
+		# (2.0, the kryptonite branch: the checked device set up on the loop device holds it; it is removed first, or
+		#  the mount below fails with "Device or resource busy" and the start goes back to the previous system)
+		[ -n "$DEV" ] && { WHY="it does not match its signed hash"; rudolf-verity close "$L" 2>/dev/null; }
 		mount -t squashfs -o ro "$LOOP" /mnt/l/$L || { say "Rudolf OS: the system layer '$L' is damaged."; [ -n "$SLOT" ] && slot_bad; fail; }
 		UNV="$UNV$L: $WHY\n"
 	fi
