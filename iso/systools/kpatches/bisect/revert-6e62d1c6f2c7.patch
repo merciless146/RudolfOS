@@ -1,0 +1,14 @@
+Rudolf Kryptonite (2.0) bisect only (.github/kryptonite-bisect.txt): 6e62d1c6f2c7 ("efi: Wipe INITRD config table from
+memory after consumption") taken back out of a tree that has it, to show that this line alone breaks the handover. Never
+carried by a build.
+
+--- a/drivers/firmware/efi/efi.c
++++ b/drivers/firmware/efi/efi.c
+@@ -819,7 +819,6 @@
+ 		if (tbl) {
+ 			phys_initrd_start = tbl->base;
+ 			phys_initrd_size = tbl->size;
+-			tbl->base = tbl->size = 0;
+ 			early_memunmap(tbl, sizeof(*tbl));
+ 		}
+ 	}
