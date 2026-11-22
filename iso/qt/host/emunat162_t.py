@@ -81,7 +81,7 @@ def api(path, body=None, method=None):
         except Exception: return e.code, {'error': t}
     except Exception as e: return 0, {'error': str(e)}
 # the library: games/info makes its folders; games/import adds the made games (the job, games-import.sh)
-c, j = api('games/info'); ok('games/info makes the library', c == 200 and os.path.isdir('/home/rudolf/Games/N64') and os.path.isdir('/home/rudolf/Games/DC'), (c, j))
+c, j = api('games/info', ''); ok('games/info makes the library', c == 200 and os.path.isdir('/home/rudolf/Games/N64') and os.path.isdir('/home/rudolf/Games/DC'), (c, j))
 lst = [SRC + '/Rudolf N64 Test.z64', SRC + '/Rudolf N64 Test (n64).n64', SRC + '/Rudolf N64 Test (v64).v64', SRC + '/dc/gdi/Rudolf DC Test.gdi', SRC + '/dc/Rudolf DC Test.cdi'] + ([SRC + '/Rudolf DC Test (chd).chd'] if CHD else [])
 c, j = api('games/import', '\n'.join(lst) + '\n'); ok('games/import starts', c == 200, (c, j))
 jj = wait(lambda: (lambda s: s if not s[1].get('running') and s[1].get('name') == 'games-import' else None)(api('job')), 120) or (0, {})
@@ -152,7 +152,10 @@ def close_window(w):
 def theirs():   # the desktop user's processes other than the bus started here
     o = sh('ps -o pid=,comm=,args= -u %d' % UID).stdout.strip().splitlines()
     return [l for l in o if 'dbus-daemon --session --address=unix:path=' + BUS not in l and l.strip()]
-def stopped(t=20): return wait(lambda: not theirs() and not os.path.exists('/proc/%s' % open('/run/rudolf/native.pid').read().strip()) or None, t)
+def npid():
+    try: return open('/run/rudolf/native.pid').read().strip()
+    except Exception: return ''
+def stopped(t=20): return wait(lambda: (not theirs() and not (npid() and os.path.exists('/proc/' + npid()))) or None, t)
 def native_log():
     try: return open('/run/rudolf/native.log').read()[-3000:]
     except Exception: return ''
@@ -166,7 +169,7 @@ for sysk in ('n64', 'dc'):
         c, j = api('native/run?id=%s&file=%s' % (app, urllib.parse.quote(game)), ''); ok('%s: native/run starts it' % tag, c == 200 and j.get('ok') is not False, (c, j))
         aw = wait(lambda: app_window(cls), 90)
         ok('%s: its window appears' % tag, aw, [(x[3], x[1], x[2]) for x in windows()])
-        if not aw: shot(fn + '-nowindow'); print(native_log()); api('native/stop?id=' + app, ''); stopped(); continue
+        if not aw: shot(fn + '-nowindow'); print(native_log()); print(open(T + '/rudolfd.log').read()[-1500:]); api('native/stop?id=' + app, ''); stopped(); continue
         col = wait(lambda: (lambda cc: cc if cc == 'red' else None)(colour(shot(fn + '-1start'))), 60)
         ok('%s: the game shows its red screen' % tag, col == 'red', colour(shot(fn + '-1start')) + ' ' + native_log()[-600:])
         aw = app_window(cls) or aw
@@ -191,7 +194,7 @@ for sysk in ('n64', 'dc'):
         else:
             c, j = api('native/stop?id=' + app, ''); s = stopped(20)
             ok('%s: native/stop ends it, with nothing left running' % tag, c == 200 and s, (c, j, theirs()))
-        open(OUT + '/' + fn + '-native.log', 'w').write(native_log())
+        open(OUT + '/' + fn + '-native.log', 'w').write(native_log()); print('--- native.log (%s), last lines:\n%s' % (tag, native_log()[-1200:]))
         c, j = api('native/status?id=' + app); ok('%s: ...and native/status says it is not running' % tag, c == 200 and not j.get('running'), j)
 PAD.close()
 shutil.copy(T + '/rudolfd.log', OUT + '/rudolfd.log')

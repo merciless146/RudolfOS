@@ -2077,10 +2077,11 @@ static void api_native(struct req *r, const char *what)
 		char *game = qparam(r->query, "file"); char what2[800];
 		if (game && *game) {
 			const char *ga = native_game_args(id);
-			if (!ga || !native_game_ok(game)) { free(game); reply_err(r->fd, 400, "that game cannot be opened (it must be in the game library)"); return; }
+			/* (1.6.2) qparam's value is one of its own buffers, never freed: 1.6.1 freed it, and rudolfd ended
+			   ("free(): invalid pointer") on every N64 or Dreamcast game started (emunat162_t.py) */
+			if (!ga || !native_game_ok(game)) { reply_err(r->fd, 400, "that game cannot be opened (it must be in the game library)"); return; }
 			snprintf(what2, sizeof what2, "%s \"%s\"", ga, game);
 		} else snprintf(what2, sizeof what2, "%s", id);
-		free(game);
 		{ char au[32], ae[160]; au_app_user(au, sizeof au, ae, sizeof ae);   /* 1.5.9 (15.3) */
 		  snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh %s -c 'set -a; . %s; set +a; exec flatpak run %s' "
 			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", au, ae, what2); }
