@@ -74,6 +74,7 @@ static const char *const CONFINE_START[] = {
 	"display",
 	"dl/*",
 	"downloads",
+	"duel/*",
 	"factory-reset",
 	"firewall",
 	"fs/*",

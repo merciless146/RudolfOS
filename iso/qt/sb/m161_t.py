@@ -5,7 +5,8 @@
 # at the Ethernet level: one that answers by multicast (to 224.0.0.251:5353, as RFC 6762 says), one that answers by
 # unicast to the question's source (as legacy-unicast responders do), both IP TTL 255; and a packet from source port
 # 5353 to another port.
-#   B. the release as it is (1.6.0): its own find, the firewall on: no printer (the bug found on the owner's Vivobook)
+#   B. the release as it is, its own find, the firewall on: before 1.6.1 no printer (the bug found on the owner's Vivobook);
+#      from 1.6.1 (which has #574) both printers
 #   F. this tree's rudolf-print and firewall: both printers found, the blocked counter not rising for mDNS; the packet to
 #      another port from 5353 dropped and counted; the list of listeners' self-test line still passes
 #   python3 m161_t.py REL-DIR    (SB_PARTS, QEMU, QEMU_ACCEL as for p161_t.py; root)
@@ -116,7 +117,10 @@ if up:
     b0 = run('/usr/lib/rudolf/firewall status'); o = run('/usr/bin/rudolf-print find', 60); b1 = run('/usr/lib/rudolf/firewall status')
     run("ip route del 224.0.0.0/4 dev eth0 2>/dev/null || busybox ip route del 224.0.0.0/4 dev eth0")
     num = lambda s: int((re.search(r'on (\d+)', s) or re.search(r'(\d+)', '0')).group(1))
-    ok('B. the release as it is (1.6.0), the firewall on: its find lists no network printer, the answers blocked (the bug)', '"ok":true' in o and 'QEMU' not in o and SEEN['queries'] > 0 and num(b1) > num(b0), f'{o} {SEEN} {b0} {b1}')
+    ver = [mv('version')]   # (the release's own manifest: its version)
+    fixed = tuple(int(x) for x in re.findall(r'\d+', ver[0])[:3]) >= (1, 6, 1)   # (#574 shipped in 1.6.1: since its promotion the newest stable has the fix)
+    if fixed: ok(f'B. the release as it is ({ver[0]}, with #574), the firewall on: its own find lists both printers', '"name":"QEMU Multicast Printer"' in o and '"ok":true' in o, f'{o} {SEEN} {b0} {b1}')
+    else: ok(f'B. the release as it is ({ver[0]}), the firewall on: its find lists no network printer, the answers blocked (the bug)', '"ok":true' in o and 'QEMU' not in o and SEEN['queries'] > 0 and num(b1) > num(b0), f'{o} {SEEN} {b0} {b1}')
     run("FX=; for d in /dev/nvme*n1; do blkid $d 2>/dev/null | grep -q M161FIX && FX=$d; done; mkdir -p /tmp/fx /run/m161x; mount -o ro $FX /tmp/fx; mount -t tmpfs -o exec,mode=755 none /run/m161x; "
         "cp /tmp/fx/rudolf-print /tmp/fx/firewall /run/m161x/; chmod 755 /run/m161x/*; mount --bind /run/m161x/rudolf-print /usr/bin/rudolf-print; mount --bind /run/m161x/firewall /usr/lib/rudolf/firewall; "
         "mount --bind /tmp/fx/listeners /usr/share/rudolf/listeners; /usr/lib/rudolf/firewall on; nft list chain inet rudolf mdns")
