@@ -216,15 +216,17 @@ for sysk in ('n64', 'dc'):
             ok('%s: native/stop ends it, with nothing left running' % tag, c == 200 and s, (c, j, theirs()))
         open(OUT + '/' + fn + '-native.log', 'w').write(native_log()); print('--- native.log (%s), last lines:\n%s' % (tag, native_log()[-1200:]))
         c, j = api('native/status?id=' + app); ok('%s: ...and native/status says it is not running' % tag, c == 200 and not j.get('running'), j)
-if os.environ.get('EMUNAT_DIAG'):   # (diagnosis) Flycast started directly, with full framebuffer emulation
+if os.environ.get('EMUNAT_DIAG'):   # (diagnosis) Flycast started directly, without the window manager, then with full framebuffer emulation
+    WM.terminate(); WM.wait(5)
     g = WANT['dc'][0]
-    P2 = subprocess.Popen(['su', '-s', '/bin/sh', 'rudolf', '-c', 'set -a; . /run/rudolf/session.env; set +a; exec flatpak run --filesystem=/home/rudolf/Games:ro org.flycast.Flycast -config config:rend.EmulateFramebuffer=yes "%s"' % g], stdout=open(T + '/diag.log', 'w'), stderr=subprocess.STDOUT); mine.append(P2)
-    wait(lambda: app_window('flycast'), 60); time.sleep(5); tl = []
-    for _ in range(12): tl.append(colour(ImageGrab.grab(xdisplay=DISP))); time.sleep(0.5)
-    press(E.BTN_A, True); time.sleep(2); tl.append('A:' + colour(ImageGrab.grab(xdisplay=DISP))); press(E.BTN_A, False); time.sleep(1); tl.append(colour(ImageGrab.grab(xdisplay=DISP)))
-    print('(diagnosis: Flycast with EmulateFramebuffer: %s)' % ' '.join(tl)); aw = app_window('flycast')
-    if aw: close_window(aw[0])
-    stopped(20); print(open(T + '/diag.log').read()[-1500:])
+    for extra in ('', '-config config:rend.EmulateFramebuffer=yes', '-config config:rend.ThreadedRendering=no'):
+        P2 = subprocess.Popen(['su', '-s', '/bin/sh', 'rudolf', '-c', 'set -a; . /run/rudolf/session.env; set +a; exec flatpak run --filesystem=/home/rudolf/Games:ro org.flycast.Flycast %s "%s"' % (extra, g)], stdout=open(T + '/diag.log', 'w'), stderr=subprocess.STDOUT); mine.append(P2)
+        t0 = time.time(); wait(lambda: app_window('flycast'), 60); tl = []
+        for _ in range(16): tl.append('%.1f:%s:%s' % (time.time() - t0, colour(ImageGrab.grab(xdisplay=DISP)), ','.join('%s%dx%d' % (x[3][1][:8], x[1], x[2]) for x in windows()))); time.sleep(0.5)
+        press(E.BTN_A, True); time.sleep(2); tl.append('A:' + colour(ImageGrab.grab(xdisplay=DISP))); press(E.BTN_A, False); time.sleep(1); tl.append(colour(ImageGrab.grab(xdisplay=DISP)))
+        print('(diagnosis: Flycast %s: %s)' % (extra or 'as it is', ' '.join(tl))); aw = app_window('flycast')
+        if aw: close_window(aw[0])
+        stopped(20); print(open(T + '/diag.log').read()[-2500:])
 PAD.close()
 for f in ('/home/rudolf/.var/app/com.github.Rosalie241.RMG/config/RMG/mupen64plus.cfg', '/home/rudolf/.var/app/org.flycast.Flycast/config/flycast/emu.cfg'):
     try: t = open(f).read(); print('--- %s: its sections\n%s' % (f, '\n'.join(l for l in t.splitlines() if l.startswith('['))))
