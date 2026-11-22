@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Safer: no script from another site ever runs in the desktop's page or an app window, which hold the key to the system's own
+  service. Lua (Command Prompt, BlockLua Builder, Blitzen) always uses Rudolf's own copy of its runtime, never one downloaded from
+  a website, and the page now has a security policy that refuses any other site's script. Flash content plays in a sealed-off frame
+  of its own: the Flash Player app, and Oracle's pages for Flash files.
 - Fixed: closing Steam's window left Steam running out of sight (it goes to a tray icon, and Rudolf OS has no tray), using memory
   until it was force quit. When its last window is closed, and no game of it is running, Steam is now asked to quit as it quits
   itself, and ended if it has not after 30 s; signing out also asks it to quit first (docs/plan-1.6.2.md Part 14, found on the

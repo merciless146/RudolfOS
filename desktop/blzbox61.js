@@ -65,9 +65,9 @@ function blzBoxRun(kind,msg,limit){return new Promise(res=>{const fr=document.cr
 async function blzRunJSBox(code){const r=await blzBoxRun(blzBoxJS,{code:String(code)},10000);
  if(r.timeout)return{ok:true,code:124,timeout:true,out:'time limit: the program ran for more than 10 seconds\n'};
  const o=r.out+(r.out?'\n':'');return{ok:true,code:r.err?1:0,out:o+(r.err?r.err+'\n':'')}}
-/* Fengari's source, for the sandbox (the page's own copy first, as loadFengari) */
+/* Fengari's source, for the sandbox: only the page's own copy, as loadFengari (1.6.2: no copy from another site) */
 async function blzBoxFengari(){if(BLZBOX.fengari)return BLZBOX.fengari;
- for(const u of [(RD?'/':'')+'lib/fengari-web.js','https://cdn.jsdelivr.net/npm/fengari-web@0.1.4/dist/fengari-web.js']){try{const r=await fetch(u);if(r.ok){const t=await r.text();if(/window\.fengari=/.test(t))return BLZBOX.fengari=t}}catch(e){}}return null}
+ for(const u of [(RD?'/':'')+'lib/fengari-web.js']){try{const r=await fetch(u);if(r.ok){const t=await r.text();if(/window\.fengari=/.test(t))return BLZBOX.fengari=t}}catch(e){}}return null}
 /* the account's own files, copied (big files and anything past 8 MB left out: they are not there for the program) */
 function blzBoxHome(){return USER&&typeof homePath=='function'?homePath():null}
 function blzBoxCopy(){const home=blzBoxHome(),root={'C:':{}};if(!home)return{root,home:null,left:0};let left=0,total=0;

@@ -221,6 +221,21 @@ The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition t
   engine page's "A new installation starts with it." back; nativedefault60_t.sh 0 and 0b changed to match.
 - **The owner's checks:** a new stick (Make a USB stick) and Install here: the setup wizard, then Native; an updated
   computer on Standard: the offer once; Discord, Steam, the icons and Oracle's keys on Native.
+- **Status (2026-11-22, the owner's check on the Vivobook, 1.6.1 stable on Native, 03:45 CST):** Discord opens fine; Steam works
+  but is slower to start; both use a lot of memory in the background; Steam is hard to shut down (Task Manager's Force quit works).
+  Native's log over that time (devlink 000565) had four findings, each fixed in a PR of its own (scheduled task, unattended):
+  1. Steam's app page asked rudolfd 9840 ms after it began, and do-bg's desktop/apps answer took 192 s: the page waited for every
+     list in turn and for the Start menu's pictures, and for Linux apps' pictures it could not have; `rudolf-apps installed` ran
+     `flatpak list` each time: **#603** (stand-in: 7.6 s to 3.3 s; the catalogue with no picture to be had: over 120 s to 7.1 s).
+  2. Task Manager's page never said it was ready: every app page shared the busy hidden page's web process: **#598** (Task
+     Manager in a web process of its own: shown in about 0.7 s with do-bg busy, not within 12 s before).
+  3. base_v24.html loaded fengari-web from cdnjs (jsDelivr and unpkg as fallbacks), and Ruffle from unpkg/jsDelivr, into the
+     page that holds rudolfd's token: **#605** (Lua only from lib/, Ruffle in its own sandboxed frame, a Content-Security-Policy,
+     noremote.py in deadcheck).
+  4. Steam stays in the background after its window is closed (no tray shows it): **#604** (`steam -shutdown` inside its Flatpak
+     when its last window is gone 15 s, and at sign-out, then the existing escalation; a running game keeps it).
+  **The switch to Native as the default still waits on the owner's decision** (the owner, 03:49 CST: "Let's do the fixes first
+  and then offer me the decision again"): after these PRs are merged, a Steam start timed on Native on the Vivobook first.
 
 ### 21b. The checks with the owner (from 1.6.1 Part 21)
 - **On the Vivobook, with the owner:** Oracle's websites encrypted (1.6.0 Part 22) on Native, Lite and Standard turned

@@ -529,8 +529,14 @@ static void serve_index(struct req *r, const char *root)
 	/* 1.5.9 (plan 15.2): the page's own policy: no plug-in content (object, embed) and no <base> pointing its links
 	   elsewhere. (connect-src is not limited: Oracle's downloads and the apps' imports fetch from any https address,
 	   so a list would stop only plain http; the protection is that nothing a file holds runs here: safeHtml and the
-	   sandboxed frames.) */
-	reply(r->fd, 200, "text/html; charset=utf-8", out, n + il, "Content-Security-Policy: object-src 'none'; base-uri 'self'\r\n");
+	   sandboxed frames.)
+	   1.6.2 (docs/plan-1.6.2.md Part 14): and no script from another site: this page holds the token, and the frames it draws itself
+	   (srcdoc: Oracle's own pages, Blitzen's sandbox) have its policy too. Scripts come only from this address (www/lib, www/a, the
+	   Library's /pkg/), the page's own code and blob: workers; Ruffle plays in its own sandboxed frame (www/lib/ruffle-frame.html).
+	   'unsafe-inline' and 'unsafe-eval' stay for now: the page's inline handlers, Oracle's own pages' scripts and Blitzen's sandbox
+	   use them; the page's own copy says the same (base_v24.html), so the page has it on every engine and on the web too. */
+	reply(r->fd, 200, "text/html; charset=utf-8", out, n + il, "Content-Security-Policy: object-src 'none'; base-uri 'self'; "
+		"script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:\r\n");
 	free(out); free(html); free(inj);
 }
 
