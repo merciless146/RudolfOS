@@ -164,15 +164,15 @@ import json,sys; d=json.load(open('$T/f1')); s=[x for x in d['sets'] if x['dir']
 print(1 if s['system']=='windows' and s['last'] and sorted((p['name'],p['files']) for p in s['people'])==[('Ann',12),('Bob',2)] else 0)" 2>&1)" "$(cat $T/f1)"
 H=$T/home; mkdir -p $H/Documents $H/Pictures $H/Desktop $H/Music $H/Videos $H/Downloads $H/.rudolf
 echo "my own letter" > "$H/Documents/Letter to Mary.docx"; cp "$DST/Ann/Desktop/todo.txt" $H/Desktop/todo.txt; chown -R 4321:4321 $H
-U="setpriv --reuid=4321 --regid=4321 --clear-groups"
-$U env RUDOLF_BRING_MEDIA=$T/media RUDOLF_BRING_STATE=$T/state sh $BF import "$DST" Ann $H > $T/i1 2>&1; r=$?
+U="setpriv --reuid=4321 --regid=4321 --clear-groups"; cp $BF $T/bf.sh; chmod 755 $T/bf.sh   # (the account's user may not read the checkout: GitHub's runner's home is 0750)
+$U env RUDOLF_BRING_MEDIA=$T/media RUDOLF_BRING_STATE=$T/state sh $T/bf.sh import "$DST" Ann $H > $T/i1 2>&1; r=$?
 ok "28. brought in as the account's user: Documents, Pictures, Desktop, Music; Other into Documents/From the old computer" "$( [ $r = 0 ] && [ -f $H/Documents/Taxes/return.pdf ] && [ -f $H/Pictures/Trip/IMG_0003.JPG ] && [ -f $H/Music/song.mp3 ] && [ -f "$H/Documents/From the old computer/Saved Games/save1.sav" ] && [ "$(stat -c %u $H/Documents/Taxes/return.pdf)" = 4321 ] && echo 1)" "rc $r $(tail -3 $T/i1)"
 ok "29. a name that clashes kept side by side; the same file already there not copied twice" "$( [ "$(cat "$H/Documents/Letter to Mary.docx")" = "my own letter" ] && [ -f "$H/Documents/Letter to Mary (from the old computer).docx" ] && [ ! -e "$H/Desktop/todo (from the old computer).txt" ] && grep -q '1 already there' $T/i1 && echo 1)" "$(ls $H/Documents $H/Desktop | tr '\n' ' ')"
 ok "30. the list of what came in, for the antivirus (.rudolf/bring-imported.txt)" "$( [ "$(grep -c . $H/.rudolf/bring-imported.txt)" = 11 ] && grep -qx 'Pictures/Trip/IMG_0001.JPG' $H/.rudolf/bring-imported.txt && echo 1)" "$(cat $H/.rudolf/bring-imported.txt | head -3)"
 echo changed >> "$DST/Bob/Videos/birthday.mp4"
-$U env RUDOLF_BRING_MEDIA=$T/media RUDOLF_BRING_STATE=$T/state sh $BF import "$DST" Bob $H > $T/i2 2>&1; r=$?
+$U env RUDOLF_BRING_MEDIA=$T/media RUDOLF_BRING_STATE=$T/state sh $T/bf.sh import "$DST" Bob $H > $T/i2 2>&1; r=$?
 ok "31. a file changed on the drive since it was checked: not brought in, said" "$( [ $r = 3 ] && grep -q 'birthday.mp4 (changed on the drive' $T/i2 && [ ! -e $H/Videos/birthday.mp4 ] && echo 1)" "rc $r $(tail -2 $T/i2)"
-$U env RUDOLF_BRING_MEDIA=$T/media sh $BF import /etc Ann $H > $T/i3 2>&1; r1=$?; $U env RUDOLF_BRING_MEDIA=$T/media sh $BF import "$DST" .. $H > /dev/null 2>&1; r2=$?
+$U env RUDOLF_BRING_MEDIA=$T/media sh $T/bf.sh import /etc Ann $H > $T/i3 2>&1; r1=$?; $U env RUDOLF_BRING_MEDIA=$T/media sh $T/bf.sh import "$DST" .. $H > /dev/null 2>&1; r2=$?
 ok "32. only a copy under the drives, only a person of the copy" "$( [ $r1 = 2 ] && [ $r2 = 2 ] && echo 1)" "$r1 $r2"
 # ---- 7. the same "Only personal files" as Copy to another drive
 DC=$R/iso/sys/root/usr/lib/rudolf/drivecopy.sh
