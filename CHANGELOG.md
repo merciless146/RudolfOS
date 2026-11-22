@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Changed: a new installation now starts with the Native desktop (the owner's decision, 2026-11-22). Chromium and Lite stay
+  in Settings › System health › Desktop engine; if Native does not start, Chromium is used. A computer updated from 1.6.1
+  keeps the desktop it had.
 - Fixed: the title bars check (std-titlebars-check.yml) passes: Chrome is started without --enable-automation, whose bar on
   the runner moved the desktop page 56 px down so the test's presses missed (38/38 and 22/22 now).
 - Changed: the plan (docs/plan-1.6.2.md Part 31): zstd compression for the system's images, measured against today's xz

@@ -17,7 +17,7 @@ function exactly as it does in Chromium mode."
   they were (Part 14's switch is still the owner's decision).
 
 ## What it needs
-- **The Vivobook (with the owner):** Part 14 (Discord and Steam on Native, then Native the default), Part 12 (kernel
+- **The Vivobook (with the owner):** Part 14 (Native the default for new installations: decided 2026-11-22; its checks), Part 12 (kernel
   tuning: the owner's checklist), 21b (the checks after each beta).
 
 ## Parts
@@ -244,6 +244,14 @@ The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition t
      when its last window is gone 15 s, and at sign-out, then the existing escalation; a running game keeps it).
   **The switch to Native as the default still waits on the owner's decision** (the owner, 03:49 CST: "Let's do the fixes first
   and then offer me the decision again"): after these PRs are merged, a Steam start timed on Native on the Vivobook first.
+- **Decided (2026-11-22, 16:50 CST, after the fixes and the beta r2026112222):** the owner: "Yes, native will be the default
+  desktop for new installs and users will still have the option to change between Chromium and Lite." install.sh's
+  `NATIVE_DEFAULT=1` (a new installation starts on Native, on trial at its first start, Chromium if it does not start); the
+  engine page says "A new installation starts with it." again; Settings › System health › Desktop engine still offers
+  Native, Chromium and Lite. A computer updated from 1.6.1 keeps the engine it had: rudolfd's `NATIVE_OFFER` stays 0 (no
+  offer of Native to updated computers) unless the owner asks for it. nativedefault60_t.sh 0 and 0b changed to match (13/13).
+  Left: the owner's checks above (a new stick and Install here: the setup wizard, then Native; Settings › System health ›
+  Desktop engine: Native in use, Chromium and Lite chosen and back).
 - **Names (2026-11-22):** the Standard desktop is called Chromium from 1.6.2; the choices read Native, Chromium, Lite ("Names"
   above). The default is unchanged by it.
 
