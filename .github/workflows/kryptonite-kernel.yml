@@ -71,12 +71,13 @@ jobs:
     # (qt/sb/recovery_sb_t.sh: shim, the menu and the kernel bundle made by mkefi.sh and signed with sbsign, OVMF with Secure
     # Boot on, lockdown, the handover (kexec) to a kernel checked against the built-in certificate). The test keys stay in
     # this job's temporary folder and are deleted with it; only the kernel and its modules go on (an artifact for 3 days).
-    # (variant xz: the kernel and its start-up image packed with xz, as before 1.6.1's Part 12, for the Secure Boot check only:
-    #  which packing the handover's second start depends on)
+    # (a variant: matrix.k with a name, kconfig options turned on (extra) or off (off), for the Secure Boot check only. 2026-11-22:
+    #  xz instead of zstd, which did not change the handover's result: 7.3's second start found its own start-up image corrupt
+    #  with either)
     needs: version
     runs-on: ubuntu-24.04
     timeout-minutes: 150
-    strategy: {fail-fast: false, matrix: {k: [{name: '', extra: '', off: ''}, {name: xz, extra: 'KERNEL_XZ INITRAMFS_COMPRESSION_XZ', off: 'KERNEL_ZSTD INITRAMFS_COMPRESSION_ZSTD'}]}}
+    strategy: {fail-fast: false, matrix: {k: [{name: '', extra: '', off: ''}]}}
     name: build ${{ matrix.k.name }}
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
@@ -118,6 +119,22 @@ jobs:
           for f in recsb-serial/*.txt; do echo "==== $f"; grep -a -E 'Linux version|Command line|Unpacking|initramfs|initrd|RAMDISK|panic|corrupt|kexec|Lockdown|locked down|Secure boot|Rudolf OS' $f | cut -c1-300 | head -60; done
           grep -q '^7/7 passed' recsb.txt || { echo "::error title=Secure Boot ${{ matrix.k.name }}::$(grep '^FAIL' recsb.txt | cut -c1-200 | tr '\n' ' ')"; exit 1; }
           echo "::notice title=Secure Boot ${{ matrix.k.name }}::Linux ${{ needs.version.outputs.kv }} under Secure Boot (test keys): $(tail -1 recsb.txt)"
+      - name: The handover's second start, compared (start-up options, memory)
+        if: always()
+        run: |
+          export PATH=$PATH:/usr/local/bin
+          awk '/Linux version/{n++} n==2' recsb-serial/boot1.txt | grep -a -v '^\s*$' | cut -c1-220 | head -400
+          grep -E '^CONFIG_(KEXEC[A-Z_]*|KEXEC_HANDOVER[A-Z_]*|RANDOMIZE_[A-Z]*|PHYSICAL_[A-Z]*|RELOCATABLE|EFI_[A-Z_]*|X86_NEED_RELOCS|CRASH_[A-Z]*)=' kout/config.txt
+          while read -r tag mem app; do
+            rm -rf rs-$tag; set +e; SB_PARTS=$PWD/parts KERNEL=$PWD/kout/vmlinuz RECSB_TEST_KEYDIR=$SBT RECSB_ONLY1=1 RECSB_TIMEOUT=300 RECSB_MEM=$mem RECSB_APPEND="${app#-}" RECSB_SERIAL=$PWD/rs-$tag sh iso/qt/sb/recovery_sb_t.sh > rs-$tag.txt 2>&1; set -e
+            echo "==== $tag (memory $mem MiB, options: ${app#-}): $(tail -1 rs-$tag.txt) $(grep -a -m1 -o 'Kernel panic.*' rs-$tag/boot1.txt)"
+            echo "$tag: $(tail -1 rs-$tag.txt)" >> exp.txt
+          done <<'X'
+          nokaslr 1536 nokaslr
+          mem3g 3072 -
+          mem3gnokaslr 3072 nokaslr
+          X
+          echo "::notice title=Handover experiments::$(cat exp.txt | tr '\n' ';')"
       - name: Delete the test keys
         if: always()
         run: rm -rf "$SBT" iso/work-test/linux/certs/signing_key.pem
