@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Tools
         run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables iproute2 util-linux python3 gcc >/dev/null
-      - name: mdns161_t.sh (as root: its own network namespaces)
+      - name: "mdns161_t.sh (as root: its own network namespaces)"
         run: sudo sh iso/qt/host/mdns161_t.sh
       - name: listeners59_t.sh
         run: sh iso/qt/host/listeners59_t.sh
