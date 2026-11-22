@@ -38,9 +38,11 @@ L=$(grep -n 'rudolf-desktop-engine' $SYS/root/usr/lib/rudolf/install.sh | grep -
 [ -n "$L" ] || { echo "FAIL install.sh has no default engine"; exit 1; }
 mkdir -p $W/new/etc $W/chrome; printf '#!/bin/sh\n' > $W/chrome/chrome; chmod 755 $W/chrome/chrome
 run() { echo "$L" | sed "s#/usr/bin/rudolf-native#$W/rudolf-native#g; s#/opt/chromium/chrome#$W/chrome/chrome#g; s#/mnt/newdata#$W/new#g" > $W/l.sh; NATIVE_DEFAULT=${ND:-1} sh $W/l.sh; }
-# (1.6.0: the default as shipped is Standard, NATIVE_DEFAULT=0 in install.sh; the mechanism, for 1.6.1, with 1)
-ok "0. 1.6.0 ships Standard as the default: install.sh's NATIVE_DEFAULT is 0, rudolfd's NATIVE_OFFER 0" $(grep -qx 'NATIVE_DEFAULT=0' $SYS/root/usr/lib/rudolf/install.sh && grep -q '^#define NATIVE_OFFER 0$' $SYS/rudolfd.c; echo $?)
-ND=0 run; ok "0b. ...a new installation: nothing written, Standard, nothing offered" $([ ! -e $W/new/etc/rudolf-desktop-engine ]; echo $?)
+# (1.6.2, plan Part 14: a new installation starts on Native, NATIVE_DEFAULT=1 in install.sh; a computer updated on Chromium
+#  keeps it and is not offered Native, rudolfd's NATIVE_OFFER 0 (the owner, 2026-11-22: "Native will be the default desktop
+#  for new installs"); with 0 the installer writes nothing, as 1.6.0 and 1.6.1 did)
+ok "0. 1.6.2 ships Native as the default for new installations: install.sh's NATIVE_DEFAULT is 1, rudolfd's NATIVE_OFFER 0" $(grep -qx 'NATIVE_DEFAULT=1' $SYS/root/usr/lib/rudolf/install.sh && grep -q '^#define NATIVE_OFFER 0$' $SYS/rudolfd.c; echo $?)
+ND=0 run; ok "0b. ...with NATIVE_DEFAULT=0 (as 1.6.0 and 1.6.1): nothing written, Chromium, nothing offered" $([ ! -e $W/new/etc/rudolf-desktop-engine ]; echo $?)
 rm -f $W/new/etc/*; run; ok "9. a new installation starts with Native (the choice written, on trial at its first start; nothing offered)" $([ "$(cat $W/new/etc/rudolf-desktop-engine)" = native ] && [ -s $W/new/etc/rudolf-native-offered ]; echo $?)
 rm -f $W/new/etc/*; rm $W/rudolf-native; run; ok "10. ...a Rudolf OS without rudolf-native: Standard (nothing written)" $([ ! -e $W/new/etc/rudolf-desktop-engine ]; echo $?)
 printf '#!/bin/sh\n' > $W/rudolf-native; chmod 755 $W/rudolf-native; rm -f $W/new/etc/*; rm $W/chrome/chrome; run

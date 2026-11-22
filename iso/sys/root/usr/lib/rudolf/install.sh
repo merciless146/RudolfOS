@@ -86,8 +86,10 @@ chown 1000:1000 /mnt/newdata/home/rudolf
 # 1.6.0 (plan Part 12, "Becoming the default"): with NATIVE_DEFAULT=1 a new installation starts with the native desktop
 # (on trial: the session goes back to Standard if it does not start); an update keeps the engine the computer had.
 # The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition to Native default in 1.6.1" (Discord and
-# Steam on Native on the Vivobook not fixed yet): 0 in 1.6.0, so a new installation starts on Standard; 1.6.1 sets 1.
-NATIVE_DEFAULT=0
+# Steam on Native on the Vivobook not fixed yet): 0 in 1.6.0 and 1.6.1, so a new installation started on Chromium.
+# 1.6.2 (plan Part 14): 1. The owner, 2026-11-22: "Yes, native will be the default desktop for new installs and users will
+# still have the option to change between Chromium and Lite."
+NATIVE_DEFAULT=1
 [ "$NATIVE_DEFAULT" = 1 ] && [ -x /usr/bin/rudolf-native ] && [ -x /opt/chromium/chrome ] && { echo native > /mnt/newdata/etc/rudolf-desktop-engine; echo 1 > /mnt/newdata/etc/rudolf-native-offered; }
 # 1.5.3: Install here from a Rudolf OS whose drive has boot files only (an installed Rudolf OS, or a stick made from
 # one): the image just written has no system, so the running system is copied into the new RUDOLFDATA and checked
