@@ -108,7 +108,8 @@ o=$(run d3 POST "/api/duel/host?ver=0.5.2&game=ember-reach" desk); RP2=$(cat /ru
 o2=$(run d4 POST /api/duel/stop desk); w8 "[ ! -e /proc/$RP2 ]" 30
 ok "13. hosted again, then duel/stop (the game's lanStop): stopped, the port shut" "$([ "$(code "$o")" = 200 ] && [ -n "$RP2" ] && [ "$(code "$o2")" = 200 ] && [ ! -e /proc/$RP2 ] && ! nft list chain inet rudolf duel | grep -q accept && echo 1)" "$o / $o2 / $(nft list chain inet rudolf duel)"
 o=$(run d5 POST "/api/duel/host?ver=0.5.2&game=ember-reach" desk); RP3=$(cat /run/rudolf/duel/pid 2>/dev/null)
-w8 "[ \$(date +%s) -ge $(( $(date +%s) + 75 )) ] || [ ! -e /proc/$RP3 ]" 800
+DL=$(( $(date +%s) + 90 ))   # (it stops 60 s after starting; then its watcher shuts the port: both waited for, 90 s at most)
+while [ "$(date +%s)" -lt $DL ] && { [ -e /proc/$RP3 ] || nft list chain inet rudolf duel | grep -q accept; }; do timeout 0.5 tail -f /dev/null; done
 ok "14. hosted, but no game connects within a minute: it stops by itself, the port shut" "$([ -n "$RP3" ] && [ ! -e /proc/$RP3 ] && ! nft list chain inet rudolf duel | grep -q accept && echo 1)" "$RP3 $(nft list chain inet rudolf duel)"
 # duel/find through rudolfd: a game hosted on the other computer
 B env RD_CELLULAR=/dev/null RD_TEST_ROOT=1 $T/rudolf-duel serve --port 8852 --code XYZ789 --v 0.5.2 --game ember-reach --name "Other PC" --addr 192.168.77.2 --wait 30 > $T/b.log 2>&1 & PBS=$!; PIDS="$PIDS $PBS"
