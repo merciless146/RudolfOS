@@ -1,0 +1,21 @@
+# Steam asked to quit when its last window is closed (1.6.2, docs/plan-1.6.2.md Part 14): rudolf-apps' Steam watcher on Xvfb with
+# stand-ins only (a folder in place of /proc naming the test's own processes, xclock as Steam's window, a script as the shutdown).
+# Nothing of the runner's own is stopped (the sign-out side, users59_t.sh, stops uid 1001's programs: not run here). Publishes nothing.
+name: Steam quit check
+on:
+  push:
+    paths: ['iso/sys/rudolf-apps.c', 'iso/sys/rudolf-steamquit.h', 'iso/qt/host/steamquit_t.sh', '.github/workflows/steamquit-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Xvfb and xclock
+        run: sudo apt-get update -q && sudo apt-get install -y -q --no-install-recommends xvfb x11-apps x11-utils xdotool libx11-dev zlib1g-dev
+      - name: Steam's watcher
+        run: |
+          sh iso/qt/host/steamquit_t.sh | tee result.txt
+          echo "::notice title=Steam quit::$(tail -1 result.txt) — $(grep -E '^FAIL' result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' result.txt && ! grep -q '^FAIL' result.txt

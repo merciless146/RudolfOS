@@ -266,11 +266,32 @@ static int au_xaccess(const char *user, int allow)
 #ifndef AU_KEYRING_DAEMON
 #define AU_KEYRING_DAEMON "/usr/bin/gnome-keyring-daemon"
 #endif
+/* 1.6.2 Part 14 (the owner's Vivobook, 2026-11-22: Steam hard to shut down; rudolf-steamquit.h): Steam asked to quit as Steam quits itself
+   ("steam -shutdown" inside its Flatpak, as the account's user, in its session) before the account's programs are stopped, and given up
+   to 15 s; whatever is left of it then goes with the rest (au_kill_user: TERM, then KILL) */
+#include "rudolf-steamquit.h"
+#ifndef AU_FLATPAK
+#define AU_FLATPAK "flatpak"
+#endif
+#ifndef AU_PROC
+#define AU_PROC "/proc"
+#endif
+static void au_steam_quit(unsigned uid)
+{
+	int these[512], n = sq_pids(AU_PROC, uid, these, 512, NULL); if (!n) return; if (n > 512) n = 512;
+	char nm[32], c[700]; au_name(uid, nm, sizeof nm);
+	mkdir(RUN "/apps", 0755);   /* (its log beside the one apps/run keeps) */
+	snprintf(c, sizeof c, "su -s /bin/sh %s -c 'set -a; . " AU_ENV "; set +a; exec timeout 10 " AU_FLATPAK " run --command=steam " SQ_APP " -shutdown' </dev/null >>" RUN "/apps/" SQ_APP ".log 2>&1", nm);
+	run(c);
+	for (int i = 0; i < 150 && (n = sq_left(AU_PROC, uid, these, n)); i++) usleep(100000);
+	if (n) health_add("account", "Steam did not quit within 15 s at sign-out: ended with the account's other programs");
+}
 /* au_keep (rudolfd-home.inc): the same account bound again (rudolfd started again in its session): its programs go on */
 static void au_session_stop(const char *id)
 {
 	if (au_keep) return;
 	unsigned uid = au_uid(id); if (!uid) { unlink(AU_ENV); return; }
+	au_steam_quit(uid);   /* (1.6.2 Part 14: while its session is there to run it in) */
 	unlink(AU_ENV);
 	char xn[32]; au_name(uid, xn, sizeof xn); au_xaccess(xn, 0);
 	int left = au_kill_user(uid);
