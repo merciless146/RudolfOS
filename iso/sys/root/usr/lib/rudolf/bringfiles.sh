@@ -329,6 +329,7 @@ copy_main() {
 	[ "$(dirname "$DEST")" = "$MEDIA/$DV/$TOPN" ] || die 2 "Bad folder name."
 	mkdir -p "$DEST" || die 2 "The folder could not be made on the drive."
 	[ "$(cd "$DEST" && pwd -P)" = "$DEST" ] || die 2 "A link is in the way on the drive."
+	[ -z "$(find "$DEST" -type l 2>/dev/null | head -1)" ] || die 2 "A link is in the way on the drive (in the folder to copy into)."
 	[ "$CONT" = 1 ] || [ ! -e "$DEST/bring.txt" ] || die 2 "That folder on the drive already holds a copy: choose another name."
 	FS=$(awk -v m="$MEDIA/$DV" '$2==m {print $3}' /proc/mounts); FS=${RUDOLF_BRING_TESTFS:-$FS}   # (host tests: their kernel may have no FAT)
 	SEL=$(sed -n '3,$p' "$LIST" | sort -u); [ -n "$SEL" ] || die 2 "Nothing chosen."

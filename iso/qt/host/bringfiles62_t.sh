@@ -139,8 +139,10 @@ L old0 0 "$T/media/usb0/elsewhere" "$ID_ANN${TB}Desktop"; BFX copy $T/list > $T/
 mkdir -p "$T/media/usb0/x"; ln -s /tmp "$T/media/usb0/Rudolf OS - Bring your files/lnk" 2>/dev/null
 L old0 0 "$T/media/usb0/Rudolf OS - Bring your files/lnk" "$ID_ANN${TB}Desktop"; BFX copy $T/list > $T/c6 2>&1; r2=$?
 L old0 0 "$DST" "$ID_ANN${TB}Desktop"; BFX copy $T/list > $T/c8 2>&1; r3=$?
+mkdir -p "$T/media/usb0/Rudolf OS - Bring your files/Planted"; ln -s /etc "$T/media/usb0/Rudolf OS - Bring your files/Planted/Ann"
+L old0 0 "$T/media/usb0/Rudolf OS - Bring your files/Planted" "$ID_ANN${TB}Desktop"; BFX copy $T/list > $T/c9 2>&1; r4=$?
 L old0 0 "$DST-2" "p999${TB}Desktop" "$ID_ANN${TB}../../etc"; BFX copy $T/list > $T/c7 2>&1
-ok "22. only into the copy's folder on a drive, never through a link, never over an earlier copy; a person or folder the scan did not find is not copied" "$( [ $r1 = 2 ] && [ $r2 = 2 ] && [ $r3 = 2 ] && grep -q 'already holds a copy' $T/c8 && grep -q 'Not a person: p999' $T/c7 && grep -q 'Not a folder' $T/c7 && echo 1)" "$r1 $r2 $(cat $T/c6 | tail -1) $(head -3 $T/c7)"
+ok "22. only into the copy's folder on a drive, never through a link (nor one planted inside), never over an earlier copy; a person or folder the scan did not find is not copied" "$( [ $r1 = 2 ] && [ $r2 = 2 ] && [ $r3 = 2 ] && grep -q 'already holds a copy' $T/c8 && [ $r4 = 2 ] && [ ! -e /etc/Desktop ] && grep -q 'Not a person: p999' $T/c7 && grep -q 'Not a folder' $T/c7 && echo 1)" "$r1 $r2 $(cat $T/c6 | tail -1) $(head -3 $T/c7)"
 BFX close old0; BFX close dty0; BFX close hib0; BFX close lin0
 SAME=1; for i in win dirty hib lin; do [ "$(sha256sum $T/img/$i.img | cut -c1-64)" = "$(cat $T/img/$i.sum0)" ] || SAME=0; done
 ok "23. nothing on the old disks changed (their images' SHA-256 as before)" "$SAME" ""
