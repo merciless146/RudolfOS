@@ -57,7 +57,7 @@ mkiso() {
 mkiso $W/EFIBOOT.IMG $W/boot.iso || { echo "FAIL the boot image"; exit 1; }
 # ---- RUDOLFDATA with system/r: the released kernel and stand-in layers, signed by the test release key
 mkdata() {
-	rm -rf $W/data; S=$W/data/os/system; mkdir -p $S/r; cp $KERNEL $S/r/vmlinuz
+	rm -rf $W/data; S=$W/data/os/system; mkdir -p $S/r; cp ${RECSB_RKERNEL:-$KERNEL} $S/r/vmlinuz
 	for n in base chromium desktop modules; do head -c 1048576 /dev/urandom > $S/r/$n.sfs; done
 	python3 - $S/r $W/rel.key <<'PY'
 import sys, os, hashlib
@@ -98,7 +98,8 @@ o=$(cat $W/s.txt); NK=$(grep -c 'Linux version' $W/s.txt)
 ok "1. Secure Boot on (the kernel locked down): the menu's Recovery mode started recovery.efi (the recovery mark)" $(grep -q 'Secure boot enabled' $W/s.txt && grep -q 'Kernel is locked down' $W/s.txt && grep -q 'checking the official recovery system: vmlinuz' $W/s.txt; echo $?) "$o"
 ok "...system/r checked (each file) and started: the kernel handed over to system/r's (signed, under lockdown)" $([ "$(grep -c 'checking the official recovery system: ' $W/s.txt)" = 5 ] && grep -q 'starting the official recovery system (release 2026111599, checked)' $W/s.txt && [ "$NK" -ge 2 ] && grep -q 'Command line:.* rudolf.slot=r rudolf.official=1 rudolf.sb=1 lockdown=integrity' $W/s.txt; echo $?) "$o"
 ok "...and system/r's own start-up ran (no stale initramfs: the empty one given at the handover)" $(! grep -q 'Cannot find place for new RAMDISK' $W/s.txt && grep -q "Rudolf OS: the system layer '[a-z]*' did not pass the check" $W/s.txt; echo $?) "$o"
-# (2.0, the kryptonite branch: RECSB_ONLY1=1 stops here, for comparing start-up options (RECSB_APPEND, more options on the
+# (2.0, the kryptonite branch: RECSB_RKERNEL, another kernel for system/r than the boot files' (which kernel hands over to
+#  which); RECSB_ONLY1=1 stops here, for comparing start-up options (RECSB_APPEND, more options on the
 #  test kernel bundle's command line) and memory sizes (RECSB_MEM, MiB) on the handover alone)
 [ -n "$RECSB_ONLY1" ] && { echo "$P/$((P+F)) passed"; [ $F = 0 ]; exit; }
 # 2. a changed layer

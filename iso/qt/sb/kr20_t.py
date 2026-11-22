@@ -68,6 +68,16 @@ def boot(tag, drv, kernel, append='', secs=300):
         except Exception: pass
         open(f'{W}/serial-{tag}.txt', 'w').write(seen); out(f'{tag}: the serial line said (last lines):\n' + '\n'.join(seen.replace('\r', '').splitlines()[-80:]))
     return vm, g, up
+def run(g, c, t=60):
+    f = os.path.join(W, 'c20.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/c20.sh', '644')
+    o = g.sh('sh /tmp/c20.sh 2>&1', t); out('$', c[:160].replace('\n', ' ; '), quiet=True); out(o.rstrip()[-12000:], quiet=True); return o
+def wait_desktop(g, secs=420):
+    o = run(g, f"i=0; while [ $i -lt {secs} ] && [ ! -e /run/rudolf/bootok ]; do sleep 1; i=$((i+1)); done; [ -e /run/rudolf/bootok ] && echo DESKTOP-UP || echo NO-DESKTOP", secs + 30)
+    return 'DESKTOP-UP' in o
+def stop(vm, g):
+    try: g.sh('sync', 30)
+    except Exception: pass
+    vm.stop(); time.sleep(2)
 DIAG = [('pad', 'rudolf.pad=' + 'x' * 60), ('ttyS0', 'console=ttyS0,115200'),
         ('serial', 'console=ttyS0,115200 ignore_loglevel earlyprintk=serial,ttyS0,115200')]
 FINDINGS = []
