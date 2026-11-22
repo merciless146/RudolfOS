@@ -19,9 +19,21 @@ was already wrong for the same reason (the case the wipe was meant to
 fix). A kexec loader passes any initrd in boot_params, so a kexec'd
 kernel ignores the table altogether.
 
+(2026-11-22, second version: asm/efi.h included for efi_setup on x86; the first did not build.)
+
 --- a/drivers/firmware/efi/efi.c
 +++ b/drivers/firmware/efi/efi.c
-@@ -706,6 +706,15 @@
+@@ -35,6 +35,9 @@
+ #include <linux/notifier.h>
+ 
+ #include <asm/early_ioremap.h>
++#ifdef CONFIG_X86
++#include <asm/efi.h>	/* efi_setup: set when a kexec loader passed SETUP_EFI */
++#endif
+ 
+ struct efi __read_mostly efi = {
+ 	.runtime_supported_mask = EFI_RT_SUPPORTED_ALL,
+@@ -706,6 +709,15 @@
  	memblock_reserve(start, end - start);
  }
  
@@ -37,7 +49,7 @@ kernel ignores the table altogether.
  int __init efi_config_parse_tables(const efi_config_table_t *config_tables,
  				   int count,
  				   const efi_config_table_type_t *arch_tables)
-@@ -816,8 +825,16 @@
+@@ -816,8 +828,16 @@
  		}
  	}
  
