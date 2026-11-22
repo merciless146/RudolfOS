@@ -8,6 +8,27 @@ called Rudolf Kryptonite"): 2.0 on the newest kernel (7.3 and later) with Waylan
 the name Rudolf OS.
 2.0 also brings the phone's own build, on the hardware 1.6.1 proves ("The phone build", below).
 
+**Two editions, one repository (the owner, 2026-11-22):** "The 6.18 kernel version with X11 is going to continue being
+developed as the main version of the operating system", and "Rudolf Kryptonite is going to be a version of Rudolf
+specifically built and optimized for gaming and mobile use. Rudolf as it currently is in 1.6.x is going to be the regular
+home office version." So Kryptonite is an edition beside Rudolf OS, not its replacement:
+- **Rudolf OS (1.6.x and on): the home and office edition, and the main one.** The 6.18 longterm kernel and X11, built
+  for steadiness on everyday and older computers. It keeps the stable update channel, and the recovery system.
+- **Rudolf Kryptonite: the gaming and mobile edition.** The newest stable kernel (7.3.x, then 7.4 and on: newer graphics
+  drivers, handheld and controller drivers, HDR and variable refresh) with Wayland. It is tuned for games (game mode,
+  the GPU drivers, Steam, Wine, emulators) and for phones and handhelds (the phone build, touch, battery). It has its
+  own update channel ("next", below, becoming Kryptonite's channel), so neither edition ever receives the other's
+  updates.
+- **One repository, built from main.** Most of the code is shared (the desktop, Oracle, Blitzen, File Explorer,
+  rudolfd, the security work), and Kryptonite's differences are additions: the kernel track, the Wayland session, and
+  gaming and mobile tuning. They go into main behind build switches, and the release workflow builds each edition from
+  the same tree. A fix made once reaches both, and the keys and their secrets stay in one place.
+- **The `kryptonite` branch only for work that cannot share main yet** (today: the 7.3 kernel, while its kexec-handover
+  crash at 1.5 GB in QEMU is understood). Each piece moves into main behind its switch as soon as it is sound, so the
+  branch never drifts far from main. A separate repository only if Kryptonite ever stops sharing Rudolf's code.
+- **Work on Rudolf OS's features continues on main as before.** Gaming and mobile work is marked for Kryptonite in its
+  plan and PR, with the switch that keeps it out of the home and office edition where it does not belong there.
+
 Why (1.5.9's measurements, docs/plan-1.5.9.md 12.3a): with nothing open Native uses 854 MB against Standard's 1,110 MB,
 because no web page runs; each app opened today loads a WebKit page with the desktop's code (Settings: 195 MB). A native
 app of the same kind is typically 15 to 40 MB.
