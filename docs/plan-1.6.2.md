@@ -578,6 +578,57 @@ desktop and hurts on neither.
    stopwatch is enough), and Settings › System health's memory at idle, on each of Native, Chromium and Lite, in a table:
    machine, engine, build (xz/zstd), start, first Oracle, memory.
 
+### 32. Emu's Nintendo 64 and Dreamcast games, played for real (added on 2026-11-22)
+The owner: "Create a scheduled task to test run the Dreamcast and N64 emulators for Emu, making test games specifically for
+the test if needed." Until then the native path (1.6.1, PR #485: rudolfd's native/run with Flathub's Rosalie's Mupen GUI
+and Flycast) had been tested only with stand-ins. Neither emulator had been run with a game.
+- **The test games** (iso/qt/emu/, made fresh by each check, never committed; no Nintendo or Sega code, BIOS or game):
+  - `mkn64.py`: a Nintendo 64 program, MIPS code assembled by the script. It shows red, green while A is held and blue while
+    Start is held, drawn by the CPU and by the RDP. The first press of A writes "RUDOLF64" to EEPROM. It comes as .z64, .n64
+    and .v64. There is no IPL3, Nintendo's or libdragon's: Mupen64Plus' HLE boot copies the header's boot area into the
+    RSP's memory and runs it, so the program itself sits there. (It would not start on a real console.)
+  - `mkdc.py`: a Dreamcast program, SH-4 code assembled by the script, with the same colours (the controller is read
+    through the Maple bus). It comes on a .gdi (three tracks with ISO 9660 written by the script) and a DiscJuggler .cdi
+    (1ST_READ.BIN scrambled, as on a CD). The check makes a .chd from the .gdi with chdman. The IP.BIN is the script's
+    own: its header fields, and at 0x300 a jump to 1ST_READ.BIN. KallistiOS's makeip was not used. Flycast boots it with
+    its HLE BIOS (reios), with no BIOS files.
+- **The check** (`.github/workflows/emu-native-check.yml`, `iso/qt/host/emunat162_t.py`):
+  - Both apps are installed from Flathub, system-wide. The real rudolfd and rudolf-display (as the window manager) run in
+    private mount and network namespaces, on Xvfb, with a virtual Xbox 360-style gamepad (uinput).
+  - Each game is added with games/import and started with native/run. Each must show red full screen, turn green with A
+    held (gamepad and keyboard) and blue with Start held. N64's EEPROM must land in RMG's own folder.
+  - Each emulator must end three ways with nothing left running: its window closed (Rudolf's close button), its own key
+    (RMG's F12), and Emu's native/stop.
+- **Found and fixed** (PR "Emu: N64 and Dreamcast games start, have controls and end"; tests `emunatrun162_t.sh` with a
+  stand-in flatpak, `emunatsetup162_t.sh`):
+  1. native/run freed qparam's static buffer. rudolfd ended ("free(): invalid pointer") on every N64 or Dreamcast game
+     started, so no game ever started on 1.6.1.
+  2. RMG's input plugin connects no controller until its settings have been saved once, and Emu starts it with --nogui,
+     so N64 games had no controls. `emu-native-setup` (run as the player before the app) gives player 1 a profile, once:
+     Automatic, with RMG's own gamepad fallback and Rudolf's keys. A saved profile is kept.
+  3. RMG got --quit-after-emulation, so F12 (its Shutdown) closes it; otherwise an empty window stayed. Emu's N64 note
+     said "Esc ends the game; F4 opens its settings": Esc does nothing there and F4 limits the frame rate. It now says
+     F12, the keys, and Ctrl+I for the controller settings.
+  4. native/stop left the emulator running. su starts the app in a session of its own, so the signals reached su and
+     Flatpak's first bwrap only. `flatpak run --die-with-parent` now ends the sandbox with su (Sober's too).
+- **Status (2026-11-22, scheduled task):** emu-native-check 72/72 on the fixes. That covers both emulators; every byte order
+  (.z64 .n64 .v64) and every disc format (.gdi .cdi .chd); red, green and blue on the gamepad and the keyboard; full screen;
+  the EEPROM save; and the three endings. Flycast needed no change. It opens full screen by itself and finds the gamepad.
+- **Not tested here:**
+  - The released ISO in QEMU (Emu's library and a game through the real desktop). Flatpak apps need an installed system
+    with a RUDOLFDATA partition, and two Flathub runtimes (about 1.5 GB) would be downloaded inside the VM.
+  - A real controller.
+  - The VMU save (Flycast's own; the test game doesn't write one).
+  - A signed-in account (the app then runs as the account's Linux user, reading /home/rudolf/Games).
+- **The owner's checks on the Vivobook (a 1.6.2 beta with this):**
+  1. Emu › Add games: an N64 game and a Dreamcast disc you own (.gdi with its tracks, .cdi or .chd).
+  2. Start the N64 game. Rosalie's Mupen GUI downloads once, then the game opens full screen.
+  3. A real controller works as player 1 with no setup, and so does the keyboard with no controller. Ctrl+I opens RMG's
+     controller settings. F12 ends the game and returns to the desktop.
+  4. The Dreamcast disc in Flycast: full screen, the controller works, Tab › Exit returns to the desktop.
+  5. With a game open, start another from Emu ("Close it and play"). Then Task Manager shows one emulator only.
+  6. Signed in to an account (not the desktop user): a game still starts and plays.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -590,3 +641,5 @@ desktop and hurts on neither.
    reads Native, Chromium, Lite and shows "In use now: Native" (or Chromium); Help › Keyboard shortcuts says the Chromium engine.
 9. Part 31 (zstd for the system's images): 1 in one PR (the kernel option, shipped first); 2-3 measured in QEMU in a
    check workflow; every image switched to zstd in a later PR, at the level the numbers choose; then the owner's checklist on both machines.
+10. Part 32 (Emu's N64 and Dreamcast played for real): the fixes' PR, then the check's PR; then the owner's checks on the
+   Vivobook.

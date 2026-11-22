@@ -9433,9 +9433,11 @@ const EMU_SYS={
  ds:{name:'Nintendo DS',short:'DS',dir:'DS',re:/\.nds$/i,core:'desmume',fps:59.8261,ic:'📱'},
  /* 1.6.1: native emulators, as Linux apps from Flathub on the graphics card (rudolfd native/*): Rosalie's Mupen GUI
     (Mupen64Plus, GPL-3.0) for the Nintendo 64 and Flycast (GPL-2.0) for the Dreamcast. They open full screen with the
-    game; controllers are theirs (both set up a plugged-in controller by themselves), and so are saves and states */
+    game; controllers are theirs (Flycast sets up a plugged-in controller by itself; 1.6.2: Rosalie's Mupen GUI plugged
+    none in until its settings were saved, so rudolfd's emu-native-setup gives it one: the first controller, else the
+    keyboard), and so are saves and states */
  n64:{name:'Nintendo 64',short:'N64',dir:'N64',re:/\.(z64|n64|v64)$/i,native:'com.github.Rosalie241.RMG',app:'Rosalie’s Mupen GUI',ic:'🕹️',
-  how:'Esc ends the game; F4 opens its settings, where a controller is set up (Auto-configure does it for most).'},
+  how:'F12 ends the game. Player 1 is the first controller, or the keyboard: the arrow keys are the stick, X is A, C is B, Z is Z, Return is Start. Ctrl+I opens its controller settings.'},
  dc:{name:'Sega Dreamcast',short:'Dreamcast',dir:'DC',re:/\.(gdi|cdi|chd)$/i,native:'org.flycast.Flycast',app:'Flycast',ic:'🌀',
   how:'Tab opens Flycast’s menu (controllers, saves, Exit). Most games start without the Dreamcast’s BIOS files; Flycast’s settings say where they go, for the rest.'},
  /* 1.6.1: libretro cores (lr: the frontend's pixel formats, core options, the controller). The Genesis takes the game

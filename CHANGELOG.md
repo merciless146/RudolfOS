@@ -5,6 +5,16 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: Nintendo 64 and Dreamcast games in Emu never started. Starting one stopped Rudolf OS's system service (it restarts
+  by itself) before the emulator opened. Now Rosalie's Mupen GUI and Flycast open with the game, full screen.
+- Fixed: Nintendo 64 games had no controls. Rosalie's Mupen GUI connects no controller until its settings have been saved
+  once, and Emu opens it without its menus. Player 1 is now set up the first time a game starts: the first controller, or
+  the keyboard (the arrow keys are the stick, X is A, C is B, Z is Z, Return is Start). A setup you saved in its settings
+  (Ctrl+I) is kept.
+- Fixed: Nintendo 64 games end with F12, and the emulator then closes. Emu's note said Esc, which did nothing there, and
+  ending the game left an empty window.
+- Fixed: When Emu closed a Nintendo 64 or Dreamcast game to start another, the emulator kept running. The same was true of
+  Sober (Roblox) when Rudolf OS closed it. They now end completely.
 - Changed: a new installation now starts with the Native desktop (the owner's decision, 2026-11-22). Chromium and Lite stay
   in Settings › System health › Desktop engine; if Native does not start, Chromium is used. A computer updated from 1.6.1
   keeps the desktop it had.

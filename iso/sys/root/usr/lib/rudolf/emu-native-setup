@@ -1,0 +1,51 @@
+#!/bin/sh
+# Rudolf OS 1.6.2: Emu's native emulators, set up before a game starts (rudolfd native/run runs this as the player's
+# Linux user, in their session, just before "flatpak run"). GPL-2.0-or-later.
+#   emu-native-setup APP-ID
+# Rosalie's Mupen GUI (com.github.Rosalie241.RMG): its input plugin plugs in no controller at all until its settings
+# have been saved once (no "Input Plugin Profile 0" section in mupen64plus.cfg: "PluggedIn" false), and Emu starts it
+# without its menus (--nogui), so a game never saw a key or a controller (emunat162_t.py). Player 1 gets a profile
+# then, once: "Automatic" (the first controller; the keyboard when there is none), with the gamepad buttons of RMG's
+# own fallback profile (InputProfileDB.json) and Rudolf's keys beside them:
+#   stick: the arrow keys   A: X   B: C   Z: Z   Start: Return   L: A   R: S   C buttons: I K J L   D-pad: T G F H
+# A profile the player saved in RMG's settings (F4 or its menus) is never touched.
+# test hook (iso/qt/host/emunatsetup162_t.sh): HOME
+case "$1" in
+com.github.Rosalie241.RMG)
+	D="$HOME/.var/app/com.github.Rosalie241.RMG/config/RMG"; C="$D/mupen64plus.cfg"
+	grep -q "^\[Rosalie's Mupen GUI - Input Plugin Profile 0\]" "$C" 2>/dev/null && exit 0
+	mkdir -p "$D" || exit 1
+	# NAME  GAMEPAD-TYPE GAMEPAD-DATA GAMEPAD-EXTRA GAMEPAD-NAME  KEY-SCANCODE KEY-NAME   (SDL3: gamepad type 0 a button,
+	# 1 an axis (extra 0 its - side, 1 its + side); key type -1, its data the SDL scancode)
+	{
+		[ -s "$C" ] && echo
+		echo "[Rosalie's Mupen GUI - Input Plugin Profile 0]"
+		echo
+		echo 'PluggedIn = True'; echo 'DeviceType = 2'; echo 'DeviceName = "Automatic"'; echo 'DevicePath = ""'; echo 'DeviceSerial = ""'
+		echo 'DeviceGuid = ""'; echo 'Deadzone = 9'; echo 'Sensitivity = 100'; echo 'Pak = 0'; echo 'GameboyRom = ""'; echo 'GameboySave = ""'
+		echo 'RemoveDuplicateMappings = True'; echo 'FilterEventsForButtons = True'; echo 'FilterEventsForAxis = True'; echo 'UseProfile = ""'
+		while read -r n t d x gn k kn; do
+			echo "${n}_InputType = \"$t;-1\""; echo "${n}_Name = \"$gn;$kn\""; echo "${n}_Data = \"$d;$k\""; echo "${n}_ExtraData = \"$x;0\""
+		done <<EOF
+A 0 0 0 a 27 X
+B 0 2 0 x 6 C
+Start 0 6 0 start 40 Return
+DpadUp 0 11 0 dpup 23 T
+DpadDown 0 12 0 dpdown 10 G
+DpadLeft 0 13 0 dpleft 9 F
+DpadRight 0 14 0 dpright 11 H
+CButtonUp 1 3 0 righty- 12 I
+CButtonDown 1 3 1 righty+ 14 K
+CButtonLeft 1 2 0 rightx- 13 J
+CButtonRight 1 2 1 rightx+ 15 L
+LeftTrigger 0 9 0 leftshoulder 4 A
+RightTrigger 0 10 0 rightshoulder 22 S
+ZTrigger 1 4 1 lefttrigger+ 29 Z
+AnalogStickUp 1 1 0 lefty- 82 Up
+AnalogStickDown 1 1 1 lefty+ 81 Down
+AnalogStickLeft 1 0 0 leftx- 80 Left
+AnalogStickRight 1 0 1 leftx+ 79 Right
+EOF
+	} >> "$C" ;;
+esac
+exit 0

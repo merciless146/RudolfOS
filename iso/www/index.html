@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/e5e0f4217ef13b4a.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=e5e0f4217ef13b4a'+location.hash)}catch(e){}})()</script>
+<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/5424c277cc0d3594.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=5424c277cc0d3594'+location.hash)}catch(e){}})()</script>
 <!-- 1.6.2 (docs/plan-1.6.2.md Part 14): no script from another site runs in this page or its own frames (it holds rudolfd's token); rudolfd sends the same policy (serve_index) -->
 <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:">
 <script>/* (1.6.0, the owner's Vivobook report 1) an app's own window (#app=NAME: oneapp59.js, the native desktop's windows): from its first paint
@@ -9703,9 +9703,11 @@ const EMU_SYS={
  ds:{name:'Nintendo DS',short:'DS',dir:'DS',re:/\.nds$/i,core:'desmume',fps:59.8261,ic:'📱'},
  /* 1.6.1: native emulators, as Linux apps from Flathub on the graphics card (rudolfd native/*): Rosalie's Mupen GUI
     (Mupen64Plus, GPL-3.0) for the Nintendo 64 and Flycast (GPL-2.0) for the Dreamcast. They open full screen with the
-    game; controllers are theirs (both set up a plugged-in controller by themselves), and so are saves and states */
+    game; controllers are theirs (Flycast sets up a plugged-in controller by itself; 1.6.2: Rosalie's Mupen GUI plugged
+    none in until its settings were saved, so rudolfd's emu-native-setup gives it one: the first controller, else the
+    keyboard), and so are saves and states */
  n64:{name:'Nintendo 64',short:'N64',dir:'N64',re:/\.(z64|n64|v64)$/i,native:'com.github.Rosalie241.RMG',app:'Rosalie’s Mupen GUI',ic:'🕹️',
-  how:'Esc ends the game; F4 opens its settings, where a controller is set up (Auto-configure does it for most).'},
+  how:'F12 ends the game. Player 1 is the first controller, or the keyboard: the arrow keys are the stick, X is A, C is B, Z is Z, Return is Start. Ctrl+I opens its controller settings.'},
  dc:{name:'Sega Dreamcast',short:'Dreamcast',dir:'DC',re:/\.(gdi|cdi|chd)$/i,native:'org.flycast.Flycast',app:'Flycast',ic:'🌀',
   how:'Tab opens Flycast’s menu (controllers, saves, Exit). Most games start without the Dreamcast’s BIOS files; Flycast’s settings say where they go, for the rest.'},
  /* 1.6.1: libretro cores (lr: the frontend's pixel formats, core options, the controller). The Genesis takes the game
