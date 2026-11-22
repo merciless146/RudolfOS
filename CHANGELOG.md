@@ -9,6 +9,9 @@ Summary: In progress.
   service. Lua (Command Prompt, BlockLua Builder, Blitzen) always uses Rudolf's own copy of its runtime, never one downloaded from
   a website, and the page now has a security policy that refuses any other site's script. Flash content plays in a sealed-off frame
   of its own: the Flash Player app, and Oracle's pages for Flash files.
+- Fixed: on the Native desktop, Task Manager could come up as an empty window for several seconds (or not at all) while the desktop
+  was busy, for example while Steam was starting: its page waited for the desktop's hidden background page. Task Manager now has a
+  page of its own and comes up at once (docs/plan-1.6.2.md Part 14, found on the owner's Vivobook).
 - New: two-player games from the Rudolf OS Library on your home network (docs/plan-1.6.2.md Part 30; Ember Reach 0.5.2's
   duels). Press Host on this network in the game, and Rudolf OS runs a small relay on this computer while you play,
   and announces it on the network; on the other computer Find games lists it, and the two games meet through it.
