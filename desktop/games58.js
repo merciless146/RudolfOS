@@ -8,6 +8,7 @@
        load   -> {data}                          the game's save, for this account
        save   {data} -> {}                       kept in the desktop's database (mirrored by rudolfd, backed up),
                                                  one record per package, game and account; up to 256 KB
+       lanHost {v} / lanFind / lanStop           1.6.2: the LAN game relay for two-player games (duel62.js)
      and the desktop sends pause / resume (the window minimised or on another workspace, the computer locked, the
      screen saver on) and settings (the theme or Reduce motion changed).
    ===== */
@@ -61,6 +62,8 @@ addEventListener('message',async e=>{const m=e.data;if(!m||m.rudolfGame!==1||typ
   if(typeof USER!='undefined'&&USER&&USER.r=='guest')return reply({ok:true,kept:'session'});   /* (a guest's things go when they sign out) */
   try{await kvSet(gameKey(at.pkg,m.game),JSON.parse(s));reply({ok:true})}catch(x){reply({ok:false,error:'not kept'})}
   return}
+ /* 1.6.2 (docs/plan-1.6.2.md Part 30): a two-player game on the home network (duel62.js) */
+ if(/^lan(Host|Find|Stop)$/.test(m.op)&&typeof gameLanOp=='function')return gameLanOp(m,at,reply);
  reply({ok:false,error:'unknown op'})});
 /* pausing: once a second, each game frame's window seen or not */
 function gameTick(){if(!GAME_FRAMES.size)return;const all=!!(document.hidden||window.LOCKED||(typeof SAVER!='undefined'&&SAVER));
