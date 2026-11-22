@@ -86,6 +86,8 @@ boot() {
 	i=0; while [ $i -lt $3 ]; do grep -qa "$2" $W/serial.txt && break; kill -0 $QP 2>/dev/null || break; timeout 2 tail -f /dev/null; i=$((i + 2)); done
 	timeout 3 tail -f /dev/null; kill $QP 2>/dev/null; wait $QP 2>/dev/null; QP=""
 	tr -d '\r' < $W/serial.txt | sed 's/\x1b\[[0-9;?]*[a-zA-Z]//g' > $W/s.txt
+	# (2.0, the kryptonite branch: RECSB_SERIAL, a folder that keeps each start's serial output for the check's log)
+	[ -n "$RECSB_SERIAL" ] && { mkdir -p "$RECSB_SERIAL"; NB=$((${NB:-0} + 1)); cp $W/s.txt "$RECSB_SERIAL/boot$NB.txt"; }
 }
 T=${RECSB_TIMEOUT:-900}
 # 1. a good system/r

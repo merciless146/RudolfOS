@@ -71,9 +71,13 @@ jobs:
     # (qt/sb/recovery_sb_t.sh: shim, the menu and the kernel bundle made by mkefi.sh and signed with sbsign, OVMF with Secure
     # Boot on, lockdown, the handover (kexec) to a kernel checked against the built-in certificate). The test keys stay in
     # this job's temporary folder and are deleted with it; only the kernel and its modules go on (an artifact for 3 days).
+    # (variant xz: the kernel and its start-up image packed with xz, as before 1.6.1's Part 12, for the Secure Boot check only:
+    #  which packing the handover's second start depends on)
     needs: version
     runs-on: ubuntu-24.04
     timeout-minutes: 150
+    strategy: {fail-fast: false, matrix: {k: [{name: '', extra: '', off: ''}, {name: xz, extra: 'KERNEL_XZ INITRAMFS_COMPRESSION_XZ', off: 'KERNEL_ZSTD INITRAMFS_COMPRESSION_ZSTD'}]}}
+    name: build ${{ matrix.k.name }}
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
       - uses: actions/checkout@v5
@@ -90,7 +94,7 @@ jobs:
             -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=codeSigning" 2>/dev/null)
           echo "SBT=$K" >> $GITHUB_ENV; openssl x509 -in $K/sb.crt -noout -subject -fingerprint -sha256
       - name: Build Linux ${{ needs.version.outputs.kv }}
-        env: {KERNEL_VERSION: '${{ needs.version.outputs.kv }}'}
+        env: {KERNEL_VERSION: '${{ needs.version.outputs.kv }}', EXTRA: '${{ matrix.k.extra }}', OFF: '${{ matrix.k.off }}'}
         run: |
           S=$(date +%s); TEST_SB_CERT=$SBT/sb.crt OUT=$PWD/kout bash iso/systools/testkernel.sh
           sbsign --key $SBT/sb.key --cert $SBT/sb.crt --output kout/vmlinuz.signed kout/vmlinuz; sbverify --cert $SBT/sb.crt kout/vmlinuz.signed
@@ -100,33 +104,47 @@ jobs:
           M=$(find iso/work-test/mods -name '*.ko' | wc -l); U=$(for f in $(find iso/work-test/mods -name '*.ko' | head -50); do tail -c 28 $f | grep -q 'Module signature appended' || echo $f; done | wc -l)
           [ "$U" = 0 ] || { echo "::error::$U of the first 50 modules are not signed"; exit 1; }
           grep -E '^CONFIG_(HZ|PREEMPT[A-Z_]*)=' kout/config.txt
-          echo "::notice title=Build::Linux $(ls iso/work-test/mods/lib/modules) ($L): vmlinuz $(du -m kout/vmlinuz | cut -f1) MB, modules.sfs $(du -m kout/modules.sfs | cut -f1) MB, $M modules (signed), built in $(( $(date +%s) - S )) s; $(grep -E '^CONFIG_(HZ|PREEMPT_[A-Z]*)=' kout/config.txt | tr '\n' ' ')"
+          echo "::notice title=Build ${{ matrix.k.name }}::Linux $(ls iso/work-test/mods/lib/modules) ($L): vmlinuz $(du -m kout/vmlinuz | cut -f1) MB, modules.sfs $(du -m kout/modules.sfs | cut -f1) MB, $M modules (signed), built in $(( $(date +%s) - S )) s; $(grep -E '^CONFIG_(HZ|PREEMPT_[A-Z]*)=' kout/config.txt | tr '\n' ' ')"
           find iso/work-test/mods/lib/modules -name '*.ko' | sed 's#.*/lib/modules/[^/]*/##' | sort > kout/modules.txt
-      - uses: actions/upload-artifact@v4
+      - if: matrix.k.name == ''
+        uses: actions/upload-artifact@v4
         with: {name: kernel-kryptonite, retention-days: 3, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\nkout/modules.txt\nkout/SHA256SUMS"}
       - name: Secure Boot on in QEMU with the test keys (recovery_sb_t.sh)
         run: |
-          bash iso/systools/sb_fetch.sh parts >/dev/null
-          # (the parts pinned by iso/boot/sb/parts.txt: when Ubuntu has a newer package than the pinned one, the pinned version's
-          #  package from Launchpad's archive, which keeps every published version; the files are checked against the pins either way)
-          sed -n 's/^#.*\(shim-signed [^ ,]*\), \(systemd-boot-efi [^ ]*\)\. .*/\1\n\2/p' iso/boot/sb/parts.txt | while read -r P V; do
-            echo "pinned: $P $V"; need=0
-            case $P in shim-signed) F="shimx64.efi:shimx64.efi.signed.latest mmx64.efi:mmx64.efi";; *) F="systemd-bootx64.efi:systemd-bootx64.efi linuxx64.efi.stub:linuxx64.efi.stub";; esac
-            for f in $F; do grep " ${f%%:*}\$" iso/boot/sb/parts.txt | (cd parts && sha256sum -c --quiet) 2>/dev/null || need=1; done
-            [ $need = 0 ] && continue
-            echo "$P: Ubuntu's is newer; taking the pinned $V from Launchpad"
-            curl -fsSL --retry 3 -o p.deb "https://launchpad.net/ubuntu/+archive/primary/+files/${P}_${V}_amd64.deb"; rm -rf px; dpkg-deb -x p.deb px
-            for f in $F; do x=$(find px -name "${f#*:}" | head -1); [ -n "$x" ] && cp "$x" "parts/${f%%:*}"; done
-          done
-          (cd parts && for f in shimx64.efi mmx64.efi systemd-bootx64.efi linuxx64.efi.stub; do grep " $f\$" ../iso/boot/sb/parts.txt | sha256sum -c --quiet || { echo "::error::$f is not the pinned one"; exit 1; }; done)
+          bash iso/qt/sb/kr20_sbparts.sh parts
           cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/
           export PATH=$PATH:/usr/local/bin
-          SB_PARTS=$PWD/parts KERNEL=$PWD/kout/vmlinuz RECSB_TEST_KEYDIR=$SBT sh iso/qt/sb/recovery_sb_t.sh 2>&1 | tee recsb.txt
-          grep -q '^7/7 passed' recsb.txt || { echo "::error title=Secure Boot::$(grep '^FAIL' recsb.txt | cut -c1-200 | tr '\n' ' ')"; exit 1; }
-          echo "::notice title=Secure Boot::Linux ${{ needs.version.outputs.kv }} under Secure Boot (test keys): $(tail -1 recsb.txt)"
+          SB_PARTS=$PWD/parts KERNEL=$PWD/kout/vmlinuz RECSB_TEST_KEYDIR=$SBT RECSB_SERIAL=$PWD/recsb-serial sh iso/qt/sb/recovery_sb_t.sh 2>&1 | tee recsb.txt
+          for f in recsb-serial/*.txt; do echo "==== $f"; grep -a -E 'Linux version|Command line|Unpacking|initramfs|initrd|RAMDISK|panic|corrupt|kexec|Lockdown|locked down|Secure boot|Rudolf OS' $f | cut -c1-300 | head -60; done
+          grep -q '^7/7 passed' recsb.txt || { echo "::error title=Secure Boot ${{ matrix.k.name }}::$(grep '^FAIL' recsb.txt | cut -c1-200 | tr '\n' ' ')"; exit 1; }
+          echo "::notice title=Secure Boot ${{ matrix.k.name }}::Linux ${{ needs.version.outputs.kv }} under Secure Boot (test keys): $(tail -1 recsb.txt)"
       - name: Delete the test keys
         if: always()
         run: rm -rf "$SBT" iso/work-test/linux/certs/signing_key.pem
+  sb-release:
+    # the same Secure Boot check on the newest beta's own kernel (1.6.x, 6.18.y, signed with the official key, which it
+    # trusts): what the test kernel's result is compared with. Test keys only for the boot files; nothing published.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq sbsigntool qemu-system-x86 ovmf e2fsprogs mtools cpio nasm python3-cryptography python3-pip >/dev/null
+          command -v virt-fw-vars || sudo pip3 install --break-system-packages -q virt-firmware
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm || echo "no KVM: QEMU's own (slow)"
+      - name: recovery_sb_t.sh on the beta's kernel
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages; S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz; KR=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^kernel //p')
+          bash iso/qt/sb/kr20_sbparts.sh parts; cp /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/
+          export PATH=$PATH:/usr/local/bin
+          SB_PARTS=$PWD/parts KERNEL=$PWD/rel/vmlinuz RECSB_SERIAL=$PWD/recsb-serial sh iso/qt/sb/recovery_sb_t.sh 2>&1 | tee recsb.txt
+          for f in recsb-serial/*.txt; do echo "==== $f"; grep -a -E 'Linux version|Command line|Unpacking|initramfs|initrd|RAMDISK|panic|corrupt|kexec|Lockdown|locked down|Secure boot|Rudolf OS' $f | cut -c1-300 | head -60; done
+          echo "::notice title=Secure Boot (the beta's $KR)::$(tail -1 recsb.txt) $(grep '^FAIL' recsb.txt | cut -c1-160 | tr '\n' ' ')"
   nvidia:
     # NVIDIA's open kernel modules (the system extension nvidia-driver, docs/plan-1.6.1.md Part 19) built against this
     # kernel: the "next" channel takes a new kernel only once they build. Not signed (no key is used); nothing published.
