@@ -230,7 +230,7 @@ The owner, 2026-11-17: "Make Standard the default in 1.6.0 with the transition t
   2. Task Manager's page never said it was ready: every app page shared the busy hidden page's web process: **#598** (Task
      Manager in a web process of its own: shown in about 0.7 s with do-bg busy, not within 12 s before).
   3. base_v24.html loaded fengari-web from cdnjs (jsDelivr and unpkg as fallbacks), and Ruffle from unpkg/jsDelivr, into the
-     page that holds rudolfd's token: **#606** (Lua only from lib/, Ruffle in its own sandboxed frame, a Content-Security-Policy,
+     page that holds rudolfd's token: **#605** (Lua only from lib/, Ruffle in its own sandboxed frame, a Content-Security-Policy,
      noremote.py in deadcheck).
   4. Steam stays in the background after its window is closed (no tray shows it): **#604** (`steam -shutdown` inside its Flatpak
      when its last window is gone 15 s, and at sign-out, then the existing escalation; a running game keeps it).
