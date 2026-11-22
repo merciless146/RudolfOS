@@ -62,6 +62,7 @@ def program():
     poke(0xA05F8044, 0x00000005)                               # FB_R_CTRL
     poke(0xA05F805C, (1 << 20) | (239 << 10) | 159)            # FB_R_SIZE: modulus 1, 240 lines, 160 words a line
     poke(0xA05F8050, 0x00200000); poke(0xA05F8054, 0x00200000)  # FB_R_SOF1, SOF2
+    poke(0xA05F80E8, 0x00000100)                               # VO_CONTROL: pixels doubled, the picture not blanked (as reset leaves it)
     # the Maple bus: no swapping, software start, the usual speed and the whole of RAM allowed
     poke(0xA05F6CE8, 1); poke(0xA05F6C10, 0); poke(0xA05F6C80, 0x3A980000); poke(0xA05F6C8C, 0x6155407F); poke(0xA05F6C14, 1)
     # the command list: last, port A, 2 words; the answer's place; "get condition" for the controller (function 1)
