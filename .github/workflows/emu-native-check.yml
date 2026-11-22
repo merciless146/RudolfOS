@@ -31,7 +31,7 @@ jobs:
           flatpak info --system org.flycast.Flycast | sed -n 's/^ *\(Version\|Commit\|Runtime\):/\1:/p'
           flatpak info --system --show-permissions com.github.Rosalie241.RMG; flatpak info --system --show-permissions org.flycast.Flycast
       - name: Play the test games (emunat162_t.py)
-        run: sudo python3 iso/qt/host/emunat162_t.py "$RUNNER_TEMP/emunat"
+        run: sudo EMUNAT_DIAG=1 python3 iso/qt/host/emunat162_t.py "$RUNNER_TEMP/emunat"
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: emu-native-screens, path: '${{ runner.temp }}/emunat', if-no-files-found: warn}

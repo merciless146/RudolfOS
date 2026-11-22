@@ -156,9 +156,11 @@ def is_fullscreen(w):
 def close_window(w):
     ev = xevent.ClientMessage(window=w, client_type=XD.intern_atom('WM_PROTOCOLS'), data=(32, [XD.intern_atom('WM_DELETE_WINDOW'), XX.CurrentTime, 0, 0, 0]))
     w.send_event(ev); XD.flush()
-def theirs():   # the desktop user's processes other than the session's bus started here and the services it started
+# the session's own services (started for the first Flatpak app, they stay for the session, as on Rudolf OS): not strays
+SESSION = ('dbus-daemon', 'flatpak-session-helper', 'p11-kit', 'xdg-desktop-portal', 'xdg-permission-store', 'xdg-document-portal', 'systemd --user', '(sd-pam)', 'gvfsd', 'at-spi')
+def theirs():   # the desktop user's processes other than those
     o = [l.split(None, 2) for l in sh('ps -o pid=,ppid=,args= -u %d' % UID).stdout.strip().splitlines() if l.strip()]
-    return [' '.join(x) for x in o if int(x[0]) != D.pid and int(x[1]) != D.pid]
+    return [' '.join(x) for x in o if len(x) == 3 and not any(k in x[2] for k in SESSION) and not x[2].startswith('server --sh -n ')]
 def npid():
     try: return open('/run/rudolf/native.pid').read().strip()
     except Exception: return ''
@@ -179,6 +181,9 @@ for sysk in ('n64', 'dc'):
         if not aw: shot(fn + '-nowindow'); print(native_log()); print(open(T + '/rudolfd.log').read()[-1500:]); api('native/stop?id=' + app, ''); stopped(); continue
         col = wait(lambda: (lambda cc: cc if cc == 'red' else None)(colour(shot(fn + '-1start'))), 60)
         ok('%s: the game shows its red screen' % tag, col == 'red', colour(shot(fn + '-1start')) + ' ' + native_log()[-600:])
+        tl = []
+        for _ in range(12): tl.append(colour(ImageGrab.grab(xdisplay=DISP))); time.sleep(0.5)
+        print('(%s: the colours over 6 s: %s)' % (tag, ' '.join(tl)), flush=True)
         aw = app_window(cls) or aw
         ok('%s: full screen (the window covers the screen%s)' % (tag, ', or says it is full screen'), (aw[1], aw[2]) == (1280, 720) or is_fullscreen(aw[0]), (aw[1], aw[2], aw[3]))
         press(E.BTN_A, True); g = wait(lambda: (lambda cc: cc if cc == 'green' else None)(colour(shot(fn + '-2a'))), 8)
@@ -211,6 +216,15 @@ for sysk in ('n64', 'dc'):
             ok('%s: native/stop ends it, with nothing left running' % tag, c == 200 and s, (c, j, theirs()))
         open(OUT + '/' + fn + '-native.log', 'w').write(native_log()); print('--- native.log (%s), last lines:\n%s' % (tag, native_log()[-1200:]))
         c, j = api('native/status?id=' + app); ok('%s: ...and native/status says it is not running' % tag, c == 200 and not j.get('running'), j)
+if os.environ.get('EMUNAT_DIAG'):   # (diagnosis) Flycast started directly, with full framebuffer emulation
+    g = WANT['dc'][0]
+    P2 = subprocess.Popen(['su', '-s', '/bin/sh', 'rudolf', '-c', 'set -a; . /run/rudolf/session.env; set +a; exec flatpak run --filesystem=/home/rudolf/Games:ro org.flycast.Flycast -config config:rend.EmulateFramebuffer=yes "%s"' % g], stdout=open(T + '/diag.log', 'w'), stderr=subprocess.STDOUT); mine.append(P2)
+    wait(lambda: app_window('flycast'), 60); time.sleep(5); tl = []
+    for _ in range(12): tl.append(colour(ImageGrab.grab(xdisplay=DISP))); time.sleep(0.5)
+    press(E.BTN_A, True); time.sleep(2); tl.append('A:' + colour(ImageGrab.grab(xdisplay=DISP))); press(E.BTN_A, False); time.sleep(1); tl.append(colour(ImageGrab.grab(xdisplay=DISP)))
+    print('(diagnosis: Flycast with EmulateFramebuffer: %s)' % ' '.join(tl)); aw = app_window('flycast')
+    if aw: close_window(aw[0])
+    stopped(20); print(open(T + '/diag.log').read()[-1500:])
 PAD.close()
 for f in ('/home/rudolf/.var/app/com.github.Rosalie241.RMG/config/RMG/mupen64plus.cfg', '/home/rudolf/.var/app/org.flycast.Flycast/config/flycast/emu.cfg'):
     try: t = open(f).read(); print('--- %s: its sections\n%s' % (f, '\n'.join(l for l in t.splitlines() if l.startswith('['))))
