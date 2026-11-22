@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: Bring your files now opens an old Windows disk's BitLocker for real. It was checked in a virtual machine on Rudolf OS's
+  own kernel with BitLocker volumes made by Windows: AES-XTS (Windows 10 and 11), AES-CBC, and AES-CBC with the older Elephant
+  diffuser. Each opened read-only with its recovery key, which is stored nowhere. Two fixes: opening no longer waits for ever for
+  the system's device manager, and a mistyped recovery key now says "That key does not open it." instead of "BitLocker could not
+  be opened here".
 - Changed: the Standard desktop is now called Chromium (it is the same desktop: the desktop page in Rudolf's Chromium), and
   Settings › System health › Desktop engine lists the three as Native, Chromium, Lite. A computer on Standard stays on it and
   shows it as Chromium; nothing saved changes. Help, System health, the self-test, the sign-in's messages and rudolf-fetch say
