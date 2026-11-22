@@ -2000,7 +2000,8 @@ static const char *const NATIVE_APPS[] = { "org.vinegarhq.Sober", "org.flycast.F
 static const char *native_game_args(const char *id)
 {
 	if (!strcmp(id, "org.flycast.Flycast")) return "--filesystem=/home/rudolf/Games:ro org.flycast.Flycast";
-	if (!strcmp(id, "com.github.Rosalie241.RMG")) return "--filesystem=/home/rudolf/Games:ro com.github.Rosalie241.RMG --fullscreen --nogui";
+	/* (1.6.2) and it quits when the game ends (F12, its Shutdown): without --quit-after-emulation an empty window stayed */
+	if (!strcmp(id, "com.github.Rosalie241.RMG")) return "--filesystem=/home/rudolf/Games:ro com.github.Rosalie241.RMG --fullscreen --nogui --quit-after-emulation";
 	return NULL;
 }
 /* a game for it: a file in Emu's library (/home/rudolf/Games), by a plain path (no shell characters), really there */
@@ -2074,16 +2075,20 @@ static void api_native(struct req *r, const char *what)
 	if (!strcmp(what, "run")) {
 		/* started as the desktop user with the session's display and buses; rudolf-display shows it full screen */
 		/* (1.6.1) an emulator with a game from Emu's library: file=PATH */
-		char *game = qparam(r->query, "file"); char what2[800];
-		if (game && *game) {
+		char *game = qparam(r->query, "file"); char what2[800]; int game_run = game && *game;
+		if (game_run) {
 			const char *ga = native_game_args(id);
-			if (!ga || !native_game_ok(game)) { free(game); reply_err(r->fd, 400, "that game cannot be opened (it must be in the game library)"); return; }
+			/* (1.6.2) qparam's value is one of its own buffers, never freed: 1.6.1 freed it, and rudolfd ended
+			   ("free(): invalid pointer") on every N64 or Dreamcast game started (emunat162_t.py) */
+			if (!ga || !native_game_ok(game)) { reply_err(r->fd, 400, "that game cannot be opened (it must be in the game library)"); return; }
 			snprintf(what2, sizeof what2, "%s \"%s\"", ga, game);
 		} else snprintf(what2, sizeof what2, "%s", id);
-		free(game);
 		{ char au[32], ae[160]; au_app_user(au, sizeof au, ae, sizeof ae);   /* 1.5.9 (15.3) */
-		  snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh %s -c 'set -a; . %s; set +a; exec flatpak run %s' "
-			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", au, ae, what2); }
+		  /* (1.6.2) an emulator is set up first, as the player (emu-native-setup: Rosalie's Mupen GUI's controller); and
+		     the sandbox ends with su (--die-with-parent): su puts the app in a session of its own, so native/stop's
+		     signals reached su and Flatpak's first bwrap only, and the app itself (bwrap's second process) ran on */
+		  snprintf(cmd, sizeof cmd, "setsid su -s /bin/sh %s -c 'set -a; . %s; set +a; %s%s%sexec flatpak run --die-with-parent %s' "
+			"</dev/null >>" RUN "/native.log 2>&1 & echo $! > " RUN "/native.pid", au, ae, game_run ? "/usr/lib/rudolf/emu-native-setup " : "", game_run ? id : "", game_run ? "; " : "", what2); }
 		if (native_pid()) { write_str(RUN "/wm", "game"); reply_ok(r->fd, "already running"); return; }
 		{ char chk[160]; snprintf(chk, sizeof chk, "flatpak info --system %s >/dev/null 2>&1", id);
 		  if (run(chk)) { reply_err(r->fd, 404, "this app is not installed"); return; } }
