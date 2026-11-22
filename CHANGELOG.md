@@ -10,8 +10,15 @@ Summary: In progress, on the kryptonite branch only (held for 2.0: not in 1.6.x,
   start-up times, the AMD and Intel processor speed drivers, the graphics drivers for NVK, Intel's cameras, Intel's sound
   processor, the Bluetooth chips), and the keyboards and mice with quirks and Intel TSX kept as 1.6.x has them. Built and
   checked on GitHub's runners on this branch only: the configuration, the build, Secure Boot in QEMU with test keys, NVIDIA's
-  driver modules, the firmware, and the desktop on Standard and Native (X11). Not yet usable: a 7.x kernel started other
-  than by its kernel bundle (after an update's handover, or directly) stops at once in QEMU; being looked into.
+  driver modules, the firmware, and the desktop on Standard and Native (X11).
+- Fixed: the 7.3 kernel stopped at once after an update's or Recovery mode's handover ("ZSTD-compressed data is corrupt").
+  Since Linux 6.19 a kernel started by the handover wrote into a table left by the previous one, in memory that by then
+  held its own start-up image (found by bisecting Linux: the commit "efi: Wipe INITRD config table from memory after
+  consumption"). Rudolf's 7.3 build carries a small kernel patch so a kernel started by the handover leaves that table
+  alone; Secure Boot, lockdown and the handover's signature check are unchanged.
+- Fixed: with Secure Boot off, a system layer that does not match its signed list (a test kernel's own modules, for
+  instance) is meant to start unchecked, with Task Manager saying so; it was called damaged instead ("Device or resource
+  busy") and the computer went back to the previous system over and over.
 
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.

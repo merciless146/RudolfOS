@@ -30,7 +30,9 @@ fi
 # (2.0, the kryptonite branch: KPATCHES, kernel patches (paths from iso/, or absolute) applied to the tree before it is
 #  configured, each with its reason in its own header: systools/kpatches/, those the 7.3 build carries named by
 #  .github/kryptonite-kernel.txt's patch= lines; 1.6.x's builds pass none)
+#  (the tree's .git removed once patched, as for LINUX_SRC: else the kernel calls itself 7.3.y-rudolf-test-dirty)
 for p in $KPATCHES; do patch -d "$W/linux" -p1 --forward --batch < "$p" || { echo "testkernel: $p does not apply"; exit 1; }; echo "testkernel: applied $(basename "$p")"; done
+[ -z "$KPATCHES" ] || rm -rf "$W/linux/.git"
 BB_COMMIT=1a64f6a20aaf6ea4dbba68bbfa8cc1ab7e5c57c4
 if [ ! -x initramfs/bin/busybox ]; then
 	for u in https://git.busybox.net/busybox https://github.com/mirror/busybox; do

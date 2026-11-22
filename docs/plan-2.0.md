@@ -225,21 +225,42 @@ long-lived `kryptonite` branch (pull requests based on it), never on main, the 1
   bundle start the 7.3 kernel under Secure Boot, locked down; system/r is checked and handed over to by kexec, the
   signature checked against the built-in certificate; a changed layer, a list signed by another key and a changed
   recovery.efi are refused). The beta's own 6.18.64 passes all 7 on the same check.
-- **Found, and left to settle before Kryptonite ships: a 7.x kernel started other than by its kernel bundle stops at
-  once:** "Kernel panic - not syncing: ZSTD-compressed data is corrupt" (its own built-in start-up image; "XZ-..." when
-  packed with xz). After a kexec handover with 1.5 GB of memory: 7.3.5, 7.2.15, 7.1.13 and 7.0.14 all fail, 6.18.64
-  passes; 6.18 handing over to 7.3 fails, 7.3 to 6.18 passes (so it is the 7.x kernel's own start, not the kexec that
-  loads it); with 3 GB it passes; nokaslr changes nothing. Started directly by QEMU (-kernel, 3.4 GB) on the beta's layers
-  it does not reach the system either, so the desktop checks (Standard and Native ready, the self-test) could not run on
-  7.3 yet: the release kernel passes them on the same machine (22 and 21 self-test checks, both engines ready). Updates on
-  installed computers hand over by kexec, so this blocks the "next" channel. Next: the panic's own messages from the
-  direct start (the serial console read raw), 6.19 tried (6.18 passes, 7.0 fails), then a bisect between them and a
-  report upstream, or a workaround (the start-up image given to the kernel rather than built in, as rudolf-kexec.c can).
+- **Found and fixed (2026-11-22, #610, #611, #612): a 7.x kernel started other than by its kernel bundle stopped at once.**
+  Two causes, one in the kernel and one in Rudolf's start-up:
+  - **(a) After a kexec handover** ("Kernel panic - not syncing: ZSTD-compressed data is corrupt" at 1.5 GB; 7.0 to 7.3
+    and 6.19 failed, 6.18.64 passed; only the receiving kernel mattered; 3 GB passed). The bisect
+    (.github/kryptonite-bisect.txt, three rounds, the last run 45061622015) ends at one commit: **6e62d1c6f2c7 "efi: Wipe
+    INITRD config table from memory after consumption"** (v6.19-rc6, in the efi-fixes-for-v6.19-2 merge bc08b658803):
+    its parent passes, it fails, the merge fails and the merge's first parent passes, and the round's bad end with that
+    one line taken out passes. Why: recovery.efi has an `.initrd`, so its kernel's EFI stub makes a LINUX_EFI_INITRD
+    table, in EFI_LOADER_DATA, which that kernel then uses as free memory. The EFI tables go across kexec, and since that
+    commit the new kernel writes zeros into the old table's place: 16 bytes in memory that, at 1.5 GB, held the new
+    kernel's own built-in start-up image. **The fix:** a small kernel patch the 7.3 build carries
+    (`iso/systools/kpatches/efi-initrd-table-kexec.patch`, named by .github/kryptonite-kernel.txt's `patch=` line,
+    applied by testkernel.sh's KPATCHES): a kernel started by kexec (x86: the loader passed SETUP_EFI) neither uses nor
+    wipes the old table; kexec passes any start-up image itself. Nothing of Secure Boot, lockdown, module signing or the
+    handover's signature check changes (the handover still checks the kernel against the built-in certificate). A draft
+    report for upstream, not sent: docs/kryptonite-upstream-efi-initrd.md.
+  - **(b) Started directly by QEMU on the beta's layers** (kr20_t.py, 4 of 18): not the kernel. The test kernel's own
+    modules layer does not match the beta's signed list, so with Secure Boot off the start-up script falls back to an
+    unchecked mount of its loop device, which the checked device set up on it still held: "Device or resource busy",
+    "the system layer 'modules' is damaged", back to the previous system, over and over. **The fix:** `rudolf-verity
+    close NAME` removes the checked device first, on that unchecked path only (Secure Boot on and the official recovery
+    still refuse such a layer); qt/host/verityfallback20_t.sh shows the busy loop device and the fix (8 of 8, as root on
+    the runner). 1.6.x has the same fallback; it only matters there for a changed layer with Secure Boot off.
+  - **Results (#612's runs, 7.3.5 with the patch):** Secure Boot in QEMU with test keys 7 of 7 at 1.5 GB; the cross
+    handovers 6.18→6.18, 6.18→7.3, 7.3→6.18 and 7.3→7.3 all pass; nokaslr, 3 GB and 3 GB with nokaslr pass; the same kernel
+    without the patch still fails the handover ("unpatched", for the record). kr20_t.py: Standard and Native reach ready
+    on 7.3.5 as on the beta's 6.18.64, Native the engine, the self-test 22 and 21 pass 0 fail on both kernels, modules
+    signed and enforced, no new kernel warnings, no missing firmware, every module loaded.
 - **ARM64** (kconfig-arm64.sh, systools/arm64_kernel.sh, the ARM64 check): not moved yet; left for a later step.
 - **The point releases to follow:** each 7.3.y as it comes (one line in .github/kryptonite-kernel.txt, the check warns),
   then 7.4 once it has settled; NVIDIA's modules must build on each before the "next" channel takes it.
-- **Next:** the start-up finding above; then Wayland, which comes next in stages (W0 to W5 above) on this kernel; and the
-  "next" channel's build switch (the kernel track) once the finding is settled.
+- **Next:** Wayland, in stages (W0 to W5 above) on this kernel; the "next" channel's build switch (the kernel track), its
+  release build carrying the same patches (kryptonite-kernel.txt's `patch=` lines); the upstream report, if the owner
+  sends it, and the patch dropped once a 7.3.y or 7.4 has a fix; the handover tried on real hardware (the owner's
+  checklist: an update's handover and Recovery mode on the Vivobook, with the owner present); ARM64's kexec
+  (the patch is x86 only for now).
 
 ## The phone build (added on 2026-11-15)
 Decided on 2026-11-15 (docs/plan-1.6.1.md, "The phone, split in two"): the phone comes in two stages. Stage 1, in
