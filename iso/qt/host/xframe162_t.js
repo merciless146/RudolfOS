@@ -46,10 +46,14 @@ const keep = n => { try { fs.copyFileSync(T + '/s.png', path.join(OUT, n + '.png
 const drag = async (x, y, dx, dy, steps) => { steps = steps || 6; xd(`mousemove ${x} ${y} mousedown 1`); await wait(150); for (let k = 1; k <= steps; k++) { xd(`mousemove ${Math.round(x + dx * k / steps)} ${Math.round(y + dy * k / steps)}`); await wait(60) } await wait(100); xd('mouseup 1'); await wait(700) };
 (async () => {
   const ctx = await chromium.launchPersistentContext(path.join(T, 'prof'), {headless: false, viewport: null, executablePath: process.env.XF_CHROME || undefined,
-    args: ['--class=RudolfDesktop', '--kiosk', '--no-first-run', '--force-device-scale-factor=1', '--window-position=0,0', '--window-size=1280,800', '--disable-gpu'], env: Object.assign({}, process.env)});
+    args: ['--class=RudolfDesktop', '--kiosk', '--test-type', '--disable-infobars', '--no-first-run', '--force-device-scale-factor=1', '--window-position=0,0', '--window-size=1280,800', '--disable-gpu'], env: Object.assign({}, process.env)});
   const p = ctx.pages()[0] || await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto('http://127.0.0.1:' + PORT + '/'); await p.waitForFunction(() => typeof xfSync == 'function' && typeof lxWinPoll == 'function', null, {timeout: 60000});
   const q = (f, a) => p.evaluate(f, a);
+  /* (the page must fill the screen from its top-left corner, as the session's kiosk window does: no bar of Chromium's above it,
+     such as the one for --no-sandbox that Chrome's stable builds show) */
+  const top0 = await q(() => [screenX, screenY, outerHeight - innerHeight, innerWidth, innerHeight]);
+  if (top0[2] > 0 || top0[0] || top0[1]) console.log('(note: the page is not at the screen\'s corner: ' + JSON.stringify(top0) + ')');
   await q(() => { try { svj('bd95setup', 1) } catch (e) {} ['oobe', 'login'].forEach(i => { const o = document.getElementById(i); o && o.remove() }); ACCTS = [{n: 'Ann', r: 'admin', h: 'x', id: 'ann'}]; USER = ACCTS[0]; S.accent = '#2563eb'; S.dm = 'light'; themeApply(); applySet(); try { userUI() } catch (e) {} webStrut.last = null; webStrut() });
   await wait(1500);
   // the desktop's window: the whole X screen
