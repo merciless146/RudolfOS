@@ -15,7 +15,8 @@
  * and as org.gnome.keyring.SystemPrompter (gcr's prompter, 1.6.0): gnome-keyring-daemon's questions (a new keyring's
  * password, unlocking one) drawn by the desktop, the password handed back through gcr's secret exchange,
  * and as org.freedesktop.Notifications for apps that notify directly (libnotify),
- * and as com.feralinteractive.GameMode and the portal's GameMode for games (1.6.1: the processor's preference raised).
+ * and as com.feralinteractive.GameMode and the portal's GameMode for games (1.6.1: the processor's preference raised),
+ * and it hears the apps' com.canonical.Unity.LauncherEntry progress for their taskbar buttons (1.6.2, plan-1.6.2 Part 25b).
  * Questions go to the desktop through rudolfd: a JSON file per request in /run/rudolf/portal/req,
  * the answer comes back in /run/rudolf/portal/resp. Files are handed over by path, so an app can use
  * a chosen file only where its sandbox lets it read and write (most desktop apps may use the home folder).
@@ -37,6 +38,7 @@
 #include <errno.h>
 #include <sys/random.h>
 #include <sys/stat.h>
+#include <math.h>
 #include <openssl/bn.h>
 #include <openssl/evp.h>
 #include <openssl/kdf.h>
@@ -465,6 +467,126 @@ static void gm_start(void)
 	g_dbus_connection_register_object(BUS, "/com/feralinteractive/GameMode", gi->interfaces[0], &GM_VT, NULL, NULL, NULL);
 	g_dbus_connection_register_object(BUS, "/org/freedesktop/portal/desktop", gi->interfaces[1], &GM_VT, NULL, NULL, NULL);
 	g_bus_own_name_on_connection(BUS, "com.feralinteractive.GameMode", G_BUS_NAME_OWNER_FLAGS_REPLACE, NULL, NULL, NULL, NULL);
+}
+
+/* ---------------- 1.6.2 (docs/plan-1.6.2.md Part 25b): Linux apps' progress on their taskbar buttons. Apps say their
+   downloads' progress with the Unity LauncherEntry signal (com.canonical.Unity.LauncherEntry.Update: "application://ID.desktop"
+   and properties, of which "progress" (a double, 0 to 1) and "progress-visible" (a boolean) are used; Unity's meaning: each
+   signal changes only the properties it holds). This portal is the account's own (its user's, on its user's own session bus),
+   so it hears only that account's programs; it leaves the desktop one note per app that is showing progress, beside its
+   questions (DIR_/req, sticky: its own file, 0600): "lp-UID-PORTALPID-N.prog" holding "ID<tab>PERCENT", gone when the app
+   hides its progress or leaves the bus. rudolfd (rudolfd-lxprog.inc) passes on only the ID and the number, from a note of
+   the signed-in account's own live portal. Refused here: a caller that is not this user's; a Flatpak app that may not talk
+   to com.canonical.Unity (its own permissions in /.flatpak-info: talk or own, or the whole session bus) or that names
+   another app's desktop file (a Flatpak app's own begin with its ID); anything malformed (a wrong signature, a link that is
+   not application://ID.desktop, an ID of other characters than letters, digits and . - _, a progress that is not a finite
+   number). Only a percentage: an app has no "busy" (the creeping fill is for Rudolf's own work with no percentage). */
+#define LP_MAX 32
+#define LP_PER_APP 4
+typedef struct { char *sender, *id; int vis, val, shown; char file[300]; } lpent;
+typedef struct { char *app; int ok, n; guint watch; } lpcaller;   /* (ok: 1 allowed, 0 refused; app: its Flatpak ID or "") */
+static GList *LP; static GHashTable *LP_CALLERS; static unsigned LP_SEQ;
+static const char *lp_dir(void) { const char *d = getenv("RUDOLF_PROGRESS_DIR"); return d && *d ? d : DIR_ "/req"; }
+static int lp_id_ok(const char *s)
+{
+	size_t n = s ? strlen(s) : 0; if (!n || n > 120 || s[0] == '.' || s[0] == '-' || strstr(s, "..")) return 0;
+	for (const char *c = s; *c; c++) if (!g_ascii_isalnum(*c) && *c != '.' && *c != '-' && *c != '_') return 0;
+	return 1;
+}
+/* "application://ID.desktop" -> ID (NULL when it is not that) */
+static char *lp_uri_id(const char *u)
+{
+	const char *pre = "application://", *suf = ".desktop"; size_t lp = strlen(pre), ls = strlen(suf), n = u ? strlen(u) : 0;
+	if (n <= lp + ls || strncmp(u, pre, lp) || strcmp(u + n - ls, suf)) return NULL;
+	char *id = g_strndup(u + lp, n - lp - ls); if (lp_id_ok(id)) return id; g_free(id); return NULL;
+}
+static void lp_write(lpent *p)
+{
+	int want = p->vis && p->val >= 0 ? p->val : -1;
+	if (want == p->shown) return;
+	if (want < 0) { if (p->file[0]) unlink(p->file); p->file[0] = 0; p->shown = -1; return; }
+	if (!p->file[0]) snprintf(p->file, sizeof p->file, "%s/lp-%u-%ld-%u.prog", lp_dir(), (unsigned)getuid(), (long)getpid(), ++LP_SEQ);
+	char tmp[320], t[160]; snprintf(tmp, sizeof tmp, "%s.tmp", p->file); int n = snprintf(t, sizeof t, "%s\t%d\n", p->id, want);
+	GError *e = NULL;
+	if (g_file_set_contents_full(tmp, t, n, G_FILE_SET_CONTENTS_CONSISTENT, 0600, &e) && !rename(tmp, p->file)) { p->shown = want; return; }
+	g_printerr("rudolf-portal: an app's progress could not be left for the desktop (%s)\n", e ? e->message : g_strerror(errno)); g_clear_error(&e); unlink(tmp);
+}
+static void lp_drop(lpent *p) { if (p->file[0]) unlink(p->file); LP = g_list_remove(LP, p); g_free(p->sender); g_free(p->id); g_free(p); }
+static void lp_vanished(GDBusConnection *c, const char *name, gpointer u)
+{
+	(void)c; (void)u;
+	for (GList *l = LP; l;) { GList *n = l->next; lpent *p = l->data; if (!g_strcmp0(p->sender, name)) lp_drop(p); l = n; }
+	g_hash_table_remove(LP_CALLERS, name);
+}
+static void lp_caller_free(gpointer d) { lpcaller *k = d; if (k->watch) g_bus_unwatch_name(k->watch); g_free(k->app); g_free(k); }
+/* may this Flatpak app (its sandbox's /.flatpak-info) talk to com.canonical.Unity? */
+static int lp_flatpak_may(GKeyFile *k)
+{
+	char **socks = g_key_file_get_string_list(k, "Context", "sockets", NULL, NULL); int whole = 0;
+	for (char **s = socks; s && *s; s++) if (!strcmp(*s, "session-bus")) whole = 1;
+	g_strfreev(socks); if (whole) return 1;
+	char *v = g_key_file_get_string(k, "Session Bus Policy", "com.canonical.Unity", NULL);
+	int ok = v && (!strcmp(v, "talk") || !strcmp(v, "own")); g_free(v); return ok;
+}
+/* who the caller is, once per caller (a bus name is never used again): this user's process, and a Flatpak app's own ID */
+static lpcaller *lp_caller(const char *sender)
+{
+	lpcaller *k = g_hash_table_lookup(LP_CALLERS, sender); if (k) return k;
+	k = g_new0(lpcaller, 1); k->app = g_strdup(""); g_hash_table_insert(LP_CALLERS, g_strdup(sender), k);
+	k->watch = g_bus_watch_name_on_connection(BUS, sender, G_BUS_NAME_WATCHER_FLAGS_NONE, NULL, lp_vanished, NULL, NULL);
+	GVariant *r = g_dbus_connection_call_sync(BUS, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetConnectionUnixUser",
+		g_variant_new("(s)", sender), G_VARIANT_TYPE("(u)"), 0, 2000, NULL, NULL);
+	guint32 uid = (guint32)-1; if (r) { g_variant_get(r, "(u)", &uid); g_variant_unref(r); }
+	r = g_dbus_connection_call_sync(BUS, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "GetConnectionUnixProcessID",
+		g_variant_new("(s)", sender), G_VARIANT_TYPE("(u)"), 0, 2000, NULL, NULL);
+	guint32 pid = 0; if (r) { g_variant_get(r, "(u)", &pid); g_variant_unref(r); }
+	if (uid != getuid() || pid <= 1) { fprintf(stderr, "rudolf-portal: progress from %s ignored (not this account's program)\n", sender); return k; }
+	char path[64]; snprintf(path, sizeof path, "/proc/%u/root", pid);
+	int dfd = open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+	if (dfd < 0) { fprintf(stderr, "rudolf-portal: progress from %s ignored (its program cannot be seen)\n", sender); return k; }
+	int fd = openat(dfd, ".flatpak-info", O_RDONLY | O_CLOEXEC | O_NOFOLLOW); int er = errno; close(dfd);
+	if (fd < 0 && er == ENOENT) { k->ok = 1; return k; }   /* (not in a sandbox of Flatpak's: the account's own program) */
+	char buf[16384]; ssize_t n = fd >= 0 ? read(fd, buf, sizeof buf - 1) : -1; if (fd >= 0) close(fd);
+	if (n <= 0) { fprintf(stderr, "rudolf-portal: progress from %s ignored (its sandbox could not be read)\n", sender); return k; }
+	buf[n] = 0; GKeyFile *kf = g_key_file_new(); char *app = NULL;
+	if (g_key_file_load_from_data(kf, buf, n, 0, NULL)) app = g_key_file_get_string(kf, "Application", "name", NULL);
+	if (app && lp_id_ok(app) && lp_flatpak_may(kf)) { g_free(k->app); k->app = app; app = NULL; k->ok = 1; }
+	else fprintf(stderr, "rudolf-portal: progress from %s ignored (%s may not talk to com.canonical.Unity)\n", sender, app ? app : "a Flatpak app");
+	g_free(app); g_key_file_free(kf); return k;
+}
+static void lp_signal(GDBusConnection *c, const char *sender, const char *path, const char *iface, const char *sig, GVariant *p, gpointer u)
+{
+	(void)c; (void)path; (void)iface; (void)sig; (void)u;
+	if (!sender || !g_variant_is_of_type(p, G_VARIANT_TYPE("(sa{sv})"))) return;
+	const char *uri; GVariant *props; g_variant_get(p, "(&s@a{sv})", &uri, &props);
+	char *id = lp_uri_id(uri); int has_v = 0, has_p = 0, vis = 0, bad = 0; double pr = 0;
+	GVariantIter it; const char *key; GVariant *v; g_variant_iter_init(&it, props);
+	while (g_variant_iter_next(&it, "{&sv}", &key, &v)) {
+		if (!strcmp(key, "progress")) { if (g_variant_is_of_type(v, G_VARIANT_TYPE_DOUBLE) && isfinite(g_variant_get_double(v))) { pr = g_variant_get_double(v); has_p = 1; } else bad = 1; }
+		else if (!strcmp(key, "progress-visible")) { if (g_variant_is_of_type(v, G_VARIANT_TYPE_BOOLEAN)) { vis = g_variant_get_boolean(v); has_v = 1; } else bad = 1; }
+		g_variant_unref(v);
+	}
+	g_variant_unref(props);
+	if (!id || bad || (!has_p && !has_v)) { g_free(id); return; }
+	lpcaller *k = lp_caller(sender);
+	if (!k->ok || (k->app[0] && strcmp(id, k->app) && !(g_str_has_prefix(id, k->app) && id[strlen(k->app)] == '.'))) {
+		if (k->ok) fprintf(stderr, "rudolf-portal: progress for %s from %s ignored (another app's)\n", id, k->app);
+		g_free(id); return; }
+	lpent *e = NULL; int mine = 0;
+	for (GList *l = LP; l; l = l->next) { lpent *q = l->data; if (!strcmp(q->sender, sender)) { mine++; if (!strcmp(q->id, id)) e = q; } }
+	if (!e) { if (mine >= LP_PER_APP || g_list_length(LP) >= LP_MAX) { g_free(id); return; }
+		e = g_new0(lpent, 1); e->sender = g_strdup(sender); e->id = id; id = NULL; e->val = -1; e->shown = -1; LP = g_list_append(LP, e); }
+	g_free(id);
+	if (has_p) e->val = (int)((pr < 0 ? 0 : pr > 1 ? 1 : pr) * 100 + 0.5);   /* (no libm: the release links none) */
+	if (has_v) e->vis = vis;
+	lp_write(e);
+	if (!e->vis) lp_drop(e);
+}
+static void lp_start(void)
+{
+	/* (an earlier portal's notes: rudolfd removes them, as their portal is not running; this one cannot list the folder) */
+	LP_CALLERS = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, lp_caller_free);
+	g_dbus_connection_signal_subscribe(BUS, NULL, "com.canonical.Unity.LauncherEntry", "Update", NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE, lp_signal, NULL, NULL);
 }
 
 /* ---------------- 1.6.0: the Secret portal. libsecret inside a Flatpak sandbox keeps the app's secrets in a file of its
@@ -1191,6 +1313,7 @@ int main(int argc, char **argv)
 	mon_start();
 	inh_start();
 	gm_start();   /* 1.6.1 (plan-1.6.1 Part 19): GameMode */
+	lp_start();   /* 1.6.2 (plan-1.6.2 Part 25b): apps' progress for their taskbar buttons */
 	g_timeout_add(200, check_answers, NULL);
 	fprintf(stderr, "rudolf-portal: ready\n");
 	g_main_loop_run(g_main_loop_new(NULL, FALSE));
