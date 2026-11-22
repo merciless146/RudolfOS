@@ -678,6 +678,7 @@ and Flycast) had been tested only with stand-ins. Neither emulator had been run 
   4. The Dreamcast disc in Flycast: full screen, the controller works, Tab › Exit returns to the desktop.
   5. With a game open, start another from Emu ("Close it and play"). Then Task Manager shows one emulator only.
   6. Signed in to an account (not the desktop user): a game still starts and plays.
+
 ### 33. VPN: WireGuard, then OpenVPN, for the whole computer (added on 2026-11-22)
 The owner, 2026-11-22, after asking whether Tor in Oracle is enough (it isn't for a work network, for apps outside Oracle's
 Tor windows, or for calls and games) and what the best VPN would be: "Yes. That sounds like the best option."
