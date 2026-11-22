@@ -3,6 +3,12 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.2 (in progress)
+Summary: In progress.
+- Fixed: on the Native desktop, Task Manager could come up as an empty window for several seconds (or not at all) while the desktop
+  was busy, for example while Steam was starting: its page waited for the desktop's hidden background page. Task Manager now has a
+  page of its own and comes up at once (docs/plan-1.6.2.md Part 14, found on the owner's Vivobook).
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
