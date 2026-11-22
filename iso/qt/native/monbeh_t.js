@@ -136,7 +136,7 @@ async function settingsCheck() {
   await br.close(); fs.writeFileSync(path.join(D, 'monitors'), MON2);
 }
 function cmp(name, ra, rb) {
-  const o = path.join(OUT, 'cmp.' + name);
+  const o = path.join(OUT, 'cmp.' + name.replace(/:/g, '-'));   // (1.6.2: no ':' in a file name: upload-artifact refuses it)
   try { return JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), path.join(OUT, (name.split(':')[0]) + '.std.png'), path.join(OUT, (name.split(':')[0]) + '.nat.png'), ra.join(','), (rb || ra).join(','), '40', o]).toString()) } catch (x) { return {pct: 100, err: String(x).slice(0, 200)} }
 }
 (async () => {

@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: the Several monitors check failed on every run although its tests passed: monbeh_t.js named a picture
+  "cmp.lock:cover2.diff.png", and GitHub's upload of the pictures refuses a ':' in a file name. Nothing in Rudolf OS changed.
 - New: Rudolf's title bar on Standard's windows from outside the page (docs/plan-1.6.2.md Part 29, the owner, 2026-11-21): Linux
   apps, the encrypted Oracle and Oracle's Tor windows get the same title bar, buttons, edges and window menu as Rudolf's own windows
   (and as Native's frames), in the title-bar style and colour chosen in Display Properties. Drag the title bar to move them, any edge
