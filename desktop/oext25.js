@@ -37,14 +37,19 @@ const OEXTPAGE=`var N=${JSON.stringify(OEXTN)};function ask(v){parent.postMessag
 addEventListener('message',function(e){if(e.data&&typeof e.data.oexthtml=='string')document.getElementById('ox').innerHTML=e.data.oexthtml});
 document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('button[data-v]');if(b)ask(b.dataset.v)});
 document.addEventListener('change',function(e){if(e.target.dataset&&e.target.dataset.v=='click')ask(e.target.checked?'click1':'click0')});ask('state')`;
+/* 1.6.2 (docs/plan-1.6.2.md Part 14): Oracle's own Flash pages are drawn in this page's frames and so have its Content-Security-Policy (no
+   script from another site): Ruffle plays in a frame of its own inside them, lib/ruffle-frame.html in a sandbox, given the file (base_v24.html, rufFrame) */
+const RUF_MOUNT_JS="var RUF_FRAME="+JSON.stringify(RUF_FRAME())+";\nfunction rufMount(host,o,err){var fr=document.createElement('iframe');fr.setAttribute('sandbox','allow-scripts');fr.setAttribute('allow','autoplay; fullscreen');fr.title='Flash content (Ruffle)';fr.style.cssText='width:100%;height:100%;border:0;display:block';"
+ +"addEventListener('message',function(e){if(e.source!==fr.contentWindow||!e.data||typeof e.data!='object')return;var d=e.data;"
+ +"if(d.ruf=='ready'){try{fr.contentWindow.postMessage({ruf:'play',src:o.src,cfg:o.cfg,name:o.swfFileName||o.name||'',url:o.url||null,data:o.data||null},'*',o.data?[o.data]:[])}catch(x){err(String(x))}}else if(d.ruf=='err'){fr.remove();err(String(d.msg||''))}});"
+ +"fr.src=RUF_FRAME;host.appendChild(fr)}";
 /* a Ruffle player page Oracle makes for one Flash file: bytes from this computer (path) or a web address (url) */
 function rufPage(title,o){const cfg=Object.assign(rufConfig(),{autoplay:oextCfg().click?'off':'auto',unmuteOverlay:'visible'});
  return{title,html:`<!doctype html><meta charset='utf-8'><title>${oesc(title)}</title><style>html,body{margin:0;height:100%;background:#111;color:#e5e7eb;font:14px system-ui,sans-serif}#p{position:absolute;inset:0}#m{position:absolute;left:0;right:0;bottom:0;padding:10px 14px;background:#1f2937;display:none}#m button{margin-left:8px}</style>
 <div id='p'></div><div id='m'></div><script>var SRC=${JSON.stringify(rufSources())},CFG=${JSON.stringify(cfg)},O=${JSON.stringify(o)};
 function say(t,dl){var m=document.getElementById('m');m.textContent=t;m.style.display='block';if(dl){var b=document.createElement('button');b.textContent='Download it';b.onclick=function(){parent.postMessage({act:'dlreq',v:O.url},'*')};m.appendChild(b)}}
-function lib(i,cb){if(window.RufflePlayer&&window.RufflePlayer.newest)return cb();if(i>=SRC.length)return say('Ruffle could not be loaded. Check the internet connection, or the Flash runtime address in Settings → Multimedia.');var s=document.createElement('script');s.src=SRC[i];s.onload=function(){cb()};s.onerror=function(){s.remove();lib(i+1,cb)};document.head.appendChild(s)}
-function play(opt){lib(0,function(){var pl=window.RufflePlayer.newest().createPlayer();pl.style.cssText='width:100%;height:100%;display:block';document.getElementById('p').appendChild(pl);
- var r=(pl.ruffle?pl.ruffle():pl).load(Object.assign({},CFG,opt));if(r&&r.catch)r.catch(function(){say(O.url?'This site does not let other pages load its Flash file.':'This Flash file could not be played.',!!O.url)})})}
+${RUF_MOUNT_JS}
+function play(opt){rufMount(document.getElementById('p'),Object.assign({src:SRC,cfg:CFG},opt),function(m){say(m||(O.url?'This site does not let other pages load its Flash file.':'This Flash file could not be played.'),!!O.url)})}
 if(O.url)play({url:O.url});else{addEventListener('message',function(e){var d=e.data;if(!d||!d.oextswf)return;if(d.err)return say(d.err);play({data:d.oextswf,swfFileName:O.name})});parent.postMessage({act:'oextswf',v:O.path},'*')}
 </`+`script>`}}
 /* a saved web page with Flash content: each local SWF becomes a Ruffle player */
@@ -58,9 +63,9 @@ function rufLocalHtml(p,html){if(!/\.swf|shockwave|futuresplash|d27cdb6e/i.test(
   d.style.cssText=`display:inline-block;position:relative;background:#111;width:${/%$/.test(w)?w:parseInt(w)+'px'};height:${/%$/.test(h)?h:parseInt(h)+'px'}`;el.replaceWith(d);n++});
  if(!n)return null;const cfg=Object.assign(rufConfig(),{autoplay:oextCfg().click?'off':'auto',unmuteOverlay:'visible'});
  const s=D.createElement('script');s.textContent=`(function(){var SRC=${JSON.stringify(rufSources())},CFG=${JSON.stringify(cfg)},box=[].slice.call(document.querySelectorAll('.rudolf-swf'));
-function lib(i,cb){if(window.RufflePlayer&&window.RufflePlayer.newest)return cb();if(i>=SRC.length){box.forEach(function(b){b.textContent='Ruffle could not be loaded.';b.style.color='#fff'});return}var s=document.createElement('script');s.src=SRC[i];s.onload=function(){cb()};s.onerror=function(){s.remove();lib(i+1,cb)};document.head.appendChild(s)}
+${RUF_MOUNT_JS}
 addEventListener('message',function(e){var d=e.data;if(!d||!d.oextswf)return;var b=box.filter(function(x){return x.dataset.p==d.path&&!x.firstChild})[0];if(!b)return;if(d.err){b.textContent=d.err;b.style.color='#fff';return}
- lib(0,function(){var pl=window.RufflePlayer.newest().createPlayer();pl.style.cssText='width:100%;height:100%;display:block';b.appendChild(pl);(pl.ruffle?pl.ruffle():pl).load(Object.assign({},CFG,{data:d.oextswf,swfFileName:d.path.split('/').pop()}))})});
+ rufMount(b,{src:SRC,cfg:CFG,data:d.oextswf,name:d.path.split('/').pop()},function(m){b.textContent=m||'This Flash file could not be played.';b.style.color='#fff'})});
 box.forEach(function(b){parent.postMessage({act:'oextswf',v:b.dataset.p},'*')})})()`;
  (D.body||D.documentElement).appendChild(s);const t=D.querySelector('title');return{title:t?t.textContent:p.at(-1),html:'<!doctype html>'+D.documentElement.outerHTML}}
 /* Oracle asks secPage first for every address */
