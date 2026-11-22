@@ -1,3 +1,5 @@
 # Bring your files check (bring-check.yml): a change to this file runs its QEMU job. serial= picks a release (empty: the newest beta)
+# bitlocker=1: and the bitlocker job (this tree's kernel, cryptsetup's BitLocker test images; 1.6.2 Part 27)
 serial=
-run=3
+bitlocker=1
+run=6

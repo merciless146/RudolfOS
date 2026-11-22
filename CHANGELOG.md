@@ -15,6 +15,14 @@ Summary: In progress.
   ending the game left an empty window.
 - Fixed: When Emu closed a Nintendo 64 or Dreamcast game to start another, the emulator kept running. The same was true of
   Sober (Roblox) when Rudolf OS closed it. They now end completely.
+- Changed: the plan (docs/plan-1.6.2.md Parts 33 to 35): a VPN for the whole computer (WireGuard, then OpenVPN; an
+  administrator adds them, everyone may turn them on and off unless told otherwise; an optional kill switch), scanners
+  (driverless first, with a Scan app) and network shares (Windows and NAS shares in File Explorer).
+- Fixed: Bring your files now opens an old Windows disk's BitLocker for real. It was checked in a virtual machine on Rudolf OS's
+  own kernel with BitLocker volumes made by Windows: AES-XTS (Windows 10 and 11), AES-CBC, and AES-CBC with the older Elephant
+  diffuser. Each opened read-only with its recovery key, which is stored nowhere. Two fixes: opening no longer waits for ever for
+  the system's device manager, and a mistyped recovery key now says "That key does not open it." instead of "BitLocker could not
+  be opened here".
 - Changed: a new installation now starts with the Native desktop (the owner's decision, 2026-11-22). Chromium and Lite stay
   in Settings › System health › Desktop engine; if Native does not start, Chromium is used. A computer updated from 1.6.1
   keeps the desktop it had.
