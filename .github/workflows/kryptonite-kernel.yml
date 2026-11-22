@@ -87,8 +87,6 @@ jobs:
     #  them, for the record (the handover's second start fails there as before)
     strategy: {fail-fast: false, matrix: {k: [{name: '', kv: '', extra: '', off: '', nopatch: ''}, {name: unpatched, kv: '', extra: '', off: '', nopatch: '1'}]}}
     name: build ${{ matrix.k.name }}
-    # (the unpatched kernel is expected to fail the handover: it is there for the record, not as a check)
-    continue-on-error: ${{ matrix.k.nopatch == '1' }}
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
       - uses: actions/checkout@v5
@@ -131,6 +129,14 @@ jobs:
           if [ -n "${{ matrix.k.name }}" ]; then export RECSB_ONLY1=1 RECSB_TIMEOUT=300; W=4/4; else W=7/7; fi
           SB_PARTS=$PWD/parts KERNEL=$PWD/kout/vmlinuz RECSB_TEST_KEYDIR=$SBT RECSB_SERIAL=$PWD/recsb-serial sh iso/qt/sb/recovery_sb_t.sh 2>&1 | tee recsb.txt
           for f in recsb-serial/*.txt; do echo "==== $f"; grep -a -E 'Linux version|Command line|Unpacking|initramfs|initrd|RAMDISK|panic|corrupt|kexec|Lockdown|locked down|Secure boot|Rudolf OS' $f | cut -c1-300 | head -60; done
+          # (the unpatched kernel is expected to fail the handover with the panic the patch fixes: that is its check, so the
+          #  run shows the patch is still what makes the difference; passing there means the patch may no longer be needed)
+          if [ -n "${{ matrix.k.nopatch }}" ]; then
+            if grep -q "^$W passed" recsb.txt; then echo "::warning title=Secure Boot unpatched::Linux $KERNEL_VERSION passes the handover without the patches: are they still needed?"
+            else grep -a -q 'ZSTD-compressed data is corrupt' recsb-serial/boot1.txt || { echo "::error title=Secure Boot unpatched::Linux $KERNEL_VERSION fails, but not with the panic the patch fixes: $(grep '^FAIL' recsb.txt | cut -c1-200 | tr '\n' ' ')"; exit 1; }
+              echo "::notice title=Secure Boot unpatched::Linux $KERNEL_VERSION without the patches: the handover fails as expected (ZSTD-compressed data is corrupt)"; fi
+            exit 0
+          fi
           grep -q "^$W passed" recsb.txt || { echo "::error title=Secure Boot ${{ matrix.k.name }}::Linux $KERNEL_VERSION: $(grep '^FAIL' recsb.txt | cut -c1-200 | tr '\n' ' ')"; exit 1; }
           echo "::notice title=Secure Boot ${{ matrix.k.name }}::Linux $KERNEL_VERSION under Secure Boot (test keys): $(tail -1 recsb.txt)"
       - name: The handover's second start, compared (start-up options, memory)
