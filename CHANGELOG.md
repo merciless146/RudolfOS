@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- New: Flatpak apps that Rudolf OS installs may now show their progress on their taskbar buttons. Each one gets a single extra
+  permission, set by Rudolf OS, to say its progress to the desktop, and nothing else. Apps installed earlier get it at the next
+  Update all. (Chromium-based browsers and most Electron apps today send their progress only on Ubuntu's old Unity desktop with
+  its library inside the app. Rudolf OS cannot provide either, so they still show none; Firefox already does. See
+  docs/plan-1.6.2.md Part 25b.)
 - Changed: the Standard desktop is now called Chromium (it is the same desktop: the desktop page in Rudolf's Chromium), and
   Settings › System health › Desktop engine lists the three as Native, Chromium, Lite. A computer on Standard stays on it and
   shows it as Chromium; nothing saved changes. Help, System health, the self-test, the sign-in's messages and rudolf-fetch say

@@ -1393,7 +1393,8 @@ static void api_apps(struct req *r, const char *what)
 	if (!strcmp(what, "update")) {
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
 		/* 1.5.4: and what installed apps need beyond their own download (Steam's 32-bit graphics drivers: appextra) */
-		start_job("apps-update", "sh -c 'flatpak update --system -y --noninteractive && flatpak uninstall --system -y --noninteractive --unused; /usr/lib/rudolf/appextra --all; echo Done.'");
+		/* 1.6.2 Part 25b: and Rudolf's own override for their progress on their taskbar buttons (appprogress: apps installed before) */
+		start_job("apps-update", "sh -c 'flatpak update --system -y --noninteractive && flatpak uninstall --system -y --noninteractive --unused; /usr/lib/rudolf/appprogress --all; /usr/lib/rudolf/appextra --all; echo Done.'");
 		reply_ok(r->fd, "started"); return;
 	}
 	if (!app_id_ok(id)) { reply_err(r->fd, 400, "bad app"); return; }
@@ -1406,8 +1407,10 @@ static void api_apps(struct req *r, const char *what)
 			if (!app_verified(id) && !apps_setting("unverified") && strcmp(id, "org.vinegarhq.Sober")) { reply_err(r->fd, 403, "this app is not verified on Flathub; an administrator can allow unverified apps in App Store > Installed"); return; }
 			snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak remotes --system --columns=name | grep -qx flathub || flatpak remote-add --system flathub " FLATHUB_REPO "; "
 				"echo \"Downloading %s and anything it needs...\"; " FP_INSTALL "; "
+				/* 1.6.2 Part 25b: its progress on its taskbar button (appprogress: talk to com.canonical.Unity, nothing else) */
+				"/usr/lib/rudolf/appprogress %s || true; "
 				/* 1.5.4: what the app needs beyond its own download (appextra: Steam's 32-bit graphics drivers) */
-				"/usr/lib/rudolf/appextra %s || echo \"It is installed, but something it needs did not download: App Store > Installed > Update all tries again.\"'", id, id, id);
+				"/usr/lib/rudolf/appextra %s || echo \"It is installed, but something it needs did not download: App Store > Installed > Update all tries again.\"'", id, id, id, id);
 		} else snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak uninstall --system -y --noninteractive %s; flatpak uninstall --system -y --noninteractive --unused; echo Done.'", id);
 		start_job(what, cmd); reply_ok(r->fd, "started"); return;
 	}
@@ -2037,7 +2040,7 @@ static void api_native(struct req *r, const char *what)
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running"); return; }
 		if (!strcmp(what, "install"))
 			snprintf(cmd, sizeof cmd, "sh -c 'set -e; echo \"Adding the Flathub app source...\"; flatpak remotes --system --columns=name | grep -qx flathub || flatpak remote-add --system flathub " FLATHUB_REPO "; "
-				"echo \"Downloading %s and its runtime (this can take a while)...\"; " FP_INSTALL "'", id, id);
+				"echo \"Downloading %s and its runtime (this can take a while)...\"; " FP_INSTALL "; /usr/lib/rudolf/appprogress %s || true'", id, id, id);   /* (1.6.2 Part 25b) */
 		else if (!strcmp(what, "update"))
 			snprintf(cmd, sizeof cmd, "sh -c 'set -e; flatpak update --system -y --noninteractive; echo Done.'");
 		else
