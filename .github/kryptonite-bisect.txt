@@ -11,10 +11,11 @@
 # (bc08b658803, efi-fixes-for-v6.19-2): its first commit 6e62d1c6f2c7 ("efi: Wipe INITRD config table from memory after
 # consumption", which writes to the previous kernel's INITRD table after a kexec), that commit's parent, and the round's
 # BAD end with that one line taken back out (test=SHA PATCH: the patch applied before the build).
-good=7893cc12251f
-bad=353c6f43ab69
+# (Full commit names: a fetch by name needs the whole name.)
+good=7893cc12251f6f19e7689a4cf3ba803bddbd8437
+bad=353c6f43ab690b5746289c057c1701a389b12f98
 points=12
-test=bc08b658803
-test=6e62d1c6f2c7
-test=cfe54f4591e6
-test=353c6f43ab69 iso/systools/kpatches/bisect/revert-6e62d1c6f2c7.patch
+test=bc08b6588037e8894bcdb940c3adbc4308387353
+test=6e62d1c6f2c7dba31db976e60ca0d6edf96cf8d5
+test=cfe54f4591e675cedf2c0d25287ff4c0a2e0cb9d
+test=353c6f43ab690b5746289c057c1701a389b12f98 iso/systools/kpatches/bisect/revert-6e62d1c6f2c7.patch
