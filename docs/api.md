@@ -84,6 +84,17 @@ while any source is on, and the desktop's group slowed (`cpu.weight` 20) behind 
 | `GET game/status` | `{"ok","enabled","on","throttled","sources":[{"src","kind","pid"}],"games":[{"pid","name"}],"cpu"}`: `games` asked through GameMode's D-Bus API (rudolf-portal's request files in /run/rudolf/game-req), `throttled` the desktop slowed. |
 | `POST game/set?enabled=0\|1` | Settings › System health › Memory › Game mode (kept in /persist/etc/gamemode). |
 
+## Duels on the local network (1.6.1; rudolfd-duel.inc, rudolf-duel)
+For the Library's games (Ember Reach 0.5.2's LAN duels; rudolfos-library docs/duel-protocol.md). The desktop asks for these
+on a game's behalf (duel61.js: the game kit's lanHost, lanFind and lanStop), after asking the person before hosting.
+
+| Request | What it does |
+|---|---|
+| `POST duel/host?ver=VER` | The duel service (`rudolf-duel serve`) started for one match: as the signed-in account's own Linux user (never root), on the first free port of 47860-47869, with a new room code; the firewall opened for that port to the local network only (`firewall duel PORT`) while it runs, and closed again by rudolfd's keeper when it ends. Hosting again stops the last. `{"ok","url":"ws://127.0.0.1:PORT/","code","port"}` |
+| `POST duel/stop` | The service stopped (its keeper closes the firewall); nothing hosted: nothing to do. |
+| `GET duel/find` | The duels hosted on the local network (`rudolf-duel find`, as the account's user: multicast DNS, `_emberduel._tcp`): `{"ok","games":[{"name","addr","port","url","code","ver"}]}` |
+| `GET duel` | `{"ok","hosting","port","code"}` |
+
 ## Graphics driver (1.6.1; rudolfd-gpu.inc, /usr/lib/rudolf/gpudriver)
 Settings › Display › Graphics driver (docs/plan-1.6.1.md Part 19): the open driver (nouveau, NVK) or NVIDIA's, from the system
 extension `nvidia-driver`.

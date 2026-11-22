@@ -5,6 +5,20 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
+- New: duels on the local network for the Library's games (Ember Reach 0.5.2's LAN duels; rudolfos-library PR 94, merged
+  with this). A page can't take connections, so the host's computer relays: the game asks through the game kit (lanHost,
+  lanFind, lanStop; gamekit 1.3.0), the desktop asks the person ("Host a duel on this network?", each time), then rudolfd
+  (duel/host, duel/find, duel/stop, duel: with its token and the peer check, as every request). rudolfd starts the duel
+  service (rudolf-duel, new: a WebSocket relay holding one room, the same protocol as the Library's online relay) for that
+  one match, as the signed-in account's own Linux user, never root, on a port of 47860-47869; the firewall opens that port
+  to the local network only (private addresses, never a cellular interface, nothing from the internet) while it runs, and a
+  keeper of rudolfd's closes it again when the service ends: the match over, the host's game gone, its window closed,
+  duel/stop or sign-out. It's announced and found by multicast DNS (_emberduel._tcp). Only the game on this computer can
+  host; the other player joins with the room's code, the same version only; neither is told the other's address. Only the
+  project's own Library apps may ask (an outside developer's app is refused). The native desktop's app windows are the same
+  page, so it is the same there. Listed in the listeners list; tested by qt/host/duel161_t.sh (network namespaces with the
+  firewall's real rules: a home network, a cellular link and the internet; mDNS; rudolfd's requests) and
+  qt/shell2/duel61_t.js (the desktop's side), and the LAN duel check workflow.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
   Rudolf's Chromium with its shell, which this computer does not have"): the list it starts from was only made on Native.
 - New: File Explorer to the desktop (docs/plan-1.6.1.md Part 28, the owner, 2026-11-21): items dragged from a File Explorer window

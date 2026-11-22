@@ -434,6 +434,11 @@ weight (20) is one line in /usr/lib/rudolf/gamemode.
   Native; calls; a real CAC only when the owner asks.
 - **Blitzen's guards (1.6.1 Part 26), with the owner:** asked for the GitHub token and a key file in several ways, a throwaway
   test key pasted, a program listing ~/.ssh, on Standard and Native (docs/plan-1.6.1.md Part 26, the owner's checks).
+- **LAN duels (1.6.1, Ember Reach 0.5.2), on two computers on the home network:** Ember Reach › Duels on both; on one,
+  LAN › Host a duel on this computer (the question asked, Host); on the other, LAN: the first listed ("Join the duel on
+  ..."), joined, a match flown (hits, a kill, the next round, the result and Rematch on both); the game closed on one
+  mid-match: the other says the other pilot left; Settings › System health shows the duel's port opened and closed; on
+  Standard and on Native. A phone's hotspot or a cellular link: no duel found or reachable there.
 
 ### 27. Bring your files: personal files kept from the old system when installing (added on 2026-11-21)
 The owner asked on 2026-11-21: "Would it be possible for someone downloading and installing Rudolf to be able to

@@ -135,6 +135,8 @@ gcc -O2 $HARD -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
 # 1.6.1 (docs/plan-1.6.1.md Part 9): the print queue, for the desktop and the Linux apps (CUPS's clients)
 gcc -O2 $HARD -o usr/bin/rudolf-printq "$SYS/rudolf-printq.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
+# 1.6.1: the duel service, for a game's duel on the local network (rudolfd starts it as the account's own user)
+gcc -O2 $HARD -o usr/bin/rudolf-duel "$SYS/rudolf-duel.c"
 gcc -O2 $HARD -o usr/bin/rudolf-devlink "$SYS/rudolf-devlink.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-apps "$SYS/rudolf-apps.c" -lz
 gcc -O2 $HARD -o usr/bin/rudolf-debian "$SYS/rudolf-debian.c" -lcrypto -ldl

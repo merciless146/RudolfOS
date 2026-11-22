@@ -4514,6 +4514,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-dev.inc"       /* 1.6.0: Blitzen as a developer's agent (plan Part 19) */
 #include "rudolfd-game.inc"      /* 1.6.1: game mode (plan-1.6.1 Part 19) */
 #include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */
+#include "rudolfd-duel.inc"      /* 1.6.1: duels on the local network for the Library's games (Ember Reach 0.5.2) */
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
@@ -4705,6 +4706,8 @@ static void api(struct req *r)
 	if (!strcmp(p, "memory/iam") && post) { api_memory_iam(r); return; }
 	if (!strcmp(p, "health")) { api_health(r, post); return; }
 	if (!strcmp(p, "firewall")) { api_firewall(r, post); return; }
+	if (!strcmp(p, "duel")) { api_duel(r, "", post); return; }   /* (1.6.1: rudolfd-duel.inc) */
+	if (!strncmp(p, "duel/", 5)) { api_duel(r, p + 5, post); return; }
 	if (!strcmp(p, "tb")) { api_tb(r, "", post); return; }
 	if (!strncmp(p, "tb/", 3)) { api_tb(r, p + 3, post); return; }
 	if (!strcmp(p, "bt")) { api_bt(r, "", post); return; }

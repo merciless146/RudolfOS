@@ -1,0 +1,41 @@
+# 1.6.1: duels on the local network for the Library's games (Ember Reach 0.5.2): the duel service (rudolf-duel), its
+# firewall hole and mDNS, rudolfd's duel requests, and the desktop's side of the game kit. host: qt/host/duel161_t.sh
+# (network namespaces of its own: the firewall's real rules with nft, a local network and a cellular one; rudolfd in a
+# private mount namespace), the list of listeners' test, the mDNS test of Find printers (the same firewall chain).
+# page: qt/shell2/duel61_t.js (the desktop page with a stand-in rudolfd, and a game's frame sending the game kit's
+# messages). Nothing is published.
+name: LAN duels check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['iso/sys/rudolf-duel.c', 'iso/sys/rudolfd-duel.inc', 'iso/sys/root/usr/lib/rudolf/firewall', 'iso/sys/rudolf-network.c',
+      'iso/sys/root/usr/share/rudolf/listeners', 'iso/qt/host/duel161_t.sh', 'iso/qt/shell2/duel61_t.js', 'desktop/duel61.js', 'desktop/games58.js',
+      '.github/workflows/duel-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq nftables iproute2 util-linux python3 gcc zlib1g-dev curl >/dev/null
+      - name: duel161_t.sh (as root: its own network and mount namespaces)
+        run: sudo sh iso/qt/host/duel161_t.sh
+      - name: listeners59_t.sh
+        run: sh iso/qt/host/listeners59_t.sh
+      - name: mdns161_t.sh (the firewall's other chains unchanged)
+        run: sudo sh iso/qt/host/mdns161_t.sh
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Playwright (Chromium)
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw" && npm init -y >/dev/null && npm i -s playwright@1.49.1
+          npx playwright install --with-deps chromium >/dev/null 2>&1 || npx playwright install chromium >/dev/null
+      - name: duel61_t.js
+        run: |
+          cd desktop && python3 build19.py ../iso/www/index.html && cd ..
+          NODE_PATH="$RUNNER_TEMP/pw/node_modules" node iso/qt/shell2/duel61_t.js

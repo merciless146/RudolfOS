@@ -18,6 +18,8 @@
  *                                       DNS into /etc/resolv.conf. GW and DNS may be empty
  *   network firewall on|off|status      /usr/lib/rudolf/firewall ACTION
  *   network firewall remote on|off      /usr/lib/rudolf/firewall remote on|off (remote access's port)
+ *   network firewall duel PORT|off      /usr/lib/rudolf/firewall duel PORT|off (1.6.1: a game's duel service, rudolf-duel:
+ *                                       PORT one of 47860-47869, opened to the local network only while it runs)
  *   network hotspot status|stop         /usr/lib/rudolf/hotspot status|stop
  *   network hotspot start               the request (name, password, band: one a line, at most 200 bytes) on standard
  *                                       input, written to a file of root's for /usr/lib/rudolf/hotspot start FILE
@@ -208,6 +210,7 @@ int main(int argc, char **argv)
 	if (!strcmp(op, "firewall")) {
 		if (n == 1 && (!strcmp(a[0], "on") || !strcmp(a[0], "off") || !strcmp(a[0], "status"))) { char *s[] = { a[0], NULL }; return exec_lib("firewall", s); }
 		if (n == 2 && !strcmp(a[0], "remote") && (!strcmp(a[1], "on") || !strcmp(a[1], "off"))) { char *s[] = { "remote", a[1], NULL }; return exec_lib("firewall", s); }
+		if (n == 2 && !strcmp(a[0], "duel") && (!strcmp(a[1], "off") || (strlen(a[1]) == 5 && !strncmp(a[1], "4786", 4) && a[1][4] >= '0' && a[1][4] <= '9'))) { char *s[] = { "duel", a[1], NULL }; return exec_lib("firewall", s); }
 		return refuse("a firewall action that is not one", n ? a[0] : "");
 	}
 	if (!strcmp(op, "hotspot")) {

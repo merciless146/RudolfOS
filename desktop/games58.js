@@ -61,6 +61,7 @@ addEventListener('message',async e=>{const m=e.data;if(!m||m.rudolfGame!==1||typ
   if(typeof USER!='undefined'&&USER&&USER.r=='guest')return reply({ok:true,kept:'session'});   /* (a guest's things go when they sign out) */
   try{await kvSet(gameKey(at.pkg,m.game),JSON.parse(s));reply({ok:true})}catch(x){reply({ok:false,error:'not kept'})}
   return}
+ if(typeof gameDuelOp=='function'&&gameDuelOp(m,at,reply))return;   /* 1.6.1: lanHost, lanFind, lanStop (duel61.js) */
  reply({ok:false,error:'unknown op'})});
 /* pausing: once a second, each game frame's window seen or not */
 function gameTick(){if(!GAME_FRAMES.size)return;const all=!!(document.hidden||window.LOCKED||(typeof SAVER!='undefined'&&SAVER));

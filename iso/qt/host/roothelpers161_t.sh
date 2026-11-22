@@ -80,7 +80,7 @@ case "$n $1" in
 "wifi.sh adapter") [ "$2" = rtest0 ] && echo "Using $2" || { echo "No such adapter: $2"; exit 1; };; "wifi.sh country") echo "Country: $3";;
 "wifi.sh connect") echo "Joining..."; echo "Connected";; "wifi.sh forget") echo "Forgotten";;
 "firewall on"|"firewall off") [ -e $T/fw-fail ] && { echo "nft: no such table" >&2; exit 1; }; echo "turned $1";;
-"firewall status") echo "on 7";; "firewall remote") ;;
+"firewall status") echo "on 7";; "firewall remote") ;; "firewall duel") ;;
 "hotspot status") echo '{"on":false,"can":true}';; "hotspot stop") echo "The hotspot is off";; "hotspot start") echo "Sharing Phone Net (2.4 GHz)";;
 "netplug state") echo '{"ok":true,"connected":true,"metered":false}';; "netplug set") [ "$2" = rtest0 ] || echo "no such adapter";;
 "ip "*) [ -e $T/ip-fail ] && [ "$2" = add ] && { echo "RTNETLINK answers: File exists" >&2; exit 2; };;
@@ -215,7 +215,7 @@ $NW wifi radio "" aa:BB:cc:dd:ee:ff off </dev/null >/dev/null; $NW wifi band rte
 ok "N1. network: Wi-Fi's actions are wifi.sh's with their arguments as they are (an empty adapter kept: wifi.sh picks one), its output and status, nothing of the caller's environment" "$([ $r$r2$r3 = 001 ] && [ "$(echo "$o" | head -1)" = adapter=rtest0 ] && [ "$o2" = 'No such adapter: wlan9' ] && [ "$(echo "$c" | tr '\n' '#')" = "wifi.sh status rtest0|$PE#wifi.sh scan |$PE#wifi.sh country  00|$PE#wifi.sh country rtest0 DE|$PE#wifi.sh radio  aa:BB:cc:dd:ee:ff off|$PE#wifi.sh band rtest0 2.4 on|$PE#wifi.sh adapter rtest0|$PE#wifi.sh adapter wlan9|$PE#" ] && echo 1)" "$r$r2$r3 $o2 $c"
 b=0; for a in "wifi" "wifi|frob" "wifi|status|a;b" "wifi|status|a b" 'wifi|status|$(id)' "wifi|status|../x" "wifi|status|aaaaaaaaaaaaaaaaa" "wifi|status|rtest0|x" "wifi|frob|rtest0" "wifi|country|rtest0|de" "wifi|country|rtest0|DEU" "wifi|country|rtest0" "wifi|adapter|" "wifi|radio|rtest0|aa:bb:cc:dd:ee|off" "wifi|radio|rtest0|aa:bb:cc:dd:ee:fg|off" "wifi|radio|rtest0|aa:bb:cc:dd:ee:ff|maybe" "wifi|radio|rtest0|aa:bb:cc:dd:ee:ff" "wifi|band|rtest0|3|on" "wifi|band|rtest0|5" "wifi|connect|rtest0|x" \
 	"wifi-link" "wifi-link|" "wifi-link|a/b" "dhcp|nosuch0" "dhcp|-rtest0" "dhcp|rtest0|x" "dhcp|" "dhcp|.." "static|rtest0|10.0.0.5/24|10.0.0.1" "static|rtest0||10.0.0.1|" "static|rtest0|10.0.0.5 24||" "static|rtest0|10.0.0.5/24|10.0.0.1/8|" "static|rtest0|10.0.0.5/24||1.1.1.1;x" "static|nosuch0|10.0.0.5/24||" \
-	"firewall" "firewall|maybe" "firewall|on|now" "firewall|remote" "firewall|remote|maybe" "hotspot" "hotspot|frob" "hotspot|status|x" "metered-state|x" "metered|rtest0|maybe" "metered|a b|on" "metered|aaaaaaaaaaaaaaaa|on" "metered|rtest0" "frobnicate"; do
+	"firewall" "firewall|maybe" "firewall|on|now" "firewall|remote" "firewall|remote|maybe" "firewall|duel" "firewall|duel|8080" "firewall|duel|47870" "firewall|duel|4786x" "firewall|duel|047860" "firewall|duel|47861|x" "hotspot" "hotspot|frob" "hotspot|status|x" "metered-state|x" "metered|rtest0|maybe" "metered|a b|on" "metered|aaaaaaaaaaaaaaaa|on" "metered|rtest0" "frobnicate"; do
 	IFS='|'; set -- $a; IFS=$OIFS; $NW "$@" </dev/null >/dev/null 2>&1; [ $? = 2 ] || { b=1; echo "  (allowed: $a)"; }; done
 $NW static rtest0 "$(printf '1%.0s' $(seq 64))" "" "" </dev/null >/dev/null 2>&1; [ $? = 2 ] || b=1; c=$(calls)
 ok "N2. network: an adapter's name that is not one (odd characters, too long, one the kernel does not have for ip and udhcpc, an option), a country, radio, band or address that is not one, extra or missing arguments, unknown actions: refused, nothing run" "$([ $b = 0 ] && [ -z "$c" ] && echo 1)" "$b $c"
@@ -235,6 +235,8 @@ rm -f $T/etc/resolv.conf
 o=$($NW firewall status </dev/null); $NW firewall remote on </dev/null; touch $T/fw-fail; o2=$($NW firewall on </dev/null 2>&1); r=$?; rm -f $T/fw-fail; o3=$($NW hotspot status </dev/null); o4=$(printf 'Phone Net\npassword1\n2.4\n' | $NW hotspot start 2>&1); o5=$($NW metered-state </dev/null); o6=$($NW metered wlan9 on </dev/null); c=$(calls)
 ok "N6. the firewall (its count, remote access's port, a refusal's words and status), the hotspot (the request on standard input into a file of root's), metered connections: the scripts' own answers" "$([ "$o" = 'on 7' ] && [ $r = 1 ] && [ "$o2" = 'nft: no such table' ] && [ "$o3" = '{"on":false,"can":true}' ] && [ "$o4" = 'Sharing Phone Net (2.4 GHz)' ] && echo "$o5" | grep -q '"metered":false' && [ "$o6" = 'no such adapter' ] && echo "$c" | grep -q "^firewall remote on|$PE" && echo "$c" | grep -q "^hotspot start $T/run/hotspot.req|req=$(printf 'Phone Net\npassword1\n2.4\n' | md5sum | cut -c1-8) 600:0 hotspot.req|" && echo "$c" | grep -q "^netplug set wlan9 on|" && echo 1)" "$o $o2 $o3 $o4 $o5 $o6 $c"
 rm -f $T/run/hotspot.req
+$NW firewall duel 47861 </dev/null; r=$?; $NW firewall duel off </dev/null; r2=$?; c=$(calls)
+ok "N6b. (1.6.1) a game's duel service: its port (47860-47869) opened to the local network and closed again, the firewall's own action" "$([ $r$r2 = 00 ] && [ "$(echo "$c" | tr '\n' '#')" = "firewall duel 47861|$PE#firewall duel off|$PE#" ] && echo 1)" "$r$r2 $c"
 
 # ---- 1.6.1 devices: the devices helper's checks (Bluetooth, Thunderbolt)
 DV=$T/root/devices
