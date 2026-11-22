@@ -1,0 +1,57 @@
+# Rudolf Kryptonite (2.0, docs/plan-2.0.md "The newest kernel"): Linux 7.3.y for x86-64, checked on the kryptonite branch
+# only. Nothing is published: no release, no gh-pages, no channel, no secret; the kernel is built with a TEST Secure Boot
+# key made in the job and thrown away with it. Runs on pushes to kryptonite and kryp-* branches and on pull requests into
+# kryptonite, never on main.
+name: Kryptonite kernel
+on:
+  push:
+    branches: [kryptonite, 'kryp-*']
+    paths: ['iso/kconfig.sh', 'iso/kconfig-required.txt', 'iso/systools/kreq.sh', 'iso/systools/kconfdiff.py', 'iso/systools/testkernel.sh',
+      'iso/firmware-extra.txt', 'iso/systools/fwextra.py', 'iso/initramfs/**', 'iso/qt/sb/kr20_t.py', 'iso/qt/sb/recovery_sb_t.sh',
+      'iso/ext/nvidia-driver/**', '.github/kryptonite-kernel.txt', '.github/workflows/kryptonite-kernel.yml']
+  pull_request:
+    branches: [kryptonite]
+permissions: {contents: read}
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs: {kv: '${{ steps.v.outputs.kv }}', old: '${{ steps.v.outputs.old }}'}
+    steps:
+      - uses: actions/checkout@v5
+      - id: v
+        run: |
+          W=$(sed -n 's/^kernel=//p' .github/kryptonite-kernel.txt | head -1)
+          ALL=$(git ls-remote --tags https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git "v${W%%.*}.*" | sed -n 's#.*refs/tags/v\([0-9.]*\)$#\1#p' | sort -V)
+          [ -n "$ALL" ] || ALL=$(curl -fsSL https://www.kernel.org/releases.json | jq -r '.releases[].version')
+          NEWEST=$(echo "$ALL" | grep -E "^$(echo "${W%.*}" | sed 's/\./\\./g')\.[0-9]+(\.[0-9]+)?$" | sort -V | tail -1)
+          case "$W" in *.*.*) KV=$W;; *) KV=$(echo "$ALL" | grep -E "^$(echo "$W" | sed 's/\./\\./g')(\.[0-9]+)?$" | sort -V | tail -1);; esac
+          [ -n "$KV" ] || { echo "::error::no Linux $W on kernel.org"; exit 1; }
+          [ "$KV" = "$NEWEST" ] || echo "::warning title=Kryptonite kernel::$KV is pinned; $NEWEST is out"
+          git fetch -q --depth 1 origin gh-pages
+          OLD=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); OLD=${OLD%-rudolf}
+          echo "kv=$KV" >> $GITHUB_OUTPUT; echo "old=$OLD" >> $GITHUB_OUTPUT
+          echo "::notice title=Kryptonite kernel::Linux $KV (newest ${W}.y: $NEWEST; 1.6.x stable: $OLD); every ${W%.*}.y: $(echo "$ALL" | grep -E "^$(echo "${W%.*}" | sed 's/\./\\./g')\." | tr '\n' ' ')"
+  kconfig:
+    needs: version
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bc flex bison libelf-dev libssl-dev >/dev/null
+      - name: kconfig.sh on ${{ needs.version.outputs.kv }} and on 1.6.x's ${{ needs.version.outputs.old }}
+        env: {KV: '${{ needs.version.outputs.kv }}', OLD: '${{ needs.version.outputs.old }}'}
+        run: |
+          for v in $KV $OLD; do git clone -q --depth 1 -b "v$v" https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git linux-$v; done
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/k.pem -out /tmp/c.pem -days 1 -subj /CN=kconfig-check 2>/dev/null; rm -f /tmp/k.pem
+          (cd iso && SB_CERT=/tmp/c.pem sh kconfig.sh ../linux-$OLD /tmp/none) > old.log 2>&1 || { cat old.log; echo "::error::kconfig.sh fails on $OLD"; exit 1; }
+          set +e; (cd iso && SB_CERT=/tmp/c.pem sh kconfig.sh ../linux-$KV /tmp/none) > new.log 2>&1; RC=$?; set -e
+          cat new.log
+          python3 iso/systools/kconfdiff.py linux-$OLD linux-$KV > kconfdiff.txt; cat kconfdiff.txt
+          cp linux-$KV/.config config-$KV.txt; cp linux-$OLD/.config config-$OLD.txt
+          [ $RC = 0 ] && echo "::notice title=kconfig.sh::Linux $KV: every option kconfig.sh asks for and checks is there; $(tail -1 new.log)" || { echo "::error title=kconfig.sh::Linux $KV: $(grep 'kconfig.sh:' new.log | tr '\n' ' ')"; exit 1; }
+          cd iso && KCONFIG=../linux-$KV/.config sh qt/host/kreq161_t.sh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: kconfig, retention-days: 14, path: "kconfdiff.txt\nnew.log\nconfig-*.txt"}

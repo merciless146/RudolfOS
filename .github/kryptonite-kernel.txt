@@ -1,0 +1,4 @@
+# Rudolf Kryptonite (2.0, docs/plan-2.0.md): the kernel its work is built and checked on, on the kryptonite branch only
+# (1.6.x on main keeps the 6.18 longterm kernel). A line kernel=7.3.N pins a point release; kernel=7.3 takes the newest
+# 7.3.y on kernel.org (the check then says which, and warns when a pinned one has a newer point release).
+kernel=7.3
