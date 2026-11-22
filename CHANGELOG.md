@@ -3,6 +3,13 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
+## 1.6.2 (in progress)
+Summary: In progress.
+- Faster: on the native desktop a Linux app such as Steam is started as soon as Rudolf knows it, instead of after every list of
+  apps (the Library's, the Linux apps', Debian's) one after another and the Start menu's pictures, which took about 10 seconds on a
+  slow laptop; the list of installed Linux apps is kept and given again at once until an app is installed, updated or removed; and
+  the desktop's icons and Start menu no longer wait minutes for Linux apps' pictures that cannot be had.
+
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
 - Fixed: on Standard, with "Keep my websites encrypted with my account" on, Oracle would not open ("Oracle needs
