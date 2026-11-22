@@ -10,7 +10,8 @@ Summary: In progress, on the kryptonite branch only (held for 2.0: not in 1.6.x,
   start-up times, the AMD and Intel processor speed drivers, the graphics drivers for NVK, Intel's cameras, Intel's sound
   processor, the Bluetooth chips), and the keyboards and mice with quirks and Intel TSX kept as 1.6.x has them. Built and
   checked on GitHub's runners on this branch only: the configuration, the build, Secure Boot in QEMU with test keys, NVIDIA's
-  driver modules, the firmware, and the desktop on Standard and Native (X11).
+  driver modules, the firmware, and the desktop on Standard and Native (X11). Not yet usable: a 7.x kernel started other
+  than by its kernel bundle (after an update's handover, or directly) stops at once in QEMU; being looked into.
 
 ## 1.6.1 (2026-11-22, release 2026112201)
 Summary: In progress.
