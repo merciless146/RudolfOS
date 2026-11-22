@@ -49,6 +49,9 @@ const LINES = []; const rec = (k, v) => LINES.push(k + ' ' + (Array.isArray(v) ?
 const dlt = (a, b) => a && b ? [b[0] - a[0], b[1] - a[1], b[2] - a[2], b[3] - a[3]] : ['?'];
 (async () => {
   const ctx = await chromium.launchPersistentContext(path.join(T, 'prof'), {headless: false, viewport: null, executablePath: process.env.XA_CHROME || undefined,
+    /* (no --enable-automation: Chrome's stable builds show their "controlled by automated test software" bar for it, 56 px
+       above the page, so the page no longer starts at the screen's corner and every press through xdotool misses) */
+    ignoreDefaultArgs: ['--enable-automation'],
     args: ['--class=RudolfDesktop', '--kiosk', '--test-type', '--disable-infobars', '--no-first-run', '--force-device-scale-factor=1', '--window-position=0,0', '--window-size=1280,800', '--disable-gpu'], env: Object.assign({}, process.env)});
   const p = ctx.pages()[0] || await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message));
   await p.goto('http://127.0.0.1:' + PORT + '/'); await p.waitForFunction(() => typeof xfAsks == 'function' && typeof lxWinPoll == 'function', null, {timeout: 60000});

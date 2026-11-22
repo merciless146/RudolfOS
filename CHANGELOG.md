@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: the title bars check (std-titlebars-check.yml) passes: Chrome is started without --enable-automation, whose bar on
+  the runner moved the desktop page 56 px down so the test's presses missed (38/38 and 22/22 now).
 - Changed: the plan (docs/plan-1.6.2.md Part 31): zstd compression for the system's images, measured against today's xz
   in QEMU and on the owner's two computers before anything changes; the kernel learns to read zstd first.
 - Changed: a Library game's save record may now be up to 6 MB (it was 256 KB), so a game with a large world, such as Ember
