@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.2.md Part 39): native apps for Rudolf OS too, not only WendigOS: librudolf-ui and a native
+  Task Manager first (1.6.2), then Settings and the Office apps, each screenshot-compared with its web version before it
+  replaces it on the native desktop.
 - Changed: the plan (docs/plan-1.6.2.md Part 38): smaller pages for the native desktop's app windows, measured first (on the
   host, nearly all of a window's memory is the whole desktop page's script): Task Manager first, then simple apps, then
   Settings panel by panel; Oracle's Chromium memory as its own item.
