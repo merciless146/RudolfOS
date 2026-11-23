@@ -93,7 +93,7 @@ o=$(RS_CELLULAR=/nonexistent $RS find); o2=$(RS_MDNS=127.0.0.1:9 $RS find)
 ok "1. find: the NAS by multicast DNS (Nas62, nas62.local) and, asked by WS-Discovery alone, the Windows-like computer by its own name (WIN62, workgroup HOME62)" "$(echo "$o" | grep -q '"name":"Nas62","ip":"192.168.62.2","host":"nas62.local","how":"mdns"' && echo "$o2" | grep -q '"name":"WIN62","ip":"192.168.62.2","host":"WIN62","how":"wsd","group":"HOME62"' && echo 1)" "$o | $o2"
 # with Rudolf OS's firewall on (a computer of its own on the same network: cli62, the rules of iso/sys/root/usr/lib/rudolf/firewall)
 FW=$SYS/root/usr/lib/rudolf/firewall; mkdir -p /run/rudolf
-if command -v nft >/dev/null; then
+if command -v nft >/dev/null && grep -q 'chain wsd' $FW; then
 	ip netns exec cli62 sh $FW start; o=$(ip netns exec cli62 nft list chain inet rudolf wsd 2>&1); c0=$(ip netns exec cli62 nft list counter inet rudolf blocked | grep -o 'packets [0-9]*')
 	o2=$(ip netns exec cli62 env RS_CELLULAR=/nonexistent $RS find)
 	o3=$(ip netns exec cli62 sh -c 'cat /proc/net/udp /proc/net/tcp' | awk 'NR>1 && $4 != "01" {split($2,a,":"); print a[2]}' | sort -u | tr '\n' ' ')
@@ -103,7 +103,7 @@ except Exception as e: print(type(e).__name__)"; c1=$(ip netns exec cli62 nft li
 	ok "1b. with the firewall on: the wsd chain (3702 from 3702, private addresses, not cellular); found both ways (multicast DNS's and WS-Discovery's answers let in); nothing listening afterwards, and what the NAS sends to it dropped" "$(echo "$o" | grep -q 'iifname @cellular return' && echo "$o" | grep -q 'udp sport 3702 udp dport 3702 accept' && echo "$o2" | grep -q '"how":"mdns"' && [ -z "$(echo $o3)" ] && [ "$c0" != "$c1" ] && echo 1)" "$o | $o2 | listening: $o3 | $c0 -> $c1"
 	o2=$(ip netns exec cli62 env RS_CELLULAR=/nonexistent RS_MDNS=127.0.0.1:9 $RS find)
 	ok "1c. ...and the Windows-like computer by WS-Discovery alone, through the firewall" "$(echo "$o2" | grep -q '"name":"WIN62".*"how":"wsd"' && echo 1)" "$o2"
-else echo "NOTE: no nft here: the firewall checks are skipped"; fi
+else echo "NOTE: no nft here, or a firewall without the wsd chain (step 3): the firewall checks are skipped"; fi
 o=$($RS resolve nas62); o2=$($RS resolve 192.168.62.3); o3=$($RS resolve 'a;b' 2>&1; echo "rc=$?")
 ok "2. resolve: nas62 by multicast DNS (nas62.local), an address as it is; a name that is not one refused" "$([ "$o" = 192.168.62.2 ] && [ "$o2" = 192.168.62.3 ] && echo "$o3" | grep -q 'rc=2' && echo 1)" "$o $o2 $o3"
 o=$($RS probe 192.168.62.2); o2=$($RS probe 192.168.62.3); o3=$($RS probe 192.168.62.9)
@@ -115,7 +115,7 @@ ok "5. list on the SMB 1 server: refused as SMB 1 (never spoken)" "$(echo "$o" |
 # ---- the drives helper
 ID=0123456789abcdef; G=fedcba9876543210
 DR() { $T/drives "$@" > $T/out 2> $T/err; echo $?; }
-DRI() { i=$1; shift; printf '%s' "$i" | $T/drives "$@" > $T/out 2> $T/err; echo $?; }
+DRI() { i=$1; shift; printf '%b' "$i" | $T/drives "$@" > $T/out 2> $T/err; echo $?; }
 r1=$(DRI "$U1\n$P1\n\n" share-mount 47110 $ID 192.168.62.2 nas docs 1.0 0); r2=$(DRI "x\ny\n\n" share-mount 47110 $ID 192.168.62.2 nas docs 2.0 0)
 r3=$(DRI "x\ny\n\n" share-mount 47111 $ID 192.168.62.2 nas docs 3 0); r4=$(DRI "x\ny\n\n" share-mount 47110 $ID 192.168.62.2 nas 'docs,uid=0' 3 0)
 r5=$(DRI "x\ny\n\n" share-mount 47110 $ID 192.168.62.2 'nas share' docs 3 0); r6=$(DRI "x\ny\n\n" share-mount 47110 ABC 192.168.62.2 nas docs 3 0)
@@ -137,7 +137,7 @@ ok "11. opened again: \"open already\", nothing mounted twice" "$([ $r = 0 ] && 
 r=$(DRI "$U1\nwrong\n\n" share-mount 47110 1111111111111111 192.168.62.2 nas docs 3 0); o=$(cat $T/out)
 r2=$(DRI "$U1\n$P1\n\n" share-mount 47110 2222222222222222 192.168.62.2 nas nothere 3 0); o2=$(cat $T/out)
 r3=$(DRI "\n\n\n" share-mount 47110 3333333333333333 192.168.62.3 old old 3 1); o3=$(cat $T/out)
-ok "12. a wrong password: 3 (\"password\"); a share the server does not have: 4; the SMB 1 server: 6 (not mounted, the kernel has no SMB 1); no folder left behind" "$([ $r = 3 ] && [ "$o" = password ] && [ $r2 = 4 ] && [ "$o2" = noshare ] && [ $r3 = 6 ] && [ ! -e $T/run/shares/47110/1111111111111111 ] && [ ! -e $T/run/shares/47110/3333333333333333 ] && echo 1)" "$r $o | $r2 $o2 | $r3 $o3 $(cat $T/err)"
+ok "12. a wrong password: 3 (\"password\"); a share the server does not have: 4; the SMB 1 server not mounted (5 or 6: the kernel has no SMB 1; rudolfd then asks rudolf-shares probe, which says SMB 1, check 3); no folder left behind" "$([ $r = 3 ] && [ "$o" = password ] && [ $r2 = 4 ] && [ "$o2" = noshare ] && { [ $r3 = 6 ] || [ $r3 = 5 ]; } && ! grep -q '192.168.62.3' /proc/mounts && [ ! -e $T/run/shares/47110/1111111111111111 ] && [ ! -e $T/run/shares/47110/3333333333333333 ] && echo 1)" "$r $o | $r2 $o2 | $r3 $o3 $(cat $T/err)"
 r=$(DRI "\n\n\n" share-mount 47110 $G 192.168.62.2 nas pub 3 1); echo guest > $T/run/shares/47110/$G/g.txt 2>/dev/null; o=$(ls -l $T/sh/pub/g.txt 2>&1)
 ok "13. the guest share opened as a guest (no name, no password) and written to" "$([ $r = 0 ] && grep -q mounted $T/out && echo "$o" | grep -q 'g.txt' && echo 1)" "$r $(cat $T/out $T/err) | $o"
 echo uBOB000002 > $T/run/home-session; r=$(DR share-umount 47110 $ID); echo uANN000001 > $T/run/home-session
