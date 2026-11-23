@@ -1,9 +1,182 @@
 {
-  "info": {"ok": true, "vendor": "ASUSTeK COMPUTER INC.", "product": "Vivobook 15", "cpu": "13th Gen Intel(R) Core(TM) i5-1335U", "threads": 12, "memTotal": 16473538560, "kernel": "6.18.4-rudolf", "boot": "uefi", "live": false, "media": "disk", "backlight": false, "battery": [{"name": "BAT0", "type": "Battery", "capacity": 81, "status": "Discharging"}]},
-  "sys/status": {"ok": true, "signer": "official", "current": {"version": "1.6.2", "chromium": "142.0.7444.59", "released": "2026-11-22"}},
-  "dl/space": {"ok": true, "free": 201863462912, "total": 255550554112, "live": false},
-  "shutdown/log": {"ok": true, "log": ""},
-  "desktop/engine": {"ok": true, "choice": "chromium", "now": "chromium", "available": true, "nativeAvailable": true, "persistent": true},
-  "time/status": {"ok": true, "result": "ok", "at": 1794649200, "floored": false},
-  "stats": {"ok": true, "cpu": 12.3, "load": 0.2, "memTotal": 16473538560, "memFree": 4294967296, "memAvailable": 5368709120}
+ "info": {
+  "ok": true,
+  "vendor": "ASUSTeK COMPUTER INC.",
+  "product": "Vivobook 15",
+  "cpu": "13th Gen Intel(R) Core(TM) i5-1335U",
+  "threads": 12,
+  "memTotal": 16473538560,
+  "kernel": "6.18.4-rudolf",
+  "boot": "uefi",
+  "live": false,
+  "media": "disk",
+  "backlight": false,
+  "battery": [
+   {
+    "name": "BAT0",
+    "type": "Battery",
+    "capacity": 81,
+    "status": "Discharging"
+   }
+  ],
+  "recovery": 0,
+  "updateInstalled": false,
+  "bootSecure": 1
+ },
+ "sys/status": {
+  "ok": true,
+  "signer": "official",
+  "current": {
+   "version": "1.6.2",
+   "chromium": "142.0.7444.59",
+   "released": "2026-11-22",
+   "kernel": "6.18.4-rudolf"
+  },
+  "persistent": true,
+  "canUpdate": true,
+  "booted": "a",
+  "trying": false,
+  "url": "https://merciless146.github.io/RudolfOS/stable",
+  "auto": true,
+  "beta": false,
+  "developer": false,
+  "checked": 1794645000,
+  "state": {
+   "good": "a",
+   "prev": "b"
+  },
+  "slots": {
+   "a": {
+    "version": "1.6.2",
+    "complete": true
+   },
+   "b": {
+    "version": "1.6.1",
+    "complete": true
+   }
+  },
+  "recoveryVersion": "1.6.1",
+  "recoveryAt": 1794000000,
+  "runningStable": true
+ },
+ "dl/space": {
+  "ok": true,
+  "free": 201863462912,
+  "total": 255550554112,
+  "live": false
+ },
+ "shutdown/log": {
+  "ok": true,
+  "log": ""
+ },
+ "desktop/engine": {
+  "ok": true,
+  "choice": "chromium",
+  "now": "chromium",
+  "available": true,
+  "nativeAvailable": true,
+  "persistent": true
+ },
+ "time/status": {
+  "ok": true,
+  "result": "ok",
+  "at": 1794649200,
+  "floored": false
+ },
+ "stats": {
+  "ok": true,
+  "cpu": 12.3,
+  "load": 0.2,
+  "memTotal": 16473538560,
+  "memFree": 4294967296,
+  "memAvailable": 5368709120
+ },
+ "sysext/status": {
+  "ok": true,
+  "persistent": true,
+  "started": "with extensions",
+  "installed": [
+   {
+    "name": "rudolf-ext-hplip",
+    "title": "Printer support (HP)",
+    "summary": "HPLIP drivers for HP printers and scanners",
+    "version": "3.24.4",
+    "size": 18874368,
+    "state": "in-use"
+   }
+  ],
+  "available": [
+   {
+    "name": "rudolf-ext-hplip",
+    "title": "Printer support (HP)",
+    "version": "3.24.4",
+    "installed": "3.24.4"
+   },
+   {
+    "name": "rudolf-ext-rtl8821",
+    "title": "Realtek 8821 Wi-Fi",
+    "summary": "A driver for Realtek 8821 USB Wi-Fi adapters",
+    "version": "5.13",
+    "size": 2097152,
+    "license": "GPL-2.0"
+   }
+  ]
+ },
+ "check": {
+  "ok": true,
+  "result": ""
+ },
+ "install/images": {
+  "ok": true,
+  "images": []
+ },
+ "disks": {
+  "ok": true,
+  "disks": [
+   {
+    "name": "nvme0n1",
+    "model": "SAMSUNG MZVL2512",
+    "bytes": 512110190592,
+    "removable": false,
+    "partitions": [
+     {
+      "fs": "vfat",
+      "label": "",
+      "mount": ""
+     },
+     {
+      "fs": "ext4",
+      "label": "RUDOLFDATA",
+      "mount": "/persist"
+     }
+    ]
+   }
+  ]
+ },
+ "bootmenu": {
+  "ok": true,
+  "uefi": true,
+  "loader": true,
+  "entries": [
+   "rudolf-start.conf",
+   "rudolf-recovery.conf",
+   "rudolf-check.conf",
+   "rudolf-ram.conf",
+   "auto-windows"
+  ],
+  "default": "",
+  "timeout": "",
+  "selected": "rudolf-start.conf",
+  "windows": []
+ },
+ "bring/found": {
+  "ok": true,
+  "sets": []
+ },
+ "job": {
+  "ok": true,
+  "running": false,
+  "status": 0,
+  "log": ""
+ }
 }

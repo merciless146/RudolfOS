@@ -704,11 +704,11 @@ void rui_menu(GtkWidget *rel, double x, double y, const char *title, const RuiMe
 GtkWidget *rui_menu_window(void) { return MENU ? MENU->win : NULL; }
 
 /* ------------------------------------------------------------------ dialogs over the window's body (the page's sdlg, .dlg) */
-typedef struct { GtkWidget *dim, *box; RuiWin *w; void (*cb)(int, void *); void *d; int n; GtkWidget *entry; GtkWidget *who; GtkWidget *err; char *reason; } Dlg;
+typedef struct { GtkWidget *dim, *box; RuiWin *w; void (*cb)(int, void *); void *d; int n; GtkWidget *entry; GtkWidget *who; GtkWidget *err; char *reason; void (*cred)(const char *, const char *, void *); } Dlg;   /* (cred: rui_elevate_cred's) */
 static Dlg *DLG;
 static void dlg_end(int i)
 {
-	if (!DLG) return; Dlg *g = DLG; DLG = NULL; gtk_widget_destroy(g->dim); void (*cb)(int, void *) = g->cb; void *d = g->d; g_free(g->reason); g_free(g); if (cb) cb(i, d);
+	if (!DLG) return; Dlg *g = DLG; DLG = NULL; gtk_widget_destroy(g->dim); void (*cb)(int, void *) = g->cb; void *d = g->d; void (*cr)(const char *, const char *, void *) = g->cred; g_free(g->reason); g_free(g); if (cb) cb(i, d); else if (cr && i != 1) cr(NULL, NULL, d);
 }
 static void on_dlg_esc(void) { dlg_end(-1); }
 static void dlg_btn(GtkButton *b, gpointer d) { (void)d; dlg_end(GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "rui-i"))); }
@@ -767,6 +767,9 @@ static void el_allow(GtkWidget *b, gpointer d)
 	g_string_append(j, "\",\"why\":"); { GString *r = g_string_new("\""); for (const char *s = g->reason ? g->reason : ""; *s; s++) { unsigned char c = *s; if (c == '"' || c == '\\') g_string_append_printf(r, "\\%c", c); else if (c >= 32) g_string_append_c(r, c); } g_string_append_c(r, '"'); g_string_append(j, r->str); g_string_free(r, TRUE); }
 	g_string_append(j, "}");
 	char err[200]; int c = rui_post("/api/desktop/admin", j->str, err, sizeof err); explicit_bzero(j->str, j->len); g_string_free(j, TRUE); g_free(n);
+	if (c == 200 && g->cred) {   /* (the page's elevate({cred:true}): the name and password, checked, handed on for rudolfd to check again with the request; wiped after) */
+		void (*cr)(const char *, const char *, void *) = g->cred; void *d = g->d; char *pn = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(g->who)), *pp = g_strdup(gtk_entry_get_text(GTK_ENTRY(g->entry)));
+		gtk_entry_set_text(GTK_ENTRY(g->entry), ""); g->cb = NULL; dlg_end(1); cr(pn ? pn : "", pp, d); explicit_bzero(pp, strlen(pp)); g_free(pp); g_free(pn); return; }
 	if (c == 200) { dlg_end(1); return; }
 	gtk_label_set_text(GTK_LABEL(g->err), c == 429 ? err : rui_tr("Wrong password.")); gtk_entry_set_text(GTK_ENTRY(g->entry), "");
 }
@@ -791,6 +794,12 @@ void rui_elevate(RuiWin *w, const char *reason, void (*cb)(int, void *), void *d
 	g_signal_connect(g->entry, "activate", G_CALLBACK(el_allow), NULL);
 	gtk_box_pack_start(GTK_BOX(row), c, FALSE, FALSE, 0); gtk_box_pack_start(GTK_BOX(row), a, FALSE, FALSE, 0);
 	dlg_show(g, row); gtk_widget_grab_focus(g->entry);
+}
+/* (the page's elevate(reason, {cred:true}): cred(n, p) once an administrator's password is right, the request then sent with them;
+   NULL, NULL when cancelled) */
+void rui_elevate_cred(RuiWin *w, const char *reason, void (*cred)(const char *n, const char *p, void *d), void *d)
+{
+	rui_elevate(w, reason, NULL, d); if (DLG) DLG->cred = cred;
 }
 static void about_ok(GtkWidget *b, gpointer d) { (void)b; (void)d; dlg_end(0); }
 void rui_about(RuiWin *w, const char *name, const char *what)

@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,about').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,upd,about').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -77,6 +77,9 @@ async function natShots(mode, pages) {
       if (at == 'end') { const pg = rect('page'); xdo(`mousemove ${pg[0] + 300} ${Math.min(pg[1] + 200, 600)}`); for (let i = 0; i < 60; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(800) }
       const f = path.join(OUT, `${mode}-${k}-${at}.nat.png`); sh(`import -window root ${f}`); out[k + '-' + at] = {f, b: rect('body')};
     }
+    /* (a view in the middle of a long page: the native one scrolled a few steps, the page then at the same place: pageMid) */
+    { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 60; i++) xdo('click 4'); for (let i = 0; i < 6; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(800);
+      const f = path.join(OUT, `${mode}-${k}-mid.nat.png`); sh(`import -window root ${f}`); out[k + '-mid'] = {f, b: rect('body'), y: +line('scroll')} }
     out[k + '-harv'] = lines('harv').filter(x => x.startsWith(k + '|')).map(x => x.split('|').slice(1, 3).join('|') + (x.endsWith('|1') ? '|1' : ''));
     natStop(); await wait(300);
   }
@@ -141,7 +144,8 @@ async function checklist(P) {
     ok('11. Reset to defaults: digital, 12-hour, YYYY/MM/DD, today, this computer\'s time zone, sharing the language: saved', s.ck == 'digital' && s.h24 === false && s.df == 'ymd' && s.doff === 0 && s.tz == 'UTC' && s.shareLang === true, s) }
   { click(rect('sdn')); await wait(300); { const r = rect('sdt'); xdo(`mousemove ${r[0] + 30} ${r[1] + 10} click 1`) } await wait(200); xdo('key Up'); await until(() => /set doff 86400000/.test(nst()), 3000); ok('12. the date (an administrator): one day on moves the desktop\'s date a day (doff)', /set doff 86400000/.test(nst()), nst().split('\n').filter(x => /doff/.test(x)).slice(-3));
     click(rect('sdn')); await until(() => /set doff 0\b/.test(nst()), 3000); ok('13. ...Use current date: back to today', line('dirty') == '0' || /set doff 0/.test(nst())) }
-  const scrollTo = async n => { const pg = rect('page'); for (let i = 0; i < 40 && (!rect(n) || rect(n)[1] > 520 || rect(n)[1] < 100); i++) { xdo(`mousemove ${pg[0] + 300} 300 click ${!rect(n) || rect(n)[1] > 520 ? 5 : 4}`); await wait(60) } await wait(500) };
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 40; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 550) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 550 ? 5 : 4}`); await wait(450) } await wait(300) };
   { mark = c0(); await scrollTo('nts'); click(rect('nts')); await until(() => /POST time\/sync/.test(since()), 4000); ok('14. Set the clock from the internet: rudolfd asked (time/sync)', /POST time\/sync/.test(since())) }
   { mark = c0(); await scrollTo('eng57'); click(rect('eng57')); await wait(300); xdo('key Escape'); await wait(200); xdo('key Up'); await until(() => rect('dialog'), 3000);
     ok('15. Desktop engine: the administrator\'s permission first', /ask engine native/.test(nst()) && !!rect('dialog'));
@@ -161,6 +165,49 @@ async function checklist(P) {
     ok('22. Copy details: "Rudolf OS 1.6.2" and each row, as the page copies them', /^Rudolf OS 1\.6\.2\nComputer: ASUSTeK COMPUTER INC\. Vivobook 15\nProcessor: 13th Gen/.test(t) && /\nLanguage: en$/.test(t), t.slice(0, 200)) }
   { await scrollTo('updfile'); mark = c0(); const u = rect('updfile'); xdo(`mousemove ${u[0] + u[2] + 60} ${u[1] + 10} click 1`); await until(() => rect('dialog'), 3000); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); xdo('key Return'); await until(() => /POST rollback/.test(since()), 5000);
     ok('23. Roll back to the previous page: the administrator\'s permission, then rollback', /POST desktop\/admin/.test(since()) && /POST rollback/.test(since()), since().slice(-200)) }
+  natStop();
+}
+// ---- the checklist of Update and recovery (settings25.js updPanel, sysupd25.js, sysext60.js, startup60.js, bring62.js, boot30.js)
+async function checkUpd() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark);
+  /* (the keys go where the pointer is: there is no window manager under the test's Xvfb) */
+  const pw = () => { const d = rect('dialog'); if (d) xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); xdo('key Return') };
+  /* (a wheel step at a time, the state read again after each: its places follow the scrolling) */
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 40; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 550) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 550 ? 5 : 4}`); await wait(450) } await wait(300) };
+  const after = async (n, dx) => { await scrollTo(n); const r = rect(n); xdo(`mousemove ${Math.round(r[0] + r[2] + (dx || 0))} ${Math.round(r[1] + r[3] / 2)} click 1`) };
+  natStart('upd'); await until(() => rect('body') && line('page') == 'upd', 20000); await wait(1500);
+  ok('U1. Update and recovery: what rudolfd says (sys/status, sysext/status, info, disks, check, bootmenu)', ['GET sys/status', 'GET sysext/status', 'GET info', 'GET disks', 'GET check', 'GET bootmenu'].every(x => since().includes(x)), since().slice(0, 400));
+  { mark = c0(); await wait(800); await scrollTo('bmd');
+    /* (the menu closed with Escape over it, then the drop-down, focused, takes the arrow keys as the page's select does) */
+    const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+      xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };   /* (the row chosen with the pointer) */
+    await pick('bmd', 1, 5); await pick('bmt', 1, 8);
+    await scrollTo('bms'); click(rect('bms')); await until(() => rect('dialog'), 3000); pw(); await until(() => /bootmenu\/set/.test(since()), 5000);
+    ok('U13. Boot menu: Recovery mode, 2 seconds, Save: the administrator\'s permission, bootmenu/set', /POST bootmenu\/set\?default=rudolf-recovery\.conf&timeout=2/.test(since()), [since().slice(-300), nst().split('\n').filter(x => /^rect (bm|dialog)|^menu|^sel|^scroll|^act select/.test(x))]) }
+  { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 80; i++) xdo('click 4'); await wait(600) }
+  { mark = c0(); click(rect('wnl')); await wait(300); const r = rect('wnl'); xdo(`mousemove ${r[0] + 245} ${r[1] + 7} click 1`); await until(() => /open help new/.test(nst()), 3000); ok("U2. What's new: the shell opens Help at What's new", /act open help new/.test(nst())) }
+  { mark = c0(); click(rect('ucheck')); await until(() => /job done/.test(nst()), 6000); ok('U3. Check now: sys/check, then rudolfd\'s job followed to its end', /POST sys\/check/.test(since()) && /GET job/.test(since()) && /job done 0/.test(nst()), since().slice(-300)) }
+  { mark = c0(); await scrollTo('uauto'); click(rect('uauto')); await until(() => rect('dialog'), 3000); pw(); await until(() => /sys\/set\?k=auto/.test(since()), 5000);
+    ok('U4. Download security updates automatically, off: the administrator\'s permission, then sys/set?k=auto&v=0', /POST desktop\/admin/.test(since()) && /POST sys\/set\?k=auto&v=0/.test(since()), since().slice(-300)) }
+  { mark = c0(); await wait(800); await scrollTo('ubeta'); click(rect('ubeta')); await until(() => rect('dialog'), 3000); pw(); await until(() => /sys\/beta\?on=1/.test(since()), 5000);
+    ok('U5. Get beta versions: the administrator\'s name and password, then sys/beta?on=1 (they go to rudolfd with it)', /POST sys\/beta\?on=1/.test(since()), since().slice(-300)) }
+  { mark = c0(); await wait(1500); await after('ucheck', 50); await until(() => rect('dialog'), 3000); pw(); await until(() => /sys\/rollback/.test(since()), 5000);
+    ok('U6. Roll back system…: the administrator\'s permission, then sys/rollback', /POST sys\/rollback/.test(since()), since().slice(-300)) }
+  { mark = c0(); await wait(800); await scrollTo('uadv'); click(rect('uadv')); await until(() => rect('uurl'), 3000); click(rect('uchk')); await until(() => /sys\/urlcheck/.test(since()), 4000);
+    ok('U7. Update address: the field with the address, Check this address (sys/urlcheck)', !!rect('uurl') && /POST sys\/urlcheck\?url=https%3A%2F%2Fmerciless146/.test(since()), since().slice(-200)) }
+  { mark = c0(); await scrollTo('sxremove0'); click(rect('sxremove0')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => rect('dialog') && /ask sysext remove/.test(nst()), 3000); pw();
+    await until(() => /POST sysext\/remove/.test(since()), 5000); await until(() => /job done/.test(nst().split('\n').slice(-3).join('\n')), 4000);
+    ok('U8. System extensions › Remove: asked, the administrator\'s name and password, sysext/remove?name=…, the job followed', /POST sysext\/remove\?name=rudolf-ext-hplip/.test(since()), since().slice(-300)) }
+  { mark = c0(); await wait(2000); await scrollTo('sxi'); await wait(500); click(rect('sxi')); await until(() => line('menu'), 3000); const m = line('menu').split(' ').map(Number); xdo(`mousemove ${m[0] + 40} ${m[1] + m[3] - 14} click 1`); await until(() => rect('dialog'), 3000); pw();
+    await until(() => /sysext\/install/.test(since()), 5000); ok('U9. Install…: the extensions not installed yet, one chosen, sysext/install?name=…', /POST sysext\/install\?name=rudolf-ext-rtl8821/.test(since()), [since().slice(-300), nst().split('\n').filter(x => /^act|^rect (sxi|dialog)|^menu/.test(x)).slice(-8)]) }
+  { mark = c0(); await wait(1500); await scrollTo('install0'); click(rect('install0')); await until(() => rect('dialog'), 3000); pw(); await until(() => /ask Erase nvme0n1/.test(nst()), 4000); await wait(300); xdo('key Return'); await until(() => /POST install\?/.test(since()), 4000);
+    ok('U10. Install here…: the administrator\'s permission, Erase nvme0n1?, then install?disk=nvme0n1&confirm=nvme0n1', /POST install\?disk=nvme0n1&confirm=nvme0n1/.test(since()), since().slice(-300)) }
+  { await until(() => /ask Rudolf OS is installed/.test(nst()), 4000); const d = rect('dialog'); if (d) { xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo('key Escape') } }   /* (Later: the installation's own question after it) */
+  { mark = c0(); await wait(1500); await scrollTo('factory'); click(rect('factory')); await until(() => rect('dialog'), 3000); pw(); await until(() => /ask Factory reset/.test(nst()), 4000); await wait(300); xdo('key Return'); await until(() => /factory-reset/.test(since()), 4000);
+    ok('U11. Factory reset…: the administrator\'s permission, asked again, then factory-reset', /POST factory-reset/.test(since()), [since().slice(-200), nst().split('\n').filter(x => /^act|^rect (factory|dialog)/.test(x)).slice(-6)]) }
+  { mark = c0(); await wait(800); await scrollTo('supck'); click(rect('supck')); await until(() => rect('dialog'), 3000); pw(); await until(() => /startup-check/.test(since()), 5000);
+    ok('U12. Check this drive\'s start-up…: the administrator\'s name and password, sys/startup-check', /POST sys\/startup-check/.test(since())) }
   natStop();
 }
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
@@ -188,7 +235,13 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
     if (ONLY && !only(mode) && !['light', 'dark'].includes(mode)) continue;
     const pages = PAGES.filter(k => only(mode) || only(k));
     const P = await pageShots(mode, pages), N = await natShots(mode, pages);
-    for (const k of pages) for (const at of ['top', 'end']) { const key = k + '-' + at;
+    { const {ctx, p} = await signin(mode); for (const k of pages) { if (!N[k + '-mid']) continue;
+        await p.evaluate(k => { document.querySelectorAll('.ntoast,#ntoasts>*').forEach(e => e.remove()); if (window.SW) { SW._ok = 1; SW.close() } settings(k); SW.el.style.left = '120px'; SW.el.style.top = '60px' }, k);
+        for (let i = 0; i < 6; i++) { await p.clock.runFor(500); await wait(200) } await p.mouse.move(5, 5);
+        await p.evaluate(y => { SW.body.querySelector('.sc').scrollTop = y }, N[k + '-mid'].y); await wait(400);
+        const b = await p.evaluate(() => { const r = SW.body.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
+        const f = path.join(OUT, `${mode}-${k}-mid.page.png`); await p.screenshot({path: f}); P[k + '-mid'] = {f, b} } await ctx.close() }
+    for (const k of pages) for (const at of ['top', 'mid', 'end']) { const key = k + '-' + at;
       if (!P[key] || !N[key] || !N[key].b) { ok(`${mode} ${key}: drawn by both`, false); continue }
       const d = px(P[key].f, N[key].f, P[key].b, N[key].b, path.join(OUT, `${mode}-${key}`)); rows.push([mode, key, d.pct]);
       ok(`${mode} ${k} (${at}): ${d.pct}% of the window's pixels differ (page ${P[key].b.slice(2).join('x')}, native ${N[key].b.slice(2).join('x')})`, d.pct < LIMIT, {box: d.box, map: d.map}) }
@@ -196,6 +249,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
       ok(`${k}: Search in Settings finds the same rows on the native page as on the web one (${P[k + '-harv'].length})`, a == b, {page: P[k + '-harv'], native: N[k + '-harv']}) }
   }
   if (only('checklist') || only('search')) { const P = await pageSearch(); await checklist(P) }
+  if (only('checklist') || only('upd-checklist')) await checkUpd();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

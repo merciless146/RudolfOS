@@ -1293,8 +1293,20 @@ in Task Manager.
     checklist 23/23; **memory at idle with System open (host): 15.9 MB RssAnon, 35 to 59 MB PSS, against the web one's 73.4 MB RssAnon,
     124.5 to 126.2 MB PSS** (Chromium's renderer for `#app=settings`; Display is measured when its page is native). 366 KB stripped, in the
     release build (a native app's 1 MB budget) with librudolf-ui.
-  - **Left for the next PRs:** Update and recovery (it was in group 1's plan; moved to its own PR: install, recovery, system
-    extensions, boot menu, Bring your files), then Display, Sound, Multimedia, Keyboard, Mouse, Accessibility; Network, Mobile,
+  - **PR 2 (2026-11-23, scheduled task; branch `native-settings-2`): Update and recovery.** Security updates (the card as the page
+    words it, Check now, Download, Restart now, Roll back system…, Roll back to last stable version…, Download security updates
+    automatically, Get beta versions, the Recovery line, Update address with Check this address and Save), System extensions (the
+    table, Remove, Try again, Install…, Check for extensions, Start once without extensions, Restart now), the start line, Install
+    Rudolf OS on this computer (each disk, Install here…, Replace the boot files only…), Recovery (the last media check, Factory
+    reset…), Bring in files from the old computer (Look on the drives and what is found), Start-up of this drive (Check…, Put
+    back…), Boot menu (Starts by default, Wait before starting, Save, Windows), rudolfd's job followed as the page follows it.
+    librudolf-ui gets `rui_elevate_cred` (the page's `elevate({cred:true})`: the name and password, checked, sent with the request
+    for rudolfd to check again, then wiped). Against the web one: every view under 2 % (0.34 to 0.70 %, now also a view in the
+    middle of each long page), its search rows the same (11), its checklist 13/13; the whole test 76/76.
+    **Left for PR 2b:** Bring them in (bring/import, then the page's antivirus check of what came in, its rules to be read from the
+    page at build time) and an installation's offer to bring in the old computer's files first (bring62.js `bringStep`); until
+    then the native button says so.
+  - **Left for the next PRs:** PR 2b (above), then Display, Sound, Multimedia, Keyboard, Mouse, Accessibility; Network, Mobile,
     Bluetooth, Oracle, Remote; Devices, Storage, Apps, Notifications; Privacy, Security, Health, Users; then the switch in
     rudolf-native (the start menu, pins, the taskbar, the desktop's right-click, Display Properties and every place that opens a
     Settings page) and the memory with Display open.
