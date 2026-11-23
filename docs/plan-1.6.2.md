@@ -749,7 +749,16 @@ Tor windows, or for calls and games) and what the best VPN would be: "Yes. That 
   Tests (vpn-check.yml): qt/host/vpn162_t.sh (the real rudolfd and helper in namespaces of their own against the kernel's
   WireGuard as the server, a capture on the outside link), the parser's fuzz test, qt/shell2/vpn62_t.js, and the network
   pop-up on both engines (same_t.sh fly-net-vpn, fly-net-vpn-off).
-- Steps 2-5 (who may, OpenVPN, the kill switch, the Oracle line): their own PRs, after this one.
+- **Step 2, who may do what (PR "VPN 2", after VPN 1):** built. Per VPN, set by an administrator (its password, checked
+  by rudolfd): "Everyone can turn it on and off" (the default), "Administrators only" (a standard account is asked for an
+  administrator's password, checked by rudolfd; a signed-in administrator is not), "Always on: nobody can turn it off"
+  (turned on at every start, vpn boot; off refused to everyone, an administrator's password included, until an
+  administrator changes the setting). An account under parental controls (the page's a.pc) never turns a VPN off. The
+  account is rudolfd's own record of who is signed in (HOME_SESSION), never one the request names. Turning off a VPN
+  another account turned on asks first ("Ann's VPN is on for everyone on this computer"); the pop-up (both engines)
+  opens Settings › Network for anything that needs a password or a question. Tests: vpn162_t.sh 18-25 (the policies,
+  the child, Always on at rudolfd's start), vpn62_t.js 11-18.
+- Steps 3-5 (OpenVPN, the kill switch, the Oracle line): their own PRs, after these.
 
 ### 34. Scanners (added on 2026-11-22)
 The owner, 2026-11-22: scanners and network shares are what is left to add from what Mint and Ubuntu have (a phone link,

@@ -93,9 +93,9 @@ CASES.push({n: 'fly-nc', set: {}, more: NOTES, fly: 'notes', parts: ['fly']});
 CASES.push({n: 'fly-nc-empty', set: {}, fly: 'notes', parts: ['fly']});
 CASES.push({n: 'fly-net', set: {}, fly: 'net', parts: ['fly']});   /* (the network's pop-up: item 3's last part) */
 /* (1.6.2 Part 33: the VPNs' rows after the adapters, vpn62.js vpnRows and rudolf-native.c fl_net: one on and connected, one off) */
-const VPNS = {ok: true, wireguard: true, active: 'v00000001', me: {name: 'Ann', admin: true, signedIn: true}, vpns: [
-  {id: 'v00000001', name: 'Home', type: 'wireguard', on: true, state: 'connected', by: 'Ann'},
-  {id: 'v00000002', name: 'Work office', type: 'wireguard', on: false, state: 'off', by: ''}]};
+const VPNS = {ok: true, wireguard: true, active: 'v00000001', me: {name: 'Ann', admin: true, child: false, signedIn: true}, vpns: [
+  {id: 'v00000001', name: 'Home', type: 'wireguard', policy: 'everyone', on: true, state: 'connected', by: 'Ann', mayOn: true, mayOff: true, why: ''},
+  {id: 'v00000002', name: 'Work office', type: 'wireguard', policy: 'admins', on: false, state: 'off', by: '', mayOn: true, mayOff: true, why: ''}]};
 CASES.push({n: 'fly-net-vpn', set: {}, rd: {vpn: VPNS}, fly: 'net', parts: ['fly']});
 CASES.push({n: 'fly-net-vpn-off', set: {dm: 'dark', darkui: true}, rd: {vpn: Object.assign({}, VPNS, {active: null, vpns: [Object.assign({}, VPNS.vpns[0], {on: false, state: 'off', by: ''})]})}, fly: 'net', parts: ['fly']});
 /* (item 3) the notifications' pop-ups (a page's notifications: rudolfd's "memory closed" events, apps57.js; one, two, the dark theme, the

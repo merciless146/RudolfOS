@@ -1,18 +1,23 @@
 /* (included by rudolfd.c, not built on its own: hence .inc) ---------- 1.6.2 (docs/plan-1.6.2.md Part 33): a VPN for
  * the whole computer (Settings › Network › VPN, the taskbar's network pop-up). The VPN helper does the work as root
  * (rudolf-vpn.c: /usr/lib/rudolf/root/vpn, through rudolf-rootd); here is who may do what:
- *   GET  vpn                     the VPNs (never a key): {ok, wireguard, vpns: [{id, name, type, server, addresses, dns,
- *                                whole, on, state, since, by}], active, me: {name, admin, signedIn}}
+ *   GET  vpn                     the VPNs (never a key) and, for each, whether the signed-in account may turn it on and
+ *                                off: {ok, wireguard, vpns: [{id, name, type, policy, server, addresses, dns, on,
+ *                                state, by, mayOn, mayOff, why}], active, me: {name, admin, child}}
  *   POST vpn/add                 an administrator's name and password, checked here; body {n, p, name, conf}: the file
  *                                (at most 64 KB) to the helper's standard input, never into a file of rudolfd's
- *   POST vpn/set                 {n, p, id, name}, the same
+ *   POST vpn/set                 {n, p, id, name | policy (everyone, admins, always)}, the same
  *   POST vpn/remove              {n, p, id}, the same
- *   POST vpn/on?id=ID            any account (another VPN on is turned off first)
- *   POST vpn/off                 any account
+ *   POST vpn/on?id=ID            "Everyone": any account, no password; "Administrators only" and "Always on": a signed-in
+ *                                administrator, or the body {n, p} of one; another VPN on is turned off first
+ *   POST vpn/off                 "Always on": nobody; an account under parental controls: never; "Administrators only":
+ *                                as on; "Everyone": any account
  * The account is the one signed in (HOME_SESSION, as Blitzen's know.inc reads it), never one the request names; its
- * name is said with the VPN it turned on (by). While one is meant to be on, vpn tick every half minute sets it up again
- * should its interface be gone. */
-typedef struct { char id[80], name[256]; int admin, signed_in; } vpn_who;
+ * role and parental controls are the page's accounts (the lsync copy, as desk_admin_check reads them). The VPN is the
+ * whole computer's: turning off one another account turned on says so in the page ("Ann's VPN is on for everyone on
+ * this computer"). At rudolfd's start an "Always on" VPN is turned on (vpn boot); while one is meant to be on, vpn tick
+ * every half minute sets it up again should its interface be gone. */
+typedef struct { char id[80], name[256]; int admin, child, signed_in; } vpn_who;
 static void vpn_whoami(vpn_who *w)
 {
 	memset(w, 0, sizeof *w);
@@ -26,8 +31,10 @@ static void vpn_whoami(vpn_who *w)
 	for (int i = 0; list; i++) {
 		const char *a = dj_at(list, i); if (!a) break;
 		char id[80]; dacct_id(a, id, sizeof id); if (strcmp(id, w->id)) continue;
-		char *n = dj_str(dj_get(a, "n")), *rl = dj_str(dj_get(a, "r"));
+		char *n = dj_str(dj_get(a, "n")), *rl = dj_str(dj_get(a, "r")); const char *pc = dj_get(a, "pc");
 		snprintf(w->name, sizeof w->name, "%s", n ? n : ""); w->admin = rl && !strcmp(rl, "admin");
+		/* (parental controls: the page's a.pc, set by an administrator for a standard account) */
+		w->child = !w->admin && pc && *dj_ws(pc) == '{';
 		free(n); free(rl); break;
 	}
 	free(list); dls_close(&l);
@@ -62,6 +69,28 @@ static void vpn_reply(struct req *r, char *o, int st)
 	trim(o); int ok = strstr(o, "\"ok\":true") == o + 1;
 	reply(r->fd, ok ? 200 : 409, "application/json", o, strlen(o), NULL); free(o);
 }
+/* one VPN's policy in the helper's list (NULL: no such VPN) */
+static int vpn_policy(const char *list, const char *id, char *pol, size_t pn, char *by, size_t bn, int *on)
+{
+	const char *vs = list ? dj_get(list, "vpns") : NULL; *pol = 0; if (by) *by = 0; *on = 0;
+	for (int i = 0; vs; i++) {
+		const char *v = dj_at(vs, i); if (!v) break;
+		char *x = dj_str(dj_get(v, "id")); int hit = x && !strcmp(x, id); free(x); if (!hit) continue;
+		char *p = dj_str(dj_get(v, "policy")); snprintf(pol, pn, "%s", p ? p : "everyone"); free(p);
+		if (by) { char *b = dj_str(dj_get(v, "by")); snprintf(by, bn, "%s", b ? b : ""); free(b); }
+		*on = dj_true(dj_get(v, "on")); return 1;
+	}
+	return 0;
+}
+/* may w turn a VPN of policy pol on (off = 0) or off (off = 1)? 0 yes, else why; adm: an administrator's password came */
+static const char *vpn_may(const vpn_who *w, const char *pol, int off, int adm)
+{
+	if (off && !strcmp(pol, "always")) return "This VPN is always on: nobody can turn it off. An administrator can change that in Settings › Network › VPN.";
+	if (off && w->child) return "Your account has parental controls: it cannot turn a VPN off.";
+	if (!strcmp(pol, "everyone")) return NULL;
+	if (w->admin || adm) return NULL;
+	return off ? "Only an administrator can turn this VPN off." : "Only an administrator can turn this VPN on.";
+}
 static int vpn_admin_body(struct req *r, char *why, size_t wn, char **who)
 {
 	char *an = NULL, *ap = NULL; *why = 0; if (who) *who = NULL;
@@ -76,8 +105,18 @@ static void api_vpn(struct req *r, const char *w, int post)
 		const char *av[] = { "vpn", "list", NULL }; int st; char *o = vpn_helper(av, NULL, 0, &st);
 		if (st < 0 || !o || *o != '{') { free(o); reply_err(r->fd, 503, "this Rudolf OS cannot set up VPNs (its VPN helper did not start)"); return; }
 		vpn_who me; vpn_whoami(&me); trim(o);
-		str s = {0}; size_t L = strlen(o); if (L && o[L - 1] == '}') o[--L] = 0;
-		sadd(&s, "%s,\"me\":{\"name\":", o); sjson(&s, me.name); sadd(&s, ",\"admin\":%s,\"signedIn\":%s}}", me.admin ? "true" : "false", me.signed_in ? "true" : "false");
+		/* each VPN with mayOn, mayOff and why for the account signed in now */
+		str s = {0}; const char *vs = dj_get(o, "vpns"); const char *ae = vs ? dj_end(vs, 0) : NULL;
+		sadd(&s, "%.*s[", vs ? (int)(vs - o) : 0, o);
+		for (int i = 0; vs; i++) {
+			const char *v = dj_at(vs, i); if (!v) break; const char *ve = dj_end(v, 0); if (!ve) break;
+			char *p = dj_str(dj_get(v, "policy")); const char *won = vpn_may(&me, p ? p : "everyone", 0, 0), *woff = vpn_may(&me, p ? p : "everyone", 1, 0); free(p);
+			sadd(&s, "%s%.*s,\"mayOn\":%s,\"mayOff\":%s,\"why\":", i ? "," : "", (int)(ve - v - 1), v, won ? "false" : "true", woff ? "false" : "true");
+			sjson(&s, woff ? woff : won ? won : ""); sadd(&s, "}");
+		}
+		sadd(&s, "]%s", ae ? ae : "}"); trim(s.b); s.n = strlen(s.b); if (s.n && s.b[s.n - 1] == '}') { s.n--; s.b[s.n] = 0; }
+		sadd(&s, ",\"me\":{\"name\":"); sjson(&s, me.name); sadd(&s, ",\"admin\":%s,\"child\":%s,\"signedIn\":%s}}", me.admin ? "true" : "false", me.child ? "true" : "false", me.signed_in ? "true" : "false");
+		if (!vs) { free(s.b); s = (str){0}; sadd(&s, "%s", o); }
 		free(o); reply_json(r->fd, &s); return;
 	}
 	if (!post) { reply_err(r->fd, 405, "POST"); return; }
@@ -103,27 +142,59 @@ static void api_vpn(struct req *r, const char *w, int post)
 			if (st == 0) health_add("vpn", "a VPN was removed by %.80s", an);
 			free(an); free(id); vpn_reply(r, o, st); return;
 		}
-		char *name = dbody_field(r, "name"); char nb[80];
-		if (!name || !*name || strlen(name) > 64 || strchr(name, '\n')) { free(an); free(id); free(name); reply_err(r->fd, 400, "the name has 1 to 64 characters"); return; }
-		snprintf(nb, sizeof nb, "%s\n", name);
-		const char *av[] = { "vpn", "set", id, "name", NULL }; int st; char *o = vpn_helper(av, nb, strlen(nb), &st);
-		if (st == 0) health_add("vpn", "a VPN was renamed by %.80s", an);
-		free(an); free(id); free(name); vpn_reply(r, o, st); return;
+		/* set: one setting a request */
+		char *name = dbody_field(r, "name"), *pol = dbody_field(r, "policy");
+		const char *av[6] = { "vpn", "set", id, NULL, NULL, NULL }; const char *in = NULL; size_t inl = 0; char nb[80];
+		if (name) { if (!*name || strlen(name) > 64 || strchr(name, '\n')) { free(an); free(id); free(name); free(pol); reply_err(r->fd, 400, "the name has 1 to 64 characters"); return; }
+			snprintf(nb, sizeof nb, "%s\n", name); in = nb; inl = strlen(nb); av[3] = "name"; }
+		else if (pol) { if (strcmp(pol, "everyone") && strcmp(pol, "admins") && strcmp(pol, "always")) { free(an); free(id); free(pol); reply_err(r->fd, 400, "policy: everyone, admins or always"); return; }
+			av[3] = "policy"; av[4] = pol; }
+		else { free(an); free(id); reply_err(r->fd, 400, "name or policy"); return; }
+		int st; char *o = vpn_helper(av, in, inl, &st);
+		if (st == 0) health_add("vpn", "a VPN's %s was changed by %.80s%s%s", av[3], an, av[4] ? ": " : "", av[4] ? av[4] : "");
+		free(an); free(id); free(name); free(pol); vpn_reply(r, o, st); return;
 	}
 	if (!strcmp(w, "on") || !strcmp(w, "off")) {
-		int st; char *o;
-		if (!strcmp(w, "off")) { const char *av[] = { "vpn", "down", NULL }; o = vpn_helper(av, NULL, 0, &st); vpn_reply(r, o, st); return; }
-		const char *id = qparam(r->query, "id");   /* (qparam's own buffer: never freed) */
-		if (!vpn_id_ok(id)) { reply_err(r->fd, 400, "id: a VPN"); return; }
-		const char *la[] = { "vpn", "list", NULL }; char *list = vpn_helper(la, NULL, 0, &st);
+		int off = !strcmp(w, "off");
+		const char *la[] = { "vpn", "list", NULL }; int st; char *list = vpn_helper(la, NULL, 0, &st);
 		if (st < 0 || !list || *list != '{') { free(list); reply_err(r->fd, 503, "this Rudolf OS cannot set up VPNs (its VPN helper did not start)"); return; }
-		char key[24]; snprintf(key, sizeof key, "\"id\":\"%s\"", id); int there = strstr(list, key) != NULL; free(list);
-		if (!there) { reply_err(r->fd, 404, "there is no such VPN"); return; }
+		const char *id = off ? NULL : qparam(r->query, "id"); char act[16] = "";   /* (qparam's own buffer: never freed) */
+		if (off) { const char *ac = dj_get(list, "active"); char *x = ac ? dj_str(ac) : NULL; if (x) snprintf(act, sizeof act, "%s", x); free(x);
+			if (!*act) { free(list); reply_ok(r->fd, "No VPN is on."); return; } }
+		const char *vid = off ? act : id;
+		if (!vpn_id_ok(vid)) { free(list); reply_err(r->fd, 400, "id: a VPN"); return; }
+		char pol[16], by[80]; int on;
+		if (!vpn_policy(list, vid, pol, sizeof pol, by, sizeof by, &on)) { free(list); reply_err(r->fd, 404, "there is no such VPN"); return; }
+		/* (turning one on while another is on turns that one off: allowed only when that one may be turned off too) */
+		char curpol[16] = ""; { const char *ac = dj_get(list, "active"); char *x = ac ? dj_str(ac) : NULL; char cb[80]; int con;
+			if (!off && x && strcmp(x, vid)) vpn_policy(list, x, curpol, sizeof curpol, cb, sizeof cb, &con); free(x); }
+		free(list);
 		vpn_who me; vpn_whoami(&me);
-		const char *av[] = { "vpn", "up", id, me.name[0] ? me.name : "-", NULL }; o = vpn_helper(av, NULL, 0, &st);
-		vpn_reply(r, o, st); return;
+		char why[200] = ""; int adm = 0;
+		const char *no = vpn_may(&me, pol, off, 0), *no2 = *curpol ? vpn_may(&me, curpol, 1, 0) : NULL;
+		if ((no || no2) && r->body && r->blen && r->body[0] == '{') {
+			/* (an administrator's password lets a standard account through "Administrators only", never "Always on" or a child's off) */
+			char *who = NULL; int a2 = vpn_admin_body(r, why, sizeof why, &who); free(who);
+			if (a2) { reply_err(r->fd, a2 == 429 ? 429 : 403, why[0] ? why : "an administrator's name and password are needed"); return; }
+			adm = 1; no = vpn_may(&me, pol, off, 1); no2 = *curpol ? vpn_may(&me, curpol, 1, 1) : NULL;
+		}
+		if (no || no2) { str j = {0}; sadd(&j, "{\"ok\":false,\"needAdmin\":%s,\"error\":", (no ? strstr(no, "Only an administrator") != NULL : strstr(no2, "Only an administrator") != NULL) ? "true" : "false"); sjson(&j, no ? no : no2); sadd(&j, "}");
+			reply(r->fd, 403, "application/json", j.b, j.n, NULL); free(j.b); return; }
+		(void)adm;
+		int st2; char *o;
+		if (off) { const char *av[] = { "vpn", "down", NULL }; o = vpn_helper(av, NULL, 0, &st2); }
+		else { const char *av[] = { "vpn", "up", vid, me.name[0] ? me.name : "-", NULL }; o = vpn_helper(av, NULL, 0, &st2); }
+		vpn_reply(r, o, st2); return;
 	}
 	reply_err(r->fd, 404, "unknown VPN request");
+}
+/* at rudolfd's start: an "Always on" VPN on (in the background: its server may take a while to answer) */
+static void vpn_boot(void)
+{
+	if (!root_have("vpn")) return;
+	pid_t p = fork();
+	if (p == 0) { if (fork() != 0) _exit(0); const char *av[] = { "vpn", "boot", NULL }; int nul = root_null(); root_call(av, nul, nul, nul); _exit(0); }
+	if (p > 0) while (waitpid(p, NULL, 0) < 0 && errno == EINTR) {}
 }
 /* every half minute while a VPN is meant to be on (RUN/vpn/on: the helper's, root's) */
 static void vpn_tick(void)

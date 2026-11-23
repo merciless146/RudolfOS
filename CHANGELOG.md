@@ -10,6 +10,9 @@ Summary: In progress.
   state. While it is on, every app's traffic and its name lookups go through it, the local network is still reached
   directly, and nothing goes round it by IPv6. Its key is kept where only the system reads it. The same on Native,
   Chromium and Lite.
+- New: who may turn each VPN on and off, an administrator's choice: Everyone (the default), Administrators only, or Always
+  on (it comes back at every start and nobody can turn it off). Accounts with parental controls cannot turn a VPN off,
+  and turning off a VPN another account turned on says so first ("Ann's VPN is on for everyone on this computer").
 - Fixed: on the native desktop the taskbar's pinned apps and workspace buttons kept their light grey edge in dark mode, where
   Chromium mode draws a dim one, and a pinned app had no line under it while its window was open (grey, or the accent colour
   while that window is the active one). Both now look as in Chromium mode, on every monitor's taskbar. The "Several monitors"
