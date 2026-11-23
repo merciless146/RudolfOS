@@ -23,7 +23,7 @@ function exactly as it does in Chromium mode."
 ## Parts
 **Moved to docs/plan-2.0.md on 2026-11-22:** Parts 4, 5, 6, 7 and 8 (the phone, eSIM and 5G, closing the gap with
 Android, T-Mobile prepaid, mobile data and the SIM), 9b (the first ARM64 release) and 19b (gaming measured). The owner
-decided on 2026-11-22 that Rudolf OS 1.6.x is the home and office edition and Rudolf Kryptonite (2.0) the gaming and
+decided on 2026-11-22 that Rudolf OS 1.6.x is the home and office edition and WendigOS (2.0) the gaming and
 mobile edition ("Two editions, one repository" in docs/plan-2.0.md), then said "Yes" to moving them. Their numbers are
 kept so references still point the right way.
 
@@ -599,7 +599,7 @@ and then kept in memory. The kernel reads xz and zlib only (iso/kconfig.sh line 
 **Kept only if measured:** as Part 12, a change is kept only if it helps on at least one of the Vivobook and the Asus
 desktop and hurts on neither.
 1. **The kernel first:** SQUASHFS_ZSTD (and ZSTD_DECOMPRESS) built in, on x86-64 and ARM64 (iso/kconfig.sh,
-   iso/kconfig-arm64.sh; Kryptonite's kconfig on its branch too); the images unchanged. This goes out in a release
+   iso/kconfig-arm64.sh; WendigOS's kconfig on its branch too); the images unchanged. This goes out in a release
    before any image changes, so every system that updates already runs a kernel that can read the new images, and an
    older kernel never meets a zstd image (the updater checks it too: it refuses an image whose compression the running
    or next kernel cannot read, and says so).
@@ -642,6 +642,17 @@ recovery system and for a stick; and the running kernel for the one layer it mou
 its keys). make_release.py refuses to write such a release in the first place. Tested by iso/qt/host/sqcomp162_t.sh
 (17 checks; the workflow sqcomp-check.yml, with real mksquashfs images). **This must be in a released beta before any
 image switches** (item 3's PR says so).
+
+**Status (2026-11-23, item 4: updates; the PR "zstd for the system's images, step 4").** What Settings › Update showed before:
+"Download (only the changes)" on an ordinary connection (no size), and "up to N MB" (every file's size) on a metered one.
+The first update after the switch downloads the changed images whole (deltas find no block in common between an xz and a
+zstd image, or between two block sizes), so that was wrong. Now rudolf-update's status says what comes whole ("whole",
+its bytes, "wholeLayers", "packed": each new layer's signed row C against the compression and block size in this
+computer's own layer's superblock), and Settings says it on the button on every connection ("Download (about 530 MB)",
+"Download over mobile data: about 530 MB") and why in the card, once; the download goes straight to the whole file for such
+a layer (no delta scan first). An ordinary update is as before. Tested by iso/qt/host/updsize162_t.sh (8/8) and
+iso/qt/shell2/updsize162_t.js (7/7), in sqcomp-check.yml. It needs item 1's rows (built on its PR) and must be in a
+release before the switch too, so the first switched update already shows its size.
 
 ### 32. Emu's Nintendo 64 and Dreamcast games, played for real (added on 2026-11-22)
 The owner: "Create a scheduled task to test run the Dreamcast and N64 emulators for Emu, making test games specifically for

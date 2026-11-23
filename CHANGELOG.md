@@ -23,6 +23,9 @@ Summary: In progress.
   themselves are unchanged in this version; a later one moves them to zstd once every updated computer can read them.
 - Updates: an update whose system images its own kernel could not read is refused with a message saying so (when it is
   checked, and again once downloaded), as are the recovery system and Make a stick; nothing on the computer is changed.
+- Updates: when an update packs the system's images in a new way (as the move to zstd does), Settings › Update says before
+  downloading that they come whole this once, and how much ("Download (about 530 MB)"), on every connection; later updates
+  download only the changes again. The download no longer tries the changes first for such an image.
 - New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
   tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
   night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same
