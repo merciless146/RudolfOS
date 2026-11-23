@@ -18,20 +18,23 @@
  *     put back at the end.
  * Off again: the interface, its rules and routes removed, src_valid_mark and the name servers as they were.
  *
- *   vpn list                     every VPN as JSON (never a key): id, name, type, server, addresses, DNS, and the
- *                                one on: state (connecting, connected, noanswer), since, by, bytes
+ *   vpn list                     every VPN as JSON (never a key): id, name, type, policy, server, addresses,
+ *                                DNS, and the one on: state (connecting, connected, noanswer), since, by, bytes
  *   vpn add wireguard            standard input: the VPN's name on the first line, then the .conf file (at most 64 KB).
  *                                Checked (a malformed file is refused with the line it fails on), kept in VPN_DIR
  *                                (root's 0700; each file root's 0600: the private key is read by nobody else).
  *                                Prints {"ok":true,"id":ID,"notes":[...]}
- *   vpn set ID name              the name (standard input, one line, at most 64 bytes)
+ *   vpn set ID name|policy VALUE the name (standard input, one line, at most 64 bytes); the policy
+ *                                (everyone, admins, always)
  *   vpn remove ID                turned off first if it is on; its files removed
  *   vpn up ID BY                 turned on (another one on is turned off first); BY: who turned it on (the account's
  *                                name, at most 64 bytes, or "-") for "Ann's VPN is on for everyone on this computer"
  *   vpn down                     the VPN that is on turned off
+ *   vpn boot                     at rudolfd's start: an "Always on" VPN turned on
  *   vpn tick                     every half minute while a VPN is meant to be on: set up again if its interface is gone
  *
- * Who may do which is rudolfd's (rudolfd-vpn.inc: an administrator's password for add, set and remove). Everything is checked again here, whatever rudolfd checked: an ID is
+ * Who may do which is rudolfd's (rudolfd-vpn.inc: an administrator's password for add, set and remove; the VPN's
+ * policy and parental controls for up and down). Everything is checked again here, whatever rudolfd checked: an ID is
  * "v" and 8 hex digits, names are printable UTF-8. The private and preshared keys go from the file to the kernel and
  * nowhere else: never printed, never in the health log, never in a file another user can read. A refusal is said in
  * the health log (Security).
@@ -292,17 +295,18 @@ static int full6(const Conf *c) { for (int i = 0; i < c->npeer; i++) for (int k 
 static int any6(const Conf *c) { for (int i = 0; i < c->npeer; i++) for (int k = 0; k < c->peer[i].nips; k++) if (c->peer[i].ips[k].fam == AF_INET6) return 1; return 0; }
 
 /* ------------------------------------------------------------------ what is kept: VPN_DIR/ID.conf (the file), ID.meta */
-typedef struct { char id[16], name[80], type[16]; long long added; } Meta;
+typedef struct { char id[16], name[80], type[16], policy[16]; long long added; } Meta;
 static void meta_path(const char *id, const char *ext, char *o, size_t n) { snprintf(o, n, "%s/%s.%s", VPN_DIR, id, ext); }
 static int meta_read(const char *id, Meta *m)
 {
 	memset(m, 0, sizeof *m); char p[PATH_MAX]; meta_path(id, "meta", p, sizeof p);
 	char *t = slurp(p, 8192, NULL); if (!t) return -1;
-	snprintf(m->id, sizeof m->id, "%s", id); snprintf(m->type, sizeof m->type, "wireguard");
+	snprintf(m->id, sizeof m->id, "%s", id); snprintf(m->policy, sizeof m->policy, "everyone"); snprintf(m->type, sizeof m->type, "wireguard");
 	char *sv = NULL;
 	for (char *l = strtok_r(t, "\n", &sv); l; l = strtok_r(NULL, "\n", &sv)) {
 		if (!strncmp(l, "name=", 5) && utf8_name_ok(l + 5, 64)) snprintf(m->name, sizeof m->name, "%s", l + 5);
 		else if (!strncmp(l, "type=", 5) && (!strcmp(l + 5, "wireguard") || !strcmp(l + 5, "openvpn"))) snprintf(m->type, sizeof m->type, "%s", l + 5);
+		else if (!strncmp(l, "policy=", 7) && (!strcmp(l + 7, "everyone") || !strcmp(l + 7, "admins") || !strcmp(l + 7, "always"))) snprintf(m->policy, sizeof m->policy, "%s", l + 7);
 		else if (!strncmp(l, "added=", 6)) m->added = atoll(l + 6);
 	}
 	free(t); if (!m->name[0]) snprintf(m->name, sizeof m->name, "VPN");
@@ -311,7 +315,7 @@ static int meta_read(const char *id, Meta *m)
 static int meta_write(const Meta *m)
 {
 	char p[PATH_MAX], b[1024]; meta_path(m->id, "meta", p, sizeof p);
-	int n = snprintf(b, sizeof b, "name=%s\ntype=%s\nadded=%lld\n", m->name, m->type, m->added);
+	int n = snprintf(b, sizeof b, "name=%s\ntype=%s\npolicy=%s\nadded=%lld\n", m->name, m->type, m->policy, m->added);
 	return put_file(p, b, (size_t)n, 0600);
 }
 /* the one meant to be on: RUN/vpn/on, "ID\nBY\nSINCE\n" */
@@ -673,7 +677,7 @@ static void list_one(FILE *o, const Meta *m, const OnState *on, int first)
 {
 	size_t len = 0; char *t = conf_text(m->id, &len); Conf c; char why[200]; int ok = t && !conf_parse(t, len, &c, why, sizeof why); if (t) { explicit_bzero(t, len); free(t); }
 	fprintf(o, "%s{\"id\":\"%s\",\"name\":", first ? "" : ",", m->id); jstr(o, m->name);
-	fprintf(o, ",\"type\":\"%s\",\"added\":%lld", m->type, m->added);
+	fprintf(o, ",\"type\":\"%s\",\"policy\":\"%s\",\"added\":%lld", m->type, m->policy, m->added);
 	if (ok) {
 		char s[300]; snprintf(s, sizeof s, "%s:%d", c.peer[0].host, c.peer[0].port); if (strchr(c.peer[0].host, ':')) snprintf(s, sizeof s, "[%s]:%d", c.peer[0].host, c.peer[0].port);
 		fprintf(o, ",\"server\":"); jstr(o, s);
@@ -719,7 +723,7 @@ static int cmd_add(const char *type)
 	mkdirs();
 	Meta m; memset(&m, 0, sizeof m); uint8_t rb[4]; if (getrandom(rb, 4, 0) != 4) { conf_wipe(&c); free(in); return 1; }
 	snprintf(m.id, sizeof m.id, "v%02x%02x%02x%02x", rb[0], rb[1], rb[2], rb[3]); snprintf(m.name, sizeof m.name, "%s", name);
-	snprintf(m.type, sizeof m.type, "wireguard"); m.added = (long long)time(NULL);
+	snprintf(m.type, sizeof m.type, "wireguard"); snprintf(m.policy, sizeof m.policy, "everyone"); m.added = (long long)time(NULL);
 	char p[PATH_MAX]; meta_path(m.id, "conf", p, sizeof p);
 	int bad = put_file(p, conf, cl, 0600) || meta_write(&m);
 	explicit_bzero(in, len); free(in);
@@ -735,7 +739,10 @@ static int cmd_set(const char *id, const char *key, const char *val)
 		size_t n = 0; char *in = read_all(0, 200, &n); if (!in) return refuse("a name over 200 bytes", "");
 		in[strcspn(in, "\n")] = 0; if (!utf8_name_ok(in, 64)) { free(in); printf("{\"ok\":false,\"error\":\"the name has 1 to 64 characters\"}\n"); return 1; }
 		snprintf(m.name, sizeof m.name, "%s", in); free(in);
-	} else return refuse("a setting that is not the name", key);
+	} else if (!strcmp(key, "policy")) {
+		if (!val || (strcmp(val, "everyone") && strcmp(val, "admins") && strcmp(val, "always"))) return refuse("a policy that is not everyone, admins or always", val);
+		snprintf(m.policy, sizeof m.policy, "%s", val);
+	} else return refuse("a setting that is not name or policy", key);
 	if (meta_write(&m)) { printf("{\"ok\":false,\"error\":\"the setting could not be kept\"}\n"); return 1; }
 	vpn_event(); printf("{\"ok\":true}\n"); return 0;
 }
@@ -747,6 +754,13 @@ static int cmd_remove(const char *id)
 	{ size_t n = 0; char *t = slurp(p, MAXCONF, &n); if (t) { int f = open(p, O_WRONLY | O_CLOEXEC | O_NOFOLLOW); if (f >= 0) { explicit_bzero(t, n); if (write(f, t, n) < 0) {} if (fsync(f)) {} close(f); } free(t); } }   /* (the key overwritten first) */
 	unlink(p); meta_path(id, "meta", p, sizeof p); unlink(p);
 	rr_health("vpn", "the VPN %s was removed", m.name); vpn_event(); printf("{\"ok\":true}\n"); return 0;
+}
+/* an "Always on" VPN, turned on at the start (the first one, if more than one says so) */
+static int cmd_boot(void)
+{
+	char l[64][16]; int n = ids(l, 64);
+	for (int i = 0; i < n; i++) { Meta m; if (!meta_read(l[i], &m) && !strcmp(m.policy, "always")) { int f = open("/dev/null", O_WRONLY | O_CLOEXEC); int sv = dup(1); if (f >= 0) { dup2(f, 1); close(f); } int r = cmd_up(m.id, "-"); if (sv >= 0) { dup2(sv, 1); close(sv); } return r; } }
+	return 0;
 }
 /* while one is meant to be on: its interface back if it is gone (it could not resolve its server at the start, say) */
 static int cmd_tick(void)
@@ -764,16 +778,17 @@ static int cmd_tick(void)
 #ifndef VPN_NO_MAIN   /* (the fuzz test, qt/host/fuzz/vpn_fuzz.c, has its own) */
 int main(int argc, char **argv)
 {
-	if (argc < 2) { fprintf(stderr, "usage: vpn list|add|set|remove|up|down|tick ...\n"); return 2; }
+	if (argc < 2) { fprintf(stderr, "usage: vpn list|add|set|remove|up|down|boot|tick ...\n"); return 2; }
 	signal(SIGPIPE, SIG_IGN); umask(077);
 	const char *op = argv[1]; int n = argc - 2; char **a = argv + 2;
 	if (!strcmp(op, "list")) { if (n) return refuse("arguments for list", a[0]); return cmd_list(); }
 	mkdirs(); lock_take();
 	if (!strcmp(op, "add")) { if (n != 1) return refuse("add without its kind", ""); return cmd_add(a[0]); }
-	if (!strcmp(op, "set")) { if (n != 2 || !id_ok(a[0])) return refuse("a VPN that is not one", n ? a[0] : ""); return cmd_set(a[0], a[1], NULL); }
+	if (!strcmp(op, "set")) { if (n < 2 || n > 3 || !id_ok(a[0])) return refuse("a VPN that is not one", n ? a[0] : ""); return cmd_set(a[0], a[1], n == 3 ? a[2] : NULL); }
 	if (!strcmp(op, "remove")) { if (n != 1 || !id_ok(a[0])) return refuse("a VPN that is not one", n ? a[0] : ""); return cmd_remove(a[0]); }
 	if (!strcmp(op, "up")) { if (n != 2 || !id_ok(a[0]) || (strcmp(a[1], "-") && !utf8_name_ok(a[1], 64))) return refuse("a VPN or a name that is not one", n ? a[0] : ""); return cmd_up(a[0], a[1]); }
 	if (!strcmp(op, "down")) { if (n) return refuse("arguments for down", a[0]); cmd_down(0); printf("{\"ok\":true}\n"); return 0; }
+	if (!strcmp(op, "boot")) { if (n) return refuse("arguments for boot", a[0]); return cmd_boot(); }
 	if (!strcmp(op, "tick")) { if (n) return refuse("arguments for tick", a[0]); return cmd_tick(); }
 	return refuse("an unknown action", op);
 }

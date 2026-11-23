@@ -5833,6 +5833,7 @@ int main(int argc, char **argv)
 		if (root_have("power")) { pid_t pp = fork(); if (pp == 0) { const char *av[] = { "power", "apply", NULL }; int nul = root_null(); if (root_call(av, nul, nul, nul) < 0 && system("/usr/lib/rudolf/power apply >/dev/null 2>&1") != 0) {} _exit(0); } }   /* (1.6.1 Part 11) */
 		else if (system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}
 	}
+	vpn_boot();   /* 1.6.2 (plan-1.6.2 Part 33): an "Always on" VPN */
 	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0), one = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 	struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(8080), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };

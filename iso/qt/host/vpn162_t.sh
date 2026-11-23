@@ -11,7 +11,8 @@
 #   root's only, its key in no answer, log or page; connected (a handshake with the server); the whole computer's
 #   traffic and its name lookups through the tunnel, a capture on wlan0 showing only the tunnel's packets; the local
 #   network still reached directly; IPv6 not around it; disconnected: the network as it was; set up again by itself
-#   when its interface goes; renamed and removed.
+#   when its interface goes; "Administrators only",
+#   "Always on", a child account, another account's VPN; Always on again at rudolfd's start; removed.
 # Needs root, unshare, nsenter, ip, wg (wireguard-tools), tcpdump, python3, gcc, node and a kernel with WireGuard.
 # Ports 8631 and 8632 in the test's namespaces only; rudolfd's 8080 inside its own.   sh vpn162_t.sh
 HERE=$(cd "$(dirname "$0")" && pwd); SYS=$HERE/../../sys
@@ -116,13 +117,13 @@ try: open('/persist/etc/vpn/$ID.conf').read(); print('read')
 except Exception as e: print('refused')")
 ok "5. kept where only root reads it: the folder root's 0700, the file root's 0600; another user cannot read it" "$([ "$P" = '0 700' ] && [ "$C" = '0 600' ] && [ "$M" = '0 600' ] && [ "$rd" = refused ] && echo 1)" "$P / $C / $M / $rd"
 o=$(api GET /api/vpn)
-ok "6. listed: its name as given, the server, the address, the DNS server, the whole computer's, off" "$([ "$(js "$o" 'j.vpns[0].name+"|"+j.vpns[0].server+"|"+j.vpns[0].addresses[0]+"|"+j.vpns[0].dns[0]+"|"+j.vpns[0].whole+"|"+j.vpns[0].on')" = "Home <VPN>|vpn.test:51820|10.66.0.2/32|10.66.0.1|true|false" ] && ! echo "$o" | grep -q '<VPN>' && echo 1)" "$o"
+ok "6. listed: its name as given, the server, the address, the DNS server, the whole computer's, off, Everyone; Bob may turn it on" "$([ "$(js "$o" 'j.vpns[0].name+"|"+j.vpns[0].server+"|"+j.vpns[0].addresses[0]+"|"+j.vpns[0].dns[0]+"|"+j.vpns[0].whole+"|"+j.vpns[0].on+"|"+j.vpns[0].policy+"|"+j.vpns[0].mayOn')" = "Home <VPN>|vpn.test:51820|10.66.0.2/32|10.66.0.1|true|false|everyone|true" ] && ! echo "$o" | grep -q '<VPN>' && echo 1)" "$o"
 
 # ---- connected
 tcpdump -i wlan0 -n -U -w $T/cap.pcap > $T/tcpdump.log 2>&1 & TD=$!; PIDS="$PIDS $TD"; w8 "grep -q listening $T/tcpdump.log" 50
 : > $T/dns-isp; : > $T/dns-vpn
 o=$(api POST "/api/vpn/on?id=$ID")
-ok "7. Bob (a standard account) turns it on, no password: connected, a handshake with the server (its name looked up first)" "$([ "$(code "$o")" = 200 ] && [ "$(js "$o" j.state)" = connected ] && B wg show wg0 latest-handshakes | awk '{print \$2}' | grep -qv '^0$' && grep -q '^vpn.test 1 ' $T/dns-isp && echo 1)" "$o $(B wg show wg0) $(tail -3 $T/rd.log)"
+ok "7. Bob turns it on (Everyone: no password): connected, a handshake with the server (its name looked up first)" "$([ "$(code "$o")" = 200 ] && [ "$(js "$o" j.state)" = connected ] && B wg show wg0 latest-handshakes | awk '{print \$2}' | grep -qv '^0$' && grep -q '^vpn.test 1 ' $T/dns-isp && echo 1)" "$o $(B wg show wg0) $(tail -3 $T/rd.log)"
 IF=$(ip -d link show rvpn0 2>&1); RU=$(ip rule 2>&1); RT=$(ip route show table 52566 2>&1)
 ok "8. ...the kernel's own WireGuard (rvpn0), the whole computer's table and rules, the server's route outside the tunnel (its mark)" "$(echo "$IF" | grep -q wireguard && echo "$RU" | grep -q 'not from all fwmark 0x52564e lookup 52566' && echo "$RU" | grep -q 'lookup main suppress_prefixlength 0' && echo "$RT" | grep -q 'default dev rvpn0' && echo 1)" "$IF / $RU / $RT"
 ok "9. all traffic through the tunnel: the internet sees the tunnel's address (10.66.0.2), not wlan0's" "$([ "$(who 203.0.113.5:8631)" = 10.66.0.2 ] && echo 1)" "$(who 203.0.113.5:8631)"
@@ -137,7 +138,7 @@ OUT=$(echo "$CAP" | grep -v '192.168.77.1.[0-9]* > 192.168.77.2.51820: UDP\|192.
 NWG=$(echo "$CAP" | grep -c '51820: UDP')
 ok "13. a capture on wlan0 (outside the tunnel) while it was on: only the tunnel's packets, the server's name looked up before, and the local network's own requests; never 203.0.113.5 or a name lookup in the clear" "$([ "$NWG" -ge 4 ] && [ -z "$OUT" ] && ! echo "$CAP" | grep -q '203.0.113.5\|who.test' && [ "$(echo "$CAP" | grep -c '> 192.168.77.2.53:')" -le 4 ] && echo 1)" "wg=$NWG other: $OUT"
 o=$(api GET /api/vpn); L=$(cat $T/rd.log /persist/var/log/health.log /run/rudolf/health.log /run/rudolf/events 2>/dev/null)
-ok "14. GET vpn: on, connected, turned on by Bob" "$([ "$(js "$o" 'j.vpns[0].on+" "+j.vpns[0].state+" "+j.vpns[0].by+" "+j.active')" = "true connected Bob $ID" ] && echo 1)" "$o"
+ok "14. GET vpn: on, connected, turned on by Bob; Bob may turn it off" "$([ "$(js "$o" 'j.vpns[0].on+" "+j.vpns[0].state+" "+j.vpns[0].by+" "+j.vpns[0].mayOff+" "+j.active')" = "true connected Bob true $ID" ] && echo 1)" "$o"
 ok "15. the private and preshared keys in no answer, log or page: not in GET vpn, rudolfd's log, the health log, /run/rudolf, the events" "$(for k in "$CK" "$PSK" "$(echo "$CK" | cut -c1-20)"; do echo "$o$L" | grep -qF "$k" && exit; grep -rqF "$k" /run/rudolf 2>/dev/null && exit; done; [ ! -e /tmp/pwned ] && echo 1)" "a key was found"
 
 # ---- off
@@ -146,15 +147,40 @@ ok "16. Bob turns it off: the interface, its rules and table gone; resolv.conf t
 ok "17. ...the network as it was: the internet sees wlan0's address, names from the network's server, IPv6 reached again" "$([ "$(who 203.0.113.5:8631)" = 192.168.77.1 ] && [ "$(look who.test)" = 192.168.77.2 ] && [ "$(who '[2001:db8::5]:8631')" = fd77::1 ] && echo 1)" "$(who 203.0.113.5:8631) $(look who.test) $(who '[2001:db8::5]:8631') $(ip -6 route)"
 
 # ---- set up again by itself: its interface gone while it is meant to be on (vpn tick, every half minute)
-as uAnnA1b2; o=$(api POST "/api/vpn/on?id=$ID"); ip link del rvpn0
+o=$(api POST "/api/vpn/on?id=$ID"); ip link del rvpn0
 w8 "ip link show rvpn0 >/dev/null 2>&1" 450
-ok "18. its interface gone while it is on: set up again by itself (within a minute), connected" "$([ "$(code "$o")" = 200 ] && ip link show rvpn0 >/dev/null 2>&1 && w8 "[ \"\$(who 203.0.113.5:8631)\" = 10.66.0.2 ]" 50 && echo 1)" "$o $(tail -3 $T/rd.log)"
+ok "17b. its interface gone while it is on: set up again by itself (within a minute), connected" "$([ "$(code "$o")" = 200 ] && ip link show rvpn0 >/dev/null 2>&1 && w8 "[ \"\$(who 203.0.113.5:8631)\" = 10.66.0.2 ]" 50 && echo 1)" "$o $(tail -3 $T/rd.log)"
+o=$(api POST /api/vpn/off)
+# ---- who may do what
+o=$(api POST /api/vpn/set "{\"n\":\"Bob\",\"p\":\"pw-bob\",\"id\":\"$ID\",\"policy\":\"admins\"}")
+o2=$(api POST /api/vpn/set "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\",\"policy\":\"admins\"}")
+o3=$(api POST "/api/vpn/on?id=$ID")
+ok "18. Administrators only (set with Ann's password, not Bob's): Bob alone cannot turn it on, and is told an administrator can" "$([ "$(code "$o")" = 403 ] && [ "$(code "$o2")" = 200 ] && [ "$(code "$o3")" = 403 ] && [ "$(js "$o3" j.needAdmin)" = true ] && ! ip link show rvpn0 >/dev/null 2>&1 && echo 1)" "$o / $o2 / $o3"
+o=$(api POST "/api/vpn/on?id=$ID" '{"n":"Ann","p":"pw-ann"}')
+ok "19. ...with Ann's password Bob's turning it on goes through" "$([ "$(code "$o")" = 200 ] && ip link show rvpn0 >/dev/null 2>&1 && echo 1)" "$o"
+as uAnnA1b2; o=$(api GET /api/vpn)
+ok "20. Ann signed in: the VPN is Bob's, on for everyone on this computer (by: Bob), and Ann may turn it off" "$([ "$(js "$o" 'j.vpns[0].by+" "+j.vpns[0].mayOff+" "+j.me.admin')" = "Bob true true" ] && echo 1)" "$o"
+o=$(api POST /api/vpn/set "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\",\"policy\":\"always\"}"); o2=$(api POST /api/vpn/off)
+ok "21. Always on: nobody can turn it off, an administrator neither" "$([ "$(code "$o")" = 200 ] && [ "$(code "$o2")" = 403 ] && ip link show rvpn0 >/dev/null 2>&1 && echo "$o2" | grep -q 'always on' && echo 1)" "$o / $o2"
+o=$(api POST /api/vpn/off '{"n":"Ann","p":"pw-ann"}')
+ok "22. ...not even with an administrator's password" "$([ "$(code "$o")" = 403 ] && ip link show rvpn0 >/dev/null 2>&1 && echo 1)" "$o"
+# rudolfd started again: an Always on VPN comes back by itself (the interface removed first, as at a restart)
+kill $RDP; wait $RDP 2>/dev/null; ip link del rvpn0; rm -f /run/rudolf/vpn/on
+start_rd
+w8 "ip link show rvpn0 >/dev/null 2>&1" 100
+o=$(api GET /api/vpn)
+ok "23. Always on at rudolfd's start: on again by itself, connected" "$(ip link show rvpn0 >/dev/null 2>&1 && w8 "[ \"\$(who 203.0.113.5:8631)\" = 10.66.0.2 ]" 50 && echo 1)" "$o $(tail -3 $T/rd.log)"
+o=$(api POST /api/vpn/set "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\",\"policy\":\"everyone\"}")
+as uKimE5f6; o2=$(api GET /api/vpn); o3=$(api POST /api/vpn/off)
+ok "24. a child account (parental controls) cannot turn a VPN off, even one for Everyone" "$([ "$(code "$o")" = 200 ] && [ "$(js "$o2" 'j.me.child+" "+j.vpns[0].mayOff+" "+j.vpns[0].mayOn')" = "true false true" ] && [ "$(code "$o3")" = 403 ] && echo "$o3" | grep -q 'parental controls' && ip link show rvpn0 >/dev/null 2>&1 && echo 1)" "$o2 / $o3"
+o=$(api POST /api/vpn/off '{"n":"Ann","p":"pw-ann"}')
+ok "25. ...not even with an administrator's password typed in for it" "$([ "$(code "$o")" = 403 ] && ip link show rvpn0 >/dev/null 2>&1 && echo 1)" "$o"
 as uBobC3d4; o=$(api POST /api/vpn/off)
-ok "19. Bob turns off the VPN Ann turned on" "$([ "$(code "$o")" = 200 ] && ! ip link show rvpn0 >/dev/null 2>&1 && [ ! -e /run/rudolf/vpn/on ] && echo 1)" "$o"
-o=$(api POST /api/vpn/on?id=v00000000); o2=$(api POST '/api/vpn/on?id=../x'); o3=$(api GET /api/vpn/on?id=$ID); o4=$(api POST /api/vpn/set "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\",\"name\":\"$(printf 'x%.0s' $(seq 70))\"}")
-ok "20. a VPN that is not there, an id that is not one, a GET to turn on, a name over 64 characters: refused" "$([ "$(code "$o")" = 404 ] && [ "$(code "$o2")" = 400 ] && [ "$(code "$o3")" = 405 ] && [ "$(code "$o4")" = 400 ] && echo 1)" "$o / $o2 / $o3 / $o4"
+ok "26. Bob (Everyone) turns it off" "$([ "$(code "$o")" = 200 ] && ! ip link show rvpn0 >/dev/null 2>&1 && echo 1)" "$o"
+o=$(api POST /api/vpn/on?id=v00000000); o2=$(api POST '/api/vpn/on?id=../x'); o3=$(api GET /api/vpn/on?id=$ID); o4=$(api POST /api/vpn/set "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\",\"policy\":\"root\"}")
+ok "27. a VPN that is not there, an id that is not one, a GET to turn on, a policy that is not one: refused" "$([ "$(code "$o")" = 404 ] && [ "$(code "$o2")" = 400 ] && [ "$(code "$o3")" = 405 ] && [ "$(code "$o4")" = 400 ] && echo 1)" "$o / $o2 / $o3 / $o4"
 o=$(api POST /api/vpn/set "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\",\"name\":\"Work\"}"); o2=$(api GET /api/vpn)
-ok "21. renamed by an administrator" "$([ "$(code "$o")" = 200 ] && [ "$(js "$o2" 'j.vpns[0].name')" = Work ] && echo 1)" "$o / $o2"
+ok "28. renamed by an administrator" "$([ "$(code "$o")" = 200 ] && [ "$(js "$o2" 'j.vpns[0].name')" = Work ] && echo 1)" "$o / $o2"
 o=$(api POST /api/vpn/remove "{\"n\":\"Bob\",\"p\":\"pw-bob\",\"id\":\"$ID\"}"); o2=$(api POST /api/vpn/remove "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\"}")
-ok "22. removed (Ann's password; not Bob's): its files gone" "$([ "$(code "$o")" = 403 ] && [ "$(code "$o2")" = 200 ] && [ -z "$(ls /persist/etc/vpn)" ] && echo 1)" "$o / $o2"
+ok "29. removed (Ann's password; not Bob's): its files gone" "$([ "$(code "$o")" = 403 ] && [ "$(code "$o2")" = 200 ] && [ -z "$(ls /persist/etc/vpn)" ] && echo 1)" "$o / $o2"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

@@ -5833,15 +5833,16 @@ static void net_read(void)
 	jfree(v);
 }
 /* (1.6.2 Part 33: the VPNs, vpn62.js vpnRows: after the adapters, each a row of the same list; GET vpn) */
-typedef struct { char id[16], name[96], state[16]; int on; } VpnRow;
-static VpnRow VPNR[8]; static int NVPN; static char VPN_BUSY[16];
+typedef struct { char id[16], name[96], state[16], by[96], policy[16]; int on, may_on, may_off; } VpnRow;
+static VpnRow VPNR[8]; static int NVPN; static char VPN_ME[96], VPN_ACT[16], VPN_BUSY[16];
 static void vpn_read(void)
 {
-	JV *v = jget("/api/vpn"); NVPN = 0; if (!v) return;
+	JV *v = jget("/api/vpn"); NVPN = 0; VPN_ME[0] = VPN_ACT[0] = 0; if (!v) return;
+	JV *me = jprop(v, "me"); jstr(me, "name", VPN_ME, sizeof VPN_ME); jstr(v, "active", VPN_ACT, sizeof VPN_ACT);
 	JV *a = jprop(v, "vpns");
 	for (int i = 0; a && a->t == 4 && i < a->len && NVPN < 8; i++) { JV *o = jat(a, i); VpnRow *r = &VPNR[NVPN++]; memset(r, 0, sizeof *r);
-		jstr(o, "id", r->id, sizeof r->id); jstr(o, "name", r->name, sizeof r->name); jstr(o, "state", r->state, sizeof r->state);
-		r->on = jbool(o, "on"); }
+		jstr(o, "id", r->id, sizeof r->id); jstr(o, "name", r->name, sizeof r->name); jstr(o, "state", r->state, sizeof r->state); jstr(o, "by", r->by, sizeof r->by); jstr(o, "policy", r->policy, sizeof r->policy);
+		r->on = jbool(o, "on"); r->may_on = jbool(o, "mayOn"); r->may_off = jbool(o, "mayOff"); }
 	jfree(v);
 }
 /* (vpnState) */
@@ -5849,6 +5850,14 @@ static const char *vpn_state(const VpnRow *r)
 {
 	if (VPN_BUSY[0] && !strcmp(VPN_BUSY, r->id)) return r->on ? "Turning off…" : "Connecting…";
 	return !r->on ? "Off" : !strcmp(r->state, "connected") ? "Connected" : !strcmp(r->state, "noanswer") ? "No answer" : "Connecting…";
+}
+/* (vpnDirect: at once from the pop-up, with no password and no question; else Settings › Network asks) */
+static int vpn_direct(const VpnRow *r)
+{
+	if (r->on) return r->may_off && !(r->by[0] && VPN_ME[0] && strcmp(r->by, VPN_ME));
+	if (!r->may_on) return 0;
+	for (int i = 0; i < NVPN; i++) if (VPN_ACT[0] && strcmp(VPN_ACT, r->id) && !strcmp(VPNR[i].id, VPN_ACT) && !VPNR[i].may_off) return 0;
+	return 1;
 }
 typedef struct { char path[64], name[96]; int off, code; GByteArray *b; } VpnJob;
 static gboolean vpn_done(gpointer p)
@@ -5866,7 +5875,8 @@ static gboolean vpn_done(gpointer p)
 static gpointer vpn_thread(gpointer p) { VpnJob *j = p; j->code = http("POST", j->path, NULL, 0, &j->b); g_idle_add(vpn_done, j); return NULL; }
 static void vpn_click(int i)
 {
-	if (i < 0 || i >= NVPN || VPN_BUSY[0]) return; VpnRow *r = &VPNR[i];   /* (vpnToggle) */
+	if (i < 0 || i >= NVPN || VPN_BUSY[0]) return; VpnRow *r = &VPNR[i];
+	if (!vpn_direct(r)) { fl_close(); tb_settings("net"); return; }
 	VpnJob *j = g_new0(VpnJob, 1); j->off = r->on; snprintf(j->name, sizeof j->name, "%s", r->name);
 	if (r->on) snprintf(j->path, sizeof j->path, "/api/vpn/off"); else snprintf(j->path, sizeof j->path, "/api/vpn/on?id=%s", r->id);
 	snprintf(VPN_BUSY, sizeof VPN_BUSY, "%s", r->id); if (FLAREA) gtk_widget_queue_draw(FLAREA);
