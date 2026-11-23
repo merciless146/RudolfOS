@@ -12,6 +12,10 @@ Summary: In progress.
 - Kernel: the SMB client for network shares (Windows computers and NAS boxes, 1.6.2 Part 35) is built in as a signed module, loaded
   only when a share is opened. It speaks SMB 3 (and SMB 2.1 when asked for a share), never the old SMB 1 or 2.0, and Rudolf OS
   serves no share.
+- New (for File Explorer's network shares, Part 35): Rudolf OS can open a shared folder of a Windows computer or a NAS box for the
+  account signed in. Its files are that account's alone (other accounts cannot see it), the server is asked to encrypt where it
+  can, the password is kept in the account's keyring only if asked, and every share closes at sign-out. A wrong password, a
+  missing share or a server that speaks only the old SMB 1 is said plainly.
 - New: scanners (step 1 of 4: driverless scanning, without the Scan app yet). Rudolf OS finds the scanners and
   printer-scanners on the home network that speak eSCL (AirScan) or WSD, as most made since about 2015 do, with the
   firewall on, and USB ones that speak eSCL through IPP over USB; it scans with sane-airscan (pages in colour, grey or black

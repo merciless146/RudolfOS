@@ -133,6 +133,8 @@ gcc -O2 $HARD -o usr/lib/rudolf/root/drives-home "$SYS/rudolf-drives-home.c" -Wl
 gcc -O2 $HARD -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 $HARD -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
+# 1.6.2 (docs/plan-1.6.2.md Part 35): network shares, the network's side (run by rudolfd as nobody)
+gcc -O2 $HARD -o usr/bin/rudolf-shares "$SYS/rudolf-shares.c" -lcrypto
 # 1.6.2 (docs/plan-1.6.2.md Part 30): the LAN game relay for two-player Library games (started by rudolfd as the account's user)
 gcc -O2 $HARD -o usr/bin/rudolf-duel "$SYS/rudolf-duel.c"
 # 1.6.2 (docs/plan-1.6.2.md Part 34): scanning: rudolf-scan, libsane (opened with dlopen) and sane-airscan (eSCL, WSD)

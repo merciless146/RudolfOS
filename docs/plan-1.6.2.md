@@ -819,6 +819,16 @@ them. Tests: qt/host/debscan162_t.sh 6/6, debhome_t.sh 6/6 unchanged.
 (SMB 2.1 and 3 only: CIFS_ALLOW_INSECURE_LEGACY off, so the kernel itself has no SMB 1 or 2.0; no upcalls, RDMA, cache or key
 dump; no SMB server), in iso/kconfig-required.txt; .github/workflows/shares-check.yml builds this tree's kernel and checks the
 module (iso/qt/host/cifsmod62_t.sh: signed, SHA-256, no device alias, so it is loaded only when a share is mounted).
+Step 2 (PR "Network shares, step 2"): rudolfd's shares/ requests (iso/sys/rudolfd-shares.inc: open, close, the open ones,
+list, found, kept, forget); the drives helper's share-mount, share-umount, share-umount-all (rudolf-drives.c: the kernel's SMB
+client through fsopen/fsconfig, one option at a time, so nothing in a name or password is read as an option; for the signed-in
+account's own Linux user only, at /run/rudolf/shares/UID/ID, 0700, files 0600, nosuid, nodev, noexec; SMB 3 with "seal" first,
+without it only where the server has no encryption; 2.1 only when asked; a guest anonymously, then as "guest"); rudolf-shares
+(iso/sys/rudolf-shares.c, run as nobody: resolve by DNS or multicast DNS, probe, list by its own small SMB 2.1/3 client with
+NTLMv2 and signing, find); the password in the account's keyring only when asked (rudolf-portal --keyring-store share-ID);
+fs/ reaches only the signed-in account's open shares, links followed must stay inside the share (shares_path_ok); every share
+closed at sign-out (au_session_stop). Tests: iso/qt/host/shares62_t.sh (Samba in network namespaces, the runner's kernel) and
+iso/qt/sb/shares62_q.py (the newest beta with this tree's kernel and programs, two accounts) in shares-check.yml.
 
 ### 36. Desert Camp, the third moving background (added on 2026-11-22)
 The owner, 2026-11-22: a third dynamic background in Display Properties: an open desert with sparse dry foliage and a few tents

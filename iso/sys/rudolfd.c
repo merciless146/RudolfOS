@@ -234,9 +234,10 @@ static int shared_path(const char *p)
 	for (int i = 0; R[i]; i++) { size_t l = strlen(R[i]); if (!strncmp(p, R[i], l) && (!p[l] || p[l] == '/')) return 1; }
 	return 0;
 }
+static int shares_path_ok(const char *p);   /* rudolfd-shares.inc (1.6.2 Part 35): the signed-in account's open network shares */
 static int safe_media_path(const char *p)
 {
-	if (!p || (strncmp(p, "/media/", 7) && !shared_path(p)) || strstr(p, "/../") || strstr(p, "/./") || strlen(p) > 1024) return 0;
+	if (!p || (strncmp(p, "/media/", 7) && !shared_path(p) && !shares_path_ok(p)) || strstr(p, "/../") || strstr(p, "/./") || strlen(p) > 1024) return 0;
 	size_t n = strlen(p);
 	if (n >= 3 && !strcmp(p + n - 3, "/..")) return 0;
 	return 1;
@@ -4574,6 +4575,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-scan.inc"      /* 1.6.2: scanning, the Scan app's requests (plan-1.6.2 Part 34) */
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
 #include "rudolfd-bring.inc"     /* 1.6.2: Bring your files, the installer's step (plan-1.6.2 Part 27) */
+#include "rudolfd-shares.inc"    /* 1.6.2: network shares in File Explorer (plan-1.6.2 Part 35) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -5010,6 +5012,8 @@ static void api(struct req *r)
 	   the destination not inside a source. */
 	/* 1.6.2 (plan-1.6.2 Part 27): Bring your files (rudolfd-bring.inc) */
 	if (!strncmp(p, "bring/", 6)) { api_bring(r, p + 6, post); return; }
+	/* 1.6.2 (plan-1.6.2 Part 35): network shares (rudolfd-shares.inc) */
+	if (!strncmp(p, "shares/", 7)) { shares_api(r, p + 7, post); return; }
 	if (!strcmp(p, "fs/xcopy")) {
 		if (!post || !r->body || r->blen > 65536) { reply_err(r->fd, 400, "use POST, with what to copy"); return; }
 		if (job_running()) { reply_err(r->fd, 409, "busy: another job is running, try again when it ends"); return; }
