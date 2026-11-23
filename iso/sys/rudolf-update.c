@@ -283,6 +283,13 @@ static int sq_comp(const char *path)
 	if (r != (ssize_t)sizeof h || memcmp(h, "hsqs", 4)) return 0;
 	int c = h[20] | h[21] << 8; return c > 0 && c < 7 ? c : 7;
 }
+/* (its block size, the 32 bits at byte 12; 0 when not one) */
+static long sq_block(const char *path)
+{
+	unsigned char h[16]; int f = open(path, O_RDONLY | O_CLOEXEC); if (f < 0) return 0;
+	ssize_t r = pread(f, h, sizeof h, 0); close(f);
+	return r == (ssize_t)sizeof h && !memcmp(h, "hsqs", 4) ? (long)(h[12] | h[13] << 8 | h[14] << 16 | (unsigned long)h[15] << 24) : 0;
+}
 static const char *sq_name(int c) { return c > 0 && c < 7 ? SQN[c] : "an unknown compression"; }
 static void sq_list(int m, char *o, size_t n) { *o = 0; for (int i = 1; i < 7; i++) if (m & 1 << i) { if (*o) strncat(o, " and ", n - strlen(o) - 1); strncat(o, SQN[i], n - strlen(o) - 1); } }
 
@@ -290,14 +297,15 @@ static void sq_list(int m, char *o, size_t n) { *o = 0; for (int i = 1; i < 7; i
 typedef struct { char name[16], sha[65], file[400]; long long size; } lay_t;
 typedef struct { long long serial; char version[64], released[16], expires[16], notes[300], chromium[64], kernel[64]; int urgent; lay_t L[NL]; int nl;
 	int datafmt, rmin, rmax;   /* (1.6.0: the data layout the release keeps, and the oldest and newest it reads; 0: no record) */
-	int sqr, sqc[NL]; } man_t;   /* (1.6.2, Part 31: what its kernel reads layers in, and each layer's compression: sq_*) */
+	int sqr, sqc[NL], sqb[NL]; } man_t;   /* (1.6.2, Part 31: what its kernel reads layers in, and each layer's compression: sq_*) */
 /* (1.6.2, Part 31: a row "C NAME COMPRESSION BLOCKSIZE") */
 static int sq_layer_n(const char *n) { for (int i = 1; i < NL; i++) if (!strcmp(n, LAYERS[i])) return i; return 0; }
 static void sq_row(man_t *m, const char *row)
 {
-	char n[16], c[16]; if (sscanf(row, "%15[^\t]\t%15[^\t]", n, c) != 2) return;
+	char n[16], c[16]; long bs = 0; if (sscanf(row, "%15[^\t]\t%15[^\t]\t%ld", n, c, &bs) < 2) return;
 	int i = sq_layer_n(n), k = sq_mask(c); if (!i || !k) return;
 	for (int b = 1; b < 7; b++) if (k == 1 << b) m->sqc[i] = b;
+	if (bs > 0 && bs <= 1048576) m->sqb[i] = (int)bs;
 }
 static int parse_manifest(char *t, man_t *m)
 {
@@ -584,6 +592,16 @@ static int cmd_check(int quiet)
 	free(t); free(g);
 	return 0;
 }
+/* 1.6.2 (Part 31, item 4): layer I of release M packed another way than the file LOCAL (its compression or its block
+   size, from its signed row against the file's superblock): none of its blocks can be found in it, so the delta finds
+   nothing and the layer is downloaded whole. 0 when either is not known */
+static int sq_repacked(const man_t *m, int i, const char *local)
+{
+	if (i < 1 || i >= NL || !m->sqc[i]) return 0;
+	int c = sq_comp(local); long b = sq_block(local); if (!c) return 0;
+	return c != m->sqc[i] || (m->sqb[i] && b && b != m->sqb[i]);
+}
+static void sq_desc(const man_t *m, int i, char *o, size_t n) { if (m->sqb[i] >= 1048576) snprintf(o, n, "%s, %d MB blocks", sq_name(m->sqc[i]), m->sqb[i] / 1048576); else if (m->sqb[i]) snprintf(o, n, "%s, %d KB blocks", sq_name(m->sqc[i]), m->sqb[i] / 1024); else snprintf(o, n, "%s", sq_name(m->sqc[i])); }
 /* 1.6.2 (Part 31): each layer of the system in DIR (or, PERMANENT, the disc's copy it uses) one its own kernel reads;
    0, or 9 with why said */
 static int sq_files_ok(const man_t *m, const char *dir, int permanent)
@@ -648,10 +666,13 @@ static int cmd_download(void)
 		}
 		if (done) continue;
 		char fu[500], ru[510]; url_join(base, y->file, fu, sizeof fu); snprintf(ru, sizeof ru, "%s.rzs", fu);
-		say("%s: downloading the changes (%lld MB file)", y->name, (y->size + 1048575) / 1048576);
-		long long got = 0; int dr = delta_fetch(fu, ru, cand, nc, out, y->size, &got);
+		long long got = 0; int dr;
+		/* (1.6.2, Part 31, item 4: a layer packed another way than this computer's has no block in common with it) */
+		if (sq_repacked(&m, i, cand[0])) { char d[64]; sq_desc(&m, i, d, sizeof d);
+			say("%s: packed in a new way (%s), so it is downloaded whole this once (%lld MB)", y->name, d, (y->size + 1048575) / 1048576); dr = -1; }
+		else { say("%s: downloading the changes (%lld MB file)", y->name, (y->size + 1048575) / 1048576); dr = delta_fetch(fu, ru, cand, nc, out, y->size, &got); }
 		if (dr || sha256_file(out, hex) || strcmp(hex, y->sha)) {
-			say("  the delta did not work out; downloading the whole file");
+			if (!sq_repacked(&m, i, cand[0])) say("  the delta did not work out; downloading the whole file");
 			if (http_to_file(fu, out) || sha256_file(out, hex) || strcmp(hex, y->sha)) { say("%s: download failed or does not match the release list; try again later.", y->name); return 5; }
 			got = y->size;
 		}
@@ -1126,8 +1147,13 @@ static int cmd_status(void)
 	if (mt && sg && sl == 64 && verify((unsigned char *)mt, ml, (unsigned char *)sg)) { char *c = strdup(mt); okm = !parse_manifest(c, &m); free(c); }
 	if (okm && wanted(m.serial, atoll(kv(&r, "serial")))) {
 		long long sz = 0; for (int i = 0; i < m.nl; i++) sz += m.L[i].size;
+		/* 1.6.2 (Part 31, item 4): what is downloaded whole (layers packed another way than this computer's: no delta) */
+		long long whole = 0; char wl[80] = ""; int nw = 0;
+		for (int i = 1; i < NL; i++) { lay_t *y = mlayer(&m, LAYERS[i]); char lp[400]; layer_path(bs, LAYERS[i], lp, sizeof lp);
+			if (y && sq_repacked(&m, i, lp)) { whole += y->size; snprintf(wl + strlen(wl), sizeof wl - strlen(wl), "%s%s", nw++ ? "," : "", LAYERS[i]); } }
 		printf("{\"serial\":%lld,\"version\":", m.serial); jstr(m.version); printf(",\"notes\":"); jstr(m.notes); printf(",\"released\":"); jstr(m.released);
-		printf(",\"chromium\":"); jstr(m.chromium); printf(",\"kernel\":"); jstr(m.kernel); printf(",\"urgent\":%s,\"size\":%lld}", m.urgent ? "true" : "false", sz);
+		printf(",\"chromium\":"); jstr(m.chromium); printf(",\"kernel\":"); jstr(m.kernel); printf(",\"urgent\":%s,\"size\":%lld", m.urgent ? "true" : "false", sz);
+		printf(",\"whole\":%lld,\"wholeLayers\":", whole); jstr(wl); { char d[64] = ""; for (int i = 1; i < NL && !*d; i++) if (m.sqc[i] && strstr(wl, LAYERS[i])) sq_desc(&m, i, d, sizeof d); printf(",\"packed\":"); jstr(d); } printf("}");
 	} else printf("null");
 	printf("}\n"); free(mt); free(sg); free(d);
 	return 0;
