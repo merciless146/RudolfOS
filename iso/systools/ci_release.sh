@@ -176,7 +176,7 @@ PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null |
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-webkey.c sys/rudolfd-webkey.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the website data's key)
 BSRC=$( (echo "$BSRC"; cat sys/rudolfd-confine.inc sys/rudolf-confine.h sys/rudolfd-confine-tables.h sys/rudolfd-confine-narrow.h sys/rudolfd-confine-pure.h sys/rudolfd-winapi.h sys/rudolf-rootd-confine.h) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the confinement)
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-secrets.h sys/rudolfd-guard.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 26: Blitzen's guards, the secret detector)
-BSRC=$( (echo "$BSRC"; cat sys/ui/*.c sys/ui/*.h sys/ui/*.py sys/ui/*.sh $(ls sys/apps/*.c 2>/dev/null); python3 sys/ui/mkui.py /dev/stdout) | sha256sum | cut -c1-16)   # (1.6.2 Part 39: librudolf-ui and the native apps, with what they take from the page)
+BSRC=$( (echo "$BSRC"; cat sys/ui/*.c sys/ui/*.h sys/ui/*.py sys/ui/*.sh $(ls sys/apps/*.c sys/apps/*.h sys/apps/*.py 2>/dev/null); python3 sys/ui/mkui.py /dev/stdout) | sha256sum | cut -c1-16)   # (1.6.2 Part 39: librudolf-ui and the native apps, with what they take from the page)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
 	B=$W/bbin; mkdir -p "$B"
