@@ -17,6 +17,12 @@
  *     which udhcpc.sh and the modem script use in place of a connection's own while it is there; the network's own
  *     put back at the end.
  * Off again: the interface, its rules and routes removed, src_valid_mark and the name servers as they were.
+ * The kill switch (a VPN's own setting, off at first): while a VPN with it is meant to be on (turned on and not off),
+ * the table inet rudolf_vpnkill lets nothing out but the tunnel itself, the VPN's server (WireGuard's marked packets,
+ * and the server's addresses as last found, kept in its .meta for when its name cannot be looked up) and what keeps
+ * the computer on its network (DHCP, IPv6's neighbour and router discovery); nothing is forwarded but into the tunnel
+ * (a hotspot's devices). It is the computer's own firewall's table beside rudolf's (which only filters what comes in),
+ * so it holds whether that one is on or off, and goes when the VPN is turned off or its kill switch is.
  *
  *   vpn list                     every VPN as JSON (never a key): id, name, type, policy, server, addresses,
  *                                DNS, and the one on: state (connecting, connected, noanswer), since, by, bytes
@@ -24,8 +30,8 @@
  *                                Checked (a malformed file is refused with the line it fails on), kept in VPN_DIR
  *                                (root's 0700; each file root's 0600: the private key is read by nobody else).
  *                                Prints {"ok":true,"id":ID,"notes":[...]}
- *   vpn set ID name|policy VALUE the name (standard input, one line, at most 64 bytes); the policy
- *                                (everyone, admins, always)
+ *   vpn set ID name|policy|kill VALUE   the name (standard input, one line, at most 64 bytes); the policy
+ *                                (everyone, admins, always); the kill switch (on, off)
  *   vpn remove ID                turned off first if it is on; its files removed
  *   vpn up ID BY                 turned on (another one on is turned off first); BY: who turned it on (the account's
  *                                name, at most 64 bytes, or "-") for "Ann's VPN is on for everyone on this computer"
@@ -53,6 +59,7 @@
 #include <netinet/in.h>
 #include <sys/file.h>
 #include <sys/random.h>
+#include <sys/wait.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h>
 #include <linux/genetlink.h>
@@ -295,7 +302,7 @@ static int full6(const Conf *c) { for (int i = 0; i < c->npeer; i++) for (int k 
 static int any6(const Conf *c) { for (int i = 0; i < c->npeer; i++) for (int k = 0; k < c->peer[i].nips; k++) if (c->peer[i].ips[k].fam == AF_INET6) return 1; return 0; }
 
 /* ------------------------------------------------------------------ what is kept: VPN_DIR/ID.conf (the file), ID.meta */
-typedef struct { char id[16], name[80], type[16], policy[16]; long long added; } Meta;
+typedef struct { char id[16], name[80], type[16], policy[16], ep[300]; int kill; long long added; } Meta;
 static void meta_path(const char *id, const char *ext, char *o, size_t n) { snprintf(o, n, "%s/%s.%s", VPN_DIR, id, ext); }
 static int meta_read(const char *id, Meta *m)
 {
@@ -308,6 +315,8 @@ static int meta_read(const char *id, Meta *m)
 		else if (!strncmp(l, "type=", 5) && (!strcmp(l + 5, "wireguard") || !strcmp(l + 5, "openvpn"))) snprintf(m->type, sizeof m->type, "%s", l + 5);
 		else if (!strncmp(l, "policy=", 7) && (!strcmp(l + 7, "everyone") || !strcmp(l + 7, "admins") || !strcmp(l + 7, "always"))) snprintf(m->policy, sizeof m->policy, "%s", l + 7);
 		else if (!strncmp(l, "added=", 6)) m->added = atoll(l + 6);
+		else if (!strncmp(l, "kill=", 5)) m->kill = l[5] == '1';
+		else if (!strncmp(l, "ep=", 3) && strlen(l + 3) < sizeof m->ep && strspn(l + 3, "0123456789abcdefABCDEF.:,|") == strlen(l + 3)) snprintf(m->ep, sizeof m->ep, "%s", l + 3);
 	}
 	free(t); if (!m->name[0]) snprintf(m->name, sizeof m->name, "VPN");
 	return 0;
@@ -315,7 +324,7 @@ static int meta_read(const char *id, Meta *m)
 static int meta_write(const Meta *m)
 {
 	char p[PATH_MAX], b[1024]; meta_path(m->id, "meta", p, sizeof p);
-	int n = snprintf(b, sizeof b, "name=%s\ntype=%s\npolicy=%s\nadded=%lld\n", m->name, m->type, m->policy, m->added);
+	int n = snprintf(b, sizeof b, "name=%s\ntype=%s\npolicy=%s\nkill=%d\nadded=%lld\nep=%s\n", m->name, m->type, m->policy, m->kill, m->added, m->ep);
 	return put_file(p, b, (size_t)n, 0600);
 }
 /* the one meant to be on: RUN/vpn/on, "ID\nBY\nSINCE\n" */
@@ -593,7 +602,7 @@ static int resolve(const Conf *c, struct sockaddr_storage *ep, socklen_t *epl, c
 		for (struct addrinfo *r = res; r && !pick; r = r->ai_next) if (r->ai_family == AF_INET6) pick = r;
 		if (pick) { memcpy(&ep[i], pick->ai_addr, pick->ai_addrlen); epl[i] = pick->ai_addrlen;
 			char s[64] = ""; if (pick->ai_family == AF_INET) inet_ntop(AF_INET, &((struct sockaddr_in *)pick->ai_addr)->sin_addr, s, sizeof s); else inet_ntop(AF_INET6, &((struct sockaddr_in6 *)pick->ai_addr)->sin6_addr, s, sizeof s);
-			if (k + strlen(s) + 2 < en) k += (size_t)snprintf(eps + k, en - k, "%s%s", k ? "," : "", s); }
+			if (k + strlen(s) + 10 < en) k += (size_t)snprintf(eps + k, en - k, "%s%s|%d", k ? "," : "", s, c->peer[i].port); }
 		freeaddrinfo(res);
 	}
 	return 0;
@@ -603,7 +612,19 @@ static int wg_up(const char *id, Conf *c, char *why, size_t wn)
 	struct sockaddr_storage ep[MAXPEERS]; socklen_t epl[MAXPEERS]; char eps[300];
 	if (wg() < 0) { snprintf(why, wn, "this kernel has no WireGuard"); return -1; }
 	dns_off();   /* (the network's own name servers to find the server: a VPN's own cannot answer while its tunnel is down) */
-	if (resolve(c, ep, epl, eps, sizeof eps, why, wn)) return -1;
+	if (resolve(c, ep, epl, eps, sizeof eps, why, wn)) {
+		/* (its name not found: the addresses it had last time, as the kill switch may be what keeps the name servers out) */
+		Meta m; char ip[64]; int port = 0;
+		if (meta_read(id, &m) || !m.ep[0] || sscanf(m.ep, "%63[^|]|%d", ip, &port) != 2 || port < 1 || port > 65535) return -1;
+		memset(&ep[0], 0, sizeof ep[0]);
+		struct sockaddr_in *a4 = (void *)&ep[0]; struct sockaddr_in6 *a6 = (void *)&ep[0];
+		if (inet_pton(AF_INET, ip, &a4->sin_addr) == 1) { a4->sin_family = AF_INET; a4->sin_port = htons((uint16_t)port); epl[0] = sizeof *a4; }
+		else if (inet_pton(AF_INET6, ip, &a6->sin6_addr) == 1) { a6->sin6_family = AF_INET6; a6->sin6_port = htons((uint16_t)port); epl[0] = sizeof *a6; }
+		else return -1;
+		for (int i = 1; i < c->npeer; i++) epl[i] = 0;
+		snprintf(eps, sizeof eps, "%s", m.ep); *why = 0;
+	}
+	{ Meta m; if (!meta_read(id, &m) && strcmp(m.ep, eps)) { snprintf(m.ep, sizeof m.ep, "%s", eps); meta_write(&m); } }   /* (remembered: the kill switch lets these out) */
 	link_del(VPN_IF);
 	int r = link_add_wg(VPN_IF); if (r) { snprintf(why, wn, "the VPN's interface could not be made (%s)", strerror(-r)); return -1; }
 	int idx = if_index(VPN_IF); if (!idx) { snprintf(why, wn, "the VPN's interface is not there"); return -1; }
@@ -647,10 +668,57 @@ static const char *state_now(WgStat *st)
 	if (st->hs) return "noanswer";
 	return "connecting";
 }
+/* ------------------------------------------------------------------ the kill switch */
+#ifdef RR_TEST
+#define NFT_DIRS rr_env("RR_TEST_BIN", "/usr/sbin:/usr/bin:/sbin:/bin")
+#else
+#define NFT_DIRS "/usr/sbin:/usr/bin:/sbin:/bin"
+#endif
+static int nft_file(const char *path)
+{
+	char dirs[PATH_MAX], exe[PATH_MAX] = "", *sv = NULL; snprintf(dirs, sizeof dirs, "%s", NFT_DIRS);
+	for (char *d = strtok_r(dirs, ":", &sv); d; d = strtok_r(NULL, ":", &sv)) { snprintf(exe, sizeof exe, "%s/nft", d); if (!access(exe, X_OK)) break; exe[0] = 0; }
+	if (!exe[0]) return 127;
+	pid_t p = fork(); if (p < 0) return 127;
+	if (p == 0) { int nul = open("/dev/null", O_RDWR | O_CLOEXEC); if (nul >= 0) { dup2(nul, 0); dup2(nul, 1); } char *argv[] = { exe, "-f", (char *)path, NULL }, *env[] = { RR_PATH, NULL }; execve(exe, argv, env); _exit(127); }
+	int st = 0; while (waitpid(p, &st, 0) < 0) if (errno != EINTR) return 127;
+	return WIFEXITED(st) ? WEXITSTATUS(st) : 128;
+}
+/* the table as it must be now: there while a VPN with its kill switch is meant to be on, else gone */
+static void kill_apply(void)
+{
+	OnState o; Meta m; int want = on_read(&o) && !meta_read(o.id, &m) && m.kill;
+	char p[PATH_MAX]; snprintf(p, sizeof p, "%s/vpn/kill.nft", RUNDIR);
+	char b[4096]; size_t k = 0;
+	k += (size_t)snprintf(b + k, sizeof b - k, "table inet rudolf_vpnkill\ndelete table inet rudolf_vpnkill\n");
+	if (want) {
+		char v4[1024] = "", v6[1024] = ""; size_t k4 = 0, k6 = 0;
+		char e[300]; snprintf(e, sizeof e, "%s", m.ep); char *sv = NULL;
+		for (char *t = strtok_r(e, ",", &sv); t; t = strtok_r(NULL, ",", &sv)) {
+			char ip[64]; int port; if (sscanf(t, "%63[^|]|%d", ip, &port) != 2 || port < 1 || port > 65535) continue;
+			struct in6_addr x; char line[200];
+			if (inet_pton(AF_INET, ip, &x) == 1) { snprintf(line, sizeof line, "\t\tip daddr %s udp dport %d accept\n", ip, port); if (k4 + strlen(line) < sizeof v4) { strcat(v4, line); k4 += strlen(line); } }
+			else if (inet_pton(AF_INET6, ip, &x) == 1) { snprintf(line, sizeof line, "\t\tip6 daddr %s udp dport %d accept\n", ip, port); if (k6 + strlen(line) < sizeof v6) { strcat(v6, line); k6 += strlen(line); } }
+		}
+		k += (size_t)snprintf(b + k, sizeof b - k,
+			"table inet rudolf_vpnkill {\n"
+			"\tcounter dropped { }\n"
+			"\tchain output {\n\t\ttype filter hook output priority filter - 10; policy accept;\n"
+			"\t\toifname \"lo\" accept\n\t\toifname \"" VPN_IF "\" accept\n\t\tmeta mark 0x%x accept\n%s%s"
+			"\t\tudp sport 68 udp dport 67 accept\n\t\tudp sport 546 udp dport 547 accept\n"
+			"\t\ticmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert, mld2-listener-report } accept\n"
+			"\t\tcounter name dropped drop\n\t}\n"
+			"\tchain forward {\n\t\ttype filter hook forward priority filter - 10; policy accept;\n\t\toifname \"" VPN_IF "\" accept\n\t\tcounter name dropped drop\n\t}\n}\n",
+			VPN_MARK, v4, v6);
+	}
+	if (put_file(p, b, k, 0600)) return;
+	int r = nft_file(p); unlink(p);
+	if (r && want) rr_health("vpn", "the kill switch of the VPN %s could not be put on (nft: %d)", m.name, r);
+}
 static int cmd_down(int quiet)
 {
 	OnState o; int was = on_read(&o);
-	teardown(); on_clear();
+	teardown(); on_clear(); kill_apply();
 	if (was && !quiet) { Meta m; if (!meta_read(o.id, &m)) rr_health("vpn", "the VPN %s was turned off", m.name); }
 	vpn_event(); return 0;
 }
@@ -662,9 +730,11 @@ static int cmd_up(const char *id, const char *by)
 	size_t len = 0; char *t = conf_text(id, &len); if (!t) { printf("{\"ok\":false,\"error\":\"the VPN's file is missing\"}\n"); return 1; }
 	Conf c; char why[300] = ""; int bad = conf_parse(t, len, &c, why, sizeof why); explicit_bzero(t, len); free(t);
 	if (bad) { printf("{\"ok\":false,\"error\":"); jstr(stdout, why); printf("}\n"); return 1; }
-	on_write(id, by);   /* (meant to be on from now: vpn tick sets it up again should it go) */
+	on_write(id, by);   /* (meant to be on from now: the kill switch holds while it connects; vpn tick sets it up again should it go) */
+	kill_apply();
 	int r = wg_up(id, &c, why, sizeof why); conf_wipe(&c);
-	if (r) { teardown(); on_clear(); rr_health("vpn", "the VPN %s did not connect: %s", m.name, why); vpn_event(); printf("{\"ok\":false,\"error\":"); jstr(stdout, why); printf("}\n"); return 1; }
+	if (r) { teardown(); on_clear(); kill_apply(); rr_health("vpn", "the VPN %s did not connect: %s", m.name, why); vpn_event(); printf("{\"ok\":false,\"error\":"); jstr(stdout, why); printf("}\n"); return 1; }
+	kill_apply();   /* (its server's addresses as found now) */
 	WgStat st; const char *s = "connecting";
 	for (int i = 0; i < 40; i++) { s = state_now(&st); if (!strcmp(s, "connected")) break; struct timespec ts = { 0, 200000000 }; nanosleep(&ts, NULL); }
 	rr_health("vpn", "the VPN %s was turned on%s%s", m.name, by && strcmp(by, "-") ? " by " : "", by && strcmp(by, "-") ? by : "");
@@ -677,7 +747,7 @@ static void list_one(FILE *o, const Meta *m, const OnState *on, int first)
 {
 	size_t len = 0; char *t = conf_text(m->id, &len); Conf c; char why[200]; int ok = t && !conf_parse(t, len, &c, why, sizeof why); if (t) { explicit_bzero(t, len); free(t); }
 	fprintf(o, "%s{\"id\":\"%s\",\"name\":", first ? "" : ",", m->id); jstr(o, m->name);
-	fprintf(o, ",\"type\":\"%s\",\"policy\":\"%s\",\"added\":%lld", m->type, m->policy, m->added);
+	fprintf(o, ",\"type\":\"%s\",\"policy\":\"%s\",\"kill\":%s,\"added\":%lld", m->type, m->policy, m->kill ? "true" : "false", m->added);
 	if (ok) {
 		char s[300]; snprintf(s, sizeof s, "%s:%d", c.peer[0].host, c.peer[0].port); if (strchr(c.peer[0].host, ':')) snprintf(s, sizeof s, "[%s]:%d", c.peer[0].host, c.peer[0].port);
 		fprintf(o, ",\"server\":"); jstr(o, s);
@@ -742,8 +812,12 @@ static int cmd_set(const char *id, const char *key, const char *val)
 	} else if (!strcmp(key, "policy")) {
 		if (!val || (strcmp(val, "everyone") && strcmp(val, "admins") && strcmp(val, "always"))) return refuse("a policy that is not everyone, admins or always", val);
 		snprintf(m.policy, sizeof m.policy, "%s", val);
-	} else return refuse("a setting that is not name or policy", key);
+	} else if (!strcmp(key, "kill")) {
+		if (!val || (strcmp(val, "on") && strcmp(val, "off"))) return refuse("a kill switch that is not on or off", val);
+		m.kill = !strcmp(val, "on");
+	} else return refuse("a setting that is not name, policy or kill", key);
 	if (meta_write(&m)) { printf("{\"ok\":false,\"error\":\"the setting could not be kept\"}\n"); return 1; }
+	if (!strcmp(key, "kill")) kill_apply();
 	vpn_event(); printf("{\"ok\":true}\n"); return 0;
 }
 static int cmd_remove(const char *id)
@@ -767,11 +841,12 @@ static int cmd_tick(void)
 {
 	OnState o; if (!on_read(&o)) return 0;
 	if (if_index(VPN_IF)) return 0;
-	Meta m; if (meta_read(o.id, &m)) { on_clear(); return 0; }
+	Meta m; if (meta_read(o.id, &m)) { on_clear(); kill_apply(); return 0; }
 	size_t len = 0; char *t = conf_text(o.id, &len); if (!t) return 0;
 	Conf c; char why[300] = ""; int bad = conf_parse(t, len, &c, why, sizeof why); explicit_bzero(t, len); free(t); if (bad) return 0;
 	int r = wg_up(o.id, &c, why, sizeof why); conf_wipe(&c);
 	if (!r) { rr_health("vpn", "the VPN %s was set up again", m.name); vpn_event(); }
+	if (m.kill) kill_apply();   /* (its server's addresses as found now) */
 	return 0;
 }
 

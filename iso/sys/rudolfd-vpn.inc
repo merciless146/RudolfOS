@@ -2,11 +2,11 @@
  * the whole computer (Settings › Network › VPN, the taskbar's network pop-up). The VPN helper does the work as root
  * (rudolf-vpn.c: /usr/lib/rudolf/root/vpn, through rudolf-rootd); here is who may do what:
  *   GET  vpn                     the VPNs (never a key) and, for each, whether the signed-in account may turn it on and
- *                                off: {ok, wireguard, vpns: [{id, name, type, policy, server, addresses, dns, on,
+ *                                off: {ok, wireguard, vpns: [{id, name, type, policy, kill, server, addresses, dns, on,
  *                                state, by, mayOn, mayOff, why}], active, me: {name, admin, child}}
  *   POST vpn/add                 an administrator's name and password, checked here; body {n, p, name, conf}: the file
  *                                (at most 64 KB) to the helper's standard input, never into a file of rudolfd's
- *   POST vpn/set                 {n, p, id, name | policy (everyone, admins, always)}, the same
+ *   POST vpn/set                 {n, p, id, name | policy (everyone, admins, always) | kill (true, false)}, the same
  *   POST vpn/remove              {n, p, id}, the same
  *   POST vpn/on?id=ID            "Everyone": any account, no password; "Administrators only" and "Always on": a signed-in
  *                                administrator, or the body {n, p} of one; another VPN on is turned off first
@@ -143,13 +143,14 @@ static void api_vpn(struct req *r, const char *w, int post)
 			free(an); free(id); vpn_reply(r, o, st); return;
 		}
 		/* set: one setting a request */
-		char *name = dbody_field(r, "name"), *pol = dbody_field(r, "policy");
+		char *name = dbody_field(r, "name"), *pol = dbody_field(r, "policy"); const char *kq = r->body ? dj_get(r->body, "kill") : NULL;
 		const char *av[6] = { "vpn", "set", id, NULL, NULL, NULL }; const char *in = NULL; size_t inl = 0; char nb[80];
 		if (name) { if (!*name || strlen(name) > 64 || strchr(name, '\n')) { free(an); free(id); free(name); free(pol); reply_err(r->fd, 400, "the name has 1 to 64 characters"); return; }
 			snprintf(nb, sizeof nb, "%s\n", name); in = nb; inl = strlen(nb); av[3] = "name"; }
 		else if (pol) { if (strcmp(pol, "everyone") && strcmp(pol, "admins") && strcmp(pol, "always")) { free(an); free(id); free(pol); reply_err(r->fd, 400, "policy: everyone, admins or always"); return; }
 			av[3] = "policy"; av[4] = pol; }
-		else { free(an); free(id); reply_err(r->fd, 400, "name or policy"); return; }
+		else if (kq) { av[3] = "kill"; av[4] = dj_true(kq) ? "on" : "off"; }   /* (1.6.2 Part 33 step 4: the kill switch) */
+		else { free(an); free(id); reply_err(r->fd, 400, "name, policy or kill"); return; }
 		int st; char *o = vpn_helper(av, in, inl, &st);
 		if (st == 0) health_add("vpn", "a VPN's %s was changed by %.80s%s%s", av[3], an, av[4] ? ": " : "", av[4] ? av[4] : "");
 		free(an); free(id); free(name); free(pol); vpn_reply(r, o, st); return;

@@ -12,7 +12,7 @@
    Native's Settings is this page (its app windows), so Settings looks and works the same on Native, Chromium and Lite. */
 const VPN62={s:null,busy:null,t:0};
 async function vpnGet(){try{VPN62.s=await rd('vpn')}catch(e){VPN62.s=null}dispatchEvent(new Event('rudolf-vpn'));return VPN62.s}
-function vpnState(v){if(VPN62.busy==v.id)return v.on?'Turning off…':'Connecting…';return !v.on?'Off':v.state=='connected'?'Connected':v.state=='noanswer'?'No answer':'Connecting…'}
+function vpnState(v){if(VPN62.busy==v.id)return v.on?'Turning off…':'Connecting…';return !v.on?'Off':v.state=='connected'?'Connected':v.state=='noanswer'?'No answer':v.state=='down'?'Down':'Connecting…'}
 const VPN_POL={everyone:'Everyone can turn it on and off',admins:'Administrators only',always:'Always on: nobody can turn it off'};
 /* the confirmation a VPN another account turned on needs before it goes off ("Ann's VPN is on for everyone on this computer") */
 function vpnOthers(v){const s=VPN62.s;return v.on&&v.by&&s&&s.me&&s.me.name&&v.by!=s.me.name}
@@ -51,8 +51,8 @@ function vpnAdd(after){const o=document.createElement('div');o.className='rmodal
   try{const r=await rdPost('vpn/add',JSON.stringify({n:cr.n,p:cr.p,name,conf,type:'wireguard'}));text='';q('.vpnt').value='';o.remove();
    notify('VPN',name+' was added.'+((r.notes||[]).length?' '+r.notes.join(' '):''));if(after)after()}
   catch(e){q('.y').disabled=false;say(e.message)}}}
-/* an administrator's change (name, who may) or the VPN removed */
-async function vpnAdmin(v,what,val){const T='VPN';const say={name:'Rename the VPN '+v.name,policy:'Change who may turn the VPN '+v.name+' on and off',remove:'Remove the VPN '+v.name}[what];
+/* an administrator's change (name, who may, the kill switch) or the VPN removed */
+async function vpnAdmin(v,what,val){const T='VPN';const say={name:'Rename the VPN '+v.name,policy:'Change who may turn the VPN '+v.name+' on and off',kill:(val?'Turn on':'Turn off')+' the kill switch of the VPN '+v.name,remove:'Remove the VPN '+v.name}[what];
  if(what=='remove'&&!await vpnAsk('Remove '+v.name+'?','Its file and its key are removed from this computer'+(v.on?', and it is turned off':'')+'. You can add it again from its file.','Remove'))return false;
  const cr=await elevate(say,{cred:true});if(!cr)return false;const b={n:cr.n,p:cr.p,id:v.id};if(what!='remove')b[what]=val;
  try{await rdPost(what=='remove'?'vpn/remove':'vpn/set',JSON.stringify(b));notify(T,what=='remove'?v.name+' was removed.':'Saved.');return true}catch(e){notify(T,e.message,{kind:'error'});return false}}
@@ -67,7 +67,8 @@ async function vpnAdmin(v,what,val){const T='VPN';const say={name:'Rename the VP
   if(!s.vpns.length)L.innerHTML="<div class='msg'>No VPN yet. Add one from your VPN provider's or your home router's WireGuard file.</div>";
   s.vpns.forEach(v=>{const d=document.createElement('div');d.className='sysucard vpnc'+(v.on&&v.state=='connected'?' ok':'');d.dataset.id=v.id;
    d.innerHTML=`<div style='display:flex;gap:8px;align-items:center;flex-wrap:wrap'><b class='vpnnm' style='flex:1;min-width:120px'></b><span class='vpnst'></span><button class='vpnb pri'></button></div><div class='msg vpnin'></div><div class='msg vpnby'></div>
-<div class='vpnad' style='display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px'><label class='msg vpnpl'>Who may turn it on and off</label><select class='vpnp'></select><button class='vpnr'>Rename…</button><button class='vpnx'>Remove…</button></div>`;
+<div class='vpnad' style='display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px'><label class='msg vpnpl'>Who may turn it on and off</label><select class='vpnp'></select><button class='vpnr'>Rename…</button><button class='vpnx'>Remove…</button></div>
+<div class='vpnad2' style='margin-top:6px'><label><input type='checkbox' class='vpnk'> Kill switch: while this VPN is meant to be on and its tunnel is down, nothing goes out but its server</label></div>`;
    const q=x=>d.querySelector(x);q('.vpnnm').textContent=v.name;q('.vpnst').textContent=vpnState(v);
    q('.vpnin').textContent=v.broken?'Its file could not be read: remove it and add it again.':[v.server?'Server '+v.server:'',v.addresses&&v.addresses.length?'address '+v.addresses.join(', '):'',v.dns&&v.dns.length?'name lookups through '+v.dns.join(', '):"name lookups: the network's own (the file names no DNS server)",v.whole===false?'only its own networks go through it':''].filter(Boolean).join(' · ');
    q('.vpnby').textContent=v.on?'On for everyone on this computer'+(v.by?' (turned on by '+v.by+')':'')+'.'+(!v.mayOff&&v.why?' '+v.why:''):v.why&&!v.mayOn?v.why:'';
@@ -77,7 +78,10 @@ async function vpnAdmin(v,what,val){const T='VPN';const say={name:'Rename the VP
    sel.onchange=async()=>{if(!await vpnAdmin(v,'policy',sel.value))sel.value=v.policy;draw(true)};
    q('.vpnr').onclick=async()=>{const n=await askText('A new name for '+v.name);if(n==null||!n.trim())return;if(n.trim().length>64)return notify('VPN','The name has 1 to 64 characters.',{kind:'error'});await vpnAdmin(v,'name',n.trim());draw(true)};
    q('.vpnx').onclick=async()=>{await vpnAdmin(v,'remove');draw(true)};
-   q('.vpnad').hidden=!adm;L.appendChild(d)});
+   const kc=q('.vpnk');kc.checked=!!v.kill;kc.onchange=async()=>{if(!await vpnAdmin(v,'kill',kc.checked))kc.checked=!!v.kill;draw(true)};
+   if(v.kill&&!adm)q('.vpnin').textContent+=' · kill switch on';
+   if(v.on&&v.kill&&v.state!='connected')q('.vpnby').textContent+=' The kill switch lets nothing out but its server until it is back or turned off.';
+   q('.vpnad').hidden=q('.vpnad2').hidden=!adm;L.appendChild(d)});
   const a=box.querySelector('.vpna');a.disabled=!adm||s.wireguard===false;a.onclick=()=>vpnAdd(()=>draw(true))};
  draw(true);const on=()=>{if(box.isConnected)draw(0,1);else removeEventListener('rudolf-vpn',on)};
  const iv=setInterval(()=>{if(!box.isConnected)return clearInterval(iv);vpnGet()},5000);setTimeout(()=>addEventListener('rudolf-vpn',on),0)},"vpn62.js");})();

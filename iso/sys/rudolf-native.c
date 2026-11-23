@@ -5849,7 +5849,7 @@ static void vpn_read(void)
 static const char *vpn_state(const VpnRow *r)
 {
 	if (VPN_BUSY[0] && !strcmp(VPN_BUSY, r->id)) return r->on ? "Turning off…" : "Connecting…";
-	return !r->on ? "Off" : !strcmp(r->state, "connected") ? "Connected" : !strcmp(r->state, "noanswer") ? "No answer" : "Connecting…";
+	return !r->on ? "Off" : !strcmp(r->state, "connected") ? "Connected" : !strcmp(r->state, "noanswer") ? "No answer" : !strcmp(r->state, "down") ? "Down" : "Connecting…";
 }
 /* (vpnDirect: at once from the pop-up, with no password and no question; else Settings › Network asks) */
 static int vpn_direct(const VpnRow *r)
