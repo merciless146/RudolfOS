@@ -48,7 +48,8 @@ run() {   # run MODE (small or full): sets R_OPEN R_TABS R_MEM
 	python3 $HERE/fixtures/native_rd.py $PORT $D > $T/rd.$1.log 2>&1 & RDP=$!
 	rm -f $T/ev $T/ev.out; mkfifo $T/ev
 	FULL=; [ $1 = full ] && FULL=1
-	(cd $D && HOME=$D RUDOLF_NATIVE_STATE=$D/state RUDOLF_NATIVE_TEST_EVAL=$T/ev ${FULL:+RUDOLF_NATIVE_TM_FULL=1} exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT > $T/native.$1.log 2>&1) & NP=$!
+	(cd $D && if [ -n "$FULL" ]; then export RUDOLF_NATIVE_TM_FULL=1; else unset RUDOLF_NATIVE_TM_FULL; fi
+	 HOME=$D RUDOLF_NATIVE_STATE=$D/state RUDOLF_NATIVE_TEST_EVAL=$T/ev exec $BIN --size=1280x800 --draw=soft --base=http://127.0.0.1:$PORT > $T/native.$1.log 2>&1) & NP=$!
 	exec 7<>$T/ev
 	st() { grep "^$1 " $D/state 2>/dev/null | head -1 | cut -d' ' -f2-; }
 	ev() { : > $T/ev.out; printf '%s %s\n' "$1" "$2" >&7; w8 "grep -q '^$1 ' $T/ev.out 2>/dev/null" ${3:-40}; grep "^$1 " $T/ev.out | tail -1 | cut -d' ' -f2-; : > $T/ev.out; }
@@ -59,6 +60,7 @@ run() {   # run MODE (small or full): sets R_OPEN R_TABS R_MEM
 	w8 "grep -q '^client .* app=taskmgr ' \$D/state" 120
 	w8 "[ \"\$(ev taskmgr '(()=>{try{return String(!!(window.__tmW&&__tmW.body.querySelector(\".tmb\").textContent.length>20))}catch(e){return String(false)}})()')\" = true ]" 120
 	TP=$(for p in $(webs); do echo "$B" | grep -qx "$p" || echo $p; done | head -1)
+	grep -q '^client .* app=taskmgr ' $D/state || { echo "($1: no Task Manager window) $(tail -5 $T/native.$1.log)"; }
 	R_OPEN=$(ev taskmgr "JSON.stringify([location.search,window.__LEAN||'',(()=>{const l=document.getElementById('login');return !!(l&&l.offsetParent)})()])")
 	for t in apps procs perf system hw start; do ev taskmgr "__tmW.body.querySelector(\".tmtabs button[data-t='$t']\").click();1" >/dev/null; timeout 1.5 tail -f /dev/null; done
 	R_TABS=$(ev taskmgr "JSON.stringify([(window.__leanRead||[]).join(' '),__tmW.body.querySelector('.tmb').textContent.length>20])")
