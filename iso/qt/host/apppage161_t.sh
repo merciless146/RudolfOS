@@ -51,6 +51,8 @@ HID="[...document.querySelectorAll('#menu img.ico,#desk>.ic img.ico,#pins img,#t
 # (the window's first page sends it to the apps' page: asked only once the page there has its window)
 openw() { ev do-bg "oaPost({op:'open',app:'$1'});1" >/dev/null; w8 "grep -q '^client .* app=$1 ' \$D/state" ${2:-120} && w8 "[ \"\$(ev $1 '(()=>{try{return String(!!(OA.main&&OA.main.el&&document.title))}catch(e){return String(false)}})()')\" = true ]" ${3:-80}; }
 OAH=$(grep -o "a/[0-9a-f]\{16\}\.html" $W/index.html | head -1); OAN=$(sed -n "s/^OA_NOT = \[\(.*\)\]$/\1/p" $HERE/../../../desktop/oapage61.py | tr -d "' ")
+# (1.6.2 Part 38: Task Manager has a small page of its own, lean62.py, also a page served for /?oa=ID: it counts as a window not of the whole page)
+OAN=$(echo ",$OAN," | sed 's/,taskmgr,/,/; s/^,//; s/,$//')
 lz() { ev $1 "JSON.stringify([location.search.includes('oa='),!!window.__OAPAGE,(window.__oaLazy||[]).join(' ')])"; }
 w8 '[ "$(st signin)" = 1 ]' 160; LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ]' 120; w8 '[ "$(st svc | cut -d" " -f1)" = ready ]' 240; timeout 3 tail -f /dev/null; E0=$(errs)

@@ -1,0 +1,55 @@
+# 1.6.2 (docs/plan-1.6.2.md Part 38, step 2): Task Manager's small page on the native desktop (desktop/lean62.py). Checks only,
+# nothing published.
+#   page:   the small page against the whole page's Task Manager in Chromium (every tab and action, what it tells the shell and asks
+#           rudolfd, the settings it saves), and the renderer's memory before and after (qt/shell2/lean162_t.js)
+#   native: rudolf-native built (WebKitGTK) and run under Xvfb: the hidden page names the small page, Task Manager opens it in its own
+#           web process, every tab; that process's memory with the small page and with the whole page (qt/host/lean162_t.sh); the apps'
+#           page as before (apppage161_t.sh); Native against Chromium for Task Manager (qt/native/same_t.sh: its tabs, its rows, its
+#           title bar)
+name: Small pages check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['desktop/lean62.py', 'desktop/lean62.js', 'desktop/build19.py', 'desktop/oneapp59.js', 'desktop/lean61.js', 'desktop/tm26.js',
+      'desktop/tmtop57.js', 'desktop/apps57.js', 'iso/sys/rudolf-native.c', 'iso/qt/shell2/lean162*', 'iso/qt/host/lean162_t.sh',
+      'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/tm62.json', 'iso/qt/native/same_rd.py', '.github/workflows/lean-check.yml']
+permissions: {contents: read}
+jobs:
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Tools
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page built (and Task Manager's small page)
+        run: cd desktop && python3 build19.py ../iso/www/index.html
+      - name: The small page against the whole page's Task Manager, and the memory (lean162_t.js)
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/lean162_t.js
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev xvfb xdotool imagemagick python3-pil fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page built; rudolf-native built
+        run: |
+          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..
+          gcc -O2 -Wall -Wno-misleading-indentation -Wno-deprecated-declarations -o $RUNNER_TEMP/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+      - name: Task Manager's small page in WebKit, and its web process's memory (lean162_t.sh)
+        run: sh iso/qt/host/lean162_t.sh $RUNNER_TEMP/rudolf-native
+      - name: The apps' page as before (apppage161_t.sh)
+        run: APPP_PORT=8676 sh iso/qt/host/apppage161_t.sh $RUNNER_TEMP/rudolf-native
+      - name: "same_t.sh: Task Manager on Native and Chromium"
+        run: mkdir -p out && NODE_PATH=$PWD/node_modules SAME_PORT=8677 SAME_DSP=:87 sh iso/qt/native/same_t.sh $PWD/out tm-apps,tm-apps-light,tm-procs-light,tm-perf-dark,tm-system-light,tm-hw-dark,tm-start-light,tb-taskmgr-light-standard-2563eb,tb-taskmgr-dark-standard-db2777 $RUNNER_TEMP/rudolf-native
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: lean-native, retention-days: 7, path: out}

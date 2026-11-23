@@ -21,10 +21,14 @@ fs.copyFileSync(path.join(FX, 'tm62.json'), path.join(D, 'tm.json'));
 fs.writeFileSync(path.join(D, 'stats-on'), '1');
 // the native shell's message handler, stood in: what the page posts is kept (window.__posts)
 fs.writeFileSync(path.join(D, 'inject.js'), "window.webkit={messageHandlers:{rudolfNative:{postMessage(m){(window.__posts=window.__posts||[]).push(m)}}}};");
+fs.appendFileSync(path.join(D, 'inject.js'), "window.__errs=[];addEventListener('error',e=>__errs.push(String(e.message)+' @'+e.lineno));addEventListener('unhandledrejection',e=>__errs.push('promise: '+String(e.reason&&e.reason.message||e.reason)));");
+// (LEAN_DTF=1, an experiment) one formatter for each locale and set of options, shared
+if (process.env.LEAN_DTF) fs.appendFileSync(path.join(D, 'inject.js'), `(()=>{const O=Intl.DateTimeFormat,C=new Map();Intl.DateTimeFormat=new Proxy(O,{construct(t,a,nt){const k=JSON.stringify(a);let f=C.get(k);if(!f){f=Reflect.construct(t,a,nt);C.set(k,f)}return f},apply(t,th,a){return new Intl.DateTimeFormat(...a)}})})();`);
+if (process.env.LEAN_NOTZ) fs.appendFileSync(path.join(D, 'inject.js'), `(()=>{const O=Intl.DateTimeFormat;Intl.DateTimeFormat=new Proxy(O,{construct(t,a,nt){if(a[1]&&a[1].timeZone&&a[1].timeZone!='America/Chicago'){a=[a[0],Object.assign({},a[1],{timeZone:'UTC'})]}return Reflect.construct(t,a,nt)}})})();`);
 // (LEAN_COUNT=1) what the page makes that holds memory outside its own objects: counted by kind (window.__made)
 if (process.env.LEAN_COUNT) fs.appendFileSync(path.join(D, 'inject.js'), `(()=>{const M=window.__made={};const n=k=>{M[k]=(M[k]||0)+1};
  for(const C of ['AudioContext','OfflineAudioContext','Worker','SharedWorker','OffscreenCanvas','Image','WebSocket','EventSource','BroadcastChannel','MutationObserver','ResizeObserver','IntersectionObserver']){const O=window[C];if(!O)continue;window[C]=new Proxy(O,{construct(t,a,nt){n(C);return Reflect.construct(t,a,nt)}})}
- for(const C of ['DateTimeFormat','NumberFormat','Collator','PluralRules','RelativeTimeFormat','Segmenter','DisplayNames','ListFormat']){const O=Intl[C];if(!O)continue;Intl[C]=new Proxy(O,{construct(t,a,nt){n('Intl.'+C);return Reflect.construct(t,a,nt)}})}
+ for(const C of ['DateTimeFormat','NumberFormat','Collator','PluralRules','RelativeTimeFormat','Segmenter','DisplayNames','ListFormat']){const O=Intl[C];if(!O)continue;Intl[C]=new Proxy(O,{construct(t,a,nt){n('Intl.'+C);const f=(new Error().stack||'').split('\\n').slice(2,6).map(x=>x.trim().split(' ')[1]).join('<');n('at '+f.trim().replace(/https?:[^ )]*\\//,'').slice(0,60));return Reflect.construct(t,a,nt)}})}
  const gc=HTMLCanvasElement.prototype.getContext;HTMLCanvasElement.prototype.getContext=function(k){n('canvas '+k+' '+this.width+'x'+this.height);return gc.apply(this,arguments)};
  const tl=Date.prototype.toLocaleString,tld=Date.prototype.toLocaleDateString,tlt=Date.prototype.toLocaleTimeString;Date.prototype.toLocaleString=function(){n('toLocaleString');return tl.apply(this,arguments)};Date.prototype.toLocaleDateString=function(){n('toLocaleDateString');return tld.apply(this,arguments)};Date.prototype.toLocaleTimeString=function(){n('toLocaleTimeString');return tlt.apply(this,arguments)};
  for(const k of ['compile','instantiate','instantiateStreaming']){const f=WebAssembly[k];WebAssembly[k]=function(){n('wasm '+k);return f.apply(this,arguments)}}
@@ -41,21 +45,23 @@ const CH = MODE == 'cover' ? A2 : A3;   // (memraw: the same as mem)
 async function open(hash, page) {
   const b = await chromium.launch({executablePath: CH || undefined, args: ['--js-flags=--expose-gc']});
   const ctx = await b.newContext({viewport: {width: 1280, height: 800}}); const p = await ctx.newPage();
-  const errs = []; p.on('pageerror', e => errs.push(e.message));
+  const errs = []; p.on('pageerror', e => errs.push(e.message + (process.env.LEAN_STACK ? ' | ' + String(e.stack).split('\n').slice(1, 4).join(' < ') : '')));
   return {b, ctx, p, errs, go: () => p.goto(BASE + '/' + (page ? '?oa=' + page : '') + '#' + hash + '&w=1&sw=1280&sh=800')};
 }
 // the functions run, by where they are (the page's script: each module starts at its __svcMod("NAME") marker)
 function byModule(cov, src) {
   const marks = []; const re = /__svcMod\("([^"]+)"\);/g; let m; while ((m = re.exec(src))) marks.push([m.index, m[1]]);
   const where = off => { let lo = 0, hi = marks.length - 1, r = 'base'; while (lo <= hi) { const mid = (lo + hi) >> 1; if (marks[mid][0] <= off) { r = marks[mid][1]; lo = mid + 1 } else hi = mid - 1 } return r == 'base' ? 'base' : r };
-  const out = {};
-  for (const f of cov) for (const r of f.functions) { if (!r.ranges[0].count || !r.functionName) continue; const o = r.ranges[0].startOffset, k = where(o);
+  const out = {}, main = src.indexOf('<script>\n/* ===== Rudolf OS 1.6.0') + 8;   /* (the coverage's offsets are the script's own: the page's own script only) */
+  for (const f of cov) if (Math.max(...f.functions.map(r => r.ranges[0].endOffset)) > 1e6) for (const r0 of f.functions) { const r = {functionName: r0.functionName, ranges: [{count: r0.ranges[0].count, startOffset: r0.ranges[0].startOffset + main, endOffset: r0.ranges[0].endOffset + main}]}; if (!r.ranges[0].count || !r.functionName) continue; const o = r.ranges[0].startOffset, k = where(o);
     (out[k] = out[k] || {fns: new Set(), bytes: 0}); if (!out[k].fns.has(r.functionName)) { out[k].fns.add(r.functionName); out[k].bytes += r.ranges[0].endOffset - o } }
   const res = {}; for (const k of Object.keys(out).sort()) res[k] = {n: out[k].fns.size, bytes: out[k].bytes, fns: [...out[k].fns].sort()}; return res;
 }
+// the functions run in the page's own script: where each starts in it (its offset less one: from the line after <script>, as lean62.py reads it)
+const starts = cov => { const o = new Set(); for (const f of cov) if (Math.max(...f.functions.map(r => r.ranges[0].endOffset)) > 1e6) for (const r of f.functions) if (r.ranges[0].count) o.add(r.ranges[0].startOffset - 1); return [...o].sort((a, b) => a - b) };
 async function cover(OUT) {
   const R = {when: new Date().toISOString(), chrome: '', taskmgr: {}, settings: {}};
-  const html = await (await fetch(BASE + '/')).text();
+  const html = await (await fetch(BASE + '/', {headers: {}})).text();   /* (as served: the main script found in it by its first line) */
   const sizes = {}; { const re = /__svcMod\("([^"]+)"\);/g; let m, last = null, lastI = 0; while ((m = re.exec(html))) { if (last) sizes[last] = m.index - lastI; last = m[1]; lastI = m.index } }
   R.moduleBytes = sizes;
   // Task Manager: every tab, sorting, the search box, a process picked, End process (cancelled at the administrator's prompt), the
@@ -79,7 +85,7 @@ async function cover(OUT) {
       q(".tmtabs button[data-t='start']").click();const rs=q('.rs');rs&&rs.click();rs&&rs.click();
       q('.tmcopy').click();await new Promise(r=>setTimeout(r,2000));q('.tmrep').click();await new Promise(r=>setTimeout(r,2000));
       document.querySelectorAll('.win').forEach(w=>{if(w!==__tmW.el&&/report/i.test(w.textContent)){const x=w.querySelector('.x,.cls,[data-c=x]');x&&x.click()}})})()`, 4000);
-    R.taskmgr.all = byModule(all, html); R.taskmgr.errors = o.errs; await o.b.close();
+    R.taskmgr.all = byModule(all, html); R.taskmgr.starts = starts(all); R.taskmgr.errors = o.errs; await o.b.close();
   }
   // Settings: each panel shown (SW.show), its own functions (what the panel ran after the window was up)
   {
@@ -90,7 +96,7 @@ async function cover(OUT) {
     const all = []; let c = await take(); all.push(...c); R.settings.start = byModule(c, html);
     const keys = await o.p.evaluate('Object.keys(SW.SEC)');
     for (const k of keys) { try { await o.p.evaluate(`SW.show('${k}',1)`) } catch (e) { R.settings['!' + k] = e.message } await wait(2500); c = await take(); all.push(...c); R.settings['panel ' + k] = byModule(c, html) }
-    R.settings.all = byModule(all, html); R.settings.errors = o.errs; await o.b.close();
+    R.settings.all = byModule(all, html); R.settings.starts = starts(all); R.settings.errors = o.errs; await o.b.close();
   }
   fs.writeFileSync(OUT, JSON.stringify(R, null, 1)); console.log('written', OUT);
 }
@@ -102,7 +108,7 @@ async function mem(hash, page) {
   await wait(20000); const cdp = await o.ctx.newCDPSession(o.p); await cdp.send('HeapProfiler.collectGarbage'); await wait(3000);
   const mine = renderers().filter(p => !before.has(p)); const m = mine.map(smaps).filter(Boolean);
   const heap = await o.p.evaluate(() => performance.memory ? performance.memory.usedJSHeapSize / 1048576 : null);
-  const st = await o.p.evaluate(() => ({read: window.__leanRead || [], up: !!(typeof OA == 'object' && OA.main && OA.main.el), nodes: document.getElementsByTagName('*').length}));
+  const st = await o.p.evaluate(() => ({read: window.__leanRead || [], up: (() => { try { return !!(typeof OA == 'object' && OA.main && OA.main.el) } catch (e) { return 'TDZ' } })(), nodes: document.getElementsByTagName('*').length}));
   if (process.env.LEAN_DUMP) await dump(o);
   const r = {hash, page: page || 'index.html', renderer: m[0] && {priv: +m[0].priv.toFixed(1), pss: +m[0].pss.toFixed(1)}, heap: heap && +heap.toFixed(1), n: m.length, up: st.up, nodes: st.nodes, read: st.read, errors: o.errs.slice(0, 5)};
   console.log(JSON.stringify(r)); await o.b.close(); return r;
@@ -114,13 +120,13 @@ async function memraw(hash, page) {
   const before = new Set(renderers());
   const c = cp.spawn(exe, ['--headless=new', '--no-sandbox', '--no-first-run', '--no-default-browser-check', '--user-data-dir=' + U, '--remote-debugging-port=' + P2, '--window-size=1280,800',
     '--disable-background-networking', '--disable-component-update', '--js-flags=--expose-gc', /^\//.test(hash) ? BASE + hash : BASE + '/' + (page ? '?oa=' + page : '') + '#' + hash + '&w=1&sw=1280&sh=800'], {stdio: 'ignore'});
-  await wait(20000);
+  await wait(+process.env.LEAN_WAIT || 20000);
   const tg = (await (await fetch('http://127.0.0.1:' + P2 + '/json/list')).json()).find(t => t.type == 'page');
   const ws = new WebSocket(tg.webSocketDebuggerUrl); await new Promise(r => ws.onopen = r); let id = 0; const pend = {};
   ws.onmessage = e => { const m = JSON.parse(e.data); if (pend[m.id]) { pend[m.id](m.result); delete pend[m.id] } };
   const send = (method, params) => new Promise(r => { pend[++id] = r; ws.send(JSON.stringify({id, method, params: params || {}})) });
   await send('HeapProfiler.collectGarbage'); await wait(3000);
-  const ev = await send('Runtime.evaluate', {returnByValue: true, expression: "JSON.stringify({read:window.__leanRead||[],up:!!(typeof OA=='object'&&OA.main&&OA.main.el),title:document.title,heap:performance.memory?+(performance.memory.usedJSHeapSize/1048576).toFixed(1):null,nodes:document.getElementsByTagName('*').length,css:[...document.styleSheets].reduce((a,x)=>{try{return a+[...x.cssRules].reduce((b,r)=>b+r.cssText.length,0)}catch(e){return a}},0),styles:document.styleSheets.length,made:window.__made})"});
+  const ev = await send('Runtime.evaluate', {returnByValue: true, expression: "JSON.stringify({errs:(window.__errs||[]).slice(0,4),read:window.__leanRead||[],up:(()=>{try{return !!(typeof OA=='object'&&OA.main&&OA.main.el)}catch(e){return 'TDZ'}})(),title:document.title,heap:performance.memory?+(performance.memory.usedJSHeapSize/1048576).toFixed(1):null,nodes:document.getElementsByTagName('*').length,css:[...document.styleSheets].reduce((a,x)=>{try{return a+[...x.cssRules].reduce((b,r)=>b+r.cssText.length,0)}catch(e){return a}},0),styles:document.styleSheets.length,made:window.__made})"});
   const mine = renderers().filter(p => !before.has(p)); const m = mine.map(smaps).filter(Boolean).sort((a, b) => b.priv - a.priv);
   if (process.env.LEAN_DUMP) { const bv = await (await fetch('http://127.0.0.1:' + P2 + '/json/version')).json(); const bw = new WebSocket(bv.webSocketDebuggerUrl); await new Promise(r => bw.onopen = r);
     const ev = []; let bid = 0; const bp = {}; let fin; const done2 = new Promise(r => fin = r);

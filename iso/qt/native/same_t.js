@@ -146,6 +146,11 @@ CASES.push({n: 'dlg-dark', set: {dm: 'dark', darkui: true}, more: PINSF, app: 'n
 /* (N3) Task Manager's Apps with Notepad and Settings open: a row for each window (its app, title, status, workspace), as on Standard */
 CASES.push({n: 'tm-apps', set: {}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'calc', 'settings', 'taskmgr']}, pre: ['notepad', 'settings'], app: 'taskmgr',
   read: "JSON.stringify([...document.querySelectorAll('.tmt tbody tr')].map(r => [...r.children].slice(0, 4).map(c => c.textContent)).concat([[...document.querySelectorAll('.tmst')].map(x => x.textContent.split(' · ')[0])]))", parts: []});
+/* (1.6.2 Part 38) Task Manager on Native is its small page (desktop/lean62.py, a/ID.html): each tab looks as Chromium's Task Manager, light
+   and dark (Processes, Performance, System and Hardware with this stand-in's answers) */
+for (const [t, dm] of [['apps', 'light'], ['procs', 'light'], ['perf', 'dark'], ['system', 'light'], ['hw', 'dark'], ['start', 'light']])
+  CASES.push({n: 'tm-' + t + '-' + dm, set: dm == 'dark' ? {dm: 'dark', darkui: true} : {dm: 'light'}, more: {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'settings', 'taskmgr']}, app: 'taskmgr',
+    js: "__tmW.body.querySelector(\".tmtabs button[data-t='" + t + "']\").click()", jswait: 1500, parts: ['screen']});
 /* (N1) a video made full screen with the Media Player's ⛶ (paused at 2 s): the picture fills the screen on both (the test's own video,
    DIR/tm/t.webm, made by same_t.sh with ffmpeg; the case is skipped without it). Standard's page is given the shell's full screen
    (shell26.js fsStandIn, as the shell's "hello" does), as in the session. 'picture': the share of the screen in the video's colour bars,
