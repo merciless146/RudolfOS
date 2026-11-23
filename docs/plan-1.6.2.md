@@ -1044,7 +1044,7 @@ Task Manager is far off.
 the coverage saw Settings run (107) gave 99-101 MB, the same. A page per panel would start from about what Task Manager's small page cost (60 MB in Chromium, about 3 % less
 than the whole page in WebKit), plus the panel's 15 to 41 modules. That would save at most 30-35 MB, below the 40 MB bar. It would also change how
 Settings moves between panels: each panel would be a page of its own, or the rest of the page would be read at the first panel
-change, back to the whole page. So it is written up as not worth it. Settings' memory is Part 39's native Settings (1.6.3).
+change, back to the whole page. So it is written up as not worth it. Settings' memory is Part 39's native Settings (moved into 1.6.2 by the owner, 2026-11-23).
 
 **The owner's checks (Vivobook):** none for this part's steps now (nothing of them is in the release). If the owner wants the
 small page all the same: the branch `lean-taskmgr-small`, then Task Manager's own memory in its Processes tab before and after
@@ -1068,8 +1068,12 @@ account's own Linux user, nothing new opened up.
    (a sample window screenshot-compared with the page's same controls).
 2. **Task Manager** (1.6.2): the first native app; ~130 MB today in its own web process; aim 15 to 40 MB. Its small page
    (Part 38 step 2) is the stopgap until the native one passes, then the native one replaces it.
-3. **Settings** (1.6.3, panel by panel, each panel switched as it passes): ~170 MB today. Small pages per panel (Part 38) only
-   where a panel's native version is further off.
+3. **Settings** (**1.6.2**: the owner, 2026-11-23, "Do native settings in 1.6.2"; it was planned for 1.6.3): ~170 MB today.
+   `/usr/bin/rudolf-settings` on librudolf-ui, built panel group by panel group (one PR each), all 22 panels of
+   `desktop/settings-index.json` (Display, Sound, Multimedia, Network, Mobile, Bluetooth, Web, System, Keyboard, Mouse,
+   Devices, Accessibility, Privacy, Security, Health, Users, Remote, Storage, Apps, Notifications, Updates, About) and
+   Settings' search. Native opens it instead of the web Settings only once every panel and the search pass (no window half
+   native, half web: that would cost both); until then the web Settings stays. Chromium and Lite keep the web Settings.
 4. **The Office apps** (WordPro, SpreadsheetPro, PresentPro; after Settings: the largest work): ~130 MB each today; their small
    pages (Part 38 step 3b) meanwhile.
 5. **Then 2.0's waves in their order** for the rest (Calculator, Notepad and the other small apps cost little, about 15 MB, so

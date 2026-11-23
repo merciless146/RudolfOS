@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.2.md Part 39): a native Settings comes in 1.6.2, not 1.6.3; the native desktop opens it
+  once all 22 panels and the search pass, and Chromium and Lite keep the web Settings.
 - Fixed: "Remember the password" for a network share, and Blitzen's developer tokens, kept nothing when the account's keyring was
   locked, though it has no password of its own. Rudolf OS now unlocks such a keyring itself before keeping the secret.
 - Changed: the plan (docs/plan-1.6.2.md Part 38): the app windows' memory on the native desktop measured; a small page for
