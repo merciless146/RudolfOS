@@ -34,7 +34,7 @@ jobs:
       - name: "ui_t.sh: the sample window against the page's controls"
         run: mkdir -p out && NODE_PATH=$PWD/node_modules UI_PORT=8682 UI_DSP=:89 sh iso/qt/native/ui_t.sh $PWD/out "" $RUNNER_TEMP/rudolf-uisample
       - if: failure()
-        name: the writing's pixels, page and native (a line of the message's text: to see how each antialiases and hints)
+        name: "the writing's pixels, page and native (a line of the message's text, to see how each antialiases and hints)"
         run: |
           python3 -c "
           from PIL import Image
