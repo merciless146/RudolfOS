@@ -31,8 +31,7 @@ for _m in mods:
 # and a stub of the same name loads the file, then calls the real one (which the file defines anew). A file that
 # cannot load says so, with Try again. lazyApp(group) loads one by hand (WordPro's "Insert a spreadsheet table" and
 # "Make a presentation" need SpreadsheetPro's and PresentPro's code).
-mods.append('orasession61.js')
-mods.insert(mods.index('lean61.js')+1,'lean62.js')   # 1.6.2 (docs/plan-1.6.2.md Part 38): the hidden page tells the native shell Task Manager's small page   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's session in the account's folder
+mods.append('orasession61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's session in the account's folder
 LAZY={'sheet':(['spreng45.js','sprof45.js','spro45.js'],'sheetApp','SpreadsheetPro'),'deck':(['pprof45.js','ppro45.js'],'deckApp','PresentPro')}
 LAZY_CODE={};LAZY_REG={}
 for _g,(_fs,_fn,_nm) in LAZY.items():
@@ -190,9 +189,7 @@ s=s.replace("const LAZY_DONE={},LAZY_P={};let LAZY={};","const LAZY_DONE={},LAZY
 _n=s.count("const ORA_RDB_URL = '';");assert _n==1,_n
 s=s.replace("const ORA_RDB_URL = '';","const ORA_RDB_URL = '"+_out('data:text/javascript;base64,'+base64.b64encode(open(os.path.join(here,'../libs/readability/Readability.js'),'rb').read()).decode())+"';")
 # 1.6.1 (docs/plan-1.6.1.md Part 23 B, stage 2): the native desktop's apps' page, without the modules no app of it uses (oapage61.py)
-import lean62;_EXT['text/html']='html';_lean_tm=lean62.build(s,lean62.TASKMGR,_out,'taskmgr')[1]   # 1.6.2 (docs/plan-1.6.2.md Part 38): Task Manager's small page (lean62.py)
 import oapage61;_EXT['text/html']='html';s,_oah=oapage61.build(s,L,_out)
-s=lean62.redirect(s,_lean_tm)
 for _n in os.listdir(_A):
     if _n not in _keep:os.remove(os.path.join(_A,_n))
 open(O,'w').write(s);print(len(s),len(_keep),'files in a/')

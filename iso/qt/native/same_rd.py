@@ -63,13 +63,7 @@ class H(http.server.BaseHTTPRequestHandler):
             L = json.dumps(ls()).replace('<', '\\u003c')
             inj = ('<script type="application/json" id="rudolf-ls">%s</script><script>window.RUDOLFD={token:"%s",base:"",boot:"uefi",media:"disk",live:0,recovery:0,engine:"%s"};%s</script>'
                    % (L, TOK, self.engine(), LSJS))
-            # (1.6.2 Part 38: Task Manager's small page for /?oa=ID, as rudolfd serves it (rudolfd.c oa_page); only a small page (lean62.py):
-            # the apps' page has its own test, apppage161_t.sh, and these cases stay as they were for it)
-            pg = os.path.join(WWW, 'index.html'); import re as _re; oa = (_re.match(r'(?:.*&)?oa=([0-9a-f]{16})(?:&|$)', q or '') or [None, None])[1]
-            if oa and os.path.isfile(os.path.join(WWW, 'a', oa + '.html')):
-                t = open(os.path.join(WWW, 'a', oa + '.html'), encoding='utf-8').read()
-                if '<script>window.__OAPAGE=1;window.__LEAN=' in t: pg = os.path.join(WWW, 'a', oa + '.html'); note('PAGE lean')
-            return self.send(200, open(pg, encoding='utf-8').read().replace('<head>', '<head>' + inj, 1), 'text/html; charset=utf-8')
+            return self.send(200, open(os.path.join(WWW, 'index.html'), encoding='utf-8').read().replace('<head>', '<head>' + inj, 1), 'text/html; charset=utf-8')
         if u == '/pkg/rudolf-emberreach/www/index.html' and rd('progs') is not None:   # (DIR/progs: a Library web app's page, appsbeh_t.js)
             note('PKG ' + u); return self.send(200, '<!doctype html><title>Ember Reach</title><body style="background:#331"><h1 id=er>Ember Reach</h1>', 'text/html; charset=utf-8')
         if u.startswith('/tm/'):   # (the test's media: DIR/tm/NAME, made by the test with ffmpeg; test finding N1)

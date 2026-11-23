@@ -5,9 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
-- Changed: on the native desktop Task Manager opens a small page of its own (docs/plan-1.6.2.md Part 38: built from the desktop
-  page with only what Task Manager uses, everything else read only if ever needed): about 11 MB less in Chromium's
-  measurements, in its own web process; it looks and works as before. Settings is measured and left as it is.
+- Changed: the plan (docs/plan-1.6.2.md Part 38): the app windows' memory on the native desktop measured; a small page for
+  Task Manager built and measured (about 3 % less in WebKit) and not kept; Settings' panels measured and left as they are.
 - Changed: the plan (docs/plan-1.6.2.md Part 39): native apps for Rudolf OS too, not only WendigOS: librudolf-ui and a native
   Task Manager first (1.6.2), then Settings and the Office apps, each screenshot-compared with its web version before it
   replaces it on the native desktop.

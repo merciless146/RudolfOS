@@ -998,59 +998,48 @@ the window opened, alone in its browser):**
   window runs about 380 of the page's 2,109 top-level functions, in 79 of its 159 modules (most of them at sign-in). A Settings
   window run through every panel runs 107 modules (1,581 function starts); each panel adds 15 to 41 modules to what Settings runs
   as it opens (Display 41, Security 26, Internet 29, the smallest Notifications 15).
-- The same in WebKit (JavaScriptCore) is measured by `iso/qt/host/lean162_t.sh` in the check workflow (`lean-check.yml`, below),
-  and on the Vivobook by the owner.
+- The same in WebKit (JavaScriptCore): rudolf-native under Xvfb on GitHub's runner (`lean162_t.sh` on the branch
+  `lean-taskmgr-small`), Task Manager's own web process: 94.5 MB private with the whole page (step 2 below).
 
-**Step 2, Task Manager's small page (done, 2026-11-23; WORK: the PR "Part 38 step 2"):**
-- `build19.py` makes it (`desktop/lean62.py`; `a/ID.html` beside the page, named by its contents). It is the whole page as built,
-  read statement by statement (a JavaScript reader of its own: strings, templates, regular expressions, where statements end). It
-  keeps: the modules on its list (36: Task Manager's own, the window, the theme, the clock, the sign-in, what its tabs and system
-  report use); the functions of base_v24.html's own code that the coverage ran (71); every variable a kept statement reads,
-  wherever it is; every app's registration and shortcut; every setting's default. Every other statement goes, in order, into one
-  file beside it (2.1 MB), read the first time any of its functions is called, so nothing is lost, only slower once (the tests
-  fail if it is ever read). A name on the list that the page has no longer stops the build.
-- What the whole page does at each window's sign-in for the whole desktop, the small page does not (its `noop` list): the start
-  menu's catalogue (a small page must never give one: it lacks other apps' modules), the desktop's icons, the Library's and
-  Oracle's lists, the moving background's statue. The shell's hidden page does all of these.
-- rudolfd serves it as it serves the apps' page (`/?oa=ID`, the `<script>window.__OAPAGE=1;` mark): the token, the storage and
-  the page's policy, to the desktop only. Nothing new is asked of rudolfd, and nothing is opened up. The hidden page names it to
-  the native shell (`desktop/lean62.js`, op `tmpage`, taken from the hidden page only and only as 16 hex characters).
-  rudolf-native then opens Task Manager at `/?oa=ID#app=taskmgr...`, still in its own web process (#598). If a Task Manager
-  window opens the whole page anyway (before the hidden page named the small one), the whole page sends it there at once. A
-  name rudolfd has no page for gives the whole page, which stays whole. Standard and a page opened by hand never do this. Lite
-  has no app windows of its own (its apps are inside its one page, as Chromium's are), so it has nothing to change.
-- No sign-in screen: the small page signs in from the native session as an app's window does, and the test checks that none
-  shows.
-- Tests: `iso/qt/shell2/lean162_t.js` compares the small page with the whole page's Task Manager. It covers 22 steps (every tab;
-  sorting; the search box; a process picked; its right-click menu; End process and End process tree, asked and cancelled; Clear
-  cache; Refresh; Startup's switch; Copy system report; Report a problem), Ctrl+Alt+Del's window (`&urgent=1`), the system report
-  copied, what each page told the native shell, what it asked rudolfd (the small page asks nothing the whole page does not), and
-  the account's settings as each left them: 10/10. `iso/qt/host/lean162_t.sh` checks rudolf-native in WebKit: the small page
-  named and opened, every tab, its web process's memory against the whole page's (`RUDOLF_NATIVE_TM_FULL`). `same_t.sh` has
-  new cases for Task Manager's tabs (`tm-apps-light`, `tm-procs-light`, `tm-perf-dark`, `tm-system-light`, `tm-hw-dark`,
-  `tm-start-light`) beside `tm-apps` and the title bars. `apppage161_t.sh` counts Task Manager as a window not of the whole page.
-- **Numbers (host, Chromium):** the whole page 72.8-75.6 MB (mean 74.2); **the small page 62.8-63.1 (mean 63): about 11 MB
-  less, 15 %.** That is below this part's 40 MB aim. The small page is kept because Task Manager has a process of its own, so
-  all of it is saved on top of the shared process, and as Part 39's stopgap until the native Task Manager. Its WebKit numbers
-  come from `lean162_t.sh` (the PR gives them). If the Vivobook shows less than about 20 MB saved, the owner may decline it:
-  the native Task Manager (Part 39, aim 15 to 40 MB) is the real fix. The release grows by the small page and its rest file,
-  about 3.5 MB.
+**Step 2, Task Manager's small page: built, measured, not kept (2026-11-23).** The numbers said no, so by this part's rule the
+small page is not in the release. It is kept on the branch `lean-taskmgr-small` (PR #659's first commits) in case Part 39's native
+Task Manager is far off.
+- What was built. `desktop/lean62.py` made the small page from the whole page as built, read statement by statement, keeping a
+  list: 36 modules, 71 of base_v24.html's functions, every variable those read, every app's registration, shortcut and setting
+  default. Everything else went into one file read only if ever called. What the whole page does at each sign-in for the whole
+  desktop was left out: the start menu's catalogue, the desktop's icons, the lists. The hidden page named the small page to
+  rudolf-native (op `tmpage`), which opened Task Manager there (`/?oa=ID`, served by rudolfd as the apps' page; nothing new
+  asked of rudolfd).
+- How it was checked. In Chromium it matched the whole page's Task Manager in all 22 steps (every tab and action), in what it
+  told the shell and asked rudolfd, and in the settings it saved (`lean162_t.js`: 10/10). Native against Chromium was the same
+  for Task Manager's rows, its title bars and its tabs (`same_t.sh` 8/9; Performance's live graphs differed). In WebKit
+  (`lean162_t.sh`) the shell named the small page and opened it in Task Manager's own web process, every tab worked, and nothing
+  else of the page was read.
+- **The numbers:**
+
+  | Task Manager's memory (private) | Whole page | Small page | Saved |
+  |---|---|---|---|
+  | Chromium, here | 74.2 MB | 63 MB | about 11 MB, 15 % |
+  | Chromium, GitHub's runner | 61.7 MB | 53.1 MB | 8.6 MB |
+  | **WebKit (rudolf-native), GitHub's runner** | **94.5 MB** (PSS 147.6) | **91.5 MB** (PSS 144.4) | **3 MB, about 3 %** |
+
+  rudolf-native's WebKit is what the owner's Vivobook runs, so the saving there would be a few MB, far below the 40 MB aim, for
+  about 3.5 MB more in the release and another list to keep up to date. WebKit's JavaScriptCore keeps much less of the script it
+  never runs than Chromium does; what a WebKit web process holds is mostly its own floor and what the page does as it signs in.
+  The real fix is Part 39's native Task Manager (aim 15 to 40 MB).
+- What stays from this step: the measuring tool (`iso/qt/shell2/lean162m.js`: coverage, and memory read without automation),
+  Task Manager's stand-in answers for the stand-in rudolfd (`iso/qt/host/fixtures/tm62.json`, `native_rd.py`'s `DIR/tm.json`),
+  and these readings, for Part 39's comparisons.
 
 **Step 4, Settings panel by panel (measured, not done):** Settings in Chromium is 100-104 MB. A small page keeping every module
-the coverage saw Settings run (107) gave 99-101 MB, the same. A page per panel would start from Task Manager's small page,
-about 60 MB, plus the panel's 15 to 41 modules. That would save at most 30-35 MB, below the 40 MB bar. It would also change how
+the coverage saw Settings run (107) gave 99-101 MB, the same. A page per panel would start from about what Task Manager's small page cost (60 MB in Chromium, about 3 % less
+than the whole page in WebKit), plus the panel's 15 to 41 modules. That would save at most 30-35 MB, below the 40 MB bar. It would also change how
 Settings moves between panels: each panel would be a page of its own, or the rest of the page would be read at the first panel
 change, back to the whole page. So it is written up as not worth it. Settings' memory is Part 39's native Settings (1.6.3).
 
-**The owner's checks (Vivobook, Native):**
-1. Task Manager's own memory in its Processes tab (its own WebKitWebProcess), before this PR and after it, opened the same way
-   (Ctrl+Shift+Esc), 20 s after it opens; and Settings' (the shared process), unchanged.
-2. Task Manager after it: Apps (Switch to, End task), Processes (sort, Find a process, End process and End process tree with the
-   administrator's password, the right-click menu), Performance (Clear cache), System (Refresh, Restart a service), Hardware
-   (Check this computer…), Startup (the switch, Remove), Copy system report, Report a problem; Ctrl+Alt+Del's Task Manager on
-   top. Everything as before, and no sign-in screen flashing.
-3. The start menu, the desktop's icons and the other windows unchanged after Task Manager opens and closes (the small page
-   gives no catalogue).
+**The owner's checks (Vivobook):** none for this part's steps now (nothing of them is in the release). If the owner wants the
+small page all the same: the branch `lean-taskmgr-small`, then Task Manager's own memory in its Processes tab before and after
+(Ctrl+Shift+Esc, 20 s after it opens) and every tab and action.
 
 ### 39. Native apps for Rudolf OS too, starting in 1.6.2 (added on 2026-11-22)
 The owner, 2026-11-22, after the per-window readings (Part 38: Task Manager ~130 MB, Settings ~170 MB, WordPro ~130 MB, each

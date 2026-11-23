@@ -608,7 +608,6 @@ static void tbp_app(AppWin *a, const char *v);   /* (1.6.1 Part 25: a window's w
 static GPid OR_PID; static int OR_RUN; static char OR_CTL[300]; static const char *TOR_CTL_P;   /* (Part 16: the Tor windows' rudolf-launch FIFO, once it runs) */
 static void oracle_tell(const char *line); static void oracle_only(const char *line);
 static void mirror_to_webkit(const char *id); static void settings_changed(const char *id, AppWin *from);
-static void tm_page_set(AppWin *a, JSCValue *v);   /* (1.6.2 Part 38, below) */
 static void osd_show(const char *k, const char *lv, const char *label, const char *n);
 static char *open_extra(const char *url, const char *priv);
 static int id_ok(const char *s) { return strspn(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-") == strlen(s) && strlen(s) < 64; }
@@ -632,7 +631,6 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 			g_free(u); frame_redraw_app(a); } if (pv) g_object_unref(pv);
 		bar_redraw(); }
 	else if (!strcmp(op, "drop")) { jsstr(v, "in", x, sizeof x); jsstr(v, "file", f, sizeof f); drop_in(f, x); }
-	else if (!strcmp(op, "tmpage")) tm_page_set(a, v);   /* (1.6.2 Part 38: Task Manager's small page, named by the hidden page) */
 	else if (!strcmp(op, "fc")) { jsstr(v, "n", x, sizeof x); FC_N = atoi(x); state_write(); }   /* (1.6.1 Part 28: File Explorer's clipboard holds N items: the desktop's Paste) */
 	else if (!strcmp(op, "openwith")) { jsstr(v, "key", x, sizeof x); jsstr(v, "file", f, sizeof f); open_with(f, x); }   /* (Open with: the app's own window) */
 	else if (!strcmp(op, "toast")) toast_add(a, v);   /* (a notification's pop-up, drawn by the shell: item 3) */
@@ -752,22 +750,10 @@ static AppWin *appwin_new(const char *k, WebKitWebView *rel, int id)
 static void wm_manage_app(AppWin *a);
 static void appwin_show(AppWin *a) { if (a->hidden) { gtk_widget_realize(a->view); return; } gtk_widget_show_all(a->win); wm_manage_app(a); gtk_window_present(GTK_WINDOW(a->win)); bar_redraw(); state_write(); }
 static void on_ready(WebKitWebView *v, gpointer d) { (void)v; appwin_show(d); }
-/* 1.6.2 (docs/plan-1.6.2.md Part 38, desktop/lean62.py): Task Manager's small page. The shell's hidden page names it (op tmpage, lean62.js:
-   a/ID.html, which rudolfd serves as the page for /?oa=ID, as the apps' page); Task Manager's window opens there, in its own web process
-   as before. Until it is named (or a name rudolfd has no page for: rudolfd gives the whole page, which stays the whole page) the whole
-   page, as before. RUDOLF_NATIVE_TM_FULL (tests only): the whole page always, kept whole (&full=1), for the readings before and after. */
-static char TM_PAGE[17];
-static void tm_page_set(AppWin *a, JSCValue *v)
-{
-	char x[24] = ""; jsstr(v, "id", x, sizeof x);
-	if (a && !strcmp(a->k, "do-bg") && strlen(x) == 16 && strspn(x, "0123456789abcdef") == 16 && !getenv("RUDOLF_NATIVE_TM_FULL")) snprintf(TM_PAGE, sizeof TM_PAGE, "%s", x);
-}
-static const char *tm_page_q(const char *k) { static char q[24]; if (strcmp(k, "taskmgr") || !TM_PAGE[0]) return ""; snprintf(q, sizeof q, "?oa=%s", TM_PAGE); return q; }
-static const char *tm_page_full(const char *k) { return !strcmp(k, "taskmgr") && getenv("RUDOLF_NATIVE_TM_FULL") ? "&full=1" : ""; }
 static char *app_url(const char *k, const char *file, int id, const char *extra)
 {
 	char *fe = file ? g_uri_escape_string(file, NULL, FALSE) : NULL, *ke = g_uri_escape_string(k, NULL, FALSE);   /* (lx:...: escaped, as "+" would be a space) */
-	char *u = g_strdup_printf("http://%s:%d/%s#app=%s&w=%d&sw=%d&sh=%d%s%s%s%s", HOST, PORT, tm_page_q(k), ke, id, SW, SH, fe ? "&file=" : "", fe ? fe : "", extra ? extra : "", tm_page_full(k)); g_free(fe); g_free(ke); return u;
+	char *u = g_strdup_printf("http://%s:%d/#app=%s&w=%d&sw=%d&sh=%d%s%s%s", HOST, PORT, ke, id, SW, SH, fe ? "&file=" : "", fe ? fe : "", extra ? extra : ""); g_free(fe); g_free(ke); return u;
 }
 /* windows asked for and not made yet (made through an open window's window.open: see app_open) */
 typedef struct { char k[KN]; int id, hidden, reveal; AppWin *into; } Pending;   /* (into: a resting window's page coming back, 1.6.1) */
