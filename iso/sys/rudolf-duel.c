@@ -1,5 +1,5 @@
 /* rudolf-duel: the LAN game relay for two-player games from the Rudolf OS Library (Ember Reach's duels), docs/plan-1.6.2.md
- * Part 30. A browser page cannot take connections, so while a player hosts, this computer runs a small WebSocket relay
+ * Part 30, and (1.6.2, the Library's protocol 2) its co-op wings of up to four. A browser page cannot take connections, so while a player hosts, this computer runs a small WebSocket relay
  * on the local network and announces it there by multicast DNS; the other player's Rudolf OS finds it and the two
  * games meet through it. The protocol is the Library's duel relay's (rudolfos-library docs/duel-protocol.md,
  * tools/duel-relay/protocol.mjs), with one room, as `relay.mjs --lan CODE` has it:
@@ -7,6 +7,10 @@
  *   {t:"room",code}; paired, both get {t:"paired",role}, and every message beginning {"t":"g" goes to the other as it
  *   is; one leaving, the other gets {t:"left"}. Refusals: {t:"error",why,text} (bad, version (with the room's ver),
  *   room, full, busy, limit, time), then the connection is closed.
+ *   Protocol 2 (co-op): the host says size (2-4); each guest who joins gets {t:"paired",role:"guest",id,size} (id 1-3,
+ *   the lowest free seat) and the host {t:"joined",id}. The host's {"t":"g" messages go to every guest, or to one when
+ *   they begin {"t":"g","to":N,; a guest's go to the host only, as {"t":"g","f":N, and the rest. A guest leaving: the
+ *   host gets {t:"left",id} and the room stays open; the host leaving ends it for all. No quick match.
  *
  *   rudolf-duel serve --port P --code CODE --v VERSION --game GAME --name NAME --addr A.B.C.D [--wait S]
  *       the relay for one game (its game kit id, "ember-reach") and version, with its room code (rudolfd chooses it):
@@ -51,9 +55,10 @@
 #include <unistd.h>
 
 /* the Library relay's limits (tools/duel-relay/protocol.mjs): 8 KB a message, 90 a second with a burst of 180, 10 s to
-   say hello, 10 minutes waiting for the second player, 60 s of silence once paired; at most 4 connections here */
+   say hello, 10 minutes waiting for the second player, 60 s of silence once paired; at most 6 connections here (a
+   wing of four, and room to turn away a fifth and a sixth cleanly) */
 #define MAXMSG 8192
-#define MAXC 4
+#define MAXC 6
 #define RATE 90.0
 #define BURST 180.0
 #define HELLO 10.0
@@ -356,14 +361,17 @@ static int cmd_find(const char *game, int ms)
 
 /* ---------------------------------------------------------------- the relay (protocol.mjs's Lobby, one room) */
 typedef struct cl {
-	int fd, ws, gone, said; double tokens, filled, at, heard;
+	int fd, ws, gone, said, id; double tokens, filled, at, heard;
 	unsigned char in[MAXMSG + 4096 + 16]; size_t inl;
 	unsigned char *frag; size_t fragl;
 	unsigned char *out; size_t outl;
 } cl;
 static cl *C[MAXC];
-/* the one room: its host, its guest, whether it is a quick-match room, its version, when it was made */
-static struct { int on, quick; cl *host, *guest; char ver[24]; double made; } ROOM;
+/* the one room: its host, its guests (protocol 1: one, g[0]; 2: up to three, by seat), whether it is a quick-match
+   room, its protocol and size, its version, when it was made and when it was last left empty */
+static struct { int on, quick, proto, size; cl *host, *g[3]; char ver[24]; double made, emptied; } ROOM;
+static int guests(void) { int n = 0; for (int i = 0; i < 3; i++) if (ROOM.g[i]) n++; return n; }
+static int is_guest(cl *c) { for (int i = 0; i < 3; i++) if (c && ROOM.g[i] == c) return 1; return 0; }
 static volatile sig_atomic_t STOP;
 static void on_term(int s) { (void)s; STOP = 1; }
 static void cl_write(cl *c, const void *v, size_t n)
@@ -381,18 +389,25 @@ static void ws_frame(cl *c, int op, const void *d, size_t n)
 }
 static void ws_text(cl *c, const char *t) { ws_frame(c, 1, t, strlen(t)); }
 static void ws_close(cl *c, int code) { unsigned char b[2] = {code >> 8, code & 255}; if (c->ws) ws_frame(c, 8, b, 2); c->gone = 1; }
-/* a player gone: the room goes with it, and the other is told and let go (the relay's work is then done) */
+/* a player gone: the room goes with it, and the others are told and let go (the relay's work is then done); in a wing
+   (protocol 2), a guest gone frees their seat, the host told which, and the room stays open */
 static void leave(cl *c)
 {
-	if (!ROOM.on || (c != ROOM.host && c != ROOM.guest)) return;
-	cl *o = c == ROOM.host ? ROOM.guest : ROOM.host;
-	ROOM.on = 0; ROOM.host = ROOM.guest = NULL;
-	if (o && !o->gone) { ws_text(o, "{\"t\":\"left\"}"); ws_close(o, 1000); }
+	if (!ROOM.on || (c != ROOM.host && !is_guest(c))) return;
+	if (ROOM.proto == 2 && c != ROOM.host) {
+		ROOM.g[c->id - 1] = NULL; if (!guests()) ROOM.emptied = now();
+		if (ROOM.host && !ROOM.host->gone) { char m[40]; snprintf(m, sizeof m, "{\"t\":\"left\",\"id\":%d}", c->id); ws_text(ROOM.host, m); }
+		return;
+	}
+	cl *os[4] = {0}; int k = 0;
+	if (c == ROOM.host) for (int i = 0; i < 3; i++) os[k++] = ROOM.g[i]; else os[k++] = ROOM.host;
+	ROOM.on = 0; ROOM.host = NULL; for (int i = 0; i < 3; i++) ROOM.g[i] = NULL;
+	for (int i = 0; i < k; i++) if (os[i] && !os[i]->gone) { ws_text(os[i], "{\"t\":\"left\"}"); ws_close(os[i], 1000); }
 	STOP = 2;
 }
 static const struct { const char *why, *text; } TEXT[] = {
 	{"bad", "That is not a duel the relay knows."}, {"version", "The other player runs another version of the game."}, {"room", "There is no duel with that code."},
-	{"full", "That duel already has two players."}, {"busy", "The relay is busy."}, {"limit", "Too much, too fast."}, {"time", "Nothing heard in time."}};
+	{"full", "That game is full."}, {"busy", "The relay is busy."}, {"limit", "Too much, too fast."}, {"time", "Nothing heard in time."}};
 static void drop(cl *c, const char *why, const char *ver)
 {
 	if (c->gone) return;
@@ -402,17 +417,33 @@ static void drop(cl *c, const char *why, const char *ver)
 	ws_close(c, !strcmp(why, "limit") ? 1008 : 1000);
 	leave(c);
 }
-static void host_room(cl *c, const char *ver, int quick)
+static void host_room(cl *c, const char *ver, int quick, int proto, int size)
 {
 	if (ROOM.on) { drop(c, "busy", NULL); return; }
-	ROOM.on = 1; ROOM.quick = quick; ROOM.host = c; ROOM.guest = NULL; ROOM.made = now(); snprintf(ROOM.ver, sizeof ROOM.ver, "%s", ver);
+	ROOM.on = 1; ROOM.quick = quick; ROOM.proto = proto; ROOM.size = size; ROOM.host = c; for (int i = 0; i < 3; i++) ROOM.g[i] = NULL; ROOM.made = now(); ROOM.emptied = 0; snprintf(ROOM.ver, sizeof ROOM.ver, "%s", ver);
 	if (quick) ws_text(c, "{\"t\":\"wait\"}");
 	else { char m[64]; snprintf(m, sizeof m, "{\"t\":\"room\",\"code\":\"%s\"}", ME.code); ws_text(c, m); }
 }
 static void pair(cl *c)
 {
-	ROOM.guest = c;
-	ws_text(ROOM.host, "{\"t\":\"paired\",\"role\":\"host\"}"); ws_text(c, "{\"t\":\"paired\",\"role\":\"guest\"}");
+	if (ROOM.proto == 1) { ROOM.g[0] = c; c->id = 1; ws_text(ROOM.host, "{\"t\":\"paired\",\"role\":\"host\"}"); ws_text(c, "{\"t\":\"paired\",\"role\":\"guest\"}"); return; }
+	int id = 1; while (id <= 3 && ROOM.g[id - 1]) id++;   /* (the lowest free seat) */
+	ROOM.g[id - 1] = c; c->id = id;
+	char m[80]; snprintf(m, sizeof m, "{\"t\":\"paired\",\"role\":\"guest\",\"id\":%d,\"size\":%d}", id, ROOM.size); ws_text(c, m);
+	snprintf(m, sizeof m, "{\"t\":\"joined\",\"id\":%d}", id); ws_text(ROOM.host, m);
+}
+/* a game's message once paired: protocol 1, to the other as it is; 2, the host's to every guest (or the one its
+   "to" names), a guest's to the host with "f" (its seat) added */
+static void route(cl *c, const char *t, size_t n)
+{
+	if (ROOM.proto == 1) { cl *o = c == ROOM.host ? ROOM.g[0] : ROOM.host; if (o && !o->gone) ws_frame(o, 1, t, n); return; }
+	if (c != ROOM.host) {
+		if (!ROOM.host || ROOM.host->gone) return;
+		static char b[MAXMSG + 32]; int h = snprintf(b, sizeof b, "{\"t\":\"g\",\"f\":%d", c->id);
+		memcpy(b + h, t + 8, n - 8); ws_frame(ROOM.host, 1, b, h + n - 8); return;
+	}
+	int to = 0; if (n > 16 && !memcmp(t, "{\"t\":\"g\",\"to\":", 14) && t[14] >= '1' && t[14] <= '3' && t[15] == ',') to = t[14] - '0';   /* ({"t":"g","to": is 14 bytes: the seat, then a comma) */
+	for (int i = 0; i < 3; i++) if (ROOM.g[i] && !ROOM.g[i]->gone && (!to || to == i + 1)) ws_frame(ROOM.g[i], 1, t, n);
 }
 static void relay_msg(cl *c, const char *t, size_t n)
 {
@@ -420,27 +451,30 @@ static void relay_msg(cl *c, const char *t, size_t n)
 	double tn = now(); c->tokens += (tn - c->filled) * RATE; if (c->tokens > BURST) c->tokens = BURST; c->filled = tn;
 	if (--c->tokens < 0) { drop(c, "limit", NULL); return; }
 	c->heard = tn;
-	/* after pairing: the game's messages pass to the other as they are */
-	if (ROOM.on && ROOM.guest && (c == ROOM.host || c == ROOM.guest) && n >= 8 && !memcmp(t, "{\"t\":\"g\"", 8)) { cl *o = c == ROOM.host ? ROOM.guest : ROOM.host; if (!o->gone) ws_frame(o, 1, t, n); return; }
-	char ty[24], ver[40], code[24], proto[16], game[48], want[16];
+	/* after pairing: the game's messages pass on (route) */
+	if (ROOM.on && guests() && (c == ROOM.host || is_guest(c)) && n >= 8 && !memcmp(t, "{\"t\":\"g\"", 8)) { route(c, t, n); return; }
+	char ty[24], ver[40], code[24], proto[16], game[48], want[16], size[8];
 	if (jget(t, n, "t", ty, sizeof ty) != 's') { drop(c, "bad", NULL); return; }
 	if (!strcmp(ty, "g")) return;   /* (not paired yet: nobody to pass it to) */
 	if (strcmp(ty, "hello") || c->said) { drop(c, "bad", NULL); return; }
 	c->said = 1;
-	if (jget(t, n, "proto", proto, sizeof proto) != 'n' || strcmp(proto, "1") || jget(t, n, "game", game, sizeof game) != 's' || strcmp(game, ME.game)
+	if (jget(t, n, "proto", proto, sizeof proto) != 'n' || (strcmp(proto, "1") && strcmp(proto, "2")) || jget(t, n, "game", game, sizeof game) != 's' || strcmp(game, ME.game)
 		|| jget(t, n, "ver", ver, sizeof ver) != 's' || !word_ok(ver, 20, ".+-") || jget(t, n, "want", want, sizeof want) != 's') { drop(c, "bad", NULL); return; }
+	int pr = proto[0] - '0', sz = 2;
+	if (pr == 2 && !strcmp(want, "quick")) { drop(c, "bad", NULL); return; }   /* (quick match is for duels) */
+	if (pr == 2 && !strcmp(want, "host")) { if (jget(t, n, "size", size, sizeof size) != 'n' || strlen(size) != 1 || size[0] < '2' || size[0] > '4') { drop(c, "bad", NULL); return; } sz = size[0] - '0'; }
 	if (!strcmp(want, "host")) {
 		/* (this computer's service was started for one version: the room is that version's) */
 		if (strcmp(ver, ME.v)) { drop(c, "version", ME.v); return; }
-		host_room(c, ver, 0);
+		host_room(c, ver, 0, pr, sz);
 	} else if (!strcmp(want, "join")) {
-		if (jget(t, n, "code", code, sizeof code) != 's' || !code_ok(code) || strcmp(code, ME.code) || !ROOM.on || ROOM.quick || !ROOM.host || ROOM.host->gone) { drop(c, "room", NULL); return; }
-		if (ROOM.guest) { drop(c, "full", NULL); return; }
+		if (jget(t, n, "code", code, sizeof code) != 's' || !code_ok(code) || strcmp(code, ME.code) || !ROOM.on || ROOM.quick || !ROOM.host || ROOM.host->gone || ROOM.proto != pr) { drop(c, "room", NULL); return; }
+		if (guests() >= ROOM.size - 1) { drop(c, "full", NULL); return; }
 		if (strcmp(ROOM.ver, ver)) { char rv[24]; snprintf(rv, sizeof rv, "%s", ROOM.ver); drop(c, "version", rv); return; }
 		pair(c);
 	} else if (!strcmp(want, "quick")) {
-		if (ROOM.on && ROOM.quick && !ROOM.guest && ROOM.host && !ROOM.host->gone && !strcmp(ROOM.ver, ver)) pair(c);
-		else host_room(c, ver, 1);
+		if (ROOM.on && ROOM.quick && !guests() && ROOM.host && !ROOM.host->gone && !strcmp(ROOM.ver, ver)) pair(c);
+		else host_room(c, ver, 1, 1, 2);
 	} else drop(c, "bad", NULL);
 }
 /* the WebSocket handshake: GET / or /duel, Upgrade: websocket, version 13, a key */
@@ -544,8 +578,8 @@ static int cmd_serve(int port, int wait)
 		for (int i = 0; i < MAXC; i++) if (C[i] && !C[i]->gone) {
 			cl *c = C[i];
 			if (!c->said && t - c->at > HELLO) drop(c, "time", NULL);
-			else if (ROOM.on && c == ROOM.host && !ROOM.guest && t - ROOM.made > WAITING) drop(c, "time", NULL);
-			else if (ROOM.on && ROOM.guest && (c == ROOM.host || c == ROOM.guest) && t - c->heard > QUIET) drop(c, "time", NULL);
+			else if (ROOM.on && c == ROOM.host && !guests() && t - (ROOM.emptied > 0 ? ROOM.emptied : ROOM.made) > WAITING) drop(c, "time", NULL);
+			else if (ROOM.on && guests() && (c == ROOM.host || is_guest(c)) && t - c->heard > QUIET) drop(c, "time", NULL);
 		}
 		for (int i = 0; i < MAXC; i++) if (C[i] && C[i]->gone) cl_drop(i);
 		if (md >= 0 && anns < 3 && t >= ann) { mdns_send_all(md, 120); anns++; ann = t + 2; }
