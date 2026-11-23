@@ -961,6 +961,35 @@ its one page.
 **The owner's checks:** Task Manager (and each app moved) on the Vivobook: everything it does, and the memory in Task Manager's own
 Processes tab before and after.
 
+### 39. Native apps for Rudolf OS too, starting in 1.6.2 (added on 2026-11-22)
+The owner, 2026-11-22, after the per-window readings (Part 38: Task Manager ~130 MB, Settings ~170 MB, WordPro ~130 MB, each
+app window a whole copy of the desktop page): "If native re-writes of the core apps is suitable for Rudolf as well as Rudolf
+WendigOS, then make it a core fix for 1.6.2 as well as 2.0."
+**Suitable for Rudolf OS:** yes. docs/plan-2.0.md's "How a native app is built" needs nothing of 2.0's: C and GTK 3 as
+rudolf-native (already in the system layer, on X11 as Rudolf OS is), one program per app, `librudolf-ui` (`iso/sys/ui/`) for
+the look and rudolfd's client, files and settings through rudolfd. A native app is not WendigOS-only, so it needs no build
+switch: both editions build the same apps from main. The owner's rule holds as that plan already says: each native app is
+screenshot-compared with its web version (under 2 % of pixels different) and passes a checklist from it before the Start
+menu points to it; Chromium and Lite keep their web versions inside their page (where a window costs little), and Native
+switches to the native app once it passes. Security as rudolf-native: rudolfd's token and peer check, confinement, the
+account's own Linux user, nothing new opened up.
+**The order for Rudolf OS, by memory saved first** (2.0's waves kept, re-ordered by the readings):
+1. **librudolf-ui** (`iso/sys/ui/`): the GTK CSS theme from the page's styles (light and dark, the accent colour's rules,
+   Display Properties' fonts and sizes), the dialogs, the about box, rudolfd's client, translations; with its own test
+   (a sample window screenshot-compared with the page's same controls).
+2. **Task Manager** (1.6.2): the first native app; ~130 MB today in its own web process; aim 15 to 40 MB. Its small page
+   (Part 38 step 2) is the stopgap until the native one passes, then the native one replaces it.
+3. **Settings** (1.6.3, panel by panel, each panel switched as it passes): ~170 MB today. Small pages per panel (Part 38) only
+   where a panel's native version is further off.
+4. **The Office apps** (WordPro, SpreadsheetPro, PresentPro; after Settings: the largest work): ~130 MB each today; their small
+   pages (Part 38 step 3b) meanwhile.
+5. **Then 2.0's waves in their order** for the rest (Calculator, Notepad and the other small apps cost little, about 15 MB, so
+   they come after the heavy ones here).
+Each app's PR as docs/plan-2.0.md "Each app's pull request" says (its program, its host test under Xvfb, its screenshots
+against the web version, its memory at idle against the web version, the Start menu switched once it passes).
+**The owner's checks:** each native app on the Vivobook against its web version (Chromium mode), every action, and its memory
+in Task Manager.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -981,3 +1010,4 @@ Processes tab before and after.
 14. Part 36 (Desert Camp): one PR; the owner's look on the Vivobook in light and dark on each engine.
 15. Part 37 (the side taskbar's pop-ups and menus): one PR; the owner's look on the Vivobook.
 16. Part 38 (smaller pages for app windows): the measurements, then Task Manager in one PR, then the simple apps one at a time.
+17. Part 39 (native apps for Rudolf OS too): librudolf-ui, then native Task Manager in 1.6.2; Settings and the Office apps after.

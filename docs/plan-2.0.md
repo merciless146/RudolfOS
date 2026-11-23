@@ -37,6 +37,9 @@ because no web page runs; each app opened today loads a WebKit page with the des
 app of the same kind is typically 15 to 40 MB.
 
 ## How a native app is built
+- **Shared with Rudolf OS from 1.6.2** (the owner, 2026-11-22: native rewrites "a core fix for 1.6.2 as well as 2.0"; plan-1.6.2.md
+  Part 39): the native apps and librudolf-ui are built from main for both editions, with no build switch, ordered for Rudolf
+  OS by the memory they save (librudolf-ui, Task Manager, then Settings, then the Office apps); WendigOS uses the same apps.
 - **C and GTK 3**, as rudolf-native: the system layer already has GTK 3, cairo, Pango and GStreamer (for WebKitGTK), so
   most apps need no new library. A library an app would add (a PDF renderer, a source-code view) is named in its wave
   with its size, and the base layer's budget is checked by the release build as for ModemManager.
