@@ -158,6 +158,8 @@ static void shares_api(struct req *r, const char *what, int post)
 	char acct[80]; unsigned uid = shares_cur(acct, sizeof acct);
 	if (!strcmp(what, "found")) {
 		if (post) { reply_err(r->fd, 400, "use GET"); return; }
+		/* (WS-Discovery's answers let in through the firewall for ten seconds, as Find scanners does: rudolfd-scan.inc) */
+		{ const char *fw[] = { "network", "firewall", "wsd", "open", NULL }; scan_helper(fw, "/usr/lib/rudolf/firewall wsd open >/dev/null 2>&1"); }
 		int st; char *o = shares_ask("find", NULL, NULL, NULL, NULL, 0, 15, &st);
 		if (!o || st || strncmp(o, "{\"ok\":true", 10)) { free(o); shares_err(r, 502, "find", "The network could not be looked at."); return; }
 		str s = {0}; sadd(&s, "%s", o); free(o); reply_json(r->fd, &s); return;
