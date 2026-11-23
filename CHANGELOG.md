@@ -29,6 +29,10 @@ Summary: In progress.
   account signed in. Its files are that account's alone (other accounts cannot see it), the server is asked to encrypt where it
   can, the password is kept in the account's keyring only if asked, and every share closes at sign-out. A wrong password, a
   missing share or a server that speaks only the old SMB 1 is said plainly.
+- New: Network in File Explorer. It lists the Windows computers and NAS boxes found on your home network (with the firewall on)
+  and opens their shared folders as folders of your own: browse, open, copy to and from, drag onto the desktop. You can also type a
+  share's address (\\server\share or smb://server/share). Your recent shares are listed and reconnect only when you open them,
+  never at start-up, so a server that is off never slows the start. Disconnect closes a share. The same on Native, Chromium and Lite.
 - New: scanners (step 1 of 4: driverless scanning, without the Scan app yet). Rudolf OS finds the scanners and
   printer-scanners on the home network that speak eSCL (AirScan) or WSD, as most made since about 2015 do, with the
   firewall on, and USB ones that speak eSCL through IPP over USB; it scans with sane-airscan (pages in colour, grey or black

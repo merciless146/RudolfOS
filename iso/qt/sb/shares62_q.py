@@ -3,7 +3,8 @@
 # and this tree's rudolfd, rudolf-rootd, root helpers, rudolf-shares and rudolf-portal put in place (SHARES_FIX: a folder with
 # rudolfd, rudolf-rootd, root/NAME, bin/NAME, on an extra disk; fix161.sh). Its second network card is on a bridge of the host's
 # (br62, 192.168.62.0/24, addresses by dnsmasq as a home router gives them) with two servers in network namespaces: "nas62"
-# (Samba 4: SMB 3 with encryption, a user's share and a guest share; multicast DNS and WS-Discovery) and "old62" (SMB 1 only).
+# (Samba 4: SMB 3 with encryption, a user's share and a guest share; multicast DNS), "win62" (a Windows computer's WS-Discovery,
+# wsdd) and "old62" (SMB 1 only). SHARES_FIX/lib: this tree's firewall (1.6.2 step 3: its wsd chain), loaded in place of the release's.
 # The firewall stays on. Through rudolfd's API as the page asks: the SMB client not loaded at start; two accounts (Ann, Bob),
 # Ann signed in: her share opened (loaded then: the module signed), encrypted, for her own Linux user, a file copied each way
 # with the right owners, the password kept in her keyring when asked and used again, a guest share, a wrong password and an
@@ -35,10 +36,10 @@ exec(re.search(r'^INIT_JS = .*$', T160, re.M).group(0)); exec(re.search(r'^INIT2
 SH = os.path.join(W, 'srv'); PIDS = []; U1, U2 = 'ann62q', 'bob62q'
 P1 = base64.b32encode(os.urandom(10)).decode().lower() + ',x=1'   # (made for this run; a comma, as an option would have)
 def net_up():
-    q_('ip link del br62 2>/dev/null; ip netns del nas62 2>/dev/null; ip netns del old62 2>/dev/null')
+    q_('ip link del br62 2>/dev/null; ip link del tap62 2>/dev/null; for n in nas62 old62 win62; do ip netns del $n 2>/dev/null; ip link del v$n 2>/dev/null; done')
     sh_('ip', 'link', 'add', 'br62', 'type', 'bridge'); sh_('ip', 'addr', 'add', '192.168.62.1/24', 'dev', 'br62'); sh_('ip', 'link', 'set', 'br62', 'up')
     sh_('ip', 'tuntap', 'add', 'tap62', 'mode', 'tap'); sh_('ip', 'link', 'set', 'tap62', 'master', 'br62', 'up')
-    for ns, a in (('nas62', 2), ('old62', 3)):
+    for ns, a in (('nas62', 2), ('old62', 3), ('win62', 5)):
         sh_('ip', 'netns', 'add', ns); sh_('ip', 'link', 'add', 'v' + ns, 'type', 'veth', 'peer', 'name', 'e' + ns); sh_('ip', 'link', 'set', 'v' + ns, 'master', 'br62', 'up')
         sh_('ip', 'link', 'set', 'e' + ns, 'netns', ns); sh_('ip', '-n', ns, 'addr', 'add', f'192.168.62.{a}/24', 'dev', 'e' + ns)
         sh_('ip', '-n', ns, 'link', 'set', 'e' + ns, 'up'); sh_('ip', '-n', ns, 'link', 'set', 'lo', 'up'); sh_('ip', '-n', ns, 'route', 'add', '224.0.0.0/4', 'dev', 'e' + ns)
@@ -83,7 +84,7 @@ def net_up():
     subprocess.run(['smbpasswd', '-c', f'{W}/nas/smb.conf', '-s', '-a', U1], input=f'{P1}\n{P1}\n', text=True, capture_output=True)
     for c in ([ 'setsid', 'ip', 'netns', 'exec', 'nas62', 'smbd', '-s', f'{W}/nas/smb.conf', '-F', '--no-process-group'],
               [ 'setsid', 'ip', 'netns', 'exec', 'old62', 'smbd', '-s', f'{W}/old/smb.conf', '-F', '--no-process-group'],
-              [ 'setsid', 'ip', 'netns', 'exec', 'nas62', 'wsdd', '-i', 'enas62', '-n', 'WIN62', '-w', 'HOME62'],
+              [ 'setsid', 'ip', 'netns', 'exec', 'win62', 'wsdd', '-i', 'ewin62', '-n', 'WIN62', '-w', 'HOME62'],
               [ 'setsid', 'ip', 'netns', 'exec', 'nas62', sys.executable, os.path.join(QT, 'host', 'fixtures', 'smbmdns.py'), 'Nas62', '192.168.62.2'],
               [ 'dnsmasq', '--no-daemon', '--interface=br62', '--bind-interfaces', '--port=0', '--dhcp-range=192.168.62.100,192.168.62.150,12h', '--dhcp-leasefile=' + W + '/leases']):
         PIDS.append(subprocess.Popen(c, stdout=open(f'{W}/{c[4] if len(c) > 4 else c[0]}-{len(PIDS)}.log', 'w'), stderr=subprocess.STDOUT))
@@ -91,7 +92,7 @@ def net_down():
     for p in PIDS:
         try: p.terminate(); p.wait(10)
         except Exception: pass
-    q_('ip link del tap62; ip link del br62; ip netns del nas62; ip netns del old62')
+    q_('ip link del tap62; ip link del br62; ip netns del nas62; ip netns del old62; ip netns del win62')
     for u in (U1, U2): q_(f'userdel {u}')
 def make_drive(path):
     with open(path, 'wb') as f: f.truncate((2048 + DMB * 2048 + 2048) * 512)
@@ -178,7 +179,7 @@ try:
     if not up: raise RuntimeError('did not start')
     if FIX:
         g.put(os.path.join(HERE, 'fix161.sh'), '/tmp/fix161.sh', '644')
-        o = sh("sh /tmp/fix161.sh reload; for b in /tmp/fx/bin/*; do cp $b /usr/bin/${b##*/} && chmod 755 /usr/bin/${b##*/} && echo in ${b##*/}; done", 300)
+        o = sh("sh /tmp/fix161.sh reload; for b in /tmp/fx/bin/*; do cp $b /usr/bin/${b##*/} && chmod 755 /usr/bin/${b##*/} && echo in ${b##*/}; done; for l in /tmp/fx/lib/*; do [ -e $l ] && cp $l /usr/lib/rudolf/${l##*/} && chmod 755 /usr/lib/rudolf/${l##*/} && echo in ${l##*/}; done; [ -e /tmp/fx/lib/firewall ] && /usr/lib/rudolf/firewall start && echo firewall-reloaded", 300)
         ok('0b. this tree\'s rudolfd (through rudolf-rootd), helpers, rudolf-shares and rudolf-portal in place', 'through rudolf-rootd' in o and 'in rudolf-shares' in o, o[-800:])
     o = sh("uname -r; lsmod | grep -c '^cifs ' ; grep -cw cifs /proc/filesystems; /usr/lib/rudolf/firewall status; "
            "for i in /sys/class/net/*; do [ \"$(cat $i/address)\" = 52:54:00:62:00:10 ] && echo nic=${i##*/}; done", 60)
@@ -229,6 +230,14 @@ try:
     o = sh(f"p={pw1}; p=\"$p{pw2}\"; grep -rlsF \"$p\" /run /tmp /var /etc /persist /home /proc/mounts 2>/dev/null | grep -v '/keyrings/login.keyring$' | grep -vx /tmp/c62.sh | head; echo grep-done", 600)
     pg = js(f"(document.documentElement.outerHTML+JSON.stringify(localStorage)).includes({json.dumps(pw1)}+{json.dumps(pw2)})")
     ok('16. the password in no file, log or mount table (the keyring only), nor in the page', re.search(r'^grep-done$', o, re.M) and not re.search(r'^/', o.split('grep-done')[0], re.M) and pg is False, [o[-600:], pg])
+    # 1.6.2 Part 35 step 3: File Explorer's Network, with the firewall on
+    j, c = api(g, 'shares/found', t=60); sv = {x.get('name'): x for x in j.get('servers', [])}
+    o = sh("/usr/lib/rudolf/firewall status; busybox netstat -uln 2>/dev/null | grep -E ':(3702|5353) ' | grep -v rudolf-print; echo nl-done")
+    ok('20. found on the home network with the firewall on: the NAS by multicast DNS (Nas62, 192.168.62.2), the Windows computer by WS-Discovery (WIN62, 192.168.62.5, HOME62)',
+       c == 200 and sv.get('Nas62', {}).get('how') == 'mdns' and sv.get('Nas62', {}).get('ip') == '192.168.62.2' and sv.get('WIN62', {}).get('how') == 'wsd' and sv.get('WIN62', {}).get('ip') == '192.168.62.5' and sv.get('WIN62', {}).get('group') == 'HOME62', [c, j])
+    ok('21. ...and afterwards nothing listening for the network (no socket on 3702 or 5353 left), the firewall still on', re.search(r'^on ', o, re.M) and re.search(r'^nl-done$', o, re.M) and not re.search(r':(3702|5353) ', o), o)
+    j, c = api(g, 'shares/list?server=nas62&ip=192.168.62.2', True, f'{U1}\n{P1}\n\n'); j2, c2 = api(g, 'shares/list?server=nas62&ip=192.168.62.2', True, f'{U1}\nwrong\n\n')
+    ok('22. the NAS\'s shared folders for Ann (docs, pub, old; not IPC$), over SMB 3.1.1; a wrong password said plainly', c == 200 and [x['name'] for x in j.get('shares', [])] == ['docs', 'pub', 'old'] and j.get('dialect') == '3.1.1' and c2 == 401 and j2.get('why') == 'password', [c, j, c2, j2])
     # signed out: every share closed; Bob sees none
     out('sign-out', signout(js)); time.sleep(5)
     o = sh(f"grep -c ' /run/rudolf/shares/' /proc/mounts; ls /run/rudolf/shares/{UA} 2>&1 | wc -l")
