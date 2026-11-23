@@ -654,6 +654,17 @@ a layer (no delta scan first). An ordinary update is as before. Tested by iso/qt
 iso/qt/shell2/updsize162_t.js (7/7), in sqcomp-check.yml. It needs item 1's rows (built on its PR) and must be in a
 release before the switch too, so the first switched update already shows its size.
 
+**Status (2026-11-23, item 3: the switch; the PR "zstd for the system's images, step 3").** Every image packed with zstd
+level 22 and 1 MB blocks, as item 2's numbers chose (the PR "step 2's numbers": no disk or engine slower than with xz, so
+switched): one place says it, iso/systools/sqopts.sh, read by mklayers.sh (x86-64 and ARM64; a mksquashfs without zstd is
+not used), ci_release.sh, testkernel.sh and arm64_kernel.sh. ci_release.sh rebuilds only a layer whose files changed, so a
+layer kept from the previous (xz) release would have stayed xz: its repack_layers makes every layer not packed as
+sqopts.sh says again from its own files (SOURCE_DATE_EPOCH passed through sudo), the same bytes as one made fresh from the
+same files, and says so in the release notes. The kernel kept from the release before (item 1's) reads zstd; its line is
+carried (--squashfs), and make_release.py refuses the release if it did not. Tested by iso/qt/host/zsswitch162_t.sh (6/6,
+in sqcomp-check.yml). **It merges only after item 1 has been in a released beta.** Recovery Mode is unaffected (it starts
+the official stable release's own kernel and images).
+
 ### 32. Emu's Nintendo 64 and Dreamcast games, played for real (added on 2026-11-22)
 The owner: "Create a scheduled task to test run the Dreamcast and N64 emulators for Emu, making test games specifically for
 the test if needed." Until then the native path (1.6.1, PR #485: rudolfd's native/run with Flathub's Rosalie's Mupen GUI
