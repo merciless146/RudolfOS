@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.2.md Part 38): smaller pages for the native desktop's app windows, measured first (on the
+  host, nearly all of a window's memory is the whole desktop page's script): Task Manager first, then simple apps, then
+  Settings panel by panel; Oracle's Chromium memory as its own item.
 - New: a VPN for the whole computer (Settings › Network › VPN). Add your VPN provider's or your home router's WireGuard file
   (an administrator's password), then connect and disconnect there or from the taskbar's network pop-up, which shows its
   state. While it is on, every app's traffic and its name lookups go through it, the local network is still reached
