@@ -36,7 +36,7 @@ for n in base chromium desktop modules; do
 		U=$(python3 -c "import struct,sys;print(struct.unpack_from('<Q',open(sys.argv[1],'rb').read(96),40)[0])" "$REL/$n.sfs")
 		head -c "$U" "$REL/$n.sfs" | cmp -s - <(head -c "$U" "$OUT/1/$n.sfs") && [ "$U" = "$(python3 -c "import struct,sys;print(struct.unpack_from('<Q',open(sys.argv[1],'rb').read(96),40)[0])" "$OUT/1/$n.sfs")" ] && REL_SAME=true || REL_SAME=false
 	fi
-	mv "$OUT/1/$n.sfs" "$OUT/$n.sfs"; python3 "$HERE/iso/systools/verity.py" add "$OUT/$n.sfs" $n >/dev/null
+	mv "$OUT/1/$n.sfs" "$OUT/$n.sfs"; python3 "$HERE/systools/verity.py" add "$OUT/$n.sfs" $n >/dev/null
 	echo "$SPEC $n: $SZ bytes ($RAW unpacked), made in $T s, the two builds the same: $SAME$([ $REL_SAME = null ] || echo ", the same as the release's own: $REL_SAME")"
 	[ $first = 1 ] || J="$J,"; first=0
 	J="$J\"$n\":{\"bytes\":$SZ,\"file\":$(stat -c %s "$OUT/$n.sfs"),\"unpacked\":$RAW,\"make_s\":$T,\"reproducible\":$SAME,\"same_as_release\":$REL_SAME}"
