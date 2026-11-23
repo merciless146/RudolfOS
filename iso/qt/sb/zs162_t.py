@@ -3,7 +3,7 @@
 # as slot a on its own drive with the test kernel (testkernel.sh: the release's, with zstd and lz4) and started STARTS
 # times (and once before, not counted: the first-time setup, on Chromium, then the engine chosen), the variants in turn
 # and the order swapped each round (runners differ over time). Each start is cold: a new virtual machine, the host's page
-# cache dropped and the drive opened without it (cache=none). Measured each start:
+# cache dropped and the drive read through QEMU without its own cache settings (the host cache dropped before each start). Measured each start:
 #   ready    the health log's "the desktop was ready N s after start-up" (Settings › System health › Last starts)
 #   up       the start's desktop-up mark (uptime, s) and when the start-up was handed the desktop (bootok)
 #   memory   MemTotal - MemAvailable after 30 s idle (MiB)
@@ -31,9 +31,9 @@ STARTS = int(os.environ.get('STARTS', '5')); MEM = int(os.environ.get('MEM', '34
 PARTS = os.environ.get('SB_PARTS', '/nonexistent'); TAG = f'{DISK}-{ENGINE}'
 VARS = [v for v in (os.environ.get('VARIANTS') or ','.join(sorted(d for d in os.listdir(LD) if os.path.isfile(f'{LD}/{d}/base.sfs')))).split(',') if v]
 LOG = open(f'zs162-{TAG}.txt', 'w'); JS = open(f'zs162-{TAG}.json', 'w'); T0 = time.time()
-def out(*a, quiet=False):
+def out(*a, quiet=False, full=False):
     s = f'[{int(time.time() - T0):5d}s] ' + ' '.join(str(x) for x in a); LOG.write(s + '\n'); LOG.flush()
-    if not quiet: print(s[:700], flush=True)
+    if not quiet: print(s if full else s[:700], flush=True)
 man = open(f'{LD}/manifest.txt').read(); mv = lambda k: (re.search(rf'^{k} (.*)$', man, re.M) or re.search('()', '')).group(1)
 W = os.path.abspath(f'wzs162-{TAG}'); shutil.rmtree(W, ignore_errors=True); os.makedirs(W)
 ENGFILE = {'chromium': None, 'native': 'native', 'lite': 'webkit'}[ENGINE]
@@ -45,7 +45,9 @@ def make_drive(v):
     d = f'{T}/os/system/a'; os.makedirs(d)
     shutil.copy(f'{KER}/vmlinuz', f'{d}/vmlinuz')
     for n in ('base', 'chromium', 'desktop', 'modules'): shutil.copy(f'{LD}/{v}/{n}.sfs', f'{d}/{n}.sfs')
-    for n in ('manifest.txt', 'manifest.sig'): shutil.copy(f'{LD}/{n}', f'{d}/{n}')
+    # (no signed release list in the slot: its dm-verity hashes are the release's own layers', which these are not, and a
+    #  layer that does not match them is not started by the start-up: "Device or resource busy", the dm-verity mapping
+    #  holding the loop device. Without a list every variant starts unchecked alike, without dm-verity)
     open(f'{d}/RELEASE', 'w').write(f"serial {mv('serial')}\nversion {mv('version')}\nreleased {mv('released')}\nchromium {mv('chromium')}\nkernel {mv('kernel')}\nnotes zs162 {v}\n")
     open(f'{d}/complete', 'w').write('1\n')
     open(f'{T}/os/system/state', 'w').write('good=a\nprev=\nnext=\ntries=0\nfailed=\n')
@@ -59,26 +61,40 @@ def make_drive(v):
     os.remove(D); return path
 
 def drive_args(path):
-    d = f'file={path},format=raw,if=none,id=nv,cache=none,aio=threads'
+    d = f'file={path},format=raw,if=none,id=nv'
     if DISK == 'emmc': d += ',throttling.bps-read=157286400,throttling.iops-read=4000,throttling.bps-write=52428800'
     if DISK == 'usb': d += ',throttling.bps-read=31457280,throttling.iops-read=1500,throttling.bps-write=10485760'
     dev = ['-device', 'nvme,drive=nv,serial=zs162'] if DISK != 'usb' else ['-device', 'qemu-xhci,id=xh', '-device', 'usb-storage,drive=nv,bus=xh.0']
     return ['-drive', d] + dev
 
 INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()"
-def boot(v, tag):
+FAILS = [0]
+def boot(v, tag, kernel=None, append=''):
     subprocess.run('sync; echo 3 > /proc/sys/vm/drop_caches', shell=True)   # (the host's copy of the drive: cold)
-    extra = drive_args(f'{W}/{v}.img') + ['-kernel', f'{KER}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
+    extra = drive_args(f'{W}/{v}.img') + ['-kernel', kernel or f'{KER}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1 {append}'.strip()]
     name = f'zs{tag}'; os.makedirs(name, exist_ok=True); open(f'{name}/vars.fd', 'ab').close()
     vm = sbvm.VM(name, PARTS, [], secure=False, mem=MEM, extra=extra); t = time.time()
-    g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
-    up = False; end = time.time() + 900
+    g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; seen = g.s.read(0.3)
+    # (nothing typed on the serial line for the first 30 s, as t160_t.py: the firmware and the kernel's start without it)
+    time.sleep(30); seen += g.s.read(0.5)
+    up = False; end = time.time() + (900 if FAILS[0] < 2 else 420)
     while time.time() < end:
         try:
-            if 'ready' in g.sh('echo ready', 8): up = True; break
+            o = g.sh('echo "UP$((40+2))"', 8); seen = (seen + o)[-12000:]
+            if 'UP42' in o: up = True; break
         except OSError: pass
+        if vm.p.poll() is not None: break   # (QEMU ended)
         time.sleep(2)
     out(f'start {tag} ({v}): serial shell {"up" if up else "NOT up"} after {time.time() - t:.0f} s')
+    if not up:
+        FAILS[0] += 1
+        try: ql = open(os.path.join(vm.dir, 'qemu.log')).read()[-2000:]
+        except OSError: ql = ''
+        out('  QEMU:', 'running' if vm.p.poll() is None else f'ended ({vm.p.returncode})', '| its log:', ql.replace('\n', ' / ') or '(empty)')
+        out('  the serial line, last:\n' + re.sub(r'\x1b\[[0-9;=?]*[A-Za-z]', '', seen[-6000:]).replace('\r', ''), full=True)
+        try: vm.shot('notup'); out('  screenshot taken')
+        except Exception as e: out('  no screenshot:', e)
+    else: FAILS[0] = 0
     return vm, g, up
 def run(g, c, t=60):
     f = os.path.join(W, 'c.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/zs.sh', '644')
@@ -127,12 +143,18 @@ def num(rx, o, f=float):
 
 drives = {}
 for v in VARS: drives[v] = make_drive(v); out('drive for', v, os.path.getsize(f'{LD}/{v}/base.sfs'))
-seen = {v: 0 for v in VARS}; ALL = []
+seen = {v: 0 for v in VARS}; ALL = []; CONTROL = []
 try:
     for i in range(STARTS + 1):
         for v in (VARS if i % 2 else VARS[::-1]):
             vm, g, up = boot(v, f'{i}{v}')
-            if not up: res = {'variant': v, 'start': i, 'error': 'no serial shell'}; JS.write(json.dumps(res) + '\n'); stop(vm, g); continue
+            if not up:
+                res = {'variant': v, 'start': i, 'error': 'no serial shell'}; JS.write(json.dumps(res) + '\n'); stop(vm, g)
+                if os.environ.get('KERNEL2') and not CONTROL:
+                    CONTROL.append(1); vm2, g2, up2 = boot(v, f'c{i}{v}', os.environ['KERNEL2'], 'console=ttyS0,115200 loglevel=6')   # (its messages on the serial line)
+                    out(f'control: the same drive with the release\'s own kernel: serial shell {"up" if up2 else "NOT up"}'); stop(vm2, g2)
+                if FAILS[0] >= 4: out('four starts in a row without a serial shell: stopped (see the lines above)'); raise SystemExit(3)
+                continue
             o = run(g, WAIT % seen[v], 800)
             seen[v] = num(r'^READYN (\d+)', o, int) or seen[v]
             if i == 0:   # the first start: the first-time setup on Chromium; then the engine chosen for the next starts

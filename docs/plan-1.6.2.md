@@ -654,6 +654,154 @@ a layer (no delta scan first). An ordinary update is as before. Tested by iso/qt
 iso/qt/shell2/updsize162_t.js (7/7), in sqcomp-check.yml. It needs item 1's rows (built on its PR) and must be in a
 release before the switch too, so the first switched update already shows its size.
 
+**Status (2026-11-23, item 2: measured; the workflow zstd-measure.yml, run 45211088792 on the layers and test kernel of run
+45096614128).** QEMU with KVM on GitHub's runners (each job said "this runner has KVM"; 2 processors, 3400 MiB, q35, UEFI).
+The newest beta's layers (release 2026112223, 1.6.2b) unpacked and made again from the same root with each compression
+(iso/qt/sb/zs162_layers.sh, SOURCE_DATE_EPOCH kept): every variant's two builds are the same bytes; xz -b 1M's chromium and
+desktop layers are byte for byte the release's own (base is not: see below). A test kernel that reads them all
+(testkernel.sh: the release's configuration with SQUASHFS_ZSTD and SQUASHFS_LZ4; its modules made again with each, so every
+variant runs the same kernel). Each variant installed as slot a on its own drive and started 5 times, cold (a new virtual
+machine; the host's page cache dropped), on each disk (virtio NVMe; an eMMC-like NVMe limited by QEMU to 150 MB/s and 4000
+reads/s; a USB stick: usb-storage on xHCI, 30 MB/s, 1500 reads/s) with each engine, after a first start (not counted) for the
+first-time setup. 450 counted starts, none failed. "Ready" is the health log's line, which is in whole seconds.
+
+#### Sizes (MB; the squashfs image, without its hash tree), made twice from the same root (SOURCE_DATE_EPOCH)
+
+| variant | base | chromium | desktop | modules | total | against xz -b 1M | the two builds the same | xz -b 1M: the release's own bytes | made in (s) |
+|---|---|---|---|---|---|---|---|---|---|
+| xz-1m | 295 | 131 | 7 | 97 | **530** | +0.0 % | yes | no | 332 |
+| xz-256k | 317 | 137 | 8 | 99 | **560** | +5.8 % | yes |  | 197 |
+| zstd15-1m | 359 | 150 | 8 | 104 | **622** | +17.4 % | yes |  | 35 |
+| zstd15-256k | 355 | 148 | 8 | 104 | **615** | +16.0 % | yes |  | 53 |
+| zstd19-1m | 330 | 140 | 8 | 101 | **578** | +9.1 % | yes |  | 117 |
+| zstd19-256k | 352 | 147 | 8 | 104 | **611** | +15.3 % | yes |  | 110 |
+| zstd22-1m | 330 | 140 | 8 | 101 | **578** | +9.1 % | yes |  | 180 |
+| zstd22-256k | 352 | 147 | 8 | 104 | **611** | +15.3 % | yes |  | 130 |
+| lz4-1m | 449 | 180 | 10 | 120 | **759** | +43.3 % | yes |  | 51 |
+| lz4-256k | 454 | 182 | 10 | 121 | **767** | +44.8 % | yes |  | 47 |
+
+#### Start-up: the desktop was ready (the health log), s
+
+| variant | nvme chromium | nvme native | nvme lite | emmc chromium | emmc native | emmc lite | usb chromium | usb native | usb lite |
+|---|---|---|---|---|---|---|---|---|---|
+| xz-1m | 25.0 | 16.0 | 16.0 | 20.0 | 16.0 | 16.0 | 24.0 | 17.0 | 17.0 |
+| xz-256k | 21.0 (-4.0) | 13.0 (-3.0) | 14.0 (-2.0) | 18.0 (-2.0) | 13.0 (-3.0) | 14.0 (-2.0) | 22.0 (-2.0) | 15.0 (-2.0) | 15.0 (-2.0) |
+| zstd15-1m | 9.0 (-16.0) | 9.0 (-7.0) | 8.0 (-8.0) | 9.0 (-11.0) | 9.0 (-7.0) | 8.0 (-8.0) | 15.0 (-9.0) | 13.0 (-4.0) | 12.0 (-5.0) |
+| zstd15-256k | 9.0 (-16.0) | 9.0 (-7.0) | 8.0 (-8.0) | 9.0 (-11.0) | 9.0 (-7.0) | 8.0 (-8.0) | 15.0 (-9.0) | 13.0 (-4.0) | 12.0 (-5.0) |
+| zstd19-1m | 9.0 (-16.0) | 9.0 (-7.0) | 8.0 (-8.0) | 8.0 (-12.0) | 9.0 (-7.0) | 8.0 (-8.0) | 15.0 (-9.0) | 13.0 (-4.0) | 11.0 (-6.0) |
+| zstd19-256k | 9.0 (-16.0) | 9.0 (-7.0) | 8.0 (-8.0) | 9.0 (-11.0) | 9.0 (-7.0) | 8.0 (-8.0) | 15.0 (-9.0) | 12.0 (-5.0) | 12.0 (-5.0) |
+| zstd22-1m | 9.0 (-16.0) | 9.0 (-7.0) | 8.0 (-8.0) | 8.0 (-12.0) | 9.0 (-7.0) | 8.0 (-8.0) | 15.0 (-9.0) | 12.0 (-5.0) | 11.0 (-6.0) |
+| zstd22-256k | 9.0 (-16.0) | 9.0 (-7.0) | 8.0 (-8.0) | 9.0 (-11.0) | 9.0 (-7.0) | 8.0 (-8.0) | 15.0 (-9.0) | 13.0 (-4.0) | 12.0 (-5.0) |
+| lz4-1m | 9.0 (-16.0) | 9.0 (-7.0) | 7.0 (-9.0) | 9.0 (-11.0) | 9.0 (-7.0) | 7.0 (-9.0) | 17.0 (-7.0) | 14.0 (-3.0) | 13.0 (-4.0) |
+| lz4-256k | 9.0 (-16.0) | 9.0 (-7.0) | 7.0 (-9.0) | 8.0 (-12.0) | 9.0 (-7.0) | 7.0 (-9.0) | 17.0 (-7.0) | 14.0 (-3.0) | 14.0 (-3.0) |
+
+(s; the median of each disk and engine's starts, and in brackets the difference from xz-1m)
+
+#### Chromium's first start, cold (s)
+
+| variant | nvme chromium | nvme native | nvme lite | emmc chromium | emmc native | emmc lite | usb chromium | usb native | usb lite |
+|---|---|---|---|---|---|---|---|---|---|
+| xz-1m | 6.3 | 8.3 | 8.7 | 4.2 | 8.3 | 8.7 | 10.3 | 9.5 | 9.7 |
+| xz-256k | 3.0 (-3.3) | 7.5 (-0.8) | 7.7 (-1.0) | 2.2 (-2.0) | 7.5 (-0.7) | 7.7 (-1.0) | 5.5 (-4.8) | 9.5 (+0.0) | 9.4 (-0.2) |
+| zstd15-1m | 0.9 (-5.5) | 1.1 (-7.2) | 1.1 (-7.6) | 0.6 (-3.6) | 1.1 (-7.1) | 1.1 (-7.6) | 4.7 (-5.7) | 6.8 (-2.7) | 6.7 (-3.0) |
+| zstd15-256k | 0.8 (-5.5) | 1.2 (-7.1) | 1.2 (-7.5) | 0.6 (-3.7) | 1.2 (-7.1) | 1.3 (-7.5) | 4.2 (-6.1) | 6.5 (-3.0) | 6.3 (-3.3) |
+| zstd19-1m | 0.9 (-5.4) | 1.2 (-7.1) | 1.2 (-7.5) | 0.7 (-3.5) | 1.2 (-7.1) | 1.2 (-7.5) | 4.4 (-5.9) | 6.4 (-3.1) | 6.2 (-3.5) |
+| zstd19-256k | 0.8 (-5.6) | 1.2 (-7.1) | 1.3 (-7.4) | 0.6 (-3.6) | 1.2 (-7.1) | 1.2 (-7.5) | 3.9 (-6.4) | 6.6 (-2.9) | 6.3 (-3.4) |
+| zstd22-1m | 0.9 (-5.4) | 1.2 (-7.1) | 1.2 (-7.5) | 0.8 (-3.5) | 1.2 (-7.1) | 1.2 (-7.5) | 4.4 (-5.9) | 6.4 (-3.2) | 6.2 (-3.5) |
+| zstd22-256k | 0.8 (-5.6) | 1.2 (-7.0) | 1.2 (-7.5) | 0.6 (-3.6) | 1.2 (-7.1) | 1.3 (-7.5) | 3.9 (-6.4) | 6.5 (-3.0) | 6.3 (-3.4) |
+| lz4-1m | 0.8 (-5.6) | 0.9 (-7.4) | 0.9 (-7.8) | 0.5 (-3.7) | 1.3 (-7.0) | 1.4 (-7.4) | 5.7 (-4.6) | 8.2 (-1.3) | 8.1 (-1.5) |
+| lz4-256k | 0.7 (-5.7) | 0.9 (-7.4) | 0.9 (-7.8) | 0.5 (-3.8) | 1.1 (-7.1) | 1.2 (-7.5) | 4.8 (-5.5) | 7.9 (-1.6) | 7.9 (-1.8) |
+
+(s; the median of each disk and engine's starts, and in brackets the difference from xz-1m)
+
+#### Oracle's first start, cold (Rudolf's Chromium with Oracle's own flags; s)
+
+| variant | nvme chromium | nvme native | nvme lite | emmc chromium | emmc native | emmc lite | usb chromium | usb native | usb lite |
+|---|---|---|---|---|---|---|---|---|---|
+| xz-1m | 4.8 | 8.0 | 7.9 | 3.2 | 8.0 | 8.1 | 8.4 | 8.8 | 8.8 |
+| xz-256k | 2.1 (-2.7) | 7.1 (-0.9) | 7.1 (-0.8) | 1.4 (-1.8) | 7.2 (-0.9) | 7.1 (-0.9) | 3.9 (-4.6) | 8.7 (-0.1) | 8.5 (-0.3) |
+| zstd15-1m | 0.9 (-4.0) | 1.0 (-7.0) | 0.9 (-7.0) | 0.7 (-2.6) | 1.1 (-6.9) | 1.1 (-7.0) | 3.4 (-5.0) | 6.1 (-2.7) | 6.0 (-2.8) |
+| zstd15-256k | 0.8 (-4.0) | 1.1 (-6.9) | 1.0 (-6.9) | 0.6 (-2.6) | 1.1 (-6.9) | 1.0 (-7.1) | 3.0 (-5.4) | 6.0 (-2.8) | 5.9 (-2.9) |
+| zstd19-1m | 1.0 (-3.9) | 1.1 (-6.9) | 1.0 (-6.9) | 0.7 (-2.5) | 1.1 (-6.9) | 1.0 (-7.0) | 3.3 (-5.2) | 5.7 (-3.1) | 5.6 (-3.2) |
+| zstd19-256k | 0.8 (-4.0) | 1.1 (-6.9) | 1.0 (-6.9) | 0.6 (-2.6) | 1.1 (-6.9) | 1.0 (-7.0) | 3.0 (-5.5) | 6.0 (-2.8) | 5.8 (-3.0) |
+| zstd22-1m | 0.9 (-3.9) | 1.1 (-6.9) | 1.0 (-6.9) | 0.7 (-2.5) | 1.1 (-6.9) | 1.0 (-7.0) | 3.3 (-5.2) | 5.7 (-3.2) | 5.6 (-3.2) |
+| zstd22-256k | 0.8 (-4.0) | 1.1 (-6.9) | 1.0 (-6.9) | 0.6 (-2.6) | 1.1 (-6.9) | 1.0 (-7.0) | 2.9 (-5.5) | 6.0 (-2.8) | 5.9 (-2.9) |
+| lz4-1m | 0.8 (-4.0) | 0.8 (-7.2) | 0.7 (-7.2) | 0.5 (-2.7) | 1.3 (-6.7) | 1.2 (-6.9) | 4.4 (-4.0) | 7.3 (-1.5) | 7.3 (-1.5) |
+| lz4-256k | 0.7 (-4.1) | 0.8 (-7.2) | 0.7 (-7.2) | 0.5 (-2.7) | 1.1 (-6.9) | 1.1 (-7.0) | 3.7 (-4.8) | 7.1 (-1.7) | 7.1 (-1.7) |
+
+(s; the median of each disk and engine's starts, and in brackets the difference from xz-1m)
+
+#### Memory at idle (MiB)
+
+| variant | nvme chromium | nvme native | nvme lite | emmc chromium | emmc native | emmc lite | usb chromium | usb native | usb lite |
+|---|---|---|---|---|---|---|---|---|---|
+| xz-1m | 623 | 444 | 599 | 627 | 441 | 598 | 640 | 442 | 597 |
+| xz-256k | 611 (-12.0) | 428 (-16.0) | 615 (+16.0) | 614 (-13.0) | 431 (-10.0) | 610 (+12.0) | 623 (-17.0) | 433 (-9.0) | 586 (-11.0) |
+| zstd15-1m | 625 (+2.0) | 451 (+7.0) | 624 (+25.0) | 627 (+0.0) | 450 (+9.0) | 630 (+32.0) | 647 (+7.0) | 451 (+9.0) | 627 (+30.0) |
+| zstd15-256k | 608 (-15.0) | 435 (-9.0) | 622 (+23.0) | 615 (-12.0) | 438 (-3.0) | 618 (+20.0) | 625 (-15.0) | 431 (-11.0) | 612 (+15.0) |
+| zstd19-1m | 624 (+1.0) | 450 (+6.0) | 624 (+25.0) | 629 (+2.0) | 449 (+8.0) | 631 (+33.0) | 642 (+2.0) | 446 (+4.0) | 627 (+30.0) |
+| zstd19-256k | 611 (-12.0) | 441 (-3.0) | 620 (+21.0) | 613 (-14.0) | 437 (-4.0) | 622 (+24.0) | 627 (-13.0) | 433 (-9.0) | 611 (+14.0) |
+| zstd22-1m | 626 (+3.0) | 454 (+10.0) | 633 (+34.0) | 627 (+0.0) | 449 (+8.0) | 626 (+28.0) | 639 (-1.0) | 448 (+6.0) | 626 (+29.0) |
+| zstd22-256k | 611 (-12.0) | 439 (-5.0) | 618 (+19.0) | 615 (-12.0) | 436 (-5.0) | 616 (+18.0) | 630 (-10.0) | 435 (-7.0) | 611 (+14.0) |
+| lz4-1m | 638 (+15.0) | 451 (+7.0) | 631 (+32.0) | 641 (+14.0) | 454 (+13.0) | 633 (+35.0) | 658 (+18.0) | 450 (+8.0) | 623 (+26.0) |
+| lz4-256k | 612 (-11.0) | 438 (-6.0) | 612 (+13.0) | 612 (-15.0) | 440 (-1.0) | 614 (+16.0) | 635 (-5.0) | 431 (-11.0) | 610 (+13.0) |
+
+(MiB; the median of each disk and engine's starts, and in brackets the difference from xz-1m)
+
+#### Decompression: every file of the four layers read once, cold (the first counted start of each)
+
+| variant | nvme: read s / CPU s | emmc: read s / CPU s | usb: read s / CPU s |
+|---|---|---|---|
+| xz-1m | 34.9 / 36.1 | 34.7 / 35.6 | 36.4 / 36.6 |
+| xz-256k | 36.9 / 36.8 | 36.5 / 36.7 | 38.8 / 37.7 |
+| zstd15-1m | 3.2 / 3.0 | 4.2 / 3.1 | 21.2 / 4.1 |
+| zstd15-256k | 3.6 / 3.5 | 4.1 / 3.5 | 20.7 / 4.2 |
+| zstd19-1m | 3.6 / 3.5 | 4.1 / 3.5 | 19.5 / 4.5 |
+| zstd19-256k | 3.6 / 3.5 | 4.1 / 3.5 | 20.5 / 4.3 |
+| zstd22-1m | 3.6 / 3.5 | 4.1 / 3.5 | 19.6 / 4.5 |
+| zstd22-256k | 3.7 / 3.5 | 4.2 / 3.6 | 20.6 / 4.2 |
+| lz4-1m | 2.2 / 2.0 | 5.1 / 2.0 | 25.8 / 2.9 |
+| lz4-256k | 1.9 / 1.7 | 5.0 / 2.0 | 26.0 / 2.5 |
+
+(the median over the engines' jobs; CPU: the processors' system, irq and softirq time while reading, both processors)
+
+Starts counted per variant, disk and engine: 5.
+
+#### The choice
+
+- zstd22-1m: start-ups -46.0 % against xz-1m on average, +9.1 % in size
+- zstd19-1m: start-ups -45.3 % against xz-1m on average, +9.1 % in size
+- zstd19-256k: start-ups -44.8 % against xz-1m on average, +15.3 % in size
+- zstd15-1m: start-ups -44.1 % against xz-1m on average, +17.4 % in size
+- zstd15-256k: start-ups -44.1 % against xz-1m on average, +16.0 % in size
+- zstd22-256k: start-ups -44.1 % against xz-1m on average, +15.3 % in size
+
+**Chosen: zstd22-1m**, -46.0 % start-up time against xz-1m on average, +9.1 % in size.
+
+Not slower than xz at start-up on any disk or engine.
+
+**What it says.** zstd is faster than xz on every disk and every engine, and by a lot: the desktop ready in 8-9 s instead of
+16-25 s from NVMe and the eMMC-like disk, 11-15 s instead of 17-24 s from the USB stick; Chromium's and Oracle's first start
+(what Native and Lite pay when Oracle opens) 1 s instead of 8 s, 6 s instead of 9 s from the USB stick; every file of the four
+layers read with a tenth of xz's processor time (3.5 s against 36 s). In this kernel squashfs unpacks with one decompressor at
+a time (SQUASHFS_DECOMP_SINGLE, the default), so xz's slow unpacking is felt in full. The levels hardly differ in reading speed
+(zstd's speed is nearly independent of its level); they differ in size: 15 makes the largest, 19 and 22 the same with 1 MB
+blocks (22 is 32 KB smaller in all), 256 KB blocks are about 6 % larger and save 10-15 MiB at idle on Chromium and Native.
+lz4 reads fastest from NVMe but is 43-45 % larger, and from the USB stick it is slower than zstd (more to read at 30 MB/s).
+Memory at idle with zstd -b 1M is within -1 to +10 MiB of xz on Chromium and Native, and 25-34 MiB more on Lite.
+**Chosen by the plan's rule** (of the zstd variants at most about 20 % larger than xz, the fastest at start-up over every disk
+and engine): **zstd level 22, 1 MB blocks**: +9.1 % in size (578 MB against 530 MB for the four), start-ups 46 % shorter on
+average, and not slower than xz anywhere. (Level 19, 1 MB comes out the same within the health log's one-second steps and
+the same size; 22 is taken as the rule takes it. It takes about 3 minutes longer to make in CI.)
+**Not measured here / caveats:** QEMU, not the Vivobook or the Asus desktop (the owner's checklist, item 6); without
+dm-verity (the slots had no signed list: its hashes are the release's own layers', and a layer that does not match them is
+not started — see the next point); 2 processors in the virtual machine. Two findings on the way, for
+the owner: (1) with Secure Boot off, a layer that does not match its signed hash does not start unchecked as the start-up
+intends: the dm-verity mapping it made still holds the loop device, so the plain mount fails ("Device or resource busy") and
+the start-up restarts; (2) a release's base layer is not the same bytes when made again from its own files, while chromium
+and desktop are: most likely because ci_release.sh makes base with `sudo $MK`, and sudo drops SOURCE_DATE_EPOCH (the layer's time is
+then the build's; step 3's repack passes it through sudo). Neither is changed here.
+
 **Status (2026-11-23, item 3: the switch; the PR "zstd for the system's images, step 3").** Every image packed with zstd
 level 22 and 1 MB blocks, as item 2's numbers chose (the PR "step 2's numbers": no disk or engine slower than with xz, so
 switched): one place says it, iso/systools/sqopts.sh, read by mklayers.sh (x86-64 and ARM64; a mksquashfs without zstd is
