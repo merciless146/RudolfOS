@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: the release workflow (the 6-hourly security releases and the betas) had not started since 2026-11-22: two merges
+  had each given its Tools step its own `run:` line, and GitHub runs nothing of a workflow with a key given twice. One
+  line now has both (OpenVPN and the scanners' packages); deadcheck.py checks every workflow for this (wfkeys.py).
 - New: Library games' LAN relay holds co-op games of up to four players (Ember Reach's co-op wing), beside two-player
   duels, which work as before.
 - Faster start-up: the system's images are packed with zstd instead of xz, so Rudolf OS unpacks them about ten times faster.

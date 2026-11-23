@@ -71,6 +71,10 @@ if _h.returncode: bad.extend(l for l in _h.stdout.splitlines() if 'review the ne
 _r = _sp.run([sys.executable, os.path.join(ISO, 'systools', 'noremote.py')], capture_output=True, text=True)
 if _r.returncode: bad.extend('noremote: ' + l for l in _r.stdout.splitlines() if not l.startswith('noremote:'))
 
+# ---- 1.6.2: every workflow file without a key given twice (GitHub runs nothing of such a workflow: wfkeys.py)
+_w = _sp.run([sys.executable, os.path.join(ISO, 'systools', 'wfkeys.py')], capture_output=True, text=True)
+if _w.returncode: bad.extend(l for l in _w.stdout.splitlines() if not l.startswith('wfkeys: FAILED'))
+
 for b in bad:
     print('deadcheck:', b)
 print(f'deadcheck: {"FAILED" if bad else "ok"} ({len(bad)} found)')
