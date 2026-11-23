@@ -34,6 +34,6 @@ make -C "$W/linux" ARCH=arm64 -s -j$(nproc) Image vmlinuz.efi modules
 make -C "$W/linux" ARCH=arm64 -s modules_install INSTALL_MOD_PATH="$W/mods" DEPMOD=true >/dev/null
 KR=$(ls "$W/mods/lib/modules"); cp initramfs/bin/busybox "$W/mods/depmod"; sudo chroot "$W/mods" /depmod "$KR"; rm -f "$W/mods/depmod"
 mkdir -p "$W/ms/usr/lib"; cp -a "$W/mods/lib/modules" "$W/ms/usr/lib/"
-mksquashfs "$W/ms" "$OUT/modules.sfs" -comp xz -b 1M -noappend -all-root -quiet -no-progress
+. systools/sqopts.sh; mksquashfs "$W/ms" "$OUT/modules.sfs" $SQ_OPTS -noappend -all-root -quiet -no-progress   # (1.6.2 Part 31: zstd)
 cp "$W/linux/arch/arm64/boot/Image" "$OUT/Image"; cp "$W/linux/arch/arm64/boot/vmlinuz.efi" "$OUT/vmlinuz.efi"
 echo "ARM64 kernel $KR: Image $(du -m "$OUT/Image" | cut -f1) MB, vmlinuz.efi $(du -m "$OUT/vmlinuz.efi" | cut -f1) MB, modules $(du -m "$OUT/modules.sfs" | cut -f1) MB"

@@ -1,14 +1,15 @@
 # 1.6.2 (docs/plan-1.6.2.md Part 31, item 1): the system layers' compression against the kernel that reads them
 # (iso/qt/host/sqcomp162_t.sh: make_release.py's line and rows, rudolf-update's refusals), with real images made by
-# mksquashfs; and rudolf-update's other host tests, unchanged by it. Nothing is built or published.
+# mksquashfs; and rudolf-update's other host tests, unchanged by it. Item 3: the images packed with zstd (mklayers.sh,
+# ci_release.sh's repack_layers: iso/qt/host/zsswitch162_t.sh). Nothing is built or published.
 name: Layers' compression check
 on:
   workflow_dispatch:
   push:
     branches-ignore: [main, gh-pages]
-    paths: ['iso/qt/host/sqcomp162_t.sh', 'iso/sys/rudolf-update.c', 'iso/systools/make_release.py', '.github/workflows/sqcomp-check.yml']
+    paths: ['iso/qt/host/sqcomp162_t.sh', 'iso/qt/host/zsswitch162_t.sh', 'iso/systools/sqopts.sh', 'iso/systools/mklayers.sh', 'iso/systools/ci_release.sh', 'iso/sys/rudolf-update.c', 'iso/systools/make_release.py', '.github/workflows/sqcomp-check.yml']
   pull_request:
-    paths: ['iso/qt/host/sqcomp162_t.sh', 'iso/sys/rudolf-update.c', 'iso/systools/make_release.py', '.github/workflows/sqcomp-check.yml']
+    paths: ['iso/qt/host/sqcomp162_t.sh', 'iso/qt/host/zsswitch162_t.sh', 'iso/systools/sqopts.sh', 'iso/systools/mklayers.sh', 'iso/systools/ci_release.sh', 'iso/sys/rudolf-update.c', 'iso/systools/make_release.py', '.github/workflows/sqcomp-check.yml']
 permissions: {contents: read}
 concurrency: {group: 'sqcomp-check-${{ github.ref }}', cancel-in-progress: true}
 jobs:
@@ -21,6 +22,8 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools python3-cryptography libssl-dev >/dev/null
       - name: The layers' compression (sqcomp162_t.sh)
         run: bash iso/qt/host/sqcomp162_t.sh
+      - name: The images packed with zstd (zsswitch162_t.sh, item 3)
+        run: bash iso/qt/host/zsswitch162_t.sh
       - name: rudolf-update's other host tests
         run: |
           for t in beta60_t.sh tostable60_t.sh updsafe57_t.sh recovery59_t.sh ownbuilds60_t.sh return59_t.sh devmode59_t.sh; do
