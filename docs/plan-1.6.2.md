@@ -741,7 +741,22 @@ Tor windows, or for calls and games) and what the best VPN would be: "Yes. That 
   is down, back by itself with the remembered address), vpn62_t.js 18b.
 - **Step 5, Oracle (PR "VPN 5", after VPN 4):** Settings › Network › VPN says in a line that Oracle's Tor windows then run
   inside the VPN (Tor connects through it; the VPN sees only that Tor is used). Tor itself unchanged. vpn62_t.js 1.
-- Step 3 (OpenVPN): its own PR, last.
+- **Step 3, OpenVPN 2.6 (PR "VPN 3", the last: after VPN 5):** built. A .ovpn file imported the same way, checked line by
+  line against what a client's file may say (scripts, script-security, plugins, the management port, log and pid files,
+  another config, a user, a folder, files of its own: refused with the line; certificates and keys only inside the file;
+  a tap VPN refused; a provider's username and password asked for in the add dialog, kept root's 0600 beside it). The
+  VPN helper runs OpenVPN (/usr/sbin/openvpn, Ubuntu 24.04's 2.6 with OpenSSL, which the base layer has) only while the
+  VPN is on, as a daemon of its own outside the Linux apps' sandbox, from a run file it writes (the checked lines, the
+  servers as found now so the kill switch knows them, rvpn0, nobody once connected) with itself as OpenVPN's route-up
+  hook (the server's DNS servers; IPv6 unreachable when the server gives none). **DCO:** not used. OpenVPN 2.6 talks to
+  the out-of-tree ovpn-dco module; Linux 6.16 and later (Rudolf OS's 6.18 included) have their own in-tree ovpn module
+  instead, which needs OpenVPN 2.7 (not in Ubuntu 24.04, whose packages the base layer is made from). So OpenVPN runs with --disable-dco: its data in its
+  own process (measured in the test: about 9 MB of memory while connected, nothing while off). The way to DCO later:
+  CONFIG_OVPN in kconfig.sh (built in, signed with the kernel) and OpenVPN 2.7. Disk: the check workflow says what the
+  base layer lacks of it (the program is about 0.9 MB; ci_release.sh says the total at each build; the aim is about 3 MB).
+  Tests: qt/host/vpnovpn162_t.sh (an OpenVPN server of the test's in a namespace: refused files, connected as nobody,
+  traffic and DNS through it, a capture outside, the kill switch, started again by itself, off with nothing left, a
+  login), the fuzz test of both parsers, vpn62_t.js 2b-2c.
 
 ### 34. Scanners (added on 2026-11-22)
 The owner, 2026-11-22: scanners and network shares are what is left to add from what Mint and Ubuntu have (a phone link,

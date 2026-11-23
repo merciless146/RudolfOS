@@ -4,7 +4,8 @@
  *   GET  vpn                     the VPNs (never a key) and, for each, whether the signed-in account may turn it on and
  *                                off: {ok, wireguard, vpns: [{id, name, type, policy, kill, server, addresses, dns, on,
  *                                state, by, mayOn, mayOff, why}], active, me: {name, admin, child}}
- *   POST vpn/add                 an administrator's name and password, checked here; body {n, p, name, conf}: the file
+ *   POST vpn/add                 an administrator's name and password, checked here; body {n, p, name, conf, type
+ *                                (wireguard, openvpn), user, pass (an OpenVPN file's login)}: the file
  *                                (at most 64 KB) to the helper's standard input, never into a file of rudolfd's
  *   POST vpn/set                 {n, p, id, name | policy (everyone, admins, always) | kill (true, false)}, the same
  *   POST vpn/remove              {n, p, id}, the same
@@ -126,11 +127,15 @@ static void api_vpn(struct req *r, const char *w, int post)
 		if (!strcmp(w, "add")) {
 			char *name = dbody_field(r, "name"), *conf = dbody_field(r, "conf"), *type = dbody_field(r, "type");
 			size_t cl = conf ? strlen(conf) : 0;
-			if (!name || !*name || strlen(name) > 64 || strchr(name, '\n') || !conf || !cl || cl > 65536 || (type && strcmp(type, "wireguard"))) {
-				free(an); free(name); free(type); dfree_secret(conf); reply_err(r->fd, 400, "a name (1 to 64 characters) and a WireGuard file (at most 64 KB)"); return; }
-			str in = {0}; sadd(&in, "%s\n", name); size_t nl = in.n; in.b = realloc(in.b, nl + cl + 1); memcpy(in.b + nl, conf, cl); in.n = nl + cl; in.b[in.n] = 0;
-			dfree_secret(conf);
-			const char *av[] = { "vpn", "add", "wireguard", NULL }; int st; char *o = vpn_helper(av, in.b, in.n, &st);
+			int ov = type && !strcmp(type, "openvpn");   /* (1.6.2 Part 33 step 3: OpenVPN, with its login when the file asks for one) */
+			char *us = ov ? dbody_field(r, "user") : NULL, *pw = ov ? dbody_field(r, "pass") : NULL;
+			if (!name || !*name || strlen(name) > 64 || strchr(name, '\n') || !conf || !cl || cl > 65536 || (type && strcmp(type, "wireguard") && !ov)
+			    || (us && (strlen(us) > 256 || strchr(us, '\n'))) || (pw && (strlen(pw) > 256 || strchr(pw, '\n')))) {
+				free(an); free(name); free(type); free(us); dfree_secret(pw); dfree_secret(conf); reply_err(r->fd, 400, "a name (1 to 64 characters) and a WireGuard or OpenVPN file (at most 64 KB)"); return; }
+			str in = {0}; sadd(&in, "%s\n", name); if (ov) { sadd(&in, "%s\n", us ? us : ""); sadd(&in, "%s\n", pw ? pw : ""); }
+			size_t nl = in.n; in.b = realloc(in.b, nl + cl + 1); memcpy(in.b + nl, conf, cl); in.n = nl + cl; in.b[in.n] = 0;
+			dfree_secret(conf); free(us); dfree_secret(pw);
+			const char *av[] = { "vpn", "add", ov ? "openvpn" : "wireguard", NULL }; int st; char *o = vpn_helper(av, in.b, in.n, &st);
 			explicit_bzero(in.b, in.n); free(in.b);
 			if (st == 0) health_add("vpn", "a VPN was added by %.80s: %.80s", an, name);
 			free(an); free(name); free(type); vpn_reply(r, o, st); return;

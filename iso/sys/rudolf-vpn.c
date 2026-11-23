@@ -316,7 +316,7 @@ static int meta_read(const char *id, Meta *m)
 		else if (!strncmp(l, "policy=", 7) && (!strcmp(l + 7, "everyone") || !strcmp(l + 7, "admins") || !strcmp(l + 7, "always"))) snprintf(m->policy, sizeof m->policy, "%s", l + 7);
 		else if (!strncmp(l, "added=", 6)) m->added = atoll(l + 6);
 		else if (!strncmp(l, "kill=", 5)) m->kill = l[5] == '1';
-		else if (!strncmp(l, "ep=", 3) && strlen(l + 3) < sizeof m->ep && strspn(l + 3, "0123456789abcdefABCDEF.:,|") == strlen(l + 3)) snprintf(m->ep, sizeof m->ep, "%s", l + 3);
+		else if (!strncmp(l, "ep=", 3) && strlen(l + 3) < sizeof m->ep && strspn(l + 3, "0123456789abcdefABCDEF.:,|tcpud") == strlen(l + 3)) snprintf(m->ep, sizeof m->ep, "%s", l + 3);
 	}
 	free(t); if (!m->name[0]) snprintf(m->name, sizeof m->name, "VPN");
 	return 0;
@@ -574,12 +574,14 @@ static void state_write(int r4, int r6, int h6, int b6, const char *svm)
 	char p[PATH_MAX], b[200]; snprintf(p, sizeof p, "%s/vpn/state", RUNDIR);
 	int n = snprintf(b, sizeof b, "rules4 %d\nrules6 %d\nhalves6 %d\nblock6 %d\nsvm %s\n", r4, r6, h6, b6, svm && *svm ? svm : "-"); put_file(p, b, (size_t)n, 0600);
 }
+static void ov_stop(void);
 static void teardown(void)
 {
 	char p[PATH_MAX]; snprintf(p, sizeof p, "%s/vpn/state", RUNDIR); char *t = slurp(p, 1024, NULL);
 	int r4 = 1, r6 = 1, h6 = 1, b6 = 1; char svm[16] = "";
 	if (t) { char *q; if ((q = strstr(t, "rules4 "))) r4 = atoi(q + 7); if ((q = strstr(t, "rules6 "))) r6 = atoi(q + 7); if ((q = strstr(t, "halves6 "))) h6 = atoi(q + 8);
 		if ((q = strstr(t, "block6 "))) b6 = atoi(q + 7); if ((q = strstr(t, "svm "))) sscanf(q + 4, "%15s", svm); free(t); }
+	ov_stop();   /* (an OpenVPN VPN: its process) */
 	link_del(VPN_IF);   /* (its addresses and its routes go with it) */
 	if (r4) rules(0, AF_INET);
 	if (r6) rules(0, AF_INET6);
@@ -668,6 +670,229 @@ static const char *state_now(WgStat *st)
 	if (st->hs) return "noanswer";
 	return "connecting";
 }
+/* ------------------------------------------------------------------ OpenVPN 2.6 (step 3)
+ * A .ovpn file is checked line by line against what a client's file may say (a directive not in OVPN_OK is refused with
+ * its line: scripts, plugins, the management port, log files, another config, a user or folder of its own never pass;
+ * certificates and keys only inside the file, <ca>...</ca>). OpenVPN (/usr/sbin/openvpn, the base layer's, with OpenSSL)
+ * is run by this helper only while the VPN is on, as a daemon of its own (never in the Linux apps' sandbox): from a file
+ * this helper writes into RUN/vpn (root's 0700) with the checked lines, the servers ("remote") as found now (so the kill
+ * switch knows them), the interface rvpn0, OpenVPN's user nobody once connected, and this helper as its route-up hook
+ * (vpn ovpn-up: the servers' DNS, "dhcp-option DNS", into resolv.conf; IPv6 made unreachable when it brings none).
+ * A username and password (auth-user-pass) are kept beside it, root's 0600. Data channel offload (DCO): OpenVPN 2.6
+ * talks to the out-of-tree ovpn-dco module; Rudolf OS's kernel (6.18) has neither it nor 2.7's in-tree ovpn: OpenVPN
+ * runs without DCO (--disable-dco), its data in OpenVPN's own process. */
+#define OVPN_IF VPN_IF
+typedef struct { char *b; size_t n, cap; } str_t;
+static void sb_add(str_t *s, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void sb_add(str_t *s, const char *fmt, ...)
+{
+	va_list ap; va_start(ap, fmt); int k = vsnprintf(NULL, 0, fmt, ap); va_end(ap); if (k < 0) return;
+	if (s->n + (size_t)k + 1 > s->cap) { size_t nc = (s->n + (size_t)k + 1) * 2; char *nb = malloc(nc); if (!nb) return; if (s->b) { memcpy(nb, s->b, s->n); explicit_bzero(s->b, s->cap); free(s->b); } s->b = nb; s->cap = nc; }
+	va_start(ap, fmt); vsnprintf(s->b + s->n, (size_t)k + 1, fmt, ap); va_end(ap); s->n += (size_t)k;
+}
+static const char *const OVPN_OK[] = {   /* (directive, the number of arguments it may have at most: -1 any) */
+	"client", "0", "dev", "1", "dev-type", "1", "proto", "1", "remote", "3", "port", "1", "rport", "1", "nobind", "0", "resolv-retry", "1",
+	"persist-key", "0", "persist-tun", "0", "remote-cert-tls", "1", "remote-cert-ku", "-1", "remote-cert-eku", "1", "verify-x509-name", "2",
+	"cipher", "1", "data-ciphers", "1", "data-ciphers-fallback", "1", "ncp-ciphers", "1", "auth", "1", "tls-version-min", "2", "tls-version-max", "1",
+	"tls-cipher", "1", "tls-ciphersuites", "1", "tls-groups", "1", "key-direction", "1", "compress", "1", "comp-lzo", "1", "allow-compression", "1",
+	"verb", "1", "mute", "1", "mute-replay-warnings", "0", "ping", "1", "ping-restart", "1", "ping-exit", "1", "keepalive", "2", "reneg-sec", "2",
+	"tun-mtu", "1", "mssfix", "2", "fragment", "1", "sndbuf", "1", "rcvbuf", "1", "auth-nocache", "0", "pull", "0", "tls-client", "0", "float", "0",
+	"explicit-exit-notify", "1", "redirect-gateway", "-1", "route", "4", "route-ipv6", "3", "route-metric", "1", "route-delay", "2",
+	"pull-filter", "3", "connect-retry", "2", "connect-retry-max", "1", "server-poll-timeout", "1", "hand-window", "1", "remote-random", "0",
+	"auth-user-pass", "0", "auth-retry", "1", "tls-timeout", "1", "tran-window", "1", "replay-window", "2", "ifconfig-nowarn", "0",
+	"fast-io", "0", "tun-mtu-extra", "1", "link-mtu", "1", "mtu-disc", "1", "tls-exit", "0", "push-peer-info", "0", "ignore-unknown-option", "-1",
+	"remote-random-hostname", "0", "inactive", "2", "setenv", "-1", "block-ipv6", "0", "x509-username-field", "-1", "tls-cert-profile", "1", NULL };
+static const char *const OVPN_BLOCKS[] = { "ca", "cert", "key", "tls-auth", "tls-crypt", "tls-crypt-v2", "extra-certs", "pkcs12", "crl-verify", "peer-fingerprint", NULL };
+/* (dropped with a note: options for Windows or OpenVPN's own clients that mean nothing here) */
+static const char *const OVPN_DROP[] = { "block-outside-dns", "tun-ipv6", "register-dns", "route-method", "ip-win32", "dhcp-renew", "dhcp-release", "service", "win-sys", "show-net-up", "allow-pull-fqdn", "auth-federate", NULL };
+typedef struct { char host[256]; int port; char proto[16]; } OvRemote;
+typedef struct { char *text; size_t n; OvRemote rem[16]; int nrem, port, authup; char proto[16], notes[4][160]; int nnotes; } Ov;
+static void ov_free(Ov *o) { if (o->text) { explicit_bzero(o->text, o->n); free(o->text); } memset(o, 0, sizeof *o); }
+static int ov_word_ok(const char *w) { for (const char *c = w; *c; c++) if ((unsigned char)*c < 0x21 || (unsigned char)*c == 0x7f) return 0; return 1; }
+static int ov_proto_ok(const char *p) { static const char *const P[] = { "udp", "tcp", "tcp-client", "udp4", "udp6", "tcp4", "tcp6", "tcp4-client", "tcp6-client", NULL }; for (int i = 0; P[i]; i++) if (!strcmp(p, P[i])) return 1; return 0; }
+/* the file checked; its accepted lines (and inline blocks) kept in o->text for the run file */
+static int ov_parse(const char *text, size_t len, Ov *o, char *why, size_t wn)
+{
+	memset(o, 0, sizeof *o); snprintf(o->proto, sizeof o->proto, "udp"); o->port = 1194;
+	if (len > MAXCONF) { snprintf(why, wn, "the file is over 64 KB: it is not an OpenVPN file"); return -1; }
+	if (memchr(text, 0, len)) { snprintf(why, wn, "the file has a zero byte: it is not a text file"); return -1; }
+	char *t = malloc(len + 1); if (!t) return -1; memcpy(t, text, len); t[len] = 0;
+	if ((unsigned char)t[0] == 0xef && (unsigned char)t[1] == 0xbb && (unsigned char)t[2] == 0xbf) memset(t, ' ', 3);
+	str_t out = { NULL, 0, 0 }; sb_add(&out, "%s", ""); int ln = 0, rc = -1, client = 0, dev = 0, inblk = 0, hasca = 0; char blk[32] = "";
+	for (char *l = t, *nx; l; l = nx) {
+		nx = strchr(l, '\n'); if (nx) *nx++ = 0; ln++;
+		size_t L = strlen(l); while (L && (l[L - 1] == '\r' || l[L - 1] == ' ' || l[L - 1] == '\t')) l[--L] = 0;
+		if (L > 4096) { snprintf(why, wn, "line %d is too long", ln); goto out; }
+		for (char *q = l; *q; q++) if ((unsigned char)*q < 0x20 && *q != '\t') { snprintf(why, wn, "line %d has a control character", ln); goto out; }
+		char *s = l; while (*s == ' ' || *s == '\t') s++;
+		if (inblk) {
+			char end[40]; snprintf(end, sizeof end, "</%s>", blk);
+			if (!strcmp(s, end)) { inblk = 0; sb_add(&out, "%s\n", end); continue; }
+			if (*s == '<') { snprintf(why, wn, "line %d: <%s> is not closed", ln, blk); goto out; }
+			sb_add(&out, "%s\n", s); continue;
+		}
+		if (!*s || *s == '#' || *s == ';') continue;
+		if (*s == '<') {
+			char nm[32]; size_t k = strcspn(s + 1, ">"); if (k == 0 || k >= sizeof nm || s[1 + k] != '>' || s[2 + k]) { snprintf(why, wn, "line %d is not a block of the file (<ca>)", ln); goto out; }
+			snprintf(nm, sizeof nm, "%.*s", (int)k, s + 1); int okb = 0; for (int i = 0; OVPN_BLOCKS[i]; i++) if (!strcmp(nm, OVPN_BLOCKS[i])) okb = 1;
+			if (!okb) { snprintf(why, wn, "line %d: <%.30s> is not a block an OpenVPN client's file may have", ln, nm); goto out; }
+			if (!strcmp(nm, "ca")) hasca = 1;
+			snprintf(blk, sizeof blk, "%s", nm); inblk = 1; sb_add(&out, "<%s>\n", nm); continue;
+		}
+		char *av[16]; int ac = 0; char *sv = NULL;
+		for (char *w = strtok_r(s, " \t", &sv); w; w = strtok_r(NULL, " \t", &sv)) { if (ac >= 16) { snprintf(why, wn, "line %d has too many words", ln); goto out; } if (!ov_word_ok(w) || strchr(w, '"') || strchr(w, '\'') || strchr(w, '\\')) { snprintf(why, wn, "line %d: quotes and escapes are not taken", ln); goto out; } av[ac++] = w; }
+		if (!ac) continue;
+		const char *d = av[0]; if (!strncmp(d, "--", 2)) d += 2;
+		int drop = 0; for (int i = 0; OVPN_DROP[i]; i++) if (!strcmp(d, OVPN_DROP[i])) drop = 1;
+		if (drop) { if (o->nnotes < 4) snprintf(o->notes[o->nnotes++], 160, "%.40s is for other systems and is left out.", d); continue; }
+		int max = -2; for (int i = 0; OVPN_OK[i]; i += 2) if (!strcmp(d, OVPN_OK[i])) max = atoi(OVPN_OK[i + 1]);
+		int isblk = 0; for (int i = 0; OVPN_BLOCKS[i]; i++) if (!strcmp(d, OVPN_BLOCKS[i])) isblk = 1;
+		if (isblk) { snprintf(why, wn, "line %d: %.30s names a file: its certificates and keys must be inside the file (<%.30s>...</%.30s>)", ln, d, d, d); goto out; }
+		if (max == -2) { snprintf(why, wn, "line %d: %.40s is not taken in a VPN's file here (scripts, plugins, files of its own and the like are never run)", ln, d); goto out; }
+		if (max >= 0 && ac - 1 > max) { snprintf(why, wn, "line %d: too many words for %.40s", ln, d); goto out; }
+		if (ac < 2 && (!strcmp(d, "dev") || !strcmp(d, "dev-type") || !strcmp(d, "proto") || !strcmp(d, "port") || !strcmp(d, "rport"))) { snprintf(why, wn, "line %d: %.40s without its value", ln, d); goto out; }
+		if (!strcmp(d, "dev")) { if (strncmp(av[1], "tun", 3)) { snprintf(why, wn, "line %d: only a tun VPN is taken (this one is %.20s)", ln, av[1]); goto out; } dev = 1; continue; }
+		if (!strcmp(d, "dev-type")) { if (strcmp(av[1], "tun")) { snprintf(why, wn, "line %d: only a tun VPN is taken", ln); goto out; } continue; }
+		if (!strcmp(d, "client")) client = 1;
+		if (!strcmp(d, "auth-user-pass")) { o->authup = 1; continue; }   /* (Rudolf's own file, from the add dialog) */
+		if (!strcmp(d, "proto")) { if (!ov_proto_ok(av[1])) { snprintf(why, wn, "line %d: %.20s is not a protocol", ln, av[1]); goto out; } snprintf(o->proto, sizeof o->proto, "%s", av[1]); continue; }
+		if (!strcmp(d, "port") || !strcmp(d, "rport")) { long x; if (!num_ok(av[1], 1, 65535, &x)) { snprintf(why, wn, "line %d: not a port", ln); goto out; } o->port = (int)x; continue; }
+		if (!strcmp(d, "remote")) {
+			if (ac < 2 || o->nrem >= 16) { snprintf(why, wn, "line %d: a remote without its server, or more than 16", ln); goto out; }
+			OvRemote *r = &o->rem[o->nrem]; memset(r, 0, sizeof *r);
+			int fam; uint8_t a[16];
+			if (strlen(av[1]) >= sizeof r->host || (parse_ip(av[1], &fam, a) && (strspn(av[1], "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.") != strlen(av[1]) || av[1][0] == '-' || av[1][0] == '.'))) { snprintf(why, wn, "line %d: %.60s is not a server", ln, av[1]); goto out; }
+			snprintf(r->host, sizeof r->host, "%s", av[1]); r->port = 0;
+			if (ac > 2) { long x; if (!num_ok(av[2], 1, 65535, &x)) { snprintf(why, wn, "line %d: not a port", ln); goto out; } r->port = (int)x; }
+			if (ac > 3) { if (!ov_proto_ok(av[3])) { snprintf(why, wn, "line %d: %.20s is not a protocol", ln, av[3]); goto out; } snprintf(r->proto, sizeof r->proto, "%s", av[3]); }
+			o->nrem++; continue;
+		}
+		if (!strcmp(d, "setenv") && !(ac >= 2 && (!strcmp(av[1], "opt") || !strcmp(av[1], "CLIENT_CERT") || !strcmp(av[1], "UV_ID") || !strncmp(av[1], "UV_", 3)))) { snprintf(why, wn, "line %d: this setenv is not taken", ln); goto out; }
+		for (int i = 0; i < ac; i++) sb_add(&out, "%s%s", i ? " " : "", av[i]);
+		sb_add(&out, "\n");
+	}
+	if (inblk) { snprintf(why, wn, "<%s> is not closed", blk); goto out; }
+	if (!client) { snprintf(why, wn, "this is not an OpenVPN client's file (it has no \"client\" line)"); goto out; }
+	if (!o->nrem) { snprintf(why, wn, "the file has no remote (the VPN's server)"); goto out; }
+	if (!hasca) { snprintf(why, wn, "the file has no <ca> (the server's certificate authority, inside the file)"); goto out; }
+	(void)dev;
+	for (int i = 0; i < o->nrem; i++) { if (!o->rem[i].port) o->rem[i].port = o->port; if (!o->rem[i].proto[0]) snprintf(o->rem[i].proto, sizeof o->rem[i].proto, "%s", o->proto); }
+	o->text = out.b; o->n = out.n; out.b = NULL; rc = 0;
+out:
+	if (out.b) { explicit_bzero(out.b, out.n); free(out.b); }
+	explicit_bzero(t, len); free(t);
+	return rc;
+}
+static int ov_tcp(const char *p) { return !strncmp(p, "tcp", 3); }
+static char *ov_path(const char *f, char *o, size_t n) { snprintf(o, n, "%s/vpn/%s", RUNDIR, f); return o; }
+/* OpenVPN's process while it runs (its pid file, and /proc's name) */
+static int ov_pid(void)
+{
+	char p[PATH_MAX]; char *t = slurp(ov_path("ovpn.pid", p, sizeof p), 64, NULL); int v = t ? atoi(t) : 0; free(t);
+	if (v <= 1 || kill(v, 0)) return 0;
+	char f[64]; snprintf(f, sizeof f, "/proc/%d/comm", v); char *c = slurp_any(f, 64, NULL, 1); if (c) c[strcspn(c, "\n")] = 0;
+	int ok = c && !strcmp(c, "openvpn"); free(c); return ok ? v : 0;
+}
+static void ov_stop(void)
+{
+	int p = ov_pid(); if (!p) return;
+	kill(p, SIGTERM); for (int i = 0; i < 50 && !kill(p, 0); i++) { struct timespec ts = { 0, 100000000 }; nanosleep(&ts, NULL); }
+	if (!kill(p, 0)) kill(p, SIGKILL);
+	char q[PATH_MAX]; unlink(ov_path("ovpn.pid", q, sizeof q));
+}
+#ifdef RR_TEST
+#define OVPN_BIN rr_env("RR_TEST_OPENVPN", "/usr/sbin/openvpn")
+#define SELF_BIN rr_env("RR_TEST_SELF", RR_DIR "/vpn")
+#else
+#define OVPN_BIN "/usr/sbin/openvpn"
+#define SELF_BIN RR_DIR "/vpn"
+#endif
+static int ov_up(const char *id, char *why, size_t wn)
+{
+	size_t len = 0; char *t = conf_text(id, &len); if (!t) { snprintf(why, wn, "the VPN's file is missing"); return -1; }
+	Ov o; int bad = ov_parse(t, len, &o, why, wn); explicit_bzero(t, len); free(t); if (bad) return -1;
+	if (access(OVPN_BIN, X_OK)) { ov_free(&o); snprintf(why, wn, "this Rudolf OS has no OpenVPN: update it"); return -1; }
+	dns_off();
+	/* the servers as found now (their names through the network's own name servers): the kill switch lets these out */
+	str_t rf = { NULL, 0, 0 }; sb_add(&rf, "%s", ""); char eps[300] = ""; size_t ek = 0; int nr = 0;
+	for (int i = 0; i < o.nrem; i++) {
+		char ps[8]; snprintf(ps, sizeof ps, "%d", o.rem[i].port);
+		struct addrinfo h = { .ai_socktype = ov_tcp(o.rem[i].proto) ? SOCK_STREAM : SOCK_DGRAM, .ai_flags = AI_NUMERICSERV }, *res = NULL;
+		if (getaddrinfo(o.rem[i].host, ps, &h, &res) || !res) continue;
+		for (struct addrinfo *r = res; r && nr < 16; r = r->ai_next) {
+			char s[64] = ""; if (r->ai_family == AF_INET) inet_ntop(AF_INET, &((struct sockaddr_in *)r->ai_addr)->sin_addr, s, sizeof s); else if (r->ai_family == AF_INET6) inet_ntop(AF_INET6, &((struct sockaddr_in6 *)r->ai_addr)->sin6_addr, s, sizeof s); else continue;
+			sb_add(&rf, "remote %s %d %s\n", s, o.rem[i].port, o.rem[i].proto); nr++;
+			if (ek + strlen(s) + 16 < sizeof eps) ek += (size_t)snprintf(eps + ek, sizeof eps - ek, "%s%s|%d|%s", ek ? "," : "", s, o.rem[i].port, ov_tcp(o.rem[i].proto) ? "tcp" : "udp");
+			break;   /* (one address each: OpenVPN tries the next remote should it fail) */
+		}
+		freeaddrinfo(res);
+	}
+	Meta m; int hm = !meta_read(id, &m);
+	if (!nr && hm && m.ep[0]) {   /* (their names not found: the addresses from last time, as the kill switch may be what keeps the name servers out) */
+		char e[300]; snprintf(e, sizeof e, "%s", m.ep); char *sv = NULL;
+		for (char *x = strtok_r(e, ",", &sv); x; x = strtok_r(NULL, ",", &sv)) { char ip[64], pr[8] = "udp"; int port; if (sscanf(x, "%63[^|]|%d|%7s", ip, &port, pr) >= 2) { sb_add(&rf, "remote %s %d %s\n", ip, port, strcmp(pr, "tcp") ? "udp" : "tcp-client"); nr++; } }
+		snprintf(eps, sizeof eps, "%s", m.ep);
+	}
+	if (!nr) { free(rf.b); ov_free(&o); snprintf(why, wn, "the VPN's server %.100s could not be found: is this computer online?", o.rem[0].host); return -1; }
+	if (hm && strcmp(m.ep, eps)) { snprintf(m.ep, sizeof m.ep, "%s", eps); meta_write(&m); }
+	char cf[PATH_MAX], pf[PATH_MAX], lf[PATH_MAX], af[PATH_MAX]; ov_path("ovpn.conf", cf, sizeof cf); ov_path("ovpn.pid", pf, sizeof pf); ov_path("ovpn.log", lf, sizeof lf); meta_path(id, "auth", af, sizeof af);
+	str_t c = { NULL, 0, 0 };
+	sb_add(&c, "# written by Rudolf OS's VPN helper from the VPN's own file (its checked lines)\n%s%s", o.text, rf.b);
+	sb_add(&c, "dev %s\ndev-type tun\nscript-security 2\nroute-up \"%s ovpn-up\"\nuser nobody\ngroup nogroup\npersist-tun\npersist-key\n", OVPN_IF, SELF_BIN);
+	sb_add(&c, "auth-retry nointeract\ndisable-dco\nverb 3\nconnect-retry 2 30\n");
+	if (o.authup) sb_add(&c, "auth-user-pass %s\n", af);
+	free(rf.b); ov_free(&o);
+	int bf = put_file(cf, c.b, c.n, 0600); explicit_bzero(c.b, c.n); free(c.b);
+	if (bf) { snprintf(why, wn, "the VPN's run file could not be written"); return -1; }
+	unlink(pf); unlink(lf); link_del(VPN_IF);
+	state_write(0, 0, 0, 1, "");   /* (down removes its IPv6 halves, should ovpn-up have made them) */
+	pid_t p = fork(); if (p < 0) { snprintf(why, wn, "OpenVPN could not be started"); return -1; }
+	if (p == 0) {
+		setsid(); int nul = open("/dev/null", O_RDWR | O_CLOEXEC); if (nul >= 0) { dup2(nul, 0); dup2(nul, 1); dup2(nul, 2); }
+		for (int f = 3; f < 1024; f++) close(f);
+		char *argv[] = { (char *)OVPN_BIN, "--config", cf, "--daemon", "rudolf-vpn", "--writepid", pf, "--log", lf, NULL }, *env[] = { RR_PATH, NULL };
+		execve(OVPN_BIN, argv, env); _exit(127);
+	}
+	int st = 0; while (waitpid(p, &st, 0) < 0 && errno == EINTR) {}   /* (it forks itself into the background: --daemon) */
+	if (!WIFEXITED(st) || WEXITSTATUS(st)) { char *lg = slurp(lf, 65536, NULL); char last[200] = ""; if (lg) { char *e = lg + strlen(lg); while (e > lg && e[-1] == '\n') *--e = 0; char *b2 = strrchr(lg, '\n'); snprintf(last, sizeof last, "%.180s", b2 ? b2 + 1 : lg); free(lg); }
+		snprintf(why, wn, "OpenVPN did not start%s%s", last[0] ? ": " : "", last); return -1; }
+	return 0;
+}
+/* connecting until OpenVPN's log says the tunnel is set up ("Initialization Sequence Completed"); down once it is gone */
+static const char *ov_state(void)
+{
+	if (!ov_pid()) return "down";
+	char p[PATH_MAX]; char *lg = slurp(ov_path("ovpn.log", p, sizeof p), 1 << 20, NULL); const char *s = "connecting";
+	if (lg) {
+		char *done = NULL, *lost = NULL, *x;
+		for (x = lg; (x = strstr(x, "Initialization Sequence Completed")); x++) done = x;
+		for (x = lg; (x = strstr(x, "SIGUSR1")); x++) lost = x;
+		for (x = lg; (x = strstr(x, "Restart pause")); x++) if (x > lost) lost = x;
+		if (done && (!lost || done > lost)) s = "connected"; else if (done || strstr(lg, "AUTH_FAILED")) s = "noanswer";
+		free(lg);
+	}
+	return s;
+}
+/* route-up: OpenVPN runs this helper itself (as root, before it becomes nobody), with what the server
+   gave in its environment: its DNS servers (foreign_option_N "dhcp-option DNS x" and "DOMAIN d") */
+static int cmd_ovpn_hook(void)
+{
+	const char *dv = getenv("dev"); if (!dv || strcmp(dv, OVPN_IF)) return refuse("an OpenVPN hook for another interface", dv ? dv : "");
+	Conf c; memset(&c, 0, sizeof c);
+	for (int i = 1; i < 64; i++) {
+		char k[32]; snprintf(k, sizeof k, "foreign_option_%d", i); const char *v = getenv(k); if (!v) break;
+		int fam; uint8_t a[16];
+		if (!strncmp(v, "dhcp-option DNS ", 16) && !parse_ip(v + 16, &fam, a) && c.ndns < MAXDNS) inet_ntop(fam, a, c.dns[c.ndns++], 48);
+		else if ((!strncmp(v, "dhcp-option DOMAIN ", 19) || !strncmp(v, "dhcp-option DOMAIN-SEARCH ", 26))) { const char *d = strchr(v + 12, ' ') + 1;
+			if (strlen(d) < 64 && strspn(d, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-.") == strlen(d) && strlen(c.search) + strlen(d) + 2 < sizeof c.search) { if (*c.search) strcat(c.search, " "); strcat(c.search, d); } }
+	}
+	dns_on(&c);
+	/* IPv6: the server gave none (no route of it into the tunnel): unreachable while it is on, so nothing goes round it */
+	int idx = if_index(OVPN_IF);
+	if (idx && !getenv("ifconfig_ipv6_local")) { Cidr a = { .fam = AF_INET6, .len = 1 }, b = { .fam = AF_INET6, .len = 1 }; b.a[0] = 0x80; route(1, 0, &a, RT_TABLE_MAIN); route(1, 0, &b, RT_TABLE_MAIN); }
+	return 0;
+}
+
 /* ------------------------------------------------------------------ the kill switch */
 #ifdef RR_TEST
 #define NFT_DIRS rr_env("RR_TEST_BIN", "/usr/sbin:/usr/bin:/sbin:/bin")
@@ -695,10 +920,11 @@ static void kill_apply(void)
 		char v4[1024] = "", v6[1024] = ""; size_t k4 = 0, k6 = 0;
 		char e[300]; snprintf(e, sizeof e, "%s", m.ep); char *sv = NULL;
 		for (char *t = strtok_r(e, ",", &sv); t; t = strtok_r(NULL, ",", &sv)) {
-			char ip[64]; int port; if (sscanf(t, "%63[^|]|%d", ip, &port) != 2 || port < 1 || port > 65535) continue;
+			char ip[64], pr[8] = "udp"; int port; if (sscanf(t, "%63[^|]|%d|%7s", ip, &port, pr) < 2 || port < 1 || port > 65535) continue;
+			const char *l4 = strcmp(pr, "tcp") ? "udp" : "tcp";
 			struct in6_addr x; char line[200];
-			if (inet_pton(AF_INET, ip, &x) == 1) { snprintf(line, sizeof line, "\t\tip daddr %s udp dport %d accept\n", ip, port); if (k4 + strlen(line) < sizeof v4) { strcat(v4, line); k4 += strlen(line); } }
-			else if (inet_pton(AF_INET6, ip, &x) == 1) { snprintf(line, sizeof line, "\t\tip6 daddr %s udp dport %d accept\n", ip, port); if (k6 + strlen(line) < sizeof v6) { strcat(v6, line); k6 += strlen(line); } }
+			if (inet_pton(AF_INET, ip, &x) == 1) { snprintf(line, sizeof line, "\t\tip daddr %s %s dport %d accept\n", ip, l4, port); if (k4 + strlen(line) < sizeof v4) { strcat(v4, line); k4 += strlen(line); } }
+			else if (inet_pton(AF_INET6, ip, &x) == 1) { snprintf(line, sizeof line, "\t\tip6 daddr %s %s dport %d accept\n", ip, l4, port); if (k6 + strlen(line) < sizeof v6) { strcat(v6, line); k6 += strlen(line); } }
 		}
 		k += (size_t)snprintf(b + k, sizeof b - k,
 			"table inet rudolf_vpnkill {\n"
@@ -722,11 +948,29 @@ static int cmd_down(int quiet)
 	if (was && !quiet) { Meta m; if (!meta_read(o.id, &m)) rr_health("vpn", "the VPN %s was turned off", m.name); }
 	vpn_event(); return 0;
 }
+static int ov_cmd_up(const char *id, const char *by, const Meta *m)
+{
+	char why[300] = "";
+	on_write(id, by); kill_apply();
+	if (ov_up(id, why, sizeof why)) { teardown(); on_clear(); kill_apply(); rr_health("vpn", "the VPN %s did not connect: %s", m->name, why); vpn_event(); printf("{\"ok\":false,\"error\":"); jstr(stdout, why); printf("}\n"); return 1; }
+	kill_apply();
+	const char *s = "connecting";
+	for (int i = 0; i < 75; i++) { s = ov_state(); if (!strcmp(s, "connected") || !strcmp(s, "down")) break; struct timespec ts = { 0, 200000000 }; nanosleep(&ts, NULL); }
+	if (!strcmp(s, "down")) { char p[PATH_MAX], last[200] = ""; char *lg = slurp(ov_path("ovpn.log", p, sizeof p), 65536, NULL);
+		if (lg) { char *e = lg + strlen(lg); while (e > lg && e[-1] == '\n') *--e = 0; char *b = strrchr(lg, '\n'); snprintf(last, sizeof last, "%.180s", b ? b + 1 : lg); free(lg); }
+		snprintf(why, sizeof why, "OpenVPN stopped%s%s", last[0] ? ": " : "", last); teardown(); on_clear(); kill_apply(); vpn_event();
+		printf("{\"ok\":false,\"error\":"); jstr(stdout, why); printf("}\n"); return 1; }
+	rr_health("vpn", "the VPN %s was turned on%s%s", m->name, by && strcmp(by, "-") ? " by " : "", by && strcmp(by, "-") ? by : "");
+	vpn_event();
+	printf("{\"ok\":true,\"state\":\"%s\",\"message\":", s);
+	jstr(stdout, !strcmp(s, "connected") ? "Connected: this computer's traffic goes through the VPN." : "On: waiting for the VPN's server to answer (it keeps trying).");
+	printf("}\n"); return 0;
+}
 static int cmd_up(const char *id, const char *by)
 {
 	Meta m; if (meta_read(id, &m)) { printf("{\"ok\":false,\"error\":\"there is no such VPN\"}\n"); return 1; }
-	if (strcmp(m.type, "wireguard")) { printf("{\"ok\":false,\"error\":\"this kind of VPN cannot be connected yet\"}\n"); return 1; }
 	OnState o; if (on_read(&o)) { teardown(); }
+	if (!strcmp(m.type, "openvpn")) return ov_cmd_up(id, by, &m);
 	size_t len = 0; char *t = conf_text(id, &len); if (!t) { printf("{\"ok\":false,\"error\":\"the VPN's file is missing\"}\n"); return 1; }
 	Conf c; char why[300] = ""; int bad = conf_parse(t, len, &c, why, sizeof why); explicit_bzero(t, len); free(t);
 	if (bad) { printf("{\"ok\":false,\"error\":"); jstr(stdout, why); printf("}\n"); return 1; }
@@ -745,10 +989,14 @@ static int cmd_up(const char *id, const char *by)
 }
 static void list_one(FILE *o, const Meta *m, const OnState *on, int first)
 {
-	size_t len = 0; char *t = conf_text(m->id, &len); Conf c; char why[200]; int ok = t && !conf_parse(t, len, &c, why, sizeof why); if (t) { explicit_bzero(t, len); free(t); }
+	size_t len = 0; char *t = conf_text(m->id, &len); Conf c; char why[200]; int ov = !strcmp(m->type, "openvpn"); Ov ovc; memset(&ovc, 0, sizeof ovc);
+	int ok = t && (ov ? !ov_parse(t, len, &ovc, why, sizeof why) : !conf_parse(t, len, &c, why, sizeof why)); if (t) { explicit_bzero(t, len); free(t); }
 	fprintf(o, "%s{\"id\":\"%s\",\"name\":", first ? "" : ",", m->id); jstr(o, m->name);
 	fprintf(o, ",\"type\":\"%s\",\"policy\":\"%s\",\"kill\":%s,\"added\":%lld", m->type, m->policy, m->kill ? "true" : "false", m->added);
-	if (ok) {
+	if (ok && ov) {
+		char s[300]; snprintf(s, sizeof s, "%s:%d (%s)", ovc.rem[0].host, ovc.rem[0].port, ov_tcp(ovc.rem[0].proto) ? "TCP" : "UDP");
+		fprintf(o, ",\"server\":"); jstr(o, s); fprintf(o, ",\"addresses\":[],\"dns\":[],\"login\":%s", ovc.authup ? "true" : "false"); ov_free(&ovc);
+	} else if (ok) {
 		char s[300]; snprintf(s, sizeof s, "%s:%d", c.peer[0].host, c.peer[0].port); if (strchr(c.peer[0].host, ':')) snprintf(s, sizeof s, "[%s]:%d", c.peer[0].host, c.peer[0].port);
 		fprintf(o, ",\"server\":"); jstr(o, s);
 		fprintf(o, ",\"addresses\":["); for (int i = 0; i < c.naddr; i++) { char a[64]; inet_ntop(c.addr[i].fam, c.addr[i].a, a, sizeof a); fprintf(o, "%s\"%s/%d\"", i ? "," : "", a, c.addr[i].len); }
@@ -757,7 +1005,7 @@ static void list_one(FILE *o, const Meta *m, const OnState *on, int first)
 		conf_wipe(&c);
 	} else fprintf(o, ",\"broken\":true");
 	if (on && !strcmp(on->id, m->id)) {
-		WgStat st; const char *s = state_now(&st);
+		WgStat st; memset(&st, 0, sizeof st); const char *s = ov ? ov_state() : state_now(&st);
 		fprintf(o, ",\"on\":true,\"state\":\"%s\",\"since\":%lld,\"by\":", s, on->since); jstr(o, strcmp(on->by, "-") ? on->by : "");
 		fprintf(o, ",\"rx\":%llu,\"tx\":%llu,\"handshake\":%lld", st.rx, st.tx, st.hs);
 	} else fprintf(o, ",\"on\":false,\"state\":\"off\"");
@@ -779,9 +1027,37 @@ static int cmd_list(void)
 	printf("],\"active\":"); if (has) printf("\"%s\"", on.id); else printf("null");
 	printf("}\n"); return 0;
 }
+/* standard input: the name, the username, the password (each a line; the last two may be empty), then the .ovpn file */
+static int ov_cmd_add(void)
+{
+	size_t len = 0; char *in = read_all(0, MAXCONF + 800, &len);
+	if (!in) { printf("{\"ok\":false,\"error\":\"the file is over 64 KB: it is not an OpenVPN file\"}\n"); return 1; }
+	char *l1 = strchr(in, '\n'), *l2 = l1 ? strchr(l1 + 1, '\n') : NULL, *l3 = l2 ? strchr(l2 + 1, '\n') : NULL;
+	if (!l3) { explicit_bzero(in, len); free(in); return refuse("an OpenVPN VPN without its name and login lines", ""); }
+	*l1 = *l2 = *l3 = 0; char *name = in, *user = l1 + 1, *pass = l2 + 1, *conf = l3 + 1; size_t cl = len - (size_t)(conf - in);
+	if (!utf8_name_ok(name, 64)) { explicit_bzero(in, len); free(in); printf("{\"ok\":false,\"error\":\"the name has 1 to 64 characters\"}\n"); return 1; }
+	Ov o; char why[300] = "";
+	if (ov_parse(conf, cl, &o, why, sizeof why)) { explicit_bzero(in, len); free(in); printf("{\"ok\":false,\"error\":"); jstr(stdout, why); printf("}\n"); return 1; }
+	if (o.authup && (!*user || !*pass || strlen(user) > 256 || strlen(pass) > 256 || !utf8_name_ok(user, 256) || !utf8_name_ok(pass, 256))) { ov_free(&o); explicit_bzero(in, len); free(in); printf("{\"ok\":false,\"error\":\"this VPN signs in with a username and password: type them\"}\n"); return 1; }
+	char l[64][16]; if (ids(l, 64) >= 32) { ov_free(&o); explicit_bzero(in, len); free(in); printf("{\"ok\":false,\"error\":\"there are 32 VPNs already: remove one first\"}\n"); return 1; }
+	mkdirs();
+	Meta m; memset(&m, 0, sizeof m); uint8_t rb[4]; if (getrandom(rb, 4, 0) != 4) { ov_free(&o); explicit_bzero(in, len); free(in); return 1; }
+	snprintf(m.id, sizeof m.id, "v%02x%02x%02x%02x", rb[0], rb[1], rb[2], rb[3]); snprintf(m.name, sizeof m.name, "%s", name);
+	snprintf(m.type, sizeof m.type, "openvpn"); snprintf(m.policy, sizeof m.policy, "everyone"); m.added = (long long)time(NULL);
+	char p[PATH_MAX], pa[PATH_MAX]; meta_path(m.id, "conf", p, sizeof p); meta_path(m.id, "auth", pa, sizeof pa);
+	int bad = put_file(p, conf, cl, 0600);
+	if (!bad && o.authup) { char ab[600]; int an = snprintf(ab, sizeof ab, "%s\n%s\n", user, pass); bad = put_file(pa, ab, (size_t)an, 0600); explicit_bzero(ab, sizeof ab); }
+	if (!bad) bad = meta_write(&m);
+	explicit_bzero(in, len); free(in);
+	if (bad) { ov_free(&o); unlink(p); unlink(pa); printf("{\"ok\":false,\"error\":\"the VPN could not be kept (the disk)\"}\n"); return 1; }
+	printf("{\"ok\":true,\"id\":\"%s\",\"notes\":[", m.id); for (int i = 0; i < o.nnotes; i++) { if (i) putchar(','); jstr(stdout, o.notes[i]); } printf("]}\n");
+	rr_health("vpn", "the VPN %s (OpenVPN) was added", m.name);
+	ov_free(&o); vpn_event(); return 0;
+}
 static int cmd_add(const char *type)
 {
-	if (strcmp(type, "wireguard")) return refuse("a kind of VPN that is not wireguard", type);
+	if (!strcmp(type, "openvpn")) return ov_cmd_add();
+	if (strcmp(type, "wireguard")) return refuse("a kind of VPN that is not wireguard or openvpn", type);
 	size_t len = 0; char *in = read_all(0, MAXCONF + 200, &len);
 	if (!in) { printf("{\"ok\":false,\"error\":\"the file is over 64 KB: it is not a WireGuard file\"}\n"); return 1; }
 	char *nl = strchr(in, '\n'); if (!nl) { explicit_bzero(in, len); free(in); return refuse("a VPN without its name", ""); }
@@ -826,7 +1102,9 @@ static int cmd_remove(const char *id)
 	OnState o; if (on_read(&o) && !strcmp(o.id, id)) cmd_down(1);
 	char p[PATH_MAX]; meta_path(id, "conf", p, sizeof p);
 	{ size_t n = 0; char *t = slurp(p, MAXCONF, &n); if (t) { int f = open(p, O_WRONLY | O_CLOEXEC | O_NOFOLLOW); if (f >= 0) { explicit_bzero(t, n); if (write(f, t, n) < 0) {} if (fsync(f)) {} close(f); } free(t); } }   /* (the key overwritten first) */
-	unlink(p); meta_path(id, "meta", p, sizeof p); unlink(p);
+	unlink(p); meta_path(id, "auth", p, sizeof p);
+	{ size_t n = 0; char *t = slurp(p, 4096, &n); if (t) { int f = open(p, O_WRONLY | O_CLOEXEC | O_NOFOLLOW); if (f >= 0) { explicit_bzero(t, n); if (write(f, t, n) < 0) {} close(f); } free(t); } unlink(p); }
+	meta_path(id, "meta", p, sizeof p); unlink(p);
 	rr_health("vpn", "the VPN %s was removed", m.name); vpn_event(); printf("{\"ok\":true}\n"); return 0;
 }
 /* an "Always on" VPN, turned on at the start (the first one, if more than one says so) */
@@ -840,8 +1118,12 @@ static int cmd_boot(void)
 static int cmd_tick(void)
 {
 	OnState o; if (!on_read(&o)) return 0;
-	if (if_index(VPN_IF)) return 0;
 	Meta m; if (meta_read(o.id, &m)) { on_clear(); kill_apply(); return 0; }
+	if (!strcmp(m.type, "openvpn")) {   /* (OpenVPN's process gone: started again) */
+		if (ov_pid()) return 0; char why[300] = ""; teardown();
+		if (!ov_up(o.id, why, sizeof why)) { rr_health("vpn", "the VPN %s was set up again", m.name); vpn_event(); }
+		if (m.kill) kill_apply(); return 0; }
+	if (if_index(VPN_IF)) return 0;
 	size_t len = 0; char *t = conf_text(o.id, &len); if (!t) return 0;
 	Conf c; char why[300] = ""; int bad = conf_parse(t, len, &c, why, sizeof why); explicit_bzero(t, len); free(t); if (bad) return 0;
 	int r = wg_up(o.id, &c, why, sizeof why); conf_wipe(&c);
@@ -857,8 +1139,9 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN); umask(077);
 	const char *op = argv[1]; int n = argc - 2; char **a = argv + 2;
 	if (!strcmp(op, "list")) { if (n) return refuse("arguments for list", a[0]); return cmd_list(); }
+	if (!strcmp(op, "ovpn-up")) return cmd_ovpn_hook();   /* (OpenVPN's own route-up: never through rudolf-rootd, never the lock up holds) */
 	mkdirs(); lock_take();
-	if (!strcmp(op, "add")) { if (n != 1) return refuse("add without its kind", ""); return cmd_add(a[0]); }
+	if (!strcmp(op, "add")) { if (n != 1) return refuse("add without its kind", ""); return cmd_add(a[0]); }   /* (wireguard or openvpn) */
 	if (!strcmp(op, "set")) { if (n < 2 || n > 3 || !id_ok(a[0])) return refuse("a VPN that is not one", n ? a[0] : ""); return cmd_set(a[0], a[1], n == 3 ? a[2] : NULL); }
 	if (!strcmp(op, "remove")) { if (n != 1 || !id_ok(a[0])) return refuse("a VPN that is not one", n ? a[0] : ""); return cmd_remove(a[0]); }
 	if (!strcmp(op, "up")) { if (n != 2 || !id_ok(a[0]) || (strcmp(a[1], "-") && !utf8_name_ok(a[1], 64))) return refuse("a VPN or a name that is not one", n ? a[0] : ""); return cmd_up(a[0], a[1]); }

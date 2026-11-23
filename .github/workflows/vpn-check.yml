@@ -13,7 +13,7 @@ on:
   push:
     paths: ['.github/vpn-run.txt']
   pull_request:
-    paths: ['iso/sys/rudolf-vpn.c', 'iso/sys/rudolfd-vpn.inc', 'iso/qt/host/vpn162_t.sh', 'iso/qt/host/fixtures/vpn*', 'iso/qt/host/fuzz/vpn_fuzz.c',
+    paths: ['iso/sys/rudolf-vpn.c', 'iso/sys/rudolfd-vpn.inc', 'iso/qt/host/vpn162_t.sh', 'iso/qt/host/vpnovpn162_t.sh', 'iso/qt/host/fixtures/vpn*', 'iso/qt/host/fuzz/vpn_fuzz.c',
       'desktop/vpn62.js', 'iso/qt/shell2/vpn62_t.js', 'iso/qt/native/same_t.js', 'iso/qt/native/same_rd.py', 'iso/sys/rudolf-native.c', 'iso/sys/root/usr/lib/rudolf/udhcpc.sh', '.github/workflows/vpn-check.yml']
 permissions: {contents: read}
 jobs:
@@ -28,6 +28,17 @@ jobs:
           sudo modprobe wireguard && echo "WireGuard: $(cat /sys/module/wireguard/version 2>/dev/null)"
       - name: "vpn162_t.sh (as root: its own mount and network namespaces)"
         run: sudo sh iso/qt/host/vpn162_t.sh
+      - name: "vpnovpn162_t.sh: OpenVPN (as root: its own namespaces, an OpenVPN server of the test's)"
+        run: sudo apt-get install -y -qq openvpn >/dev/null && sudo systemctl stop openvpn 2>/dev/null; sudo sh iso/qt/host/vpnovpn162_t.sh
+      - name: "OpenVPN's disk: what the base layer of the newest release lacks of it"
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          sudo apt-get install -y -qq squashfs-tools >/dev/null
+          git fetch -q --depth 1 origin gh-pages; S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          gh release download "r$S" -p base.sfs -D /tmp/rel && sudo unsquashfs -q -d /tmp/broot /tmp/rel/base.sfs >/dev/null
+          T=$(stat -c %s /usr/sbin/openvpn); echo "openvpn $T"
+          for l in $(ldd /usr/sbin/openvpn | awk '/=>/{print $3}'); do if [ -e /tmp/broot$l ] || [ -e /tmp/broot/usr$l ]; then echo "  in the base layer: $l"; else s=$(stat -L -c %s $l); T=$((T + s)); echo "  added: $l $s"; fi; done
+          echo "::notice title=OpenVPN's disk::$((T / 1024)) KB added to the base layer (release $S)"
       - name: The helper's parsing, fuzzed (ASan, UBSan)
         run: gcc -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -o /tmp/vpn_fuzz iso/qt/host/fuzz/vpn_fuzz.c && /tmp/vpn_fuzz 30
       - name: The release's flags

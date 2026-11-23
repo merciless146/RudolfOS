@@ -55,9 +55,13 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('1. Settings › Network › VPN: what it is (and that Oracle\'s Tor windows then run inside it), none yet, Add a VPN for an administrator', /A VPN for the whole computer/.test(t) && /Oracle's Tor windows then run inside the VPN/.test(t) && /No VPN yet/.test(t) && !(await q("document.querySelector('.vpna').disabled")), t);
   // the add dialog: a file that is not WireGuard's, then the real one from a file
   await p.click('.vpna'); await p.waitForSelector('.vpnf');
-  await q("document.querySelector('.vpnpd').open=true"); await p.fill('.vpnt', 'client\nremote vpn.example.com 1194\n'); await p.fill('.vpnn', 'X'); M.posts = [];
+  await q("document.querySelector('.vpnpd').open=true"); await p.fill('.vpnt', 'server 10.8.0.0 255.255.255.0\nport 1194\n'); await p.fill('.vpnn', 'X'); M.posts = [];
   await p.click('.rmbox .y'); await wait(300);
-  ok('2. a file that is not WireGuard\'s is refused in the page (nothing sent)', /not a WireGuard file/.test(await q("document.querySelector('.vpnm').textContent")) && !M.posts.length, await q("document.querySelector('.vpnm').textContent"));
+  ok('2. a file that is not WireGuard\'s or an OpenVPN client\'s is refused in the page (nothing sent)', /not a WireGuard file/.test(await q("document.querySelector('.vpnm').textContent")) && !M.posts.length, await q("document.querySelector('.vpnm').textContent"));
+  await p.fill('.vpnt', 'client\nremote vpn.example.com 1194\nauth-user-pass\n<ca>\nx\n</ca>\n'); await wait(200);
+  ok('2b. an OpenVPN file that signs in with a username and password: the dialog asks for them', !(await q("document.querySelector('.vpnlg').hidden")));
+  await p.click('.rmbox .y'); await wait(300);
+  ok('2c. ...and says so when they are not typed (nothing sent)', /username and password/.test(await q("document.querySelector('.vpnm').textContent")) && !M.posts.length);
   await p.fill('.vpnt', ''); await p.fill('.vpnn', '');
   const cf = path.join(require('os').tmpdir(), 'Home VPN.conf'); fs.writeFileSync(cf, CONF); await p.setInputFiles('.vpnf', cf); await wait(300);
   ok('3. ...its name taken from the file\'s', await q("document.querySelector('.vpnn').value") == 'Home VPN', await q("document.querySelector('.vpnn').value"));

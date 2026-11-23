@@ -18911,7 +18911,7 @@ function hsRandPw(){const a='abcdefghjkmnpqrstuvwxyz23456789';const r=crypto.get
 
 __svcMod("vpn62.js");
 /* ===== Rudolf OS 1.6.2 (docs/plan-1.6.2.md Part 33): a VPN for the whole computer =====
-   Settings › Network › VPN: a WireGuard file (.conf) imported, named, connected and disconnected; the taskbar's network
+   Settings › Network › VPN: a WireGuard file (.conf) or an OpenVPN client's file (.ovpn, 1.6.2 Part 33 step 3) imported, named, connected and disconnected; the taskbar's network
    pop-up lists the VPNs under the adapters, each with its state, and turns one on or off with a click. While one is on,
    every app's traffic and its name lookups go through it (rudolfd's vpn requests: rudolfd-vpn.inc and the VPN helper,
    rudolf-vpn.c, which sets WireGuard up through the kernel's netlink itself). The page never sees a key: the file goes
@@ -18947,20 +18947,28 @@ async function vpnToggle(v){if(VPN62.busy)return;const T='VPN';let body,path=v.o
  try{const r=await rdPost(path,body);notify(T,v.on?v.name+' is off.':r.message||v.name+' is on.')}catch(e){notify(T,e.message,{kind:'error'})}
  VPN62.busy=null;await vpnGet()}
 /* the add (import) dialog: the file, or its text pasted, and a name; an administrator's password, checked by rudolfd */
+/* which kind a file is: WireGuard's [Interface], or an OpenVPN client's file (client, remote) */
+const vpnKind=t=>/^\s*\[Interface\]/im.test(t)?'wireguard':/^\s*client\s*$/m.test(t)&&/^\s*remote\s/m.test(t)?'openvpn':'';
 function vpnAdd(after){const o=document.createElement('div');o.className='rmodal';
- o.innerHTML=`<div class='rmbox' role='dialog' aria-modal='true' aria-labelledby='vpnadt' style='max-width:520px'><h3 id='vpnadt'>Add a VPN</h3><p class='msg'>A WireGuard file (.conf) from your VPN provider or your home router. Its private key is kept where only the system reads it; Rudolf OS never shows it again.</p>
-<div class='r2'><label>File</label><div><input type='file' class='vpnf' accept='.conf,text/plain' aria-label='WireGuard file'></div><label>Name</label><input class='vpnn' maxlength='64' placeholder='Home, Work, ...' aria-label='Name'></div>
+ o.innerHTML=`<div class='rmbox' role='dialog' aria-modal='true' aria-labelledby='vpnadt' style='max-width:520px'><h3 id='vpnadt'>Add a VPN</h3><p class='msg'>A WireGuard file (.conf) or an OpenVPN file (.ovpn) from your VPN provider or your home router. Its keys are kept where only the system reads them; Rudolf OS never shows them again.</p>
+<div class='r2'><label>File</label><div><input type='file' class='vpnf' accept='.conf,.ovpn,text/plain' aria-label='WireGuard or OpenVPN file'></div><label>Name</label><input class='vpnn' maxlength='64' placeholder='Home, Work, ...' aria-label='Name'></div>
 <details class='vpnpd'><summary>Or paste the file's text</summary><textarea class='vpnt' rows='8' spellcheck='false' autocomplete='off' style='width:100%;font:12px monospace' aria-label='The file'></textarea></details>
+<div class='r2 vpnlg' hidden><label>Username</label><input class='vpnu' maxlength='256' autocomplete='off' aria-label='Username'><label>Password</label><input class='vpnpw' type='password' maxlength='256' autocomplete='off' aria-label='Password'></div>
 <p class='msg vpnm' role='alert'></p><div class='rmrow'><button class='n'>Cancel</button><button class='y pri'>Add</button></div></div>`;
  document.body.appendChild(o);const q=x=>o.querySelector(x),say=t=>{q('.vpnm').textContent=t};let text='';
- q('.vpnf').onchange=async e=>{const f=e.target.files[0];if(!f)return;if(f.size>65536){say('The file is over 64 KB: it is not a WireGuard file.');return}
-  text=await f.text();if(!q('.vpnn').value.trim())q('.vpnn').value=f.name.replace(/\.conf$/i,'').slice(0,64);say('')};
- q('.n').onclick=()=>{text='';o.remove()};o.addEventListener('keydown',e=>{if(e.key=='Escape'){text='';o.remove()}});
- q('.y').onclick=async()=>{const name=q('.vpnn').value.trim(),conf=q('.vpnt').value.trim()?q('.vpnt').value:text;
-  if(!conf)return say('Choose the WireGuard file, or paste its text.');if(!name)return say('Give it a name.');
-  if(!/^\s*\[Interface\]/im.test(conf))return say('This is not a WireGuard file: it has no [Interface].');
+ /* (an OpenVPN file that signs in with a username and password asks for them here) */
+ const lg=()=>{const c=q('.vpnt').value.trim()?q('.vpnt').value:text;q('.vpnlg').hidden=!(vpnKind(c)=='openvpn'&&/^\s*auth-user-pass\s*$/m.test(c))};
+ q('.vpnt').addEventListener('input',lg);
+ q('.vpnf').onchange=async e=>{const f=e.target.files[0];if(!f)return;if(f.size>65536){say('The file is over 64 KB: it is not a VPN file.');return}
+  text=await f.text();if(!q('.vpnn').value.trim())q('.vpnn').value=f.name.replace(/\.(conf|ovpn)$/i,'').slice(0,64);say('');lg()};
+ const wipe=()=>{text='';q('.vpnt').value='';q('.vpnpw').value=''};
+ q('.n').onclick=()=>{wipe();o.remove()};o.addEventListener('keydown',e=>{if(e.key=='Escape'){wipe();o.remove()}});
+ q('.y').onclick=async()=>{const name=q('.vpnn').value.trim(),conf=q('.vpnt').value.trim()?q('.vpnt').value:text,type=vpnKind(conf);
+  if(!conf)return say('Choose the VPN\'s file, or paste its text.');if(!name)return say('Give it a name.');
+  if(!type)return say('This is not a WireGuard file ([Interface]) or an OpenVPN client\'s file (client, remote).');
+  const b={name,conf,type};if(!q('.vpnlg').hidden){b.user=q('.vpnu').value;b.pass=q('.vpnpw').value;if(!b.user||!b.pass)return say('This VPN signs in with a username and password: type them.')}
   const cr=await elevate('Add the VPN '+name,{cred:true});if(!cr)return;q('.y').disabled=true;say('Adding…');
-  try{const r=await rdPost('vpn/add',JSON.stringify({n:cr.n,p:cr.p,name,conf,type:'wireguard'}));text='';q('.vpnt').value='';o.remove();
+  try{const r=await rdPost('vpn/add',JSON.stringify(Object.assign({n:cr.n,p:cr.p},b)));wipe();o.remove();
    notify('VPN',name+' was added.'+((r.notes||[]).length?' '+r.notes.join(' '):''));if(after)after()}
   catch(e){q('.y').disabled=false;say(e.message)}}}
 /* an administrator's change (name, who may, the kill switch) or the VPN removed */

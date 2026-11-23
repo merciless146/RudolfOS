@@ -1,5 +1,5 @@
 /* 1.6.2 (docs/plan-1.6.2.md Part 33): a fuzz test of the VPN helper's parsing (rudolf-vpn.c, compiled from it with
- * VPN_NO_MAIN): the WireGuard file an administrator imports, and the names. A valid file read back (its peer, its
+ * VPN_NO_MAIN): the WireGuard and OpenVPN files an administrator imports, and the names. A valid file read back (its peer, its
  * networks, its DNS servers), then cut at every byte, every byte changed, and mutations (bytes flipped, lines doubled,
  * dropped and swapped, long lines, keys of every length) for a bounded time. Under AddressSanitizer and UBSan; each
  * input within 50 ms (alarm: a loop).   vpn_fuzz SECONDS [SEED]   prints "valid", then "ok N" (inputs read) */
@@ -13,7 +13,7 @@ static void one(const char *p, size_t n)
 {
 	char *c = malloc(n ? n : 1); memcpy(c, p, n);   /* (its own allocation: ASan sees a read past the end) */
 	struct itimerval it = {{0, 0}, {0, 50000}}, z = {{0, 0}, {0, 0}}; setitimer(ITIMER_REAL, &it, NULL);
-	Conf k; char why[300]; conf_parse(c, n, &k, why, sizeof why);
+	Conf k; char why[300]; conf_parse(c, n, &k, why, sizeof why); Ov ov; if (!ov_parse(c, n, &ov, why, sizeof why)) ov_free(&ov);   /* (1.6.2 Part 33 step 3: the .ovpn parser too) */
 	char nm[80]; size_t L = n < 79 ? n : 79; memcpy(nm, p, L); nm[L] = 0; utf8_name_ok(nm, 64);
 	setitimer(ITIMER_REAL, &z, NULL); N++; free(c);
 }
@@ -29,6 +29,9 @@ int main(int argc, char **argv)
 	Conf k; char why[300] = "";
 	if (conf_parse(GOOD, strlen(GOOD), &k, why, sizeof why) || k.npeer != 2 || k.peer[0].nips != 2 || k.peer[1].ips[0].a[3] != 0 || k.peer[1].ips[0].len != 24 || k.ndns != 2 || strcmp(k.search, "home.lan")
 	    || k.peer[0].port != 51820 || strcmp(k.peer[0].host, "2001:db8::1") || strcmp(k.peer[1].host, "vpn.example.com") || k.mtu != 1380 || !full4(&k) || !full6(&k) || !k.peer[0].has_psk) { printf("FAIL: the valid file: %s\n", why); return 1; }
+	{ static const char OV[] = "client\ndev tun\nproto udp\nremote vpn.example.com 1194\nremote 192.0.2.9 443 tcp\nauth-user-pass\n<ca>\nnot-a-cert\n</ca>\n";
+	  Ov ov; if (ov_parse(OV, strlen(OV), &ov, why, sizeof why) || ov.nrem != 2 || !ov.authup || ov.rem[1].port != 443 || strcmp(ov.rem[1].proto, "tcp")) { printf("FAIL: the valid .ovpn: %s\n", why); return 1; }
+	  ov_free(&ov); size_t OL = strlen(OV); char b2[512]; for (size_t i = 0; i <= OL; i++) one(OV, i); for (size_t i = 0; i < OL; i++) for (int v = 0; v < 256; v += 13) { memcpy(b2, OV, OL); b2[i] = (char)v; one(b2, OL); } }
 	printf("valid\n");
 	size_t L = strlen(GOOD); char b[8192];
 	for (size_t i = 0; i <= L; i++) one(GOOD, i);

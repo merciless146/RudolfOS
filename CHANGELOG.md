@@ -16,6 +16,8 @@ Summary: In progress.
 - New: a VPN's kill switch (an administrator's, off at first): while a VPN with it is meant to be on and its tunnel is
   down, nothing goes out but the VPN's own server, until it is back or turned off.
 - New: Settings › Network › VPN says that Oracle's Tor windows then run inside the VPN.
+- New: OpenVPN VPNs: add a provider's .ovpn file the same way (with its username and password when it asks for them).
+  Rudolf OS runs OpenVPN only while that VPN is on; files that would run scripts or plugins are refused.
 - New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
   tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
   night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same
