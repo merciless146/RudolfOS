@@ -23,6 +23,8 @@ const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI
 const sh = c => cp.execSync(c, {env: env0()}).toString();
 const px = (a, b, ra, rb, out) => JSON.parse(cp.execSync(`python3 ${path.join(__dirname, 'pxdiff.py')} ${a} ${b} ${ra.join(',')} ${rb.join(',')} ${TOL} ${out} 1`, {env: Object.assign({}, process.env, {PXDIFF_MAP: '1', PXDIFF_AA: '1'})}).toString());
 const SET = {light: {dm: 'light', darkui: true, accent: '#2563eb'}, dark: {dm: 'dark', darkui: true, accent: '#2563eb'}};
+/* (Chromium's hinting pinned to none, as librudolf-ui writes: fontconfig's own differs between machines, GitHub's runner hinting
+   DejaVu Sans at 13 px and this one not, and Chromium follows it; the comparison is of the controls, not of the machine's fonts) */
 let BR;
 // ---- the page's Task Manager (Chromium mode)
 async function page(mode, tabs) {
@@ -173,7 +175,7 @@ async function memory() {
   ST.state(D, SET.light, {});
   natStart({RUDOLF_TM_TAB: '1'}); await until(() => rect('body') && line('procs') != '', 20000); await wait(12000); const n = rss(NP.pid); natStop();
   /* the web one: Chromium's renderer for the page as an app window (#app=taskmgr, Native's one-app page) with Processes open, signed in */
-  const br = await chromium.launch(); const ctx = await br.newContext({viewport: {width: 860, height: 580}}); const p = await ctx.newPage();
+  const br = await chromium.launch({args: ['--font-render-hinting=none']}); const ctx = await br.newContext({viewport: {width: 860, height: 580}}); const p = await ctx.newPage();
   const ses = await (await fetch(BASE + '/api/desktop/session', {headers: {'X-Rudolf-Token': 'tok160same'}}).catch(() => null));
   await p.goto(BASE + '/#app=taskmgr'); await wait(15000);
   await p.evaluate(() => { const b = document.querySelector(".tmtabs button[data-t='procs']"); if (b) b.click() }); await wait(12000);
@@ -187,7 +189,7 @@ async function memory() {
 const TMD = require('../host/fixtures/tmdata.js').make();
 (async () => {
   fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(TMD));
-  BR = await chromium.launch({ignoreDefaultArgs: ['--hide-scrollbars']});
+  BR = await chromium.launch({ignoreDefaultArgs: ['--hide-scrollbars'], args: ['--font-render-hinting=none']});
   const rows = [];
   for (const mode of ['light', 'dark']) {
     if (!only(mode)) continue;
