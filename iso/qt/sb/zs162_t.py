@@ -31,9 +31,9 @@ STARTS = int(os.environ.get('STARTS', '5')); MEM = int(os.environ.get('MEM', '34
 PARTS = os.environ.get('SB_PARTS', '/nonexistent'); TAG = f'{DISK}-{ENGINE}'
 VARS = [v for v in (os.environ.get('VARIANTS') or ','.join(sorted(d for d in os.listdir(LD) if os.path.isfile(f'{LD}/{d}/base.sfs')))).split(',') if v]
 LOG = open(f'zs162-{TAG}.txt', 'w'); JS = open(f'zs162-{TAG}.json', 'w'); T0 = time.time()
-def out(*a, quiet=False):
+def out(*a, quiet=False, full=False):
     s = f'[{int(time.time() - T0):5d}s] ' + ' '.join(str(x) for x in a); LOG.write(s + '\n'); LOG.flush()
-    if not quiet: print(s[:700], flush=True)
+    if not quiet: print(s if full else s[:700], flush=True)
 man = open(f'{LD}/manifest.txt').read(); mv = lambda k: (re.search(rf'^{k} (.*)$', man, re.M) or re.search('()', '')).group(1)
 W = os.path.abspath(f'wzs162-{TAG}'); shutil.rmtree(W, ignore_errors=True); os.makedirs(W)
 ENGFILE = {'chromium': None, 'native': 'native', 'lite': 'webkit'}[ENGINE]
@@ -89,7 +89,7 @@ def boot(v, tag, kernel=None, append=''):
         try: ql = open(os.path.join(vm.dir, 'qemu.log')).read()[-2000:]
         except OSError: ql = ''
         out('  QEMU:', 'running' if vm.p.poll() is None else f'ended ({vm.p.returncode})', '| its log:', ql.replace('\n', ' / ') or '(empty)')
-        out('  the serial line, last:', seen[-5000:].replace('\r', '').replace('\n', ' / '))
+        out('  the serial line, last:\n' + re.sub(r'\x1b\[[0-9;=?]*[A-Za-z]', '', seen[-6000:]).replace('\r', ''), full=True)
         try: vm.shot('notup'); out('  screenshot taken')
         except Exception as e: out('  no screenshot:', e)
     else: FAILS[0] = 0
