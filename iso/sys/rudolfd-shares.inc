@@ -125,7 +125,7 @@ static int shares_body(struct req *r, char *user, size_t un, char *pass, size_t 
 	if (r->blen > 1024 || memchr(r->body, 0, r->blen)) return -1;
 	char *b = malloc(r->blen + 1); if (!b) return -1; memcpy(b, r->body, r->blen); b[r->blen] = 0; explicit_bzero(r->body, r->blen);
 	char *l[3] = { b, NULL, NULL }; for (int i = 1; i < 3 && l[i - 1]; i++) { char *nl = strchr(l[i - 1], '\n'); if (nl) { *nl = 0; l[i] = nl + 1; } }
-	for (int i = 0; i < 3; i++) if (l[i]) l[i][strcspn(l[i], "\r")] = 0;
+	for (int i = 0; i < 3; i++) if (l[i]) l[i][strcspn(l[i], "\r\n")] = 0;   /* (the third line's own newline too) */
 	int bad = strlen(l[0]) >= un || (l[1] && strlen(l[1]) >= pn) || (l[2] && strlen(l[2]) >= dn);
 	if (!bad) { snprintf(user, un, "%s", l[0]); if (l[1]) snprintf(pass, pn, "%s", l[1]); if (l[2]) snprintf(dom, dn, "%s", l[2]); }
 	explicit_bzero(b, r->blen + 1); free(b); return bad ? -1 : 0;
