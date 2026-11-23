@@ -92,6 +92,12 @@ CASES.push({n: 'fly-qs-dark', set: {dm: 'dark', darkui: true}, fly: 'qs', parts:
 CASES.push({n: 'fly-nc', set: {}, more: NOTES, fly: 'notes', parts: ['fly']});
 CASES.push({n: 'fly-nc-empty', set: {}, fly: 'notes', parts: ['fly']});
 CASES.push({n: 'fly-net', set: {}, fly: 'net', parts: ['fly']});   /* (the network's pop-up: item 3's last part) */
+/* (1.6.2 Part 33: the VPNs' rows after the adapters, vpn62.js vpnRows and rudolf-native.c fl_net: one on and connected, one off) */
+const VPNS = {ok: true, wireguard: true, active: 'v00000001', me: {name: 'Ann', admin: true, child: false, signedIn: true}, vpns: [
+  {id: 'v00000001', name: 'Home', type: 'wireguard', policy: 'everyone', on: true, state: 'connected', by: 'Ann', mayOn: true, mayOff: true, why: ''},
+  {id: 'v00000002', name: 'Work office', type: 'wireguard', policy: 'admins', on: false, state: 'off', by: '', mayOn: true, mayOff: true, why: ''}]};
+CASES.push({n: 'fly-net-vpn', set: {}, rd: {vpn: VPNS}, fly: 'net', parts: ['fly']});
+CASES.push({n: 'fly-net-vpn-off', set: {dm: 'dark', darkui: true}, rd: {vpn: Object.assign({}, VPNS, {active: null, vpns: [Object.assign({}, VPNS.vpns[0], {on: false, state: 'off', by: ''})]})}, fly: 'net', parts: ['fly']});
 /* (item 3) the notifications' pop-ups (a page's notifications: rudolfd's "memory closed" events, apps57.js; one, two, the dark theme, the
    taskbar at the top) and the call's 🎙️ (an app using the microphone, muted or not) */
 CASES.push({n: 'toast', set: {}, act: 'notepad', ev: ['memory closed Paint 300'], parts: ['toast']});
@@ -179,6 +185,10 @@ CASES.push({n: 'ctl-mouse', set: {}, more: PINSL, app: 'settings', js: "settings
 CASES.push({n: 'ctl-media', set: {}, more: PINSL, app: 'media', parts: ['win']});
 CASES.push({n: 'ctl-wordlite', set: {}, more: PINSL, app: 'wordlite', parts: ['win']});
 CASES.push({n: 'ctl-clock', set: {}, more: PINSL, app: 'clock', parts: ['win']});
+/* (1.6.2 Part 34) the Scan app: its scanner found, what it can do, in light and dark */
+const PINSS = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'settings', 'scan']};   /* (Native opens the case's app by its pin) */
+CASES.push({n: 'scan', set: {dm: 'light'}, more: PINSS, app: 'scan', jswait: 1500, parts: ['win']});
+CASES.push({n: 'scan-dark', set: {dm: 'dark', darkui: true}, more: PINSS, app: 'scan', jswait: 1500, parts: ['win']});
 CASES.push({n: 'explorer', set: {}, more: PINSL, app: 'explorer', parts: ['win'],
   read: "JSON.stringify([[...document.querySelectorAll('.win *')].some(e => !e.children.length && /^Folders on this device$/i.test(e.textContent.trim())), ([...document.querySelectorAll('.win *')].map(e => !e.children.length && /Storage: /.test(e.textContent) ? e.textContent : '').find(x => x) || '').replace(/[\\d.]+ (B|KB|MB|GB|TB)/g, 'N')])"});
 CASES.push({n: 'about', set: {}, more: PINSL, app: 'settings', js: "settings('about')", jswait: 1500,
@@ -238,7 +248,7 @@ const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
 const micSet = c => { fs.writeFileSync(path.join(D, 'mic'), JSON.stringify(c.mic || [])); if (c.mic) cp.execSync(`curl -s --noproxy '*' -X POST -H 'X-Rudolf-Token: tok160same' '${BASE}/api/mic?muted=${c.micmuted ? 1 : 0}'`) };
-const rdSet = c => { for (const k of ['deb', 'ai', 'net', 'engine']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
+const rdSet = c => { for (const k of ['deb', 'ai', 'net', 'engine', 'vpn']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
 async function stdCase(c) {
   fs.writeFileSync(path.join(D, 'std-on'), '');   /* (rudolfd's events Standard's while its case runs: same_rd.py, the native shell's events thread since #410) */
   XTRA.std = {}; XTRA.nat = {};

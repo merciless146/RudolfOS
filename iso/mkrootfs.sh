@@ -112,7 +112,7 @@ mkdir -p etc/ssl/certs && cp -L /etc/ssl/certs/ca-certificates.crt etc/ssl/certs
 # ---------- disk tools for the installer
 cp -L /usr/sbin/mke2fs usr/sbin/ && copy_deps /usr/sbin/mke2fs
 # 1.5.0: the firewall (nft) and file encryption on RUDOLFDATA (tune2fs -O encrypt)
-for b in /usr/sbin/nft /usr/sbin/tune2fs /usr/sbin/iw /usr/sbin/cryptsetup; do cp -L $b usr/sbin/ && copy_deps $b; done   # (1.5.9: iw, the Wi-Fi chip's bands; 1.6.2: cryptsetup, BitLocker read-only)
+for b in /usr/sbin/nft /usr/sbin/tune2fs /usr/sbin/iw /usr/sbin/cryptsetup /usr/sbin/openvpn; do cp -L $b usr/sbin/ && copy_deps $b; done   # (1.5.9: iw, the Wi-Fi chip's bands; 1.6.2: cryptsetup, BitLocker read-only; openvpn, Part 33 step 3)
 # 1.5.1: Bluetooth: BlueZ and bluez-alsa (headphones), as the release build does (systools/ci_release.sh)
 for x in $(for p in bluez bluez-alsa-utils libasound2-plugin-bluez; do dpkg -L $p; done 2>/dev/null | grep -E '/(bluetoothd|bluetoothctl|bluealsa|bluealsad)$|alsa-lib/libasound_module_(pcm|ctl)_bluealsa\.so$|alsa/alsa\.conf\.d/[^/]*bluealsa[^/]*\.conf$'); do
 	[ -f "$x" ] || continue; mkdir -p ".$(dirname "$x")"; cp -L "$x" ".$x"; case "$x" in *.conf) ;; *) copy_deps "$x";; esac; done
@@ -127,14 +127,19 @@ gcc -O2 $HARD -o usr/bin/rudolfd "$SYS/rudolfd.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 # 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers it runs for rudolfd (root's only: 0700)
 gcc -O2 $HARD -o usr/bin/rudolf-rootd "$SYS/rudolf-rootd.c"
 mkdir -p usr/lib/rudolf/root && chmod 755 usr/lib/rudolf/root
-for h in drives updates accounts power network devices procs logs screen sound; do gcc -O2 $HARD -o usr/lib/rudolf/root/$h "$SYS/rudolf-$h.c" -Wl,-Bstatic -lz -Wl,-Bdynamic && chmod 700 usr/lib/rudolf/root/$h; done   # (root's: mklayers.sh makes the layer with -all-root; zlib for the ones built from rudolfd.c)
+for h in drives updates accounts power network devices procs logs screen sound vpn; do gcc -O2 $HARD -o usr/lib/rudolf/root/$h "$SYS/rudolf-$h.c" -Wl,-Bstatic -lz -Wl,-Bdynamic && chmod 700 usr/lib/rudolf/root/$h; done   # (root's: mklayers.sh makes the layer with -all-root; zlib for the ones built from rudolfd.c)
 # (1.6.1 drives part 2: the accounts' folders and sessions, rudolfd's own functions run by the drives helper only)
 gcc -O2 $HARD -o usr/lib/rudolf/root/drives-home "$SYS/rudolf-drives-home.c" -Wl,-Bstatic -lz -Wl,-Bdynamic && chmod 700 usr/lib/rudolf/root/drives-home
 gcc -O2 $HARD -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 $HARD -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
+# 1.6.2 (docs/plan-1.6.2.md Part 35): network shares, the network's side (run by rudolfd as nobody)
+gcc -O2 $HARD -o usr/bin/rudolf-shares "$SYS/rudolf-shares.c" -lcrypto
 # 1.6.2 (docs/plan-1.6.2.md Part 30): the LAN game relay for two-player Library games (started by rudolfd as the account's user)
 gcc -O2 $HARD -o usr/bin/rudolf-duel "$SYS/rudolf-duel.c"
+# 1.6.2 (docs/plan-1.6.2.md Part 34): scanning: rudolf-scan, libsane (opened with dlopen) and sane-airscan (eSCL, WSD)
+gcc -O2 $HARD -o usr/bin/rudolf-scan "$SYS/rudolf-scan.c" -ldl -lm -Wl,-Bstatic -lz -Wl,-Bdynamic
+sh "$HERE/systools/mkscan.sh" "$OUT" || echo "mkrootfs: no scanning (apt-get install libsane1 sane-airscan)"
 # 1.6.1 (docs/plan-1.6.1.md Part 9): the print queue, for the desktop and the Linux apps (CUPS's clients)
 gcc -O2 $HARD -o usr/bin/rudolf-printq "$SYS/rudolf-printq.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 gcc -O2 $HARD -o usr/bin/rudolf-devlink "$SYS/rudolf-devlink.c" -lcrypto -ldl
@@ -174,6 +179,8 @@ if pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
 	gcc -O2 $HARD -Wno-deprecated-declarations -o /tmp/rudolf-webkit.$$ "$SYS/rudolf-webkit.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) &&
 	gcc -O2 $HARD -Wno-deprecated-declarations -o /tmp/rudolf-native.$$ "$SYS/rudolf-native.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm &&
 	"$HERE/systools/addwebkit.sh" "$OUT" /tmp/rudolf-webkit.$$ /tmp/rudolf-native.$$; rm -f /tmp/rudolf-webkit.$$ /tmp/rudolf-native.$$
+	# (1.6.2, docs/plan-1.6.2.md Part 39: the native apps, with librudolf-ui: GTK 3, which WebKitGTK brought)
+	for a in "$SYS"/apps/*.c; do n=$(basename "$a" .c); case "$n" in *_*) continue;; esac; sh "$SYS/ui/build.sh" /tmp/rui.$$ usr/bin/rudolf-$n $n $HARD || exit 1; done; rm -rf /tmp/rui.$$
 else echo "mkrootfs: no WebKitGTK here (libwebkit2gtk-4.1-dev): this build has no Lite desktop engine"; fi
 mkdir -p usr/share/rudolf
 cp -a "$WWW" usr/share/rudolf/www

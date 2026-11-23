@@ -5,6 +5,78 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: a Windows program installed before 1.5.9 (Starport GE on the owner's Vivobook) did nothing when its icon was clicked. Since
+  1.5.9 Wine runs as the account's own Linux user, with a Wine folder of its own, and the programs in the folder every account
+  shared before were never carried into it. Rudolf OS now offers to bring them in (once after sign-in, in Settings › Apps › Linux,
+  and in System health while it waits): a copy owned by the account, made in the background with its progress, room checked first,
+  the old folder left as it was, the account's own folder kept (renamed, or the copy beside it), Wine's Start menu entries and icons
+  too; on a computer with several accounts only an administrator may (docs/plan-1.6.2.md Part 40).
+- Fixed: a Linux or Windows program that ends within a few seconds with an error no longer fails silently: a message names it and
+  shows the last lines of its log, on Native, Chromium and Lite alike, and offers the programs from before when its folder is there.
+- Added: the native Settings' first pages (docs/plan-1.6.2.md Part 39): /usr/bin/rudolf-settings with its window, sidebar, Search in
+  Settings, System and About, looking and saving as the web one; the native desktop keeps opening the web Settings until every page is done.
+- Changed: the plan (docs/plan-1.6.2.md Part 39): a native Settings comes in 1.6.2, not 1.6.3; the native desktop opens it
+  once all 22 panels and the search pass, and Chromium and Lite keep the web Settings.
+- Fixed: "Remember the password" for a network share, and Blitzen's developer tokens, kept nothing when the account's keyring was
+  locked, though it has no password of its own. Rudolf OS now unlocks such a keyring itself before keeping the secret.
+- Changed: the plan (docs/plan-1.6.2.md Part 38): the app windows' memory on the native desktop measured; a small page for
+  Task Manager built and measured (about 3 % less in WebKit) and not kept; Settings' panels measured and left as they are.
+- Added: native apps for Rudolf OS (docs/plan-1.6.2.md Part 39): librudolf-ui, the shared library that draws a native app as
+  its web version (its theme made from the page's styles, light and dark, the accent colour, the font settings, followed live),
+  and the native Task Manager: on the native desktop Task Manager is now its own program (15 MB instead of a ~130 MB web page),
+  with every tab and action of the web one; Chromium and Lite keep the web Task Manager.
+- Changed: the plan (docs/plan-1.6.2.md Part 39): native apps for Rudolf OS too, not only WendigOS: librudolf-ui and a native
+  Task Manager first (1.6.2), then Settings and the Office apps, each screenshot-compared with its web version before it
+  replaces it on the native desktop.
+- Changed: the plan (docs/plan-1.6.2.md Part 38): smaller pages for the native desktop's app windows, measured first (on the
+  host, nearly all of a window's memory is the whole desktop page's script): Task Manager first, then simple apps, then
+  Settings panel by panel; Oracle's Chromium memory as its own item.
+- New: a VPN for the whole computer (Settings › Network › VPN). Add your VPN provider's or your home router's WireGuard file
+  (an administrator's password), then connect and disconnect there or from the taskbar's network pop-up, which shows its
+  state. While it is on, every app's traffic and its name lookups go through it, the local network is still reached
+  directly, and nothing goes round it by IPv6. Its key is kept where only the system reads it. The same on Native,
+  Chromium and Lite.
+- New: who may turn each VPN on and off, an administrator's choice: Everyone (the default), Administrators only, or Always
+  on (it comes back at every start and nobody can turn it off). Accounts with parental controls cannot turn a VPN off,
+  and turning off a VPN another account turned on says so first ("Ann's VPN is on for everyone on this computer").
+- New: a VPN's kill switch (an administrator's, off at first): while a VPN with it is meant to be on and its tunnel is
+  down, nothing goes out but the VPN's own server, until it is back or turned off.
+- New: Settings › Network › VPN says that Oracle's Tor windows then run inside the VPN.
+- New: OpenVPN VPNs: add a provider's .ovpn file the same way (with its username and password when it asks for them).
+  Rudolf OS runs OpenVPN only while that VPN is on; files that would run scripts or plugins are refused.
+- Fixed: on the native desktop the taskbar's pinned apps and workspace buttons kept their light grey edge in dark mode, where
+  Chromium mode draws a dim one, and a pinned app had no line under it while its window was open (grey, or the accent colour
+  while that window is the active one). Both now look as in Chromium mode, on every monitor's taskbar. The "Several monitors"
+  check compares both looks, light and dark, whatever the hour it runs at.
+- Kernel: the SMB client for network shares (Windows computers and NAS boxes, 1.6.2 Part 35) is built in as a signed module, loaded
+  only when a share is opened. It speaks SMB 3 (and SMB 2.1 when asked for a share), never the old SMB 1 or 2.0, and Rudolf OS
+  serves no share.
+- New (for File Explorer's network shares, Part 35): Rudolf OS can open a shared folder of a Windows computer or a NAS box for the
+  account signed in. Its files are that account's alone (other accounts cannot see it), the server is asked to encrypt where it
+  can, the password is kept in the account's keyring only if asked, and every share closes at sign-out. A wrong password, a
+  missing share or a server that speaks only the old SMB 1 is said plainly.
+- New: Network in File Explorer. It lists the Windows computers and NAS boxes found on your home network (with the firewall on)
+  and opens their shared folders as folders of your own: browse, open, copy to and from, drag onto the desktop. You can also type a
+  share's address (\\server\share or smb://server/share). Your recent shares are listed and reconnect only when you open them,
+  never at start-up, so a server that is off never slows the start. Disconnect closes a share. The same on Native, Chromium and Lite.
+- New: scanners (step 1 of 4: driverless scanning, without the Scan app yet). Rudolf OS finds the scanners and
+  printer-scanners on the home network that speak eSCL (AirScan) or WSD, as most made since about 2015 do, with the
+  firewall on, and USB ones that speak eSCL through IPP over USB; it scans with sane-airscan (pages in colour, grey or black
+  and white, an area, the resolution, the document feeder's pages) and saves PDF, PNG or JPEG. Scanning runs as the
+  account's own user. 495 KB more on the disk; nothing runs until a scan.
+- New: Scan, an app of Rudolf's own for those scanners (step 2 of 4), in the Start menu, in File Explorer (Scan into this
+  folder), in the Print dialog and in Settings › Devices: the scanners found, a preview, the area drawn on it or a paper
+  size, colour, grey or black and white, the resolution, the glass or the document feeder; pages added one scan after
+  another, put in order or taken out, then saved as one PDF, or each page as PNG or JPEG, in Documents or where you choose.
+  A paper jam, the cover open, an empty feeder, a busy scanner or none found are said plainly. Scanning runs as your
+  account's own user, which also writes the file. The same on Native, Chromium and Lite.
+- New: older USB scanners (step 3 of 4): eight of SANE's own drivers for scanners that need one, chosen by what is
+  common: Canon PIXMA and CanoScan (pixma, genesys, plustek, canon_lide70), Epson (epson2, epsonds), Samsung, Xerox and
+  Dell all-in-ones (xerox_mfp) and Fujitsu document scanners (fujitsu). They work only over USB, and the scanner is given
+  to your account's own user only while it scans. 2.4 MB more on the disk.
+- New: Linux apps such as Simple Scan use the network scanners Rudolf OS found (step 4 of 4): after Scan has looked
+  for scanners, their addresses are given read-only to the Debian sandbox's own scanning settings. USB scanners stay
+  with Rudolf's Scan app: Linux apps get no USB devices.
 - Fixed: with the taskbar at the left or the right, Quick settings, the notifications and the calendar open beside their
   buttons (they opened in the screen's bottom-right corner, over a taskbar at the right); a right-click menu no longer lies over
   the taskbar; and the desktop's icons move at once when the taskbar grows instead of sitting under it. The same on Native.
@@ -12,6 +84,9 @@ Summary: In progress.
   themselves are unchanged in this version; a later one moves them to zstd once every updated computer can read them.
 - Updates: an update whose system images its own kernel could not read is refused with a message saying so (when it is
   checked, and again once downloaded), as are the recovery system and Make a stick; nothing on the computer is changed.
+- Updates: when an update packs the system's images in a new way (as the move to zstd does), Settings › Update says before
+  downloading that they come whole this once, and how much ("Download (about 530 MB)"), on every connection; later updates
+  download only the changes again. The download no longer tries the changes first for such an image.
 - New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
   tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
   night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same

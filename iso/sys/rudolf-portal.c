@@ -920,11 +920,14 @@ static int keyring_fingerprints(void)
    rudolf-portal --keyring-clear KEY         removes it
    KEY: github or devlink. Attributes application=rudolf-blitzen, key=KEY (Settings › Privacy › Saved passwords for apps
    lists them as Blitzen's). The Secret Service's plain session: the secret goes over the account's own session bus only. */
-static int blz_key_ok(const char *k) { return k && (!strcmp(k, "github") || !strcmp(k, "devlink")); }
+/* 1.6.2 (docs/plan-1.6.2.md Part 35): and a network share's password, KEY share-ID (ID: rudolfd's 16 hex digits for the server,
+   share, name and version), application=rudolf-shares, only when the person asked for it to be kept */
+static int share_key_ok(const char *k) { if (!k || strncmp(k, "share-", 6) || strlen(k) != 22) return 0; for (const char *c = k + 6; *c; c++) if (!((*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f'))) return 0; return 1; }
+static int blz_key_ok(const char *k) { return k && (!strcmp(k, "github") || !strcmp(k, "devlink") || share_key_ok(k)); }
 static GVariant *blz_attrs(const char *k)
 {
 	GVariantBuilder a; g_variant_builder_init(&a, G_VARIANT_TYPE("a{ss}"));
-	g_variant_builder_add(&a, "{ss}", "application", "rudolf-blitzen"); g_variant_builder_add(&a, "{ss}", "key", k); return g_variant_builder_end(&a);
+	g_variant_builder_add(&a, "{ss}", "application", share_key_ok(k) ? "rudolf-shares" : "rudolf-blitzen"); g_variant_builder_add(&a, "{ss}", "key", k); return g_variant_builder_end(&a);
 }
 static const char *blz_session(GDBusConnection *b, char *out, size_t n)
 {
@@ -933,9 +936,19 @@ static const char *blz_session(GDBusConnection *b, char *out, size_t n)
 	if (!r) return NULL;
 	GVariant *v; const char *o; g_variant_get(r, "(v&o)", &v, &o); snprintf(out, n, "%s", o); g_variant_unref(v); g_variant_unref(r); return out;
 }
+/* 1.6.2 (Part 35, found in QEMU): the account's login keyring may be locked though it has no password of its own (a
+   plain keyring: gnome-keyring unlocks it without asking anyone); unlocked here when that needs no prompt. 1: unlocked */
+static int blz_unlock(GDBusConnection *b, GVariant *paths)
+{
+	GVariant *r = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "Unlock",
+		g_variant_new("(@ao)", paths), G_VARIANT_TYPE("(aoo)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, NULL);
+	if (!r) return 0;
+	GVariant *un; const char *pr; g_variant_get(r, "(@ao&o)", &un, &pr);
+	int ok = !strcmp(pr, "/") && g_variant_n_children(un) > 0; g_variant_unref(un); g_variant_unref(r); return ok;
+}
 static int keyring_blz(const char *op, const char *k, const char *label)
 {
-	if (!blz_key_ok(k)) { fprintf(stderr, "KEY: github or devlink\n"); return 2; }
+	if (!blz_key_ok(k)) { fprintf(stderr, "KEY: github, devlink or share-ID\n"); return 2; }
 	GDBusConnection *b = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL); if (!b) { fprintf(stderr, "no session bus\n"); return 1; }
 	GError *e = NULL;
 	/* what is there now */
@@ -946,6 +959,7 @@ static int keyring_blz(const char *op, const char *k, const char *label)
 	int rc = 1;
 	if (!strcmp(op, "lookup")) {
 		char ses[300]; gsize nu = g_variant_n_children(un);
+		if (!nu && g_variant_n_children(lk) && blz_unlock(b, lk)) { g_variant_unref(un); un = g_variant_ref(lk); nu = g_variant_n_children(un); }
 		if (!nu) { fprintf(stderr, g_variant_n_children(lk) ? "the keyring is locked\n" : "none kept\n"); goto out; }
 		if (!blz_session(b, ses, sizeof ses)) { fprintf(stderr, "no session with the keyring\n"); goto out; }
 		GVariant *gs = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "GetSecrets",
@@ -972,12 +986,22 @@ static int keyring_blz(const char *op, const char *k, const char *label)
 	if (!al) { fprintf(stderr, "%s\n", e ? e->message : "no default keyring"); goto out; }
 	const char *col; g_variant_get(al, "(&o)", &col); if (!strcmp(col, "/")) { fprintf(stderr, "no default keyring\n"); g_variant_unref(al); goto out; }
 	GVariantBuilder pr; g_variant_builder_init(&pr, G_VARIANT_TYPE("a{sv}"));
-	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Label", g_variant_new_string(label && *label ? label : "Blitzen"));
+	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Label", g_variant_new_string(label && *label ? label : share_key_ok(k) ? "Network share" : "Blitzen"));
 	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Attributes", blz_attrs(k));
 	GVariant *secret = g_variant_new("(o@ay@ays)", ses, g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, "", 0, 1),
 		g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, line, strlen(line), 1), "text/plain");
-	GVariant *cr = g_dbus_connection_call_sync(b, SS, col, "org.freedesktop.Secret.Collection", "CreateItem", g_variant_new("(a{sv}@(oayays)b)", &pr, secret, TRUE),
+	g_variant_ref_sink(secret); GVariant *props = g_variant_ref_sink(g_variant_builder_end(&pr));
+	GVariant *cr = g_dbus_connection_call_sync(b, SS, col, "org.freedesktop.Secret.Collection", "CreateItem", g_variant_new("(@a{sv}@(oayays)b)", props, secret, TRUE),
 		G_VARIANT_TYPE("(oo)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+	/* (a locked default keyring that unlocks without a prompt: unlocked, then asked once more) */
+	if (!cr && e && strstr(e->message, "IsLocked")) {
+		const char *one[] = { col }; g_clear_error(&e);
+		if (blz_unlock(b, g_variant_new_objv(one, 1)))
+			cr = g_dbus_connection_call_sync(b, SS, col, "org.freedesktop.Secret.Collection", "CreateItem", g_variant_new("(@a{sv}@(oayays)b)", props, secret, TRUE),
+				G_VARIANT_TYPE("(oo)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+		else e = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_FAILED, "the keyring is locked (it asks for its password to be unlocked)");
+	}
+	g_variant_unref(props); g_variant_unref(secret);
 	explicit_bzero(line, sizeof line); g_variant_unref(al);
 	if (!cr) { fprintf(stderr, "%s\n", e ? e->message : "not kept"); goto out; }
 	const char *it2, *prm; g_variant_get(cr, "(&o&o)", &it2, &prm);

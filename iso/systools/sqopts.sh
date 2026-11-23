@@ -4,7 +4,7 @@
 # 1.6.2 reads it (SQUASHFS_ZSTD; the release list says so, and rudolf-update refuses images a release's kernel cannot read).
 # Sourced (sh and bash). SQ_COMP_ID and SQ_BLOCK: what a layer's superblock then says (the compression's number at byte
 # 20, the block size at byte 12), for ci_release.sh's check that every layer is packed so.
-SQ_LEVEL=19
-SQ_BLOCK=262144
+SQ_LEVEL=22
+SQ_BLOCK=1048576
 SQ_COMP_ID=6
 SQ_OPTS="-comp zstd -Xcompression-level $SQ_LEVEL -b $SQ_BLOCK"

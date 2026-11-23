@@ -23,7 +23,7 @@ function exactly as it does in Chromium mode."
 ## Parts
 **Moved to docs/plan-2.0.md on 2026-11-22:** Parts 4, 5, 6, 7 and 8 (the phone, eSIM and 5G, closing the gap with
 Android, T-Mobile prepaid, mobile data and the SIM), 9b (the first ARM64 release) and 19b (gaming measured). The owner
-decided on 2026-11-22 that Rudolf OS 1.6.x is the home and office edition and Rudolf Kryptonite (2.0) the gaming and
+decided on 2026-11-22 that Rudolf OS 1.6.x is the home and office edition and WendigOS (2.0) the gaming and
 mobile edition ("Two editions, one repository" in docs/plan-2.0.md), then said "Yes" to moving them. Their numbers are
 kept so references still point the right way.
 
@@ -599,7 +599,7 @@ and then kept in memory. The kernel reads xz and zlib only (iso/kconfig.sh line 
 **Kept only if measured:** as Part 12, a change is kept only if it helps on at least one of the Vivobook and the Asus
 desktop and hurts on neither.
 1. **The kernel first:** SQUASHFS_ZSTD (and ZSTD_DECOMPRESS) built in, on x86-64 and ARM64 (iso/kconfig.sh,
-   iso/kconfig-arm64.sh; Kryptonite's kconfig on its branch too); the images unchanged. This goes out in a release
+   iso/kconfig-arm64.sh; WendigOS's kconfig on its branch too); the images unchanged. This goes out in a release
    before any image changes, so every system that updates already runs a kernel that can read the new images, and an
    older kernel never meets a zstd image (the updater checks it too: it refuses an image whose compression the running
    or next kernel cannot read, and says so).
@@ -642,6 +642,17 @@ recovery system and for a stick; and the running kernel for the one layer it mou
 its keys). make_release.py refuses to write such a release in the first place. Tested by iso/qt/host/sqcomp162_t.sh
 (17 checks; the workflow sqcomp-check.yml, with real mksquashfs images). **This must be in a released beta before any
 image switches** (item 3's PR says so).
+
+**Status (2026-11-23, item 4: updates; the PR "zstd for the system's images, step 4").** What Settings › Update showed before:
+"Download (only the changes)" on an ordinary connection (no size), and "up to N MB" (every file's size) on a metered one.
+The first update after the switch downloads the changed images whole (deltas find no block in common between an xz and a
+zstd image, or between two block sizes), so that was wrong. Now rudolf-update's status says what comes whole ("whole",
+its bytes, "wholeLayers", "packed": each new layer's signed row C against the compression and block size in this
+computer's own layer's superblock), and Settings says it on the button on every connection ("Download (about 530 MB)",
+"Download over mobile data: about 530 MB") and why in the card, once; the download goes straight to the whole file for such
+a layer (no delta scan first). An ordinary update is as before. Tested by iso/qt/host/updsize162_t.sh (8/8) and
+iso/qt/shell2/updsize162_t.js (7/7), in sqcomp-check.yml. It needs item 1's rows (built on its PR) and must be in a
+release before the switch too, so the first switched update already shows its size.
 
 ### 32. Emu's Nintendo 64 and Dreamcast games, played for real (added on 2026-11-22)
 The owner: "Create a scheduled task to test run the Dreamcast and N64 emulators for Emu, making test games specifically for
@@ -724,6 +735,55 @@ Tor windows, or for calls and games) and what the best VPN would be: "Yes. That 
    refused off), import of malformed files refused. **The owner's checks:** a real VPN (a provider's or a home router's
    WireGuard) on the Vivobook: connect, browse, a call, sleep and wake, change Wi-Fi.
 
+#### Status (2026-11-23, scheduled task)
+- **Step 1, WireGuard (PR "VPN 1"):** built. The VPN helper (iso/sys/rudolf-vpn.c, /usr/lib/rudolf/root/vpn, run by
+  rudolf-rootd: CAP_NET_ADMIN and the file capabilities only, no mount) sets the kernel's WireGuard up through netlink
+  itself (rvpn0: key, peers, addresses, MTU; the whole computer's routes in a table of its own behind WireGuard's fwmark,
+  as wg-quick does, so the server's own route stays outside the tunnel on any network; IPv6 made unreachable when the
+  file has none; the file's DNS servers in /etc/resolv.conf and RUN/dns-vpn, which udhcpc.sh and the modem script keep
+  while it is on). rudolfd's vpn requests (rudolfd-vpn.inc): add, rename, remove with an administrator's password checked
+  by rudolfd; on and off by any account. The files root's 0600 in /persist/etc/vpn (0700); the key is never in an answer,
+  a log or the page. Settings › Network › VPN (desktop/vpn62.js) and the taskbar's network pop-up (the page's and
+  rudolf-native.c's fl_net: the VPNs' rows after the adapters). Not done: the QR code from the camera (Rudolf OS has a QR
+  encoder, qr61.js, but no decoder; a decoder of its own is a part of its own).
+  Tests (vpn-check.yml): qt/host/vpn162_t.sh (the real rudolfd and helper in namespaces of their own against the kernel's
+  WireGuard as the server, a capture on the outside link), the parser's fuzz test, qt/shell2/vpn62_t.js, and the network
+  pop-up on both engines (same_t.sh fly-net-vpn, fly-net-vpn-off).
+- **Step 2, who may do what (PR "VPN 2", after VPN 1):** built. Per VPN, set by an administrator (its password, checked
+  by rudolfd): "Everyone can turn it on and off" (the default), "Administrators only" (a standard account is asked for an
+  administrator's password, checked by rudolfd; a signed-in administrator is not), "Always on: nobody can turn it off"
+  (turned on at every start, vpn boot; off refused to everyone, an administrator's password included, until an
+  administrator changes the setting). An account under parental controls (the page's a.pc) never turns a VPN off. The
+  account is rudolfd's own record of who is signed in (HOME_SESSION), never one the request names. Turning off a VPN
+  another account turned on asks first ("Ann's VPN is on for everyone on this computer"); the pop-up (both engines)
+  opens Settings › Network for anything that needs a password or a question. Tests: vpn162_t.sh 18-25 (the policies,
+  the child, Always on at rudolfd's start), vpn62_t.js 11-18.
+- **Step 4, the kill switch (PR "VPN 4", after VPN 2; OpenVPN, step 3, comes last: it is the largest):** built. Per VPN,
+  an administrator's (its password), off at first. While a VPN with it is meant to be on, the table inet rudolf_vpnkill
+  (the VPN helper's, beside the firewall's own, so it holds whether that one is on or off) lets out only the tunnel, the
+  VPN's server (WireGuard's marked packets, and the server's addresses as last found: its name cannot be looked up through
+  it) and DHCP and IPv6's neighbour discovery (so the computer keeps its network); nothing is forwarded but into the
+  tunnel. Gone when the VPN is turned off or its kill switch is. Tests: vpn162_t.sh K1-K5 (nothing out while the tunnel
+  is down, back by itself with the remembered address), vpn62_t.js 18b.
+- **Step 5, Oracle (PR "VPN 5", after VPN 4):** Settings › Network › VPN says in a line that Oracle's Tor windows then run
+  inside the VPN (Tor connects through it; the VPN sees only that Tor is used). Tor itself unchanged. vpn62_t.js 1.
+- **Step 3, OpenVPN 2.6 (PR "VPN 3", the last: after VPN 5):** built. A .ovpn file imported the same way, checked line by
+  line against what a client's file may say (scripts, script-security, plugins, the management port, log and pid files,
+  another config, a user, a folder, files of its own: refused with the line; certificates and keys only inside the file;
+  a tap VPN refused; a provider's username and password asked for in the add dialog, kept root's 0600 beside it). The
+  VPN helper runs OpenVPN (/usr/sbin/openvpn, Ubuntu 24.04's 2.6 with OpenSSL, which the base layer has) only while the
+  VPN is on, as a daemon of its own outside the Linux apps' sandbox, from a run file it writes (the checked lines, the
+  servers as found now so the kill switch knows them, rvpn0, nobody once connected) with itself as OpenVPN's route-up
+  hook (the server's DNS servers; IPv6 unreachable when the server gives none). **DCO:** not used. OpenVPN 2.6 talks to
+  the out-of-tree ovpn-dco module; Linux 6.16 and later (Rudolf OS's 6.18 included) have their own in-tree ovpn module
+  instead, which needs OpenVPN 2.7 (not in Ubuntu 24.04, whose packages the base layer is made from). So OpenVPN runs with --disable-dco: its data in its
+  own process (measured in the test: about 9 MB of memory while connected, nothing while off). The way to DCO later:
+  CONFIG_OVPN in kconfig.sh (built in, signed with the kernel) and OpenVPN 2.7. Disk: the check workflow says what the
+  base layer lacks of it (the program is about 0.9 MB; ci_release.sh says the total at each build; the aim is about 3 MB).
+  Tests: qt/host/vpnovpn162_t.sh (an OpenVPN server of the test's in a namespace: refused files, connected as nobody,
+  traffic and DNS through it, a capture outside, the kill switch, started again by itself, off with nothing left, a
+  login), the fuzz test of both parsers, vpn62_t.js 2b-2c.
+
 ### 34. Scanners (added on 2026-11-22)
 The owner, 2026-11-22: scanners and network shares are what is left to add from what Mint and Ubuntu have (a phone link,
 fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, already handled, or already there).
@@ -741,6 +801,53 @@ fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, a
    page scanned and checked; a USB stand-in where QEMU allows. **The owner's check:** the Canon (if it scans) over USB and,
    if it has it, over Wi-Fi; one page and three pages into a PDF.
 
+**Status (2026-11-23, the scheduled task):** step 1 built, **PR scan-driverless** (one PR per step, in order: 1 driverless
+scanning, 2 the Scan app, 3 older USB scanners, 4 Linux apps). `rudolf-scan` (iso/sys/rudolf-scan.c, GPL-2.0-or-later)
+finds eSCL scanners by multicast DNS (_uscan/_uscans, as rudolf-print finds printers: from port 5353, the firewall's mdns
+chain), WSD ones by WS-Discovery (from port 3702; the firewall's new wsd chain lets port 3702 in from private addresses
+only for ten seconds after `firewall wsd open`, and only ProbeMatches for its own random MessageID are read) and USB ones
+that speak eSCL through ipp-usb's address; it scans with libsane (opened with dlopen) and sane-airscan, each scan with its
+own SANE configuration naming just that scanner (sane-airscan's own discovery, which needs Avahi, off), and keeps pages as
+PNG; `save` makes one PDF of several pages (JPEG for colour and grey, 1-bit for black and white: its own encoder), PNG or
+JPEG, never over another file. usbprint's guard gains `scanner allow|done UID` (an account's user reaches ipp-usb's port
+only while it scans; the set's element times out in 15 minutes). The base layer gains libsane.so.1 (SANE's dll backend:
+GPL-2.0-or-later with SANE's exception) and libsane-airscan.so.1 (GPL-2.0-or-later with its linking exception) from
+Ubuntu 24.04's libsane1 1.2.1 and sane-airscan 0.99.29; every library they need is in the base already. Measured: 495 KB
+on the disk (rudolf-scan 149 KB, libsane 94 KB, sane-airscan 251 KB); nothing in memory while idle (no process), about 62
+MB at most scanning A4 at 300 dpi in colour, about 28 MB making its PDF. Tests: qt/host/scan162_t.sh 30/30,
+qt/sb/sc162_t.py (QEMU, the release with this tree's files; the USB path only on the host: QEMU has no emulated IPP over
+USB device), .github/workflows/scan-check.yml. Not testable here: scanning over WSD itself (the stand-in answers
+discovery and metadata, not WS-Scan's jobs): the owner's check.
+Step 2 built, **PR scan-app** (after scan-driverless): desktop/scan62.js (the app; File Explorer's "📠 Scan", the Print
+dialog's "📠 Scan…", Settings › Devices' Scanners section) and rudolfd's scan/* requests (iso/sys/rudolfd-scan.inc: find
+as the desktop's user after the firewall's WSD window; caps, start, page, save, drop as the account's own Linux user, no
+new privileges, its session's pages in ~/.cache/rudolf-scan/S; a USB scanner reached by that user only while it scans
+through the network helper's new `usbscan allow|done UID`; save with to= writes the file into the account's own folder as
+that user, without it answers the file for C:). Tests: qt/shell2/scan62_t.js 17/17 (end to end with rudolf-scan and the
+stand-in), qt/native/same_t.sh's scan cases (Native against Chromium), qt/sb/sc162_t.py's phase A (the release in QEMU
+with this tree's rudolfd and page: an account signed in, the app driven, the PDF in Documents its user's, 0644).
+Step 3 built, **PR scan-usb** (after scan-app): systools/mkscan.sh puts SANE's pixma, genesys, epson2, epsonds, plustek,
+canon_lide70, xerox_mfp and fujitsu drivers in the base layer (every one GPL-2.0-or-later with SANE's exception; no
+firmware; no library the base does not have), each with sane-backends' settings for USB only (no net, tcp or scsi lines;
+pixma's networking off), their list (/usr/share/rudolf/scan-backends) and SANE's USB scanners' ids (scan-usb-ids, 1114
+from its 20-sane.hwdb). rudolf-scan find lists the USB scanners on that list (not one ipp-usb already serves as eSCL);
+a scan of one (sane:usb:VVVV:PPPP) loads the drivers and takes the device at its bus and number. /usr/lib/rudolf/scanusb
+(through the devices helper's new `scanusb allow|done UID`) gives the scanners' device nodes to the scanning user (its
+own, 0600) for the scan and gives them back as they were. Measured: 2870 KB for all of scanning (steps 1 and 3; the
+drivers 2.4 MB). Tests: qt/host/scanusb162_t.sh 13/13 (rudolf-scan through SANE's test driver pixel for pixel against
+scanimage: colour, three-pass, 16-bit, grey, 1-bit; the feeder; cancel; find from a stand-in sysfs; no internet socket
+from the drivers; scanusb on stand-in device nodes; the devices helper). QEMU cannot stand in for a USB scanner (no
+emulated device speaks a scanner's protocol; usb-host passes a real one through): the owner's check.
+Step 4 built, **PR scan-linux** (after scan-usb): **network scanners yes, USB scanners no.** After each Find scanners,
+rudolfd writes the network ones (eSCL and WSD, by address; names and addresses kept to safe characters) as sane-airscan's
+settings, its own discovery off, to /persist/etc/rudolf/scanners.conf (iso/sys/rudolf-scanconf.h; rewritten in place, kept
+when nothing was found); rudolf-debian binds it read only over Debian's /etc/sane.d/airscan.conf when Debian has SANE
+(Simple Scan brings libsane1 and sane-airscan). Safe: Simple Scan reaches those scanners as any program of the account
+reaches the network (outgoing connections only); nothing new listens; discovery stays Rudolf's (WS-Discovery's answers
+would not pass the firewall in Debian, and Debian has no Avahi). USB scanners are not given: a Linux app would need the
+raw USB device for its whole session, and Debian's drivers are not Rudolf's checked set; Scan stays the way to scan
+them. Tests: qt/host/debscan162_t.sh 6/6, debhome_t.sh 6/6 unchanged.
+
 ### 35. Network shares in File Explorer (added on 2026-11-22)
 1. **Windows and NAS shares (SMB):** File Explorer's Network lists the shares found on the home network (WS-Discovery and
    mDNS, with the firewall on), and a share's address typed (\\server\share or smb://server/share). Signing in with a name
@@ -756,6 +863,41 @@ fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, a
 5. **Tests:** a Samba server in a network namespace or second QEMU guest: found, signed in, a file copied each way, a guest
    share, a wrong password, a share of another account not seen. **The owner's check:** a share on a Windows computer or a
    NAS at home, if there is one.
+
+**Status (2026-11-23, the scheduled task):** step 1 (PR "Network shares, step 1"): CIFS a signed module in iso/kconfig.sh
+(SMB 2.1 and 3 only: CIFS_ALLOW_INSECURE_LEGACY off, so the kernel itself has no SMB 1 or 2.0; no upcalls, RDMA, cache or key
+dump; no SMB server), in iso/kconfig-required.txt; .github/workflows/shares-check.yml builds this tree's kernel and checks the
+module (iso/qt/host/cifsmod62_t.sh: signed, SHA-256, no device alias, so it is loaded only when a share is mounted).
+Step 2 (PR "Network shares, step 2"): rudolfd's shares/ requests (iso/sys/rudolfd-shares.inc: open, close, the open ones,
+list, found, kept, forget); the drives helper's share-mount, share-umount, share-umount-all (rudolf-drives.c: the kernel's SMB
+client through fsopen/fsconfig, one option at a time, so nothing in a name or password is read as an option; for the signed-in
+account's own Linux user only, at /run/rudolf/shares/UID/ID, 0700, files 0600, nosuid, nodev, noexec; SMB 3 with "seal" first,
+without it only where the server has no encryption; 2.1 only when asked; a guest anonymously, then as "guest"); rudolf-shares
+(iso/sys/rudolf-shares.c, run as nobody: resolve by DNS or multicast DNS, probe, list by its own small SMB 2.1/3 client with
+NTLMv2 and signing, find); the password in the account's keyring only when asked (rudolf-portal --keyring-store share-ID);
+fs/ reaches only the signed-in account's open shares, links followed must stay inside the share (shares_path_ok); every share
+closed at sign-out (au_session_stop). Tests: iso/qt/host/shares62_t.sh (Samba in network namespaces, the runner's kernel) and
+iso/qt/sb/shares62_q.py (the newest beta with this tree's kernel and programs, two accounts) in shares-check.yml.
+Step 3 (PR "Network shares, step 3"): File Explorer's Network (desktop/shares62.js; five one-line hooks in files25.js: the places,
+the Network view, the address bar, a share's Disconnect, and the window's xNetApi): the computers and NAS boxes found, signing
+in (name, password, guest, "Remember the password", More options: domain and SMB 2.1), a server's shared folders, a share opened
+as a drive pane (so copying, opening and dragging onto the desktop are the drives' own: xfer61.js, deskxfer61.js), the open
+shares in the places, the account's recent shares (its own settings, no password; reconnected only when clicked), \\server\share
+and smb:// in the address bar, Disconnect. The firewall's wsd chain lets in WS-Discovery's answers only (3702 from 3702, private
+addresses, not cellular; nothing listens on 3702 but rudolf-shares find for its two seconds). Tests: iso/qt/shell2/shares62_t.js
+(Standard's page in Chromium and Native's app window in WebKit, Native's engine, compared), shares62_t.sh's firewall checks,
+shares62_q.py's found checks (20-22).
+**Follow-up (PR "Network shares: the page check's Native window in WebKit…", after #636, #642, #643 were merged):** found by
+the checks' first full runs: rudolfd's shares_body kept the third line's newline in the domain (every open and list refused);
+the account's login keyring, though without a password, could be locked, so nothing was kept (rudolf-portal now unlocks it when
+that needs no prompt; Blitzen's tokens had the same); after a share opened only the places are drawn again (files25.js
+xNetApi.side); the checks themselves (WebKit's own account for Native's window, the kernel artifact's path, the stand-in servers
+in a clean environment, 1d). Results (shares-check.yml run 45149746135): QEMU 27/27 on the newest beta with this tree's kernel,
+host 21/21 (real mounts through the runner's kernel), page 38/38 (Standard in Chromium, Native's window in WebKit, compared),
+module 10/10. **Known difference, from before Part 35:** File Explorer's "Folders on this device" (Import a folder…, Export
+selection…) is Chromium's File System Access API, so Native (WebKitGTK) does not show it.
+**Left:** NFS (only SMB is built: NFS for NAS boxes that offer only NFS, later, if asked; the kernel's NFS client is there, the
+mount and its user mapping, root squash and Kerberos-less security, are not quick to make safe). Real hardware: the owner's checks.
 
 ### 36. Desert Camp, the third moving background (added on 2026-11-22)
 The owner, 2026-11-22: a third dynamic background in Display Properties: an open desert with sparse dry foliage and a few tents
@@ -783,6 +925,331 @@ quick settings, the notifications and the calendar; cm_open off a side taskbar).
 in tbside-check.yml. **The owner's check:** the taskbar at the left and at the right on the Vivobook, on Native and Chromium:
 each pop-up and menu, and anything else that still looks wrong (with a screenshot).
 
+### 38. Smaller pages for the native desktop's app windows, measured (added on 2026-11-22)
+The owner, 2026-11-22, after a screenshot of Task Manager on the Vivobook (two WebKitWebProcess, 434 MB and 354 MB by their RSS)
+and another session's suggestion that some windows could run "at a fraction of the MB": "Yes, add it to the plan and take the
+measurements necessary. Follow your suggested steps to implement the improvement."
+**Why:** on the native desktop every app window loads the whole desktop page (index.html#app=NAME, oneapp59.js): the core of
+base_v24.html (about 1.8 MB of script) and the modules (about 2.8 MB), less the self-contained apps the build already moves to
+files loaded when opened (1.5.9 plan 10.1) and what 1.6.1 Part 23 B (lean61.js) stops an app window from building. Each window's
+page is a whole document with all of that parsed and kept, even in the shared web process; Task Manager has a web process of its
+own since #598 (kept: it stays responsive while the shared one is busy). Chromium mode is not concerned: its windows are part of
+its one page.
+**The readings (devlink, read-only; PSS / private, MB):**
+- 2026-11-22 20:24 CST (000567; 12.5 min after start; Task Manager and one other window open): the shared web process 325 / 264,
+  Task Manager's own 190 / 131, rudolf-native 145 / 95, the network process 33 / 22; memory used 1.4 GB of 3.4.
+- What each kind of window adds, 2026-11-22 21:19-21:22 CST (devlink 000568-000570; the owner closed Task Manager, opened
+  Calculator and Notepad, reopened Task Manager, then opened Settings; own memory, MB):
+  - Calculator and Notepad together: the shared web process 264 -> 294, about **15 MB each** (they reuse what the shared
+    process has already loaded);
+  - Task Manager reopened: its own web process 132 again (110-132 as WebKit tidies it): **about 130 MB**, all of it its own;
+  - Settings: the shared process 294 -> 331 at once and 466 a minute later as its panels came in: **about 170 MB**;
+  - Xorg 92, rudolf-native 96, the network process 22-40 (unchanged by the windows).
+- After a restart, 2026-11-22 21:28-21:36 CST (devlink 000574-000577; the kernel now refuses even root the processes'
+  smaps after the restart, so these are /proc/PID/status's RssAnon, the processes' own memory): signed in, nothing open, the
+  system used 650 MB (the hidden page 85, rudolf-native 69, Xorg 77, the network process 16); **WordPro +131 MB**;
+  **SpreadsheetPro +41 MB more** at first (both Office apps 85 -> 257 MB), settling to 216 a minute later (WebKit's tidying,
+  rudolf-native.c's memory-pressure settings); the rest of "used" rising with them was the kernel's caches (slab about 270 MB),
+  given back under pressure, not a program's.
+  The owner, 2026-11-22: "It feels like Rudolf should actually be running a lot leaner than it currently does."
+  So: Task Manager (its own process, the whole page loaded fresh), Settings and the Office apps (WordPro, SpreadsheetPro,
+  PresentPro) are where the memory goes; a small app in the shared process costs little, below this part's 40 MB bar: Calculator, Notepad and the like are
+  not moved (step 3 kept only for an app measured above the bar).
+- On the host (Chrome 153's renderer, 2026-11-22, private / PSS MB): a blank page 26 / 50; the desktop page signed in 106 / 134;
+  as an app window (#app=taskmgr) 101 / 129; the same page with its scripts taken out 31 / 55 (its styles and markup cost about
+  5 MB). So nearly all of a window's cost is the page's 3.5 MB of script being loaded, compiled and kept (about 75 MB here),
+  while the scripts' live objects are small (a JS heap of 4 MB after collecting). A small page with a tenth of the script
+  should bring a window from about 100 MB to about 35 MB in Chrome; WebKit's figures (JavaScriptCore) are to be measured the
+  same way on the Vivobook before and after.
+**Steps (each kept only if the numbers say so):**
+1. **Measured on the Vivobook** (above), and on the host: each window kind's cost in the shared process and in its own; a web
+   process's floor with a near-empty page; what of the page a window really runs (Chromium's precise coverage of a Task Manager,
+   a Calculator and a Notepad window through a test session), so the saving is known before building.
+2. **Task Manager first:** `build19.py` also makes a small page for it (`a/app-taskmgr.html`, from the same modules and the parts of
+   base_v24.html it needs, by a list in the build, never a copy), which the native shell opens for Task Manager instead of
+   index.html#app=taskmgr; in its own web process as now. The same rudolfd token, peer check and confinement; nothing new asked of
+   rudolfd. Tests: the small page against the full page's Task Manager (its DOM, its tabs, every action; as sethooks61_t.js
+   compares), Native against Chromium (same_t.sh), and the memory before and after (host and the owner's Vivobook).
+3. **(By the readings: only apps measured above 40 MB; Calculator and Notepad are not.) Then the simple apps, one at a time** (Calculator, Notepad, the media player; not the shell's hidden
+   page, File Explorer, Blitzen or the Office apps, which use most of the page), each kept only with a measured saving worth it
+   (aim: 40 MB or more per window) and its own comparison test.
+3b. **The Office apps** (WordPro, SpreadsheetPro, PresentPro), right after Task Manager: a small page each from the same
+   sources (their groups are already files loaded when opened; what remains is the whole page under them), with their
+   comparison tests; measured before and after.
+3c. **The shell's hidden page** (rudolf-native's do-bg page: the catalogue, the settings, the services): it too loads the
+   whole page; what it needs measured by coverage, and trimmed where that lowers the baseline without slowing the shell.
+4. **Settings, panel by panel** (the owner names it with Task Manager as the main concern): Settings reaches into most of the
+   page, so a small page per panel (Sound, Display, Network...) rather than one for all of it, each with its comparison test.
+5. **Oracle's Chromium apart:** on Native, Oracle runs in Rudolf's own Chromium (one for every Oracle window), not in these pages;
+   its memory (how Chromium splits and keeps its tab processes) is measured and worked on as its own item.
+5b. **Longer term (WendigOS, docs/plan-2.0.md):** the core apps rewritten natively (GTK, 10 to 40 MB a window instead of a
+   whole page each): the lean end of this, too large for 1.6.x; the owner's WendigOS session reads this part.
+6. **The sign-in screen's flash:** each app window loading the whole page showed the desktop's sign-in screen for a moment
+   before its app (the owner saw it early in Native's work; it was hidden since); a small page has no sign-in screen at all.
+7. **Nothing weakened, nothing drifting:** a module missing from a small page is a test failure, never a quiet gap (each small page
+   checks at load that the functions its list says it needs exist, and its test runs every action); Native keeps looking and
+   working exactly as Chromium.
+**The owner's checks:** Task Manager (and each app moved) on the Vivobook: everything it does, and the memory in Task Manager's own
+Processes tab before and after.
+**Step 1, measured on the host (2026-11-23; Chromium 157, `iso/qt/shell2/lean162m.js`; a renderer's private memory, MB, 20 s after
+the window opened, alone in its browser):**
+- How it is read: `memraw` starts Chromium by hand with no automation attached. Playwright's network domain keeps every response's
+  body, the page's 3.7 MB among them, so the plan's first host readings (101 MB) were about 15 MB too high. Read this way: a blank
+  page 19.6; the desktop page without its scripts 25.5-27.9; the page's script read but not run (a syntax error at its end) 37-38;
+  the whole page as a Task Manager window 72-75; **the whole page with no app at all (#app=none) 76**. So Task Manager itself costs
+  nothing. What costs is the whole page starting.
+- Where it goes (the page cut short with `throw 0` at statement boundaries, no app): reading and compiling the script about 11;
+  base_v24.html's own code before the modules about 11 (spread across it); every module's setup about 8 (spread: no module over
+  2); the sign-in (the native session, `userLogin` and its additions, the catalogue, `oaOpen`) about 18. Moving only the functions
+  that do not run into a file of their own (1.5 of the 3.5 MB of script) saved 2-3 MB. A small page has to leave out what the page
+  *does* at start, not only what it holds.
+- Chromium's coverage (precise, function by function, `lean162m.js cover`) of a session of every tab and action: a Task Manager
+  window runs about 380 of the page's 2,109 top-level functions, in 79 of its 159 modules (most of them at sign-in). A Settings
+  window run through every panel runs 107 modules (1,581 function starts); each panel adds 15 to 41 modules to what Settings runs
+  as it opens (Display 41, Security 26, Internet 29, the smallest Notifications 15).
+- The same in WebKit (JavaScriptCore): rudolf-native under Xvfb on GitHub's runner (`lean162_t.sh` on the branch
+  `lean-taskmgr-small`), Task Manager's own web process: 94.5 MB private with the whole page (step 2 below).
+
+**Step 2, Task Manager's small page: built, measured, not kept (2026-11-23).** The numbers said no, so by this part's rule the
+small page is not in the release. It is kept on the branch `lean-taskmgr-small` (PR #659's first commits) in case Part 39's native
+Task Manager is far off.
+- What was built. `desktop/lean62.py` made the small page from the whole page as built, read statement by statement, keeping a
+  list: 36 modules, 71 of base_v24.html's functions, every variable those read, every app's registration, shortcut and setting
+  default. Everything else went into one file read only if ever called. What the whole page does at each sign-in for the whole
+  desktop was left out: the start menu's catalogue, the desktop's icons, the lists. The hidden page named the small page to
+  rudolf-native (op `tmpage`), which opened Task Manager there (`/?oa=ID`, served by rudolfd as the apps' page; nothing new
+  asked of rudolfd).
+- How it was checked. In Chromium it matched the whole page's Task Manager in all 22 steps (every tab and action), in what it
+  told the shell and asked rudolfd, and in the settings it saved (`lean162_t.js`: 10/10). Native against Chromium was the same
+  for Task Manager's rows, its title bars and its tabs (`same_t.sh` 8/9; Performance's live graphs differed). In WebKit
+  (`lean162_t.sh`) the shell named the small page and opened it in Task Manager's own web process, every tab worked, and nothing
+  else of the page was read.
+- **The numbers:**
+
+  | Task Manager's memory (private) | Whole page | Small page | Saved |
+  |---|---|---|---|
+  | Chromium, here | 74.2 MB | 63 MB | about 11 MB, 15 % |
+  | Chromium, GitHub's runner | 61.7 MB | 53.1 MB | 8.6 MB |
+  | **WebKit (rudolf-native), GitHub's runner** | **94.5 MB** (PSS 147.6) | **91.5 MB** (PSS 144.4) | **3 MB, about 3 %** |
+
+  rudolf-native's WebKit is what the owner's Vivobook runs, so the saving there would be a few MB, far below the 40 MB aim, for
+  about 3.5 MB more in the release and another list to keep up to date. WebKit's JavaScriptCore keeps much less of the script it
+  never runs than Chromium does; what a WebKit web process holds is mostly its own floor and what the page does as it signs in.
+  The real fix is Part 39's native Task Manager (aim 15 to 40 MB).
+- What stays from this step: the measuring tool (`iso/qt/shell2/lean162m.js`: coverage, and memory read without automation),
+  Task Manager's stand-in answers for the stand-in rudolfd (`iso/qt/host/fixtures/tm62.json`, `native_rd.py`'s `DIR/tm.json`),
+  and these readings, for Part 39's comparisons.
+
+**Step 4, Settings panel by panel (measured, not done):** Settings in Chromium is 100-104 MB. A small page keeping every module
+the coverage saw Settings run (107) gave 99-101 MB, the same. A page per panel would start from about what Task Manager's small page cost (60 MB in Chromium, about 3 % less
+than the whole page in WebKit), plus the panel's 15 to 41 modules. That would save at most 30-35 MB, below the 40 MB bar. It would also change how
+Settings moves between panels: each panel would be a page of its own, or the rest of the page would be read at the first panel
+change, back to the whole page. So it is written up as not worth it. Settings' memory is Part 39's native Settings (moved into 1.6.2 by the owner, 2026-11-23).
+
+**The owner's checks (Vivobook):** none for this part's steps now (nothing of them is in the release). If the owner wants the
+small page all the same: the branch `lean-taskmgr-small`, then Task Manager's own memory in its Processes tab before and after
+(Ctrl+Shift+Esc, 20 s after it opens) and every tab and action.
+
+### 39. Native apps for Rudolf OS too, starting in 1.6.2 (added on 2026-11-22)
+The owner, 2026-11-22, after the per-window readings (Part 38: Task Manager ~130 MB, Settings ~170 MB, WordPro ~130 MB, each
+app window a whole copy of the desktop page): "If native re-writes of the core apps is suitable for Rudolf as well as Rudolf
+WendigOS, then make it a core fix for 1.6.2 as well as 2.0."
+**Suitable for Rudolf OS:** yes. docs/plan-2.0.md's "How a native app is built" needs nothing of 2.0's: C and GTK 3 as
+rudolf-native (already in the system layer, on X11 as Rudolf OS is), one program per app, `librudolf-ui` (`iso/sys/ui/`) for
+the look and rudolfd's client, files and settings through rudolfd. A native app is not WendigOS-only, so it needs no build
+switch: both editions build the same apps from main. The owner's rule holds as that plan already says: each native app is
+screenshot-compared with its web version (under 2 % of pixels different) and passes a checklist from it before the Start
+menu points to it; Chromium and Lite keep their web versions inside their page (where a window costs little), and Native
+switches to the native app once it passes. Security as rudolf-native: rudolfd's token and peer check, confinement, the
+account's own Linux user, nothing new opened up.
+**The order for Rudolf OS, by memory saved first** (2.0's waves kept, re-ordered by the readings):
+1. **librudolf-ui** (`iso/sys/ui/`): the GTK CSS theme from the page's styles (light and dark, the accent colour's rules,
+   Display Properties' fonts and sizes), the dialogs, the about box, rudolfd's client, translations; with its own test
+   (a sample window screenshot-compared with the page's same controls).
+2. **Task Manager** (1.6.2): the first native app; ~130 MB today in its own web process; aim 15 to 40 MB. Its small page
+   (Part 38 step 2) is the stopgap until the native one passes, then the native one replaces it.
+3. **Settings** (**1.6.2**: the owner, 2026-11-23, "Do native settings in 1.6.2"; it was planned for 1.6.3): ~170 MB today.
+   `/usr/bin/rudolf-settings` on librudolf-ui, built panel group by panel group (one PR each), all 22 panels of
+   `desktop/settings-index.json` (Display, Sound, Multimedia, Network, Mobile, Bluetooth, Web, System, Keyboard, Mouse,
+   Devices, Accessibility, Privacy, Security, Health, Users, Remote, Storage, Apps, Notifications, Updates, About) and
+   Settings' search. Native opens it instead of the web Settings only once every panel and the search pass (no window half
+   native, half web: that would cost both); until then the web Settings stays. Chromium and Lite keep the web Settings.
+4. **The Office apps** (WordPro, SpreadsheetPro, PresentPro; after Settings: the largest work): ~130 MB each today; their small
+   pages (Part 38 step 3b) meanwhile.
+5. **Then 2.0's waves in their order** for the rest (Calculator, Notepad and the other small apps cost little, about 15 MB, so
+   they come after the heavy ones here).
+Each app's PR as docs/plan-2.0.md "Each app's pull request" says (its program, its host test under Xvfb, its screenshots
+against the web version, its memory at idle against the web version, the Start menu switched once it passes).
+**The owner's checks:** each native app on the Vivobook against its web version (Chromium mode), every action, and its memory
+in Task Manager.
+#### Status (2026-11-23, scheduled task)
+- **Step 1, librudolf-ui** (`iso/sys/ui/`, PR #658, merged, and its follow-up #662): the GTK 3 theme made at build time from the page's own styles
+  (`mkui.py`: its rules by their selectors, light and dark, the accent colour's rules, the Font setting and the display scaling),
+  the controls GTK cannot draw as Chromium does drawn in the page's values (check box, `.tmt` table, scroll bars, the cmenu),
+  the settings from rudolfd followed live, rudolfd's client (the token as rudolf-native gets it), Confirm, the administrator's
+  permission (rudolfd's new `desktop/admin`: no app holds a password hash), the about box, the page's translations, the
+  writing drawn greyscale and unhinted, as Chromium draws the page (the look tests pin fontconfig so: `qt/native/fonts-test.conf`;
+  GitHub's runner hints and draws subpixel colour by default). rudolf-native's JSON reader and accent rules are taken from its
+  source, not copied. The confinement knows a native app by its program (`WINAPI_APPS`, `winapi.py`). 101 KB in each app.
+  Its sample window against the page's controls (qt/native/ui_t.sh): 97/97, the window 0.17 to 1.21 % different (light, dark,
+  two accents, Liberation Sans 14 px, German), the settings followed while it runs; the same here and on GitHub's runner
+  (`native-apps-check.yml`).
+- **Step 2, the native Task Manager** (`/usr/bin/rudolf-taskmgr`, `iso/sys/apps/taskmgr.c`, PR #660): every tab,
+  column, sort, the search box, End process, End process tree, End now (the right-click menu, Enter, Delete, Shift+Delete), the
+  administrator's permission for what is not the person's own, Clear cache, the services' Restart and Restart the desktop,
+  Refresh, the details, Startup's Reopen and Remove, Copy system report (made from rudolfd as the page's sysReport), Report a
+  problem… and Check this computer… (the page's own dialogs, opened by the shell), Developer Console. rudolf-native starts it for
+  Task Manager (Ctrl+Shift+Esc, Ctrl+Alt+Del, the start menu, the pins, the taskbar), one window, framed and listed as Task
+  Manager's, and answers its Apps tab with the windows (`_RUDOLF_ASK`); Chromium and Lite keep the web one.
+  Against the web one (qt/native/taskmgr_t.sh): every tab under 2 % (0.29 to 1.10 %, light and dark); its checklist 29/29; started
+  by the native shell 4/4; 46/46 here and on GitHub's runner. **Memory at idle, Processes open (host): 15 MB RssAnon, 52 to 56 MB PSS, against the web one's 75 to 82 MB
+  RssAnon, 134 to 137 MB PSS** (Chromium's renderer for `#app=taskmgr`; on the Vivobook the web one's own WebKit process was ~130 MB,
+  Part 38). 279 KB stripped, in the release build (its 1 MB budget) with librudolf-ui.
+- **Known differences, said so:** the Apps tab's own row shows "—" for Task Manager's memory (the web one estimates its page's);
+  System › "Runs in" says the native desktop; Copy system report leaves out what only the page knows (the shell's notes, the
+  Linux apps' check, the health log's latest; the hardware check's summary says "not run" until read from the page's storage).
+- **Step 3, the native Settings** (`/usr/bin/rudolf-settings`, `iso/sys/apps/settings.c` with its pages `settings_PAGE.c` and
+  `mksettings.py`, which reads the pages' list, Search in Settings' index and keywords, Settings' own styles, the time zones, the
+  languages and the logo from the page at build time). **In progress, one PR per group of pages; the native desktop keeps opening the
+  web Settings until every page and the search pass (the last PR switches it).**
+  - **PR 1 (2026-11-23, scheduled task; branch `native-settings-1`): the window, the sidebar, Search in Settings, System, About.**
+    The window as the page's (the search bar, the sidebar of the 22 pages scrolled with the page when taller than the window, the
+    page scrolling on its own, the sticky footer), laid out block by block as the page's CSS lays it out (the margins collapsing, the
+    .r2 grid, the table's automatic columns). System: Clock, 24-hour, Time zone (tzList's cities for each hour now), Date (the
+    administrator's; doff), Use current date, Date format, Preview, Language (the window itself in the language chosen, before Apply,
+    as the page's), Share my language with apps, Set the clock from the internet (time/sync, time/status), Desktop engine (the
+    administrator's permission, desktop/engine?engine=), Idle windows (saved at once), Apply, Revert, Reset to defaults (each
+    confirmed), the unapplied changes asked about when another page is chosen or the window closed. About: the rows (info,
+    sys/status, the screen, the account, the language), Official or Custom (devmode59.js), Licences and Help (the shell opens Help,
+    at its Licences: rudolf-native's `open help licences`), Copy details, For developers (the page from a file, Roll back, Restart
+    the desktop: the administrator's permission where the page asks for it), Shutting down's log. Search in Settings: setsearch59.js
+    in C (the same words, scores, order, bold marks), the native pages harvested as the page harvests its own.
+    Against the web one (`qt/native/settings_t.sh`): **every view under 2 %: 0.32 to 0.70 %** (System and About, top and end, light,
+    dark, green and pink accents); Search in Settings the same rows (System 16, About 3) and the same results for 10 searches; the
+    checklist 23/23; **memory at idle with System open (host): 15.9 MB RssAnon, 35 to 59 MB PSS, against the web one's 73.4 MB RssAnon,
+    124.5 to 126.2 MB PSS** (Chromium's renderer for `#app=settings`; Display is measured when its page is native). 366 KB stripped, in the
+    release build (a native app's 1 MB budget) with librudolf-ui.
+  - **Left for the next PRs:** Update and recovery (it was in group 1's plan; moved to its own PR: install, recovery, system
+    extensions, boot menu, Bring your files), then Display, Sound, Multimedia, Keyboard, Mouse, Accessibility; Network, Mobile,
+    Bluetooth, Oracle, Remote; Devices, Storage, Apps, Notifications; Privacy, Security, Health, Users; then the switch in
+    rudolf-native (the start menu, pins, the taskbar, the desktop's right-click, Display Properties and every place that opens a
+    Settings page) and the memory with Display open.
+  - **Known differences (PR 1), each fixed or said why not:** About's Graphics is the system's GL renderer (the page asks its engine's
+    WebGL, which names it through ANGLE: the test gives both the page's name so the rows line up); About's Storage used is the disk
+    the account's files are on (dl/space; the page's is its browser storage, which a program has none of); Update the page from a
+    file… picks the file in the account's folders with GTK's chooser (the page picks it from its own drive C:); changes before Apply
+    show in the Settings window only (the page also shows them on its own desktop at once; the desktop follows on Apply, as both
+    save then); the drop-downs open as the page's menus, not Chromium's list (their closed look is the page's).
+**The owner's checklist (Vivobook, after #662 and #660 are in a beta):**
+1. Native desktop: Ctrl+Shift+Esc, Ctrl+Alt+Del, the start menu, a pin and the taskbar's right-click each open the native Task
+   Manager (one window, above the others for Ctrl+Alt+Del), titled and iconed as Task Manager in the taskbar.
+2. Each tab against Chromium mode's Task Manager, light and dark: the same look (the writing as soft or as sharp: if not, librudolf-ui follows fontconfig instead); every sort, Find a process, End process / tree /
+   now on one of your own apps (Confirm) and on another (the administrator's password; a wrong one refused), the right-click menu.
+3. Performance's graphs moving, Clear cache; System's Restart (sound) and Refresh; Hardware's Check this computer… opens the check.
+4. Startup: Reopen my apps and Remove, then sign out and in.
+5. Copy system report (paste it in Notepad), Report a problem…, Developer Console.
+6. The memory: Task Manager's own row in its Processes tab (rudolf-taskmgr) against the web one's WebKit process before (~130 MB).
+**The owner's checklist for the native Settings (Vivobook; once the last Settings PR switches Native to it; until then run
+`rudolf-settings sys` from a terminal on the native desktop to look):**
+1. Each page against Chromium mode's Settings, light and dark: the same rows, controls and places; the sidebar and its keyboard.
+2. Search in Settings: the same results as Chromium's for a few words; Enter opens the row, lit.
+3. System: change the clock, 24-hour, the time zone, the date format and Apply: the taskbar's clock follows as with the web Settings;
+   Revert and Reset to defaults; the date (an administrator); Set the clock from the internet; Desktop engine (the administrator's
+   password; a wrong one refused); Idle windows.
+4. About: the rows (Graphics names the GPU), Licences, Help, Copy details (paste it), Roll back (the administrator's password).
+5. The memory: rudolf-settings in Task Manager's Processes tab against the web Settings' WebKit process (~170 MB, Part 38).
+
+### 40. Windows programs from before 1.5.9, and no silent failure (added on 2026-11-23)
+**What happened (the owner's Vivobook, 1.6.2b, release 2026112223; read-only devlink 000578-000579 in the main session):** Starport GE
+(installed on 2026-11-02 into the desktop user's Wine prefix, /home/rudolf/.wine) did not start: its icon was there, a click did
+nothing. Its launcher, /usr/local/bin/starport-ge (`cd "$HOME/.wine/drive_c/users/rudolf/StarportGE" && exec wine Launcher.exe`), runs
+as the account's own Linux user since 1.5.9 (plan 15.3: Debian's home is the account's folder), whose prefix had no StarportGE, so the
+cd failed ("can't cd to ..." in /run/rudolf/debian/starport-ge.log) and nothing was said. The main session fixed the Vivobook by hand
+with the owner's go-ahead (the old prefix copied whole into /home/acct1001/.wine; the account's fresh one kept as
+.wine.fresh-20261123); Wine's launchers and icons in ~/.local are the owner's to finish.
+
+**Why the account had a fresh prefix (item 1):** nothing in Rudolf OS makes ~/.wine (no wineboot or WINEPREFIX anywhere in the
+source); Wine makes it itself the first time any Wine program runs as a user whose prefix does not exist. Starport GE's launcher
+does not (its cd fails before wine runs). So it was the first Wine run as the account. The account's folder was not new: its user
+is acct1001, the first account user made on this computer, and a uid is never given again (rudolfd-users.inc), so a re-made account
+would be acct1002 or later; au_migrate only changes ownership inside the account's folder and never makes or moves a prefix; 1.6.2b's
+installation (promoted ~17:40 CST) and Native as the default (#620, in r2026112223) came after 08:30 that day. 08:30 UTC is
+02:30 CST, inside the Wayland test with the owner (WendigOS W0 (A), 2026-11-22 02:18-02:35 CST, devlink 000555-000562), in which
+Wine Notepad ran through Xwayland in the owner's Debian, as the account: almost certainly that run made the prefix (the owner's
+checklist below confirms the time). The fault itself is older: since 1.5.9 nothing carried the shared prefix into an account, so
+every Windows program from before failed for a signed-in account, with or without a prefix of its own; and rudolf-debian's launch
+dropped the program's exit status, so the failure was silent.
+
+**Built (one PR):**
+1. **The offer** (rudolfd-wineold.inc: GET wine/old, POST wine/bring, POST wine/decline; wineold62.js): when the signed-in
+   account runs Debian as its own user and the desktop user's old prefix has programs (folders of drive_c that are not Wine's own)
+   that neither of the account's prefixes has, or Wine's launchers the account lacks, Rudolf offers to bring them in: once after
+   sign-in (the desktop's page; on Native the hidden page), in Settings › Apps › Linux beside Wine (also after "Don't ask again"),
+   and in System health while it is pending. Nothing is copied without the person's choice. With several accounts the old prefix
+   was all of theirs: only an administrator's name and password start it (checked by rudolfd, desk_admin_check), and the programs'
+   names are not shown, only how many. Room is checked first (the copy and 256 MB to spare).
+2. **The copy** (a child of rudolfd, in the background; its progress in GET wine/old's "job"): the whole prefix (a program lives as
+   much in the prefix's registry as in drive_c, and two registries cannot be merged safely), owned by the account's user (group
+   1000, as Wine's own files in Debian), the old prefix never changed. **Chosen:** if the account's prefix has no programs of its own
+   (Wine made it fresh, as on the Vivobook) the copy becomes ~/.wine and the account's is kept as ~/.wine.own-DATE (nothing lost, and
+   launchers that use $HOME/.wine work); if it has programs of its own it stays ~/.wine and the copy goes beside it as
+   ~/.wine-shared, with the launchers brought pointed at it; if every program is there already (copied by hand) only the launchers
+   come. Wine's launchers, menus, their folders and the icons they name come too, never over one of the account's own. It reads as
+   the desktop's user and writes as the account's (setfsuid), one folder at a time without following links; it is made in
+   ~/.wine.bringing and renamed ~/.wine.brought only once whole, and only then does the account's prefix move: a copy cut off leaves
+   the account's prefix as it was and is started again; while a Windows program of the account runs (its wineserver) the copy
+   waits, kept, for the next try.
+3. **No silent failure** (rudolf-debian.c launch_report; linux26.js lxPortal via wineold62.js): a Debian or Windows program that
+   ends within 10 s with an exit status other than 0 (or a signal) leaves a request of the desktop portal's of its own kind
+   ("lxfail"), which every engine collects as it does the portal's other requests (Chromium's and Lite's desktop page; the native
+   desktop's hidden page, handed it by the shell): a message naming the program, how it ended and the last lines of its log
+   (Wine's fixme: lines left out), and for a Windows program whose folder is only in the old prefix (or while the offer is
+   pending) the offer with it. One that runs longer, or ends with 0, is not said.
+4. **Tests:** iso/qt/host/wineold162_t.sh (30 checks: one account, several, too little room, a copy cut off, a running Windows
+   program, links planted on either side, launchers only, declined, the portal's answer, rudolf-debian's message) and
+   iso/qt/shell2/wineold162_t.js (28: the message and the offer on Chromium, Lite and Native's hidden page, several accounts, room,
+   Settings, System health, the notice once); workflow wineold-check.yml on pull requests touching them.
+   rudolfd's requests: wine/old and wine/decline start nothing (narrow); wine/bring starts the copy (confinepure.py, winapi.py).
+
+**Left for later:** the copy moves into the accounts helper (rudolf-accounts.c) when Part 11 drops rudolfd's root (it needs to read
+as uid 1000 and write as the account's user); the native Settings (Part 39) carries the two rows (Apps › Linux, System health) when
+those panels are done; no Cancel while copying (it can be cut off and started again); one prefix whole, not program by program.
+
+**The owner's checklist (Vivobook):**
+1. Starport GE starts from its icon (after the hand copy of 2026-11-23).
+2. After the owner's remaining copy of Wine's launchers and icons (~/.local, ~/.config): Starport GE's own entry in the Start menu,
+   with its icon. (If they are not copied by hand, the offer now brings them: Settings › Apps › Linux, "Bring them in…".)
+3. A second, test account (standard): signed in, the offer comes once, says how many programs (no names) and that an administrator
+   decides; Bring them in asks for the administrator's name and password (a wrong one refused); then Starport GE starts in that
+   account too. Remove the test account afterwards.
+4. A deliberately broken launcher (for example a copy of starport-ge's launcher whose cd names a folder that is not there): a click
+   shows "... did not start" with the log's last line, on Native, Chromium and Lite.
+5. (Optional) the time of /home/acct1001/.wine.fresh-20261123/system.reg's making, in UTC: about 08:30 UTC on 2026-11-22 is the Wine
+   Notepad test.
+
+### The checks made green (added on 2026-11-23)
+
+The owner's item of 2026-11-22: the seven checks that had been red for days, each case found to be the test or a real bug,
+and fixed. Only one real bug was found, in Native's taskbar, shown by the monitors check; every other case was a test out of
+date with a deliberate change, or a test that did not fit the release it tested. No check was weakened and no limit raised.
+
+| Check | Case | Test or bug | Evidence | Fix | PR |
+|---|---|---|---|---|---|
+| svc-check (host) | svc60_t.js 8, Oracle's window | test: stale since #504 | Oracle's window now runs a second tabs26.js timer, which clears the websites listed while Oracle was closed | the case expects and names both timers | #632 |
+| svc-check (QEMU) | N2, N3, N5, N6, N9 | test: stale since 1.6.1 (the shell's hidden pages made one) | each alarm, reminder and timer rang once, from `do-bg`, not `do-svc` | expects `do-bg`; N1 also checks it has no window | #632 |
+| portal-check (QEMU) | N6, N11, N12 | test: stale since #537 (one hidden page for the shell) | the dialog came once, above the apps; the page was hidden as `do-bg`, the test looked for `do-portal` | looks for `do-bg`; its "page on top" wait (N3, N5, N7, N9) checks again too | #631 |
+| webkey-check (QEMU) | 3, 6, 7 ("the key store did not start") | test: the release's session starts its own key store since #533 (r2026112111) | TPM present (`/dev/tpmrm0`, family 2.0); this tree's `webkey_start` started a second store beside the release's | the test ends the release's store first and restores the sealed file; "no TPM 2.0" is case 9's deliberate no-TPM boot | #638 |
+| roothelpers-check, confine-check (r161) | 24, 27 | test: since they were added (2026-11-21) | the release has no curl and busybox wget hides a refusal's code and body | requests go through `busybox nc` when there is no curl | #654 |
+| same | 29 | test | busybox `pgrep` has no `-u` | the user's process found through `/proc/PID/status` | #654 |
+| confine-check (t160, built kernel) | 11, 12, 14, 15, 16 (why it never passed) | test: the premise could not hold | the built kernel replaced the release's, so slot a no longer matched its signed list and `rudolf-update` rightly refused to make an official recovery system from it | the official recovery system is made from the release's own kernel (checked against the signed SHA-256); the lock to the official stable release is now checked directly | #654 |
+| monitors-check | the taskbars differ (2.743 %, 2.006 %) | **bug in Native**, shown after 17:43 UTC | not the runner: the same image and packages pass before 17:30 UTC and fail after 20:00, when "auto" is dark; Native drew the pin and workspace edges #d1d5db where Chromium draws #334155 in dark | Native's edge follows the dark look; Native also draws the line under a pinned app as Chromium does | #641 |
+| monitors-check | the result depended on the hour | test | the look was left on "auto" | the test sets dark at 100 % and light at 125 % | #641 |
+| bootentry-check | "no release list for 2026111503" | test | gh-pages fetched with `--depth 1`: beta/ and stable/ hold only the newest release and there is no files/ folder | the whole gh-pages history fetched; the list and its signature taken from the commit that published that release | #655 |
+| bootentry-check | then bootentry60 0a, 0b; t160b 2b, 2c, 3, 5 | test: a stale default | both replay 1.6.0 (2026111620) and expect its faults; the default release was the newest beta, 1.6.0 then, 1.6.2b now, which no longer has them | 1.6.0 by default; the run with fix=1 checks this tree's rudolfd, espcheck and bootfiles.sh on top | #655 |
+
+Found, not fixed (a follow-up): on "auto" with no latitude set, Native's `is_dark()` uses 07:00 to 19:00 while the page works
+out sunrise and sunset from the time zone's city, so the two engines disagree around dawn and dusk. No check depends on it now.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -802,3 +1269,6 @@ each pop-up and menu, and anything else that still looks wrong (with a screensho
 13. Part 35 (network shares): SMB in File Explorer in one PR; the owner's check on a share at home if there is one.
 14. Part 36 (Desert Camp): one PR; the owner's look on the Vivobook in light and dark on each engine.
 15. Part 37 (the side taskbar's pop-ups and menus): one PR; the owner's look on the Vivobook.
+16. Part 38 (smaller pages for app windows): the measurements, then Task Manager in one PR, then the simple apps one at a time.
+17. Part 39 (native apps for Rudolf OS too): librudolf-ui, then native Task Manager in 1.6.2; Settings and the Office apps after.
+18. Part 40 (Windows programs from before 1.5.9, no silent failure): one PR; then the owner's checklist on the Vivobook.

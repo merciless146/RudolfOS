@@ -31,7 +31,7 @@ function sysuRestart(){if(!(SW&&wins.includes(SW))){settings('upd');return setTi
   else if(s.trying&&st.good==s.booted){line=`<b>Kept:</b> Rudolf OS ${pkgEsc(cur.version||RVER)} started successfully and is now the system this computer starts.`;cls='ok'}
   else if(s.trying)line='Trying the new version: it is kept as soon as the desktop has started.';
   else if(nx){line=`<b>Ready:</b> Rudolf OS ${pkgEsc(nx.version)} starts when the computer restarts.`;cls='ok'}
-  else if(av){line=`<b>Update available:</b> Rudolf OS ${pkgEsc(av.version)}${av.notes?' · '+pkgEsc(av.notes):''}${av.urgent?' · <b>urgent security fix</b>':''}`;cls=av.urgent?'warn':''}
+  else if(av){line=`<b>Update available:</b> Rudolf OS ${pkgEsc(av.version)}${av.notes?' · '+pkgEsc(av.notes):''}${av.urgent?' · <b>urgent security fix</b>':''}${sysuWholeNote(av)}`;cls=av.urgent?'warn':''}
   else if(!s.url)line='No update address is set yet.';
   else line='Rudolf OS is up to date.';
   box.innerHTML=`<h4 class='sh4'>Security updates</h4><div class='sysucard ${cls}'><div>${line}</div>
@@ -130,5 +130,10 @@ async function sysuTick(){if(!RD||!USER||window.LOCKED||window.__bsaver||(typeof
  catch(e){/* 1.5.7: a check that failed is tried again in 5 minutes (3 times), not in an hour */if((sysuTick.fails=(sysuTick.fails||0)+1)<=3)setTimeout(sysuTick,300000)}}
 if(RD){setTimeout(sysuTick,10*60*1000);setInterval(sysuTick,60*60*1000)}
 /* 1.6.0 (plan Part 4): the download button's words: on mobile data, with the size it can come to */
-function sysuDlLabel(av){const mb=av&&av.size?Math.max(1,Math.round(av.size/1e6)):0,cell=typeof netMetered=='function'&&netMetered()&&MTR&&MTR.auto=='modem';
- return cell?'Download over mobile data'+(mb?': up to '+mb+' MB':''):typeof netMetered=='function'&&netMetered()?'Download on this metered connection'+(mb?': up to '+mb+' MB':''):'Download (only the changes)'}
+/* 1.6.2 (Part 31, item 4): an update whose system images are packed another way than this computer's (rudolf-update's
+   "whole": xz to zstd) downloads them whole, once: its size is said before downloading, on every connection */
+function sysuDlLabel(av){const mb=av&&av.size?Math.max(1,Math.round(av.size/1e6)):0,cell=typeof netMetered=='function'&&netMetered()&&MTR&&MTR.auto=='modem',
+  w=av&&av.whole>0?Math.max(1,Math.round(av.whole/1e6)):0,sz=w?': about '+w+' MB':mb?': up to '+mb+' MB':'';
+ return cell?'Download over mobile data'+sz:typeof netMetered=='function'&&netMetered()?'Download on this metered connection'+sz:w?'Download (about '+w+' MB)':'Download (only the changes)'}
+function sysuWholeNote(av){if(!(av&&av.whole>0))return'';const w=Math.max(1,Math.round(av.whole/1e6)),n=String(av.wholeLayers||'').split(',').filter(Boolean).length;
+ return `<div class='msg'>This update packs the system's images in a new way${av.packed?' ('+pkgEsc(av.packed)+')':''}, so it downloads ${n>1?'them':'it'} whole this once: about ${w} MB. Later updates download only the changes again.</div>`}
