@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Added: the native Settings' first pages (docs/plan-1.6.2.md Part 39): /usr/bin/rudolf-settings with its window, sidebar, Search in
+  Settings, System and About, looking and saving as the web one; the native desktop keeps opening the web Settings until every page is done.
 - Changed: the plan (docs/plan-1.6.2.md Part 39): a native Settings comes in 1.6.2, not 1.6.3; the native desktop opens it
   once all 22 panels and the search pass, and Chromium and Lite keep the web Settings.
 - Fixed: "Remember the password" for a network share, and Blitzen's developer tokens, kept nothing when the account's keyring was

@@ -324,7 +324,7 @@ void rui_tabs_set(GtkWidget *box, int i)
 GtkWidget *rui_tabs_button(GtkWidget *box, int i) { Tabs *t = g_object_get_data(G_OBJECT(box), "rui-t"); return t && i >= 0 && i < t->n ? t->b[i] : NULL; }
 
 /* ---- the check box (label.ck): Chromium's own check box (13 px, its blue when on), the words beside it */
-typedef struct { int on; char *label; void (*cb)(int, void *); void *d; } Check;
+typedef struct { int on; char *label; void (*cb)(int, void *); void *d; double ww, wh; } Check;   /* (ww, wh: wrapped in that width: rui_check_wrap) */
 static gboolean check_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	Check *c = d; double z = RUI.z, lh = RUI.fs * 1.35;   /* (label.ck: line-height 1.35) */
@@ -339,6 +339,13 @@ static gboolean check_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	cairo_restore(cr);
 	/* the words: 8 px after the box (gap 8 px, the box's own 3 px margins) */
 	GtkStyleContext *sc = gtk_widget_get_style_context(w); GdkRGBA fg; gtk_style_context_get_color(sc, gtk_style_context_get_state(sc), &fg); gdk_cairo_set_source_rgba(cr, &fg);
+	if (c->ww > 0) {   /* (its words wrapped, each line in the label's line box: Settings' long check boxes) */
+		PangoLayout *l = rui_layout(cr, c->label, RUI.fs, 400); pango_layout_set_width(l, (int)((c->ww - (bx + s + 3 + 8)) * RUI.z * PANGO_SCALE)); pango_layout_set_wrap(l, PANGO_WRAP_WORD_CHAR);
+		PangoFontMetrics *m = pango_context_get_metrics(pango_layout_get_context(l), pango_layout_get_font_description(l), NULL);
+		double a = round(pango_font_metrics_get_ascent(m) / (double)PANGO_SCALE), de = round(pango_font_metrics_get_descent(m) / (double)PANGO_SCALE); pango_font_metrics_unref(m);
+		PangoLayoutIter *it = pango_layout_get_iter(l); int i = 0;
+		do { cairo_move_to(cr, round((bx + s + 3 + 8) * RUI.z), round(i * lh * RUI.z + (lh * RUI.z - a - de) / 2 + a)); pango_cairo_show_layout_line(cr, pango_layout_iter_get_line_readonly(it)); i++; } while (pango_layout_iter_next_line(it));
+		pango_layout_iter_free(it); g_object_unref(l); return TRUE; }
 	text_in(cr, c->label, bx + s + 3 + 8, 0, 2000, lh, RUI.fs, 400, 0);   /* (the gap: 8 px after the box's own margin) */
 	return TRUE;
 }
@@ -346,7 +353,9 @@ static gboolean check_press(GtkWidget *w, GdkEventButton *e, gpointer d) { Check
 static void check_free(gpointer d) { Check *c = d; g_free(c->label); g_free(c); }
 static void check_size(GtkWidget *w) { Check *c = g_object_get_data(G_OBJECT(w), "rui-ck"); cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *cr = cairo_create(s);
 	int tw = (int)lround(rui_px(4 + 13 + 3 + 8 + text_w(cr, c->label, RUI.fs, 400) + 1)); cairo_destroy(cr); cairo_surface_destroy(s);
+	if (c->ww > 0) { gtk_widget_set_size_request(w, (int)lround(rui_px(c->ww)), (int)lround(rui_px(c->wh))); return; }
 	gtk_widget_set_size_request(w, tw, (int)lround(rui_px(fmax(19, RUI.fs * 1.35)))); }
+void rui_check_wrap(GtkWidget *w, double css_w, double css_h) { Check *c = g_object_get_data(G_OBJECT(w), "rui-ck"); if (!c) return; c->ww = css_w; c->wh = css_h; check_size(w); gtk_widget_queue_draw(w); }
 static void check_re(void *d) { check_size(d); }
 GtkWidget *rui_check(const char *label, int on, void (*cb)(int, void *), void *d)
 {
@@ -356,6 +365,7 @@ GtkWidget *rui_check(const char *label, int on, void (*cb)(int, void *), void *d
 	check_size(w); on_settings_w(w, check_re, w); return w;
 }
 int rui_check_get(GtkWidget *w) { Check *c = g_object_get_data(G_OBJECT(w), "rui-ck"); return c && c->on; }
+void rui_check_set(GtkWidget *w, int on) { Check *c = g_object_get_data(G_OBJECT(w), "rui-ck"); if (c && c->on != !!on) { c->on = !!on; gtk_widget_queue_draw(w); } }
 
 /* ---- scroll bars as Chromium draws them (15 px: the track, the arrows at both ends, a grey rounded thumb) */
 #define SBW 15.0

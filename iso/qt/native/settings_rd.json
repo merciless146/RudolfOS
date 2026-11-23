@@ -1,0 +1,9 @@
+{
+  "info": {"ok": true, "vendor": "ASUSTeK COMPUTER INC.", "product": "Vivobook 15", "cpu": "13th Gen Intel(R) Core(TM) i5-1335U", "threads": 12, "memTotal": 16473538560, "kernel": "6.18.4-rudolf", "boot": "uefi", "live": false, "media": "disk", "backlight": false, "battery": [{"name": "BAT0", "type": "Battery", "capacity": 81, "status": "Discharging"}]},
+  "sys/status": {"ok": true, "signer": "official", "current": {"version": "1.6.2", "chromium": "142.0.7444.59", "released": "2026-11-22"}},
+  "dl/space": {"ok": true, "free": 201863462912, "total": 255550554112, "live": false},
+  "shutdown/log": {"ok": true, "log": ""},
+  "desktop/engine": {"ok": true, "choice": "chromium", "now": "chromium", "available": true, "nativeAvailable": true, "persistent": true},
+  "time/status": {"ok": true, "result": "ok", "at": 1794649200, "floored": false},
+  "stats": {"ok": true, "cpu": 12.3, "load": 0.2, "memTotal": 16473538560, "memFree": 4294967296, "memAvailable": 5368709120}
+}

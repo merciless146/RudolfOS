@@ -81,7 +81,7 @@ def apps_paths():
     return found
 
 def apps_exe():
-    return sorted('rudolf-' + os.path.basename(f)[:-2] for f in glob.glob(os.path.join(TOP, 'iso', 'sys', 'apps', '*.c')))
+    return sorted('rudolf-' + os.path.basename(f)[:-2] for f in glob.glob(os.path.join(TOP, 'iso', 'sys', 'apps', '*.c')) if '_' not in os.path.basename(f))   # (NAME_PART.c: a part of NAME)
 
 def render(page, shell, apps=None, exe=None):
     apps = apps if apps is not None else apps_paths(); exe = exe if exe is not None else apps_exe()

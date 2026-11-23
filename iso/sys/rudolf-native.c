@@ -5531,6 +5531,13 @@ static void native_wins_out(Window w, const char *json)
 	native_atoms(); if (!client_of(w)) return;
 	XChangeProperty(DPY, w, A_RWINS, A_UTF8, 8, PropModeReplace, (const unsigned char *)json, (int)strlen(json)); XFlush(DPY);
 }
+/* (1.6.2 Part 39: "open APP PAGE", an app at one of its pages as the page opens it: Settings › About's Licences, helpApp('licences');
+   only Help, and a page named as the page names its topics) */
+static int native_open_page(const char *q)
+{
+	char k[KN], pg[40]; if (sscanf(q, "%31s %39s", k, pg) != 2 || strcmp(k, "help") || strspn(pg, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(pg)) return 0;
+	char ex[64]; snprintf(ex, sizeof ex, "&page=%s", pg); app_open_ex("help", NULL, ex, 0); return 1;
+}
 static int native_ask(Client *c, XClientMessageEvent *m)
 {
 	native_atoms(); if (m->message_type != A_RASK) return 0;
@@ -5539,6 +5546,7 @@ static int native_ask(Client *c, XClientMessageEvent *m)
 	if (XGetWindowProperty(DPY, c->w, A_RASK, 0, 50, True, AnyPropertyType, &type, &fmt, &n, &after, &d) == Success && d) { snprintf(q, sizeof q, "%.*s", (int)MIN(n, sizeof q - 1), (char *)d); XFree(d); }
 	if (!strcmp(q, "wins")) { WINS_NTO = c->w; wins_ask(NULL); return 1; }
 	if (!strncmp(q, "winop ", 6)) { char id[24] = "", op[12] = ""; if (sscanf(q + 6, "%23s %11s", id, op) == 2 && (!strcmp(op, "focus") || !strcmp(op, "end"))) win_op(id, op); return 1; }
+	if (!strncmp(q, "open ", 5) && native_open_page(q + 5)) return 1;
 	if (!strncmp(q, "open ", 5)) { const char *k = q + 5; if (key_ok(k) && (app_find(k) || !strcmp(k, "do-hwcheck"))) app_open(k, NULL); return 1; }   /* (do-hwcheck: the page's hardware check, Task Manager's Hardware) */
 	return 1;
 }

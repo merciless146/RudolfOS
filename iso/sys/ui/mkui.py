@@ -267,4 +267,4 @@ out.append('/* ---- from iso/sys/rudolf-native.c (the native desktop\'s own: the
 out.append('#pragma GCC diagnostic push\n#pragma GCC diagnostic ignored "-Wunused-function"')
 for p in parts: out.append('\n'.join(p))
 out.append('#pragma GCC diagnostic pop')
-open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')
+if __name__ == '__main__': open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')   # (imported by an app's own generator, iso/sys/apps/mkNAME.py, for its reading of the page's styles)

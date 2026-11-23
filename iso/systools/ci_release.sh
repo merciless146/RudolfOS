@@ -425,7 +425,7 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# (Part 39 step 2) the native apps (sys/apps/NAME.c: /usr/bin/rudolf-NAME, started by rudolf-native for its app on the native desktop),
 	# each built hardened with librudolf-ui, checked, put in the base layer; the release fails when one is missing or over its 1 MB budget
 	# (GTK 3, cairo and Pango, which they use, are WebKitGTK's, already there: addwebkit.sh)
-	for a in sys/apps/*.c; do n=$(basename "$a" .c)
+	for a in sys/apps/*.c; do n=$(basename "$a" .c); case "$n" in *_*) continue;; esac   # (NAME_PART.c: a part of the app NAME, built with it)
 		RUI_WERROR=1 sh sys/ui/build.sh "$W/ui" "$B/rudolf-$n" "$n" $HARD || { echo "rudolf-$n did not build (sys/ui/build.sh)"; exit 1; }
 		python3 systools/hardcheck.py "$B/rudolf-$n" || { echo "rudolf-$n was built without the hardening flags (plan 15.5)"; exit 1; }
 		strip "$B/rudolf-$n"; NAB=$(stat -c %s "$B/rudolf-$n")
@@ -435,6 +435,7 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		echo "::notice title=rudolf-$n::$((NAB / 1024)) KB added to the base layer (a native app, with librudolf-ui)"
 	done
 	[ -x "$W/broot/usr/bin/rudolf-taskmgr" ] || { echo "the native Task Manager (rudolf-taskmgr) is missing from the base layer"; exit 1; }
+	[ -x "$W/broot/usr/bin/rudolf-settings" ] || { echo "the native Settings (rudolf-settings) is missing from the base layer"; exit 1; }
 	# 1.6.0 (plan Part 14): the keyring for Linux apps, gnome-keyring-daemon's secrets part (/usr/lib/rudolf/keyring starts
 	# it at sign-in, as the account's user), with what it needs that the base layer lacks, in a budget of its own, 3 MB.
 	# After WebKit, whose libraries it
