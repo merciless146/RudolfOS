@@ -643,6 +643,17 @@ its keys). make_release.py refuses to write such a release in the first place. T
 (17 checks; the workflow sqcomp-check.yml, with real mksquashfs images). **This must be in a released beta before any
 image switches** (item 3's PR says so).
 
+**Status (2026-11-23, item 4: updates; the PR "zstd for the system's images, step 4").** What Settings › Update showed before:
+"Download (only the changes)" on an ordinary connection (no size), and "up to N MB" (every file's size) on a metered one.
+The first update after the switch downloads the changed images whole (deltas find no block in common between an xz and a
+zstd image, or between two block sizes), so that was wrong. Now rudolf-update's status says what comes whole ("whole",
+its bytes, "wholeLayers", "packed": each new layer's signed row C against the compression and block size in this
+computer's own layer's superblock), and Settings says it on the button on every connection ("Download (about 530 MB)",
+"Download over mobile data: about 530 MB") and why in the card, once; the download goes straight to the whole file for such
+a layer (no delta scan first). An ordinary update is as before. Tested by iso/qt/host/updsize162_t.sh (8/8) and
+iso/qt/shell2/updsize162_t.js (7/7), in sqcomp-check.yml. It needs item 1's rows (built on its PR) and must be in a
+release before the switch too, so the first switched update already shows its size.
+
 ### 32. Emu's Nintendo 64 and Dreamcast games, played for real (added on 2026-11-22)
 The owner: "Create a scheduled task to test run the Dreamcast and N64 emulators for Emu, making test games specifically for
 the test if needed." Until then the native path (1.6.1, PR #485: rudolfd's native/run with Flathub's Rosalie's Mupen GUI
