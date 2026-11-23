@@ -398,5 +398,5 @@ function wire(pn,el,r){const k=pkey(r.p);
  EXPL.add(draw);W.refresh=draw;W.openRemote=r=>openRemote(P(),r);   /* 1.5.6: an app's folder from its Properties */const onDrive=e=>{const v=e.detail||{};if(v.a!='add')tabs.forEach(t=>t.panes.forEach(pn=>{if(pn.remote&&pn.remote.dev==v.dev){pn.remote=null;pn.path=USER?homePath():['C:']}}));draw()};
  addEventListener('rudolf-drive',onDrive);
  W.onclose=()=>{EXPL.delete(draw);removeEventListener('rudolf-drive',onDrive)};
- W.openPath=p=>{go(P(),p)};
+ W.openPath=p=>{go(P(),p)};W.curPath=()=>P().path.slice();
  draw();setTimeout(()=>{const c=panesEl.querySelector('.xc');c&&c.focus()},30);return W}

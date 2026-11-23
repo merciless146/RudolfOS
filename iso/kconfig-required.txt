@@ -65,6 +65,7 @@ DEVTMPFS        y   start-up: /dev
 BLK_DEV_LOOP    y   start-up: the system layers and the disc image through loop devices
 SQUASHFS        y   start-up: the system layers
 SQUASHFS_XZ     y   start-up: the system layers' compression
+SQUASHFS_ZSTD   y   start-up: the system layers' compression (zstd: 1.6.2 Part 31; the images switch to it in a later release)
 ISO9660_FS      y   start-up: the disc and USB stick image
 EXT4_FS         y   start-up: RUDOLFDATA
 VFAT_FS         y   start-up: the EFI system partition
@@ -82,6 +83,8 @@ USB_EHCI_HCD    y   start-up: USB 2 controllers
 USB_STORAGE     y   start-up: USB sticks
 USB_UAS         y   start-up: USB attached SCSI drives
 MMC_BLOCK       y   start-up: eMMC and SD cards
+# -- Network shares (1.6.2, docs/plan-1.6.2.md Part 35)
+CIFS            m   shares: File Explorer's network shares (the SMB 2.1 and 3 client), a signed module loaded only when a share is opened
 # -- Power and devices
 SUSPEND         y   power: sleep (s2idle)
 AMD_PMC         y   power: sleep on AMD laptops (the owner's Vivobook)

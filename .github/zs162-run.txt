@@ -1,0 +1,5 @@
+# docs/plan-1.6.2.md Part 31, item 2: what a pull request's run of zstd-measure.yml measures (empty: everything)
+variants=xz-1m,zstd19-1m
+disks=nvme
+engines=chromium
+starts=1

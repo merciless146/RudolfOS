@@ -11,6 +11,8 @@
  *   devices tb json                       /usr/lib/rudolf/thunderbolt json (the protection and the devices)
  *   devices tb allow|deny ID              approve a device on the cable or not (ID: hex digits and "-", with a "-")
  *   devices tb forget UID                 no longer approve that device by itself (hex digits and "-")
+ *   devices scanusb allow|done UID        /usr/lib/rudolf/scanusb allow|done UID (1.6.2 Part 34: the USB scanners SANE's
+ *                                         drivers know given to that user while it scans, then given back; 1000-59999)
  *
  * Everything is checked again here, whatever rudolfd checked (as rudolfd's bt_mac_ok and tb_arg_ok do). The scripts are
  * run in place of this helper with their arguments as they are, never a command line for a shell, with no environment
@@ -82,6 +84,10 @@ int main(int argc, char **argv)
 			char *s[] = { (char *)w, a[0], NULL }; return exec_lib("thunderbolt", s);
 		}
 		return refuse("an unknown Thunderbolt action", w);
+	}
+	if (!strcmp(area, "scanusb")) {
+		if ((!strcmp(w, "allow") || !strcmp(w, "done")) && n == 1 && *a[0] && strlen(a[0]) <= 5 && strspn(a[0], "0123456789") == strlen(a[0]) && atoi(a[0]) >= 1000 && atoi(a[0]) <= 59999) { char *s[] = { (char *)w, a[0], NULL }; return exec_lib("scanusb", s); }
+		return refuse("a USB scanner request that is not one", w);
 	}
 	return refuse("an unknown area", area);
 }
