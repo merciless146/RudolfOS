@@ -863,6 +863,17 @@ NTLMv2 and signing, find); the password in the account's keyring only when asked
 fs/ reaches only the signed-in account's open shares, links followed must stay inside the share (shares_path_ok); every share
 closed at sign-out (au_session_stop). Tests: iso/qt/host/shares62_t.sh (Samba in network namespaces, the runner's kernel) and
 iso/qt/sb/shares62_q.py (the newest beta with this tree's kernel and programs, two accounts) in shares-check.yml.
+Step 3 (PR "Network shares, step 3"): File Explorer's Network (desktop/shares62.js; five one-line hooks in files25.js: the places,
+the Network view, the address bar, a share's Disconnect, and the window's xNetApi): the computers and NAS boxes found, signing
+in (name, password, guest, "Remember the password", More options: domain and SMB 2.1), a server's shared folders, a share opened
+as a drive pane (so copying, opening and dragging onto the desktop are the drives' own: xfer61.js, deskxfer61.js), the open
+shares in the places, the account's recent shares (its own settings, no password; reconnected only when clicked), \\server\share
+and smb:// in the address bar, Disconnect. The firewall's wsd chain lets in WS-Discovery's answers only (3702 from 3702, private
+addresses, not cellular; nothing listens on 3702 but rudolf-shares find for its two seconds). Tests: iso/qt/shell2/shares62_t.js
+(Standard's page in Chromium and Native's app window in WebKit, Native's engine, compared), shares62_t.sh's firewall checks,
+shares62_q.py's found checks (20-22).
+**Left:** NFS (only SMB is built: NFS for NAS boxes that offer only NFS, later, if asked; the kernel's NFS client is there, the
+mount and its user mapping, root squash and Kerberos-less security, are not quick to make safe). Real hardware: the owner's checks.
 
 ### 36. Desert Camp, the third moving background (added on 2026-11-22)
 The owner, 2026-11-22: a third dynamic background in Display Properties: an open desert with sparse dry foliage and a few tents
