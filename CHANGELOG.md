@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: "Remember the password" for a network share, and Blitzen's developer tokens, kept nothing when the account's keyring was
+  locked, though it has no password of its own. Rudolf OS now unlocks such a keyring itself before keeping the secret.
 - Changed: the plan (docs/plan-1.6.2.md Part 39): native apps for Rudolf OS too, not only WendigOS: librudolf-ui and a native
   Task Manager first (1.6.2), then Settings and the Office apps, each screenshot-compared with its web version before it
   replaces it on the native desktop.

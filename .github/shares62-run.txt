@@ -1,3 +1,2 @@
 serial=
-kernel_run=45139387769
-# 2026-11-23T09:43:56Z follow-up: the locked login keyring unlocked
+# 2026-11-23T09:55:01Z follow-up done: the kernel built again in each run
