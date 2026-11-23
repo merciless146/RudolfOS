@@ -3,7 +3,7 @@
 # as slot a on its own drive with the test kernel (testkernel.sh: the release's, with zstd and lz4) and started STARTS
 # times (and once before, not counted: the first-time setup, on Chromium, then the engine chosen), the variants in turn
 # and the order swapped each round (runners differ over time). Each start is cold: a new virtual machine, the host's page
-# cache dropped and the drive opened without it (cache=none). Measured each start:
+# cache dropped and the drive read through QEMU without its own cache settings (the host cache dropped before each start). Measured each start:
 #   ready    the health log's "the desktop was ready N s after start-up" (Settings › System health › Last starts)
 #   up       the start's desktop-up mark (uptime, s) and when the start-up was handed the desktop (bootok)
 #   memory   MemTotal - MemAvailable after 30 s idle (MiB)
@@ -59,7 +59,7 @@ def make_drive(v):
     os.remove(D); return path
 
 def drive_args(path):
-    d = f'file={path},format=raw,if=none,id=nv,cache=none,aio=threads'
+    d = f'file={path},format=raw,if=none,id=nv'
     if DISK == 'emmc': d += ',throttling.bps-read=157286400,throttling.iops-read=4000,throttling.bps-write=52428800'
     if DISK == 'usb': d += ',throttling.bps-read=31457280,throttling.iops-read=1500,throttling.bps-write=10485760'
     dev = ['-device', 'nvme,drive=nv,serial=zs162'] if DISK != 'usb' else ['-device', 'qemu-xhci,id=xh', '-device', 'usb-storage,drive=nv,bus=xh.0']
@@ -67,16 +67,16 @@ def drive_args(path):
 
 INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()"
 FAILS = [0]
-def boot(v, tag, kernel=None):
+def boot(v, tag, kernel=None, append=''):
     subprocess.run('sync; echo 3 > /proc/sys/vm/drop_caches', shell=True)   # (the host's copy of the drive: cold)
-    extra = drive_args(f'{W}/{v}.img') + ['-kernel', kernel or f'{KER}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
+    extra = drive_args(f'{W}/{v}.img') + ['-kernel', kernel or f'{KER}/vmlinuz', '-append', f'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1 {append}'.strip()]
     name = f'zs{tag}'; os.makedirs(name, exist_ok=True); open(f'{name}/vars.fd', 'ab').close()
     vm = sbvm.VM(name, PARTS, [], secure=False, mem=MEM, extra=extra); t = time.time()
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; seen = g.s.read(0.3)
     up = False; end = time.time() + (900 if FAILS[0] < 2 else 420)
     while time.time() < end:
         try:
-            o = g.sh('echo "UP$((40+2))"', 8); seen = (seen + o)[-6000:]
+            o = g.sh('echo "UP$((40+2))"', 8); seen = (seen + o)[-12000:]
             if 'UP42' in o: up = True; break
         except OSError: pass
         if vm.p.poll() is not None: break   # (QEMU ended)
@@ -87,7 +87,7 @@ def boot(v, tag, kernel=None):
         try: ql = open(os.path.join(vm.dir, 'qemu.log')).read()[-2000:]
         except OSError: ql = ''
         out('  QEMU:', 'running' if vm.p.poll() is None else f'ended ({vm.p.returncode})', '| its log:', ql.replace('\n', ' / ') or '(empty)')
-        out('  the serial line, last:', seen[-2500:].replace('\r', '').replace('\n', ' / '))
+        out('  the serial line, last:', seen[-5000:].replace('\r', '').replace('\n', ' / '))
         try: vm.shot('notup'); out('  screenshot taken')
         except Exception as e: out('  no screenshot:', e)
     else: FAILS[0] = 0
@@ -147,7 +147,7 @@ try:
             if not up:
                 res = {'variant': v, 'start': i, 'error': 'no serial shell'}; JS.write(json.dumps(res) + '\n'); stop(vm, g)
                 if os.environ.get('KERNEL2') and not CONTROL:
-                    CONTROL.append(1); vm2, g2, up2 = boot(v, f'c{i}{v}', os.environ['KERNEL2'])
+                    CONTROL.append(1); vm2, g2, up2 = boot(v, f'c{i}{v}', os.environ['KERNEL2'], 'console=ttyS0,115200 loglevel=6')   # (its messages on the serial line)
                     out(f'control: the same drive with the release\'s own kernel: serial shell {"up" if up2 else "NOT up"}'); stop(vm2, g2)
                 if FAILS[0] >= 4: out('four starts in a row without a serial shell: stopped (see the lines above)'); raise SystemExit(3)
                 continue
