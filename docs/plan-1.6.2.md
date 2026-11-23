@@ -846,6 +846,45 @@ quick settings, the notifications and the calendar; cm_open off a side taskbar).
 in tbside-check.yml. **The owner's check:** the taskbar at the left and at the right on the Vivobook, on Native and Chromium:
 each pop-up and menu, and anything else that still looks wrong (with a screenshot).
 
+### 38. Smaller pages for the native desktop's app windows, measured (added on 2026-11-22)
+The owner, 2026-11-22, after a screenshot of Task Manager on the Vivobook (two WebKitWebProcess, 434 MB and 354 MB by their RSS)
+and another session's suggestion that some windows could run "at a fraction of the MB": "Yes, add it to the plan and take the
+measurements necessary. Follow your suggested steps to implement the improvement."
+**Why:** on the native desktop every app window loads the whole desktop page (index.html#app=NAME, oneapp59.js): the core of
+base_v24.html (about 1.8 MB of script) and the modules (about 2.8 MB), less the self-contained apps the build already moves to
+files loaded when opened (1.5.9 plan 10.1) and what 1.6.1 Part 23 B (lean61.js) stops an app window from building. Each window's
+page is a whole document with all of that parsed and kept, even in the shared web process; Task Manager has a web process of its
+own since #598 (kept: it stays responsive while the shared one is busy). Chromium mode is not concerned: its windows are part of
+its one page.
+**The readings (devlink, read-only; PSS / private, MB):**
+- 2026-11-22 20:24 CST (000567; 12.5 min after start; Task Manager and one other window open): the shared web process 325 / 264,
+  Task Manager's own 190 / 131, rudolf-native 145 / 95, the network process 33 / 22; memory used 1.4 GB of 3.4.
+- What each kind of window adds (the owner closing and opening Task Manager, Calculator and Notepad, read after each): below,
+  as they come.
+**Steps (each kept only if the numbers say so):**
+1. **Measured on the Vivobook** (above), and on the host: each window kind's cost in the shared process and in its own; a web
+   process's floor with a near-empty page; what of the page a window really runs (Chromium's precise coverage of a Task Manager,
+   a Calculator and a Notepad window through a test session), so the saving is known before building.
+2. **Task Manager first:** `build19.py` also makes a small page for it (`a/app-taskmgr.html`, from the same modules and the parts of
+   base_v24.html it needs, by a list in the build, never a copy), which the native shell opens for Task Manager instead of
+   index.html#app=taskmgr; in its own web process as now. The same rudolfd token, peer check and confinement; nothing new asked of
+   rudolfd. Tests: the small page against the full page's Task Manager (its DOM, its tabs, every action; as sethooks61_t.js
+   compares), Native against Chromium (same_t.sh), and the memory before and after (host and the owner's Vivobook).
+3. **Then the simple apps, one at a time** (Calculator, Notepad, the media player; not the shell's hidden
+   page, File Explorer, Blitzen or the Office apps, which use most of the page), each kept only with a measured saving worth it
+   (aim: 40 MB or more per window) and its own comparison test.
+4. **Settings, panel by panel** (the owner names it with Task Manager as the main concern): Settings reaches into most of the
+   page, so a small page per panel (Sound, Display, Network...) rather than one for all of it, each with its comparison test.
+5. **Oracle's Chromium apart:** on Native, Oracle runs in Rudolf's own Chromium (one for every Oracle window), not in these pages;
+   its memory (how Chromium splits and keeps its tab processes) is measured and worked on as its own item.
+6. **The sign-in screen's flash:** each app window loading the whole page showed the desktop's sign-in screen for a moment
+   before its app (the owner saw it early in Native's work; it was hidden since); a small page has no sign-in screen at all.
+7. **Nothing weakened, nothing drifting:** a module missing from a small page is a test failure, never a quiet gap (each small page
+   checks at load that the functions its list says it needs exist, and its test runs every action); Native keeps looking and
+   working exactly as Chromium.
+**The owner's checks:** Task Manager (and each app moved) on the Vivobook: everything it does, and the memory in Task Manager's own
+Processes tab before and after.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -865,3 +904,4 @@ each pop-up and menu, and anything else that still looks wrong (with a screensho
 13. Part 35 (network shares): SMB in File Explorer in one PR; the owner's check on a share at home if there is one.
 14. Part 36 (Desert Camp): one PR; the owner's look on the Vivobook in light and dark on each engine.
 15. Part 37 (the side taskbar's pop-ups and menus): one PR; the owner's look on the Vivobook.
+16. Part 38 (smaller pages for app windows): the measurements, then Task Manager in one PR, then the simple apps one at a time.
