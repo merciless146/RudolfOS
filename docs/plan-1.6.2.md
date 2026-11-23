@@ -929,8 +929,16 @@ its one page.
 **The readings (devlink, read-only; PSS / private, MB):**
 - 2026-11-22 20:24 CST (000567; 12.5 min after start; Task Manager and one other window open): the shared web process 325 / 264,
   Task Manager's own 190 / 131, rudolf-native 145 / 95, the network process 33 / 22; memory used 1.4 GB of 3.4.
-- What each kind of window adds (the owner closing and opening Task Manager, Calculator and Notepad, read after each): below,
-  as they come.
+- What each kind of window adds, 2026-11-22 21:19-21:22 CST (devlink 000568-000570; the owner closed Task Manager, opened
+  Calculator and Notepad, reopened Task Manager, then opened Settings; own memory, MB):
+  - Calculator and Notepad together: the shared web process 264 -> 294, about **15 MB each** (they reuse what the shared
+    process has already loaded);
+  - Task Manager reopened: its own web process 132 again (110-132 as WebKit tidies it): **about 130 MB**, all of it its own;
+  - Settings: the shared process 294 -> 331 at once and 466 a minute later as its panels came in: **about 170 MB**;
+  - Xorg 92, rudolf-native 96, the network process 22-40 (unchanged by the windows).
+  So: Task Manager (its own process, the whole page loaded fresh) and Settings (most of the page used) are where the memory
+  goes; a small app in the shared process costs little, below this part's 40 MB bar: Calculator, Notepad and the like are
+  not moved (step 3 kept only for an app measured above the bar).
 - On the host (Chrome 153's renderer, 2026-11-22, private / PSS MB): a blank page 26 / 50; the desktop page signed in 106 / 134;
   as an app window (#app=taskmgr) 101 / 129; the same page with its scripts taken out 31 / 55 (its styles and markup cost about
   5 MB). So nearly all of a window's cost is the page's 3.5 MB of script being loaded, compiled and kept (about 75 MB here),
@@ -946,7 +954,7 @@ its one page.
    index.html#app=taskmgr; in its own web process as now. The same rudolfd token, peer check and confinement; nothing new asked of
    rudolfd. Tests: the small page against the full page's Task Manager (its DOM, its tabs, every action; as sethooks61_t.js
    compares), Native against Chromium (same_t.sh), and the memory before and after (host and the owner's Vivobook).
-3. **Then the simple apps, one at a time** (Calculator, Notepad, the media player; not the shell's hidden
+3. **(By the readings: only apps measured above 40 MB; Calculator and Notepad are not.) Then the simple apps, one at a time** (Calculator, Notepad, the media player; not the shell's hidden
    page, File Explorer, Blitzen or the Office apps, which use most of the page), each kept only with a measured saving worth it
    (aim: 40 MB or more per window) and its own comparison test.
 4. **Settings, panel by panel** (the owner names it with Task Manager as the main concern): Settings reaches into most of the
