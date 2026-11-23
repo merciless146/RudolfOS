@@ -15,8 +15,10 @@
 # from private addresses while it is on, the LAN game relay's port from private addresses while a game is hosted (1.6.2
 # Part 30: the duel chain, never on a cellular interface), and (1.6.1 Part 9) multicast DNS's answers to Find printers (the mdns chain: to
 # port 5353 from port 5353, sent to the group 224.0.0.251, which routers never forward, or to this computer by a device
-# on the same link, its TTL 255 unchanged by any router; never on a cellular interface). Everything else is counted and
-# dropped.
+# on the same link, its TTL 255 unchanged by any router; never on a cellular interface), and (1.6.2 Part 35) WS-Discovery's
+# answers to File Explorer's Network (the wsd chain: to port 3702 from port 3702, from a private address, never on a cellular
+# interface; rudolf-shares find holds port 3702 for its two seconds only, without joining the group, so nothing listens there
+# otherwise). Everything else is counted and dropped.
 # GPL-2.0-or-later.
 OFF=/persist/etc/firewall-off
 REM=/run/rudolf/firewall-remote
@@ -42,6 +44,7 @@ table inet rudolf {
 		jump hotspot
 		jump duel
 		jump mdns
+		jump wsd
 		counter name blocked drop
 	}
 	chain remote {
@@ -54,6 +57,10 @@ table inet rudolf {
 		iifname @cellular return
 		ip daddr 224.0.0.251 udp sport 5353 udp dport 5353 accept
 		ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } ip ttl 255 udp sport 5353 udp dport 5353 accept
+	}
+	chain wsd {
+		iifname @cellular return
+		ip saddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } udp sport 3702 udp dport 3702 accept
 	}
 }
 EOF

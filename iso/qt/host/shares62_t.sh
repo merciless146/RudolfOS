@@ -19,10 +19,11 @@ PIDS=""; U1=ann62t; U2=bob62t
 cleanup() {
 	for p in $PIDS; do kill $p 2>/dev/null; done
 	for m in $(awk '$2 ~ /^\/tmp\/sh62/ {print $2}' /proc/mounts | sort -r); do umount -l "$m" 2>/dev/null; done
-	ip netns del nas62 2>/dev/null; ip netns del old62 2>/dev/null; ip link del br62 2>/dev/null
+	ip netns del nas62 2>/dev/null; ip netns del old62 2>/dev/null; ip netns del cli62 2>/dev/null; ip link del br62 2>/dev/null
 	userdel $U1 2>/dev/null; userdel $U2 2>/dev/null; rm -rf $T
 }
 trap cleanup EXIT
+[ -n "$SH62_KEEP" ] && trap - EXIT
 command -v smbd >/dev/null && command -v wsdd >/dev/null && python3 -c 'import zeroconf' 2>/dev/null || { echo "FAIL: needs samba, wsdd and python3-zeroconf"; exit 1; }
 . $SYS/../systools/hardflags.sh
 gcc -O2 $HARD -o $T/rudolf-shares $SYS/rudolf-shares.c -lcrypto || { echo "FAIL build rudolf-shares"; exit 1; }
@@ -31,8 +32,9 @@ printf 'uANN000001 47110\nuBOB000002 47111\n' > $T/aumap; echo uANN000001 > $T/r
 printf 'RR_TEST_RUN=%s/run\nRR_TEST_AUMAP=%s/aumap\nRR_TEST_HEALTH=%s/health.log\nRR_TEST_DIR=%s/root\nRR_TEST_SHARES=%s/run/shares\n' $T $T $T $T $T > $T/rr.conf
 gcc -O2 -Wall -Wno-format-truncation -DRR_TEST -DRR_TEST_CONF="\"$T/rr.conf\"" -o $T/drives $SYS/rudolf-drives.c || { echo "FAIL build drives"; exit 1; }
 # the network: a bridge, the two servers' namespaces
+for l in br62 vnas62 vold62 vcli62; do ip link del $l 2>/dev/null; done
 ip link add br62 type bridge && ip addr add 192.168.62.1/24 dev br62 && ip link set br62 up
-for n in nas62:2 old62:3; do ns=${n%:*}; a=${n#*:}; ip netns add $ns; ip link add v$ns type veth peer name e$ns; ip link set v$ns master br62 up
+for n in nas62:2 old62:3 cli62:10; do ns=${n%:*}; a=${n#*:}; ip netns add $ns; ip link add v$ns type veth peer name e$ns; ip link set v$ns master br62 up
 	ip link set e$ns netns $ns; ip -n $ns addr add 192.168.62.$a/24 dev e$ns; ip -n $ns link set e$ns up; ip -n $ns link set lo up; ip -n $ns route add 224.0.0.0/4 dev e$ns; done
 # the servers' users and passwords, made for this run (a comma and an equals sign in Ann's, as a mount option would have them)
 useradd -M -s /bin/false $U1; useradd -M -s /bin/false $U2
@@ -89,6 +91,19 @@ RS=$T/rudolf-shares
 # ---- rudolf-shares
 o=$(RS_CELLULAR=/nonexistent $RS find); o2=$(RS_MDNS=127.0.0.1:9 $RS find)
 ok "1. find: the NAS by multicast DNS (Nas62, nas62.local) and, asked by WS-Discovery alone, the Windows-like computer by its own name (WIN62, workgroup HOME62)" "$(echo "$o" | grep -q '"name":"Nas62","ip":"192.168.62.2","host":"nas62.local","how":"mdns"' && echo "$o2" | grep -q '"name":"WIN62","ip":"192.168.62.2","host":"WIN62","how":"wsd","group":"HOME62"' && echo 1)" "$o | $o2"
+# with Rudolf OS's firewall on (a computer of its own on the same network: cli62, the rules of iso/sys/root/usr/lib/rudolf/firewall)
+FW=$SYS/root/usr/lib/rudolf/firewall; mkdir -p /run/rudolf
+if command -v nft >/dev/null; then
+	ip netns exec cli62 sh $FW start; o=$(ip netns exec cli62 nft list chain inet rudolf wsd 2>&1); c0=$(ip netns exec cli62 nft list counter inet rudolf blocked | grep -o 'packets [0-9]*')
+	o2=$(ip netns exec cli62 env RS_CELLULAR=/nonexistent $RS find)
+	o3=$(ip netns exec cli62 sh -c 'cat /proc/net/udp /proc/net/tcp' | awk 'NR>1 && $4 != "01" {split($2,a,":"); print a[2]}' | sort -u | tr '\n' ' ')
+	ip netns exec nas62 python3 -c "import socket;s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);[s.sendto(b'x',('192.168.62.10',p)) for p in (3702,5353,445)];t=socket.socket();t.settimeout(1)
+try: t.connect(('192.168.62.10',445))
+except Exception as e: print(type(e).__name__)"; c1=$(ip netns exec cli62 nft list counter inet rudolf blocked | grep -o 'packets [0-9]*')
+	ok "1b. with the firewall on: the wsd chain (3702 from 3702, private addresses, not cellular); found both ways (multicast DNS's and WS-Discovery's answers let in); nothing listening afterwards, and what the NAS sends to it dropped" "$(echo "$o" | grep -q 'iifname @cellular return' && echo "$o" | grep -q 'udp sport 3702 udp dport 3702 accept' && echo "$o2" | grep -q '"how":"mdns"' && [ -z "$(echo $o3)" ] && [ "$c0" != "$c1" ] && echo 1)" "$o | $o2 | listening: $o3 | $c0 -> $c1"
+	o2=$(ip netns exec cli62 env RS_CELLULAR=/nonexistent RS_MDNS=127.0.0.1:9 $RS find)
+	ok "1c. ...and the Windows-like computer by WS-Discovery alone, through the firewall" "$(echo "$o2" | grep -q '"name":"WIN62".*"how":"wsd"' && echo 1)" "$o2"
+else echo "NOTE: no nft here: the firewall checks are skipped"; fi
 o=$($RS resolve nas62); o2=$($RS resolve 192.168.62.3); o3=$($RS resolve 'a;b' 2>&1; echo "rc=$?")
 ok "2. resolve: nas62 by multicast DNS (nas62.local), an address as it is; a name that is not one refused" "$([ "$o" = 192.168.62.2 ] && [ "$o2" = 192.168.62.3 ] && echo "$o3" | grep -q 'rc=2' && echo 1)" "$o $o2 $o3"
 o=$($RS probe 192.168.62.2); o2=$($RS probe 192.168.62.3); o3=$($RS probe 192.168.62.9)
@@ -107,7 +122,7 @@ r5=$(DRI "x\ny\n\n" share-mount 47110 $ID 192.168.62.2 'nas share' docs 3 0); r6
 r7=$(DRI "x\ny\n\n" share-mount 47110 $ID 127.0.0.1 nas docs 3 0); r8=$(DRI "a,uid=0\ny\n\n" share-mount 47110 $ID 192.168.62.2 nas docs 3 0)
 r9=$(DRI "x\ny\n\n" share-mount 0 $ID 192.168.62.2 nas docs 3 0)
 ok "6. refused (2, said in the health log): SMB 1.0 and 2.0, another user than the signed-in account's (or root), a share's name with an option in it, a server's name with a space, an id that is not one, this computer itself, a user name with an option in it" "$([ "$r1$r2$r3$r4$r5$r6$r7$r8$r9" = 222222222 ] && grep -q 'an SMB version other than 3 or 2.1' $T/health.log && grep -q 'another user than the signed-in account' $T/health.log && ! grep -q cifs /proc/mounts && echo 1)" "$r1 $r2 $r3 $r4 $r5 $r6 $r7 $r8 $r9 $(cat $T/health.log)"
-if ! grep -qw cifs /proc/filesystems && ! modprobe cifs 2>/dev/null; then echo "NOTE: this kernel has no cifs module: the mount checks are skipped"; echo "$N/$N passed (mounts skipped)"; [ $F = 0 ]; exit; fi
+if ! grep -qw cifs /proc/filesystems && ! modprobe cifs 2>/dev/null; then echo "NOTE: this kernel has no cifs module: the mount checks are skipped"; echo "$((N-F))/$N passed (mounts skipped)"; [ $F = 0 ]; exit; fi
 r=$(DRI "$U1\n$P1\n\n" share-mount 47110 $ID 192.168.62.2 nas docs 3 0); M=$T/run/shares/47110/$ID
 o=$(grep " $M " /proc/mounts); st=$(stat -c '%U:%u %a' $T/run/shares/47110 $M); cat $T/out $T/err
 ok "7. Ann's share opened (SMB 3, encrypted: \"mounted encrypted\") at shares/47110/ID: cifs, nosuid, nodev, noexec, uid and gid 47110, seal; the folders 47110's own, 0700" "$([ $r = 0 ] && grep -q '^mounted encrypted$' $T/out && echo "$o" | grep -q '^//nas/docs .* cifs rw,nosuid,nodev,noexec' && echo "$o" | grep -q 'uid=47110,forceuid,gid=47110,forcegid' && echo "$o" | grep -q ',seal' && echo "$st" | tr '\n' ' ' | grep -q '47110 700 .*47110 700' && echo 1)" "$r $(cat $T/out $T/err) | $o | $st"
