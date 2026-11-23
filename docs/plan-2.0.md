@@ -3,7 +3,10 @@
 Asked for on 2026-11-13: the whole of Rudolf OS as built so far converted to the native desktop. The shell first
 (docs/plan-1.6.0.md Part 12: everything the web desktop's shell has, Native the default), then every app rewritten as a
 native program, one at a time, in this plan. 2.0 is released when the apps in waves 1 to 3 are native.
-**Its name: Rudolf Kryptonite** (the owner, 2026-11-20: "Rudolf's 2.0 version with the 7.3 kernel and Wayland will be
+**Its name: WendigOS** (the owner, 2026-11-22: "Rudolf Kryptonite is going to receive a name-change. WendigOS will be the
+new name, standing for Wayland-ENhanced Driver-Integrated Gaming Operating System"): Rudolf OS 2.0, code-named WendigOS.
+The `kryptonite` branch, its workflows and the logo folder keep their names; a new logo comes in a step of its own.
+Before: (the owner, 2026-11-20: "Rudolf's 2.0 version with the 7.3 kernel and Wayland will be
 called Rudolf Kryptonite"): 2.0 on the newest kernel (7.3 and later) with Wayland. 1.6.x on the 6.18 LTS with X11 keeps
 the name Rudolf OS.
 2.0 also brings the phone's own build, on the hardware 1.6.1 proves ("The phone build", below).
@@ -11,22 +14,22 @@ the name Rudolf OS.
 **Two editions, one repository (the owner, 2026-11-22):** "The 6.18 kernel version with X11 is going to continue being
 developed as the main version of the operating system", and "Rudolf Kryptonite is going to be a version of Rudolf
 specifically built and optimized for gaming and mobile use. Rudolf as it currently is in 1.6.x is going to be the regular
-home office version." So Kryptonite is an edition beside Rudolf OS, not its replacement:
+home office version." So WendigOS is an edition beside Rudolf OS, not its replacement:
 - **Rudolf OS (1.6.x and on): the home and office edition, and the main one.** The 6.18 longterm kernel and X11, built
   for steadiness on everyday and older computers. It keeps the stable update channel, and the recovery system.
-- **Rudolf Kryptonite: the gaming and mobile edition.** The newest stable kernel (7.3.x, then 7.4 and on: newer graphics
+- **WendigOS: the gaming and mobile edition.** The newest stable kernel (7.3.x, then 7.4 and on: newer graphics
   drivers, handheld and controller drivers, HDR and variable refresh) with Wayland. It is tuned for games (game mode,
   the GPU drivers, Steam, Wine, emulators) and for phones and handhelds (the phone build, touch, battery). It has its
-  own update channel ("next", below, becoming Kryptonite's channel), so neither edition ever receives the other's
+  own update channel ("next", below, becoming WendigOS's channel), so neither edition ever receives the other's
   updates.
 - **One repository, built from main.** Most of the code is shared (the desktop, Oracle, Blitzen, File Explorer,
-  rudolfd, the security work), and Kryptonite's differences are additions: the kernel track, the Wayland session, and
+  rudolfd, the security work), and WendigOS's differences are additions: the kernel track, the Wayland session, and
   gaming and mobile tuning. They go into main behind build switches, and the release workflow builds each edition from
   the same tree. A fix made once reaches both, and the keys and their secrets stay in one place.
 - **The `kryptonite` branch only for work that cannot share main yet** (today: the 7.3 kernel, while its kexec-handover
   crash at 1.5 GB in QEMU is understood). Each piece moves into main behind its switch as soon as it is sound, so the
-  branch never drifts far from main. A separate repository only if Kryptonite ever stops sharing Rudolf's code.
-- **Work on Rudolf OS's features continues on main as before.** Gaming and mobile work is marked for Kryptonite in its
+  branch never drifts far from main. A separate repository only if WendigOS ever stops sharing Rudolf's code.
+- **Work on Rudolf OS's features continues on main as before.** Gaming and mobile work is marked for WendigOS in its
   plan and PR, with the switch that keeps it out of the home and office edition where it does not belong there.
 
 Why (1.5.9's measurements, docs/plan-1.5.9.md 12.3a): with nothing open Native uses 854 MB against Chromium's (formerly Standard's) 1,110 MB,
@@ -188,7 +191,7 @@ the security model do not change. Native, Chromium and Lite all run on it; X11 s
     - The test's apps were closed afterwards. The packages stay in the owner's Debian sandbox and can be removed with
       apt.
   - **W0 (B), planned: a real Wayland session from a test stick**, so nothing is installed on the laptop.
-    - **The build:** a Kryptonite test image built on the `kryptonite` branch (its kernel 7.3.x; or 6.18 for a
+    - **The build:** a WendigOS test image built on the `kryptonite` branch (its kernel 7.3.x; or 6.18 for a
       like-for-like comparison, built both ways if it costs little). It adds a wlroots kiosk compositor (Cage) and
       Xwayland in the image, and a boot entry "Wayland test" that starts the Chromium desktop's page with
       `--ozone-platform=wayland` under Cage instead of Xorg. Native's shell is X11-only until W1, so the comparison is
@@ -229,7 +232,7 @@ be done on 1.6's 6.18 LTS with X11 and also on a 7.3 build with Wayland: "Keep t
   (7.3.x on 2026-11-20, then 7.4 once it has settled): newer graphics drivers (7.2: AMD HDMI 2.1 FRL, Intel Arc; 7.3: NVK
   video decode, Valve's AMD reset and memory work), new hardware earlier, the 2026 Steam Controller and MSI Claw drivers,
   and the Wayland compositors' HDR and variable-refresh needs.
-- **The "next" channel (Rudolf Kryptonite's).** A third release channel beside stable and beta (gh-pages `next/`, its own manifest, signed with
+- **The "next" channel (WendigOS's).** A third release channel beside stable and beta (gh-pages `next/`, its own manifest, signed with
   the same keys, joined the way beta is joined in Settings › Update and recovery). Built by the same workflow with two
   switches: the kernel track (LTS or newest stable) and the session started by default (X11 or Wayland). Recovery mode
   stays the official stable release (the owner's rule), so a computer on "next" always has its way back.
@@ -243,12 +246,12 @@ be done on 1.6's 6.18 LTS with X11 and also on a 7.3 build with Wayland: "Keep t
 - **NVIDIA's own driver (docs/plan-1.6.1.md Part 19), on "next":** its module must build against each new kernel; the
   channel takes a new kernel only once it does (as Bazzite does), and says so in the build's notes.
 - **Its logo** (the owner, 2026-11-20): Rudolf's logo in carbon-fibre off-black instead of white, the glowing nose green
-  instead of red: iso/systools/kryptonite/ (kryptonite_logo.py draws it from the logo's own paths). Used wherever
-  Kryptonite shows its own logo (its boot splash, About, the "next" channel's page); 1.6.x keeps the white logo.
+  instead of red (made while 2.0 was Rudolf Kryptonite; WendigOS's own logo is a later step): iso/systools/kryptonite/ (kryptonite_logo.py draws it from the logo's own paths). Used wherever
+  WendigOS shows its own logo (its boot splash, About, the "next" channel's page); 1.6.x keeps the white logo.
 - **The cost:** two release builds and two versions to test; the owner's rule for every session (same_t.sh's screenshots
   and the behaviour scripts) runs on both tracks.
 - **Order:** the channel and the kernel switch first (nothing else changes for stable and beta); W0 measured on it; then
-  the Wayland stages as above. When 2.0 (Rudolf Kryptonite) is released, "next" becomes stable and 1.6.x keeps the LTS for older computers
+  the Wayland stages as above. When 2.0 (WendigOS) is released, "next" becomes stable and 1.6.x keeps the LTS for older computers
   for at least two releases.
 
 ## The phone build (added on 2026-11-15)
@@ -316,9 +319,9 @@ extensions, from a reviewed list in the Library, signed with its key) is suggest
 start in 1.6.1. The owner decides.
 
 ## Moved from 1.6.2: the mobile and gaming parts (added on 2026-11-22)
-Moved from docs/plan-1.6.2.md on 2026-11-22: Rudolf Kryptonite is the gaming and mobile edition ("Two editions, one
+Moved from docs/plan-1.6.2.md on 2026-11-22: WendigOS is the gaming and mobile edition ("Two editions, one
 repository", above), and the owner said "Yes" to moving these parts here. Their text is as it stood in the 1.6.2 plan,
-with numbers kept so references still point the right way. They are Kryptonite's, built from main behind its build
+with numbers kept so references still point the right way. They are WendigOS's, built from main behind its build
 switches, or on the `kryptonite` branch while they cannot share main.
 
 **What they need:**
@@ -328,7 +331,7 @@ switches, or on the `kryptonite` branch while they cannot share main.
 - **The Vivobook and the Asus desktop "RuckXTrauma", with the owner:** 19b (gaming measured).
 
 **Order:** Part 8 with the MiFi, then Part 7. Then the phone: Part 4, Part 6's items measured, 9b, and Part 5 when the
-hardware is there. 19b with the owner whenever games are measured, on Kryptonite's kernel too.
+hardware is there. 19b with the owner whenever games are measured, on WendigOS's kernel too.
 
 #### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
 The phone's hardware made to work, on today's native desktop; its interface is 2.0's (stage 2).
