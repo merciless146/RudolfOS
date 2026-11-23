@@ -34,14 +34,15 @@ finishing, it updates that file. Neither this file nor the handoff ever holds a 
 - Other sessions may be working at the same time: check open PRs and branches first; never redo their work or push to
   their branches (a push that is rejected means someone else pushed: fetch and look, never force). When `main` moves and a
   PR conflicts, merge `main` in: CHANGELOG keeps both sides; rebuild the page; regenerate the generated lists.
-- **Two editions, one repository** (the owner, 2026-11-22): **Rudolf OS** (1.6.x and on: the 6.18 longterm kernel and X11)
-  is the main version, the home and office edition; **Rudolf Kryptonite** (2.0: the newest kernel and Wayland) is the
-  gaming and mobile edition. Both are built from `main`: Kryptonite's additions go into `main` behind build switches that
-  keep them out of Rudolf OS's builds, so nothing of Kryptonite reaches Rudolf OS's releases or its update channels, and
-  Kryptonite has its own channel. Work that cannot share `main` yet (today the 7.3 kernel, while its crash after an
-  update's handover is understood) goes to the `kryptonite` branch (PRs with base `kryptonite`) and moves into `main`
-  behind its switch once it is sound. Mark Kryptonite's work as such in its plan (docs/plan-2.0.md) and PR. No separate
-  repository.
+- **Two editions, one repository** (the owner, 2026-11-22): **Rudolf OS** (1.6.x and on: the 6.18 longterm kernel and
+  X11) is the main version, the home and office edition; **WendigOS** (2.0: the newest kernel and Wayland;
+  Wayland-ENhanced Driver-Integrated Gaming Operating System, named Rudolf Kryptonite until 2026-11-22) is the gaming
+  and mobile edition. Both are built from `main`: WendigOS's additions go into `main` behind build switches that keep
+  them out of Rudolf OS's builds, so nothing of WendigOS reaches Rudolf OS's releases or its update channels, and
+  WendigOS has its own channel. Work that cannot share `main` yet (today the 7.3 kernel, while its crash after an
+  update's handover is understood) goes to the `kryptonite` branch (its name kept; PRs with base `kryptonite`) and moves
+  into `main` behind its switch once it is sound. Mark WendigOS's work as such in its plan (docs/plan-2.0.md) and PR. No
+  separate repository.
 - When a release is promoted to stable, it is published with the ISO, the boot files and the install guide
   (INSTALL.TXT, README.TXT; `rudolf-release.yml` does this).
 - **Recovery Mode always boots the official build's most recent stable version.**
@@ -81,8 +82,9 @@ followed by the session's link when the session gives one.
   fixes to Rudolf's emulator (Emu) are fine.
 - No artwork, fonts or photos of unknown licence. No trademarked logos (the Tor onion included). Never draw known
   characters.
-- **Rudolf** is Rudolf OS's own white, angular, slightly serious deer, distinct from Rudolph. Rudolf Kryptonite's logo is
-  in `iso/systools/kryptonite/` (carbon-fibre off-black, green nose): do not draw another.
+- **Rudolf** is Rudolf OS's own white, angular, slightly serious deer, distinct from Rudolph. 2.0's logo from its
+  Kryptonite days is in `iso/systools/kryptonite/` (carbon-fibre off-black, green nose); WendigOS gets a new logo in a step
+  of its own, only when the owner asks: do not draw one otherwise.
 
 ## The owner's computers and phones
 - Change the owner's laptop (the Vivobook) only when the owner asks, and never restart it while they may be using it.
