@@ -72,10 +72,13 @@ def run(g, c, t=60, show=True):
     if show: out('$', c[:160].replace('\n', ' ; ')); out(o.rstrip()[-2500:])
     return o
 TOK = "$(busybox wget -q -O- http://127.0.0.1:8080/ | grep -o 'token:\"[0-9a-f]*' | cut -d'\"' -f2)"
-# (curl's answers with their status: busybox wget prints nothing for a refusal)
+# (every answer with its body and its status, " HTTP409": busybox wget prints neither the body nor the code of a
+# refusal, and the release has no curl, so without curl the request goes through busybox nc as HTTP/1.0; a refusal
+# also gets its status line, as wget printed it)
 def api(sh, p, post=False, t=60):
     return sh(f"T={TOK}; if command -v curl >/dev/null; then curl -s -w ' HTTP%{{http_code}}' {'-X POST' if post else ''} -H \"X-Rudolf-Token: $T\" 'http://127.0.0.1:8080/api/{p}'; "
-              f"else busybox wget -q -O- --header \"X-Rudolf-Token: $T\" {'--post-data= ' if post else ''}'http://127.0.0.1:8080/api/{p}' 2>&1; fi; echo", t)
+              f"else printf '%s /api/%s HTTP/1.0\\r\\nHost: 127.0.0.1\\r\\nX-Rudolf-Token: %s\\r\\nContent-Length: 0\\r\\n\\r\\n' {'POST' if post else 'GET'} '{p}' \"$T\" | busybox nc 127.0.0.1 8080 > /tmp/api161.out; "
+              f"tr -d '\\r' < /tmp/api161.out | awk 'NR==1&&$2!~/^2/{{print}} b{{print;next}} /^$/{{b=1}}'; printf ' HTTP%s' \"$(head -1 /tmp/api161.out | cut -d' ' -f2)\"; fi; echo", t)
 
 make_drive(DRV)
 vm = None
@@ -157,7 +160,8 @@ try:
     o = sh("grep -c 'the devices helper did not start' /run/rudolf/rudolfd.log", 20)
     ok('28. the devices helper ran each time', re.search(r'^0$', o, re.M), o)
     # Task Manager's End process and the kernel's messages (1.6.1 Part 11, the procs and logs helpers)
-    o = sh("su -s /bin/sh rudolf -c 'setsid sleep 600 </dev/null >/dev/null 2>&1 &'; sleep 1; pgrep -u 1000 -x sleep | tail -1", 20); m = re.findall(r'^(\d+)$', o, re.M)
+    o = sh("su -s /bin/sh rudolf -c 'setsid sleep 600 </dev/null >/dev/null 2>&1 &'; sleep 1; "
+           "for p in $(pidof sleep); do [ \"$(awk '/^Uid/{print $2}' /proc/$p/status 2>/dev/null)\" = 1000 ] && echo $p; done | tail -1", 20); m = re.findall(r'^(\d+)$', o, re.M)   # (busybox pgrep has no -u)
     o = (api(sh, f'proc/end?pid={m[-1]}', True) if m else 'no sleep') + sh(f"sleep 1; grep -c ' S \\| R ' /proc/{m[-1] if m else 1}/stat 2>/dev/null || echo gone", 20)
     rp = re.findall(r'^(\d+)', sh("pidof rudolfd | tr ' ' '\\n' | tail -1", 20), re.M); o += api(sh, f'proc/end?pid={rp[-1] if rp else 2}', True)
     ok('29. procs: a process of the desktop\'s user ended through the helper; rudolfd itself refused (403) as before', '"message":"sleep"' in o and 'gone' in o and 'HTTP403' in o, o[-600:])
