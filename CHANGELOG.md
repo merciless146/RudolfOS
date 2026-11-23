@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- New: scanners (step 1 of 4: driverless scanning, without the Scan app yet). Rudolf OS finds the scanners and
+  printer-scanners on the home network that speak eSCL (AirScan) or WSD, as most made since about 2015 do, with the
+  firewall on, and USB ones that speak eSCL through IPP over USB; it scans with sane-airscan (pages in colour, grey or black
+  and white, an area, the resolution, the document feeder's pages) and saves PDF, PNG or JPEG. Scanning runs as the
+  account's own user. 495 KB more on the disk; nothing runs until a scan.
 - Fixed: with the taskbar at the left or the right, Quick settings, the notifications and the calendar open beside their
   buttons (they opened in the screen's bottom-right corner, over a taskbar at the right); a right-click menu no longer lies over
   the taskbar; and the desktop's icons move at once when the taskbar grows instead of sitting under it. The same on Native.
