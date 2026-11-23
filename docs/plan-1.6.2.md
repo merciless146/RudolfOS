@@ -628,6 +628,21 @@ desktop and hurts on neither.
    stopwatch is enough), and Settings › System health's memory at idle, on each of Native, Chromium and Lite, in a table:
    machine, engine, build (xz/zstd), start, first Oracle, memory.
 
+**Status (2026-11-23, item 1: the kernel first; the PR "zstd for the system's images, step 1").** iso/kconfig.sh and
+iso/kconfig-arm64.sh build SQUASHFS_ZSTD in (it selects ZSTD_DECOMPRESS, built in already for the start-up image and
+zram), and kconfig-required.txt requires it; the images are unchanged (xz). How the updater knows what a kernel reads:
+the release list says it, signed: make_release.py writes "squashfs xz zstd zlib" from the kernel's own build
+configuration (--kernel-config: ci_release.sh's and build_iso.sh's .config; a kernel kept from the previous release
+keeps that release's line, --squashfs), and a row "C NAME COMPRESSION BLOCKSIZE" per layer from its squashfs superblock
+(the compression's number in the 16 bits at byte 20). A list without the line is from before 1.6.2, whose kernels read
+xz and zlib only. The kernel that reads a slot's layers is that slot's own (the start-up hands over to it with kexec
+before mounting them), so rudolf-update checks each release against its own kernel: when checking (the signed rows: the
+release is not offered), once downloaded (each layer's own superblock, which must also match its row), for the
+recovery system and for a stick; and the running kernel for the one layer it mounts itself (a stick's base layer, for
+its keys). make_release.py refuses to write such a release in the first place. Tested by iso/qt/host/sqcomp162_t.sh
+(17 checks; the workflow sqcomp-check.yml, with real mksquashfs images). **This must be in a released beta before any
+image switches** (item 3's PR says so).
+
 ### 32. Emu's Nintendo 64 and Dreamcast games, played for real (added on 2026-11-22)
 The owner: "Create a scheduled task to test run the Dreamcast and N64 emulators for Emu, making test games specifically for
 the test if needed." Until then the native path (1.6.1, PR #485: rudolfd's native/run with Flathub's Rosalie's Mupen GUI
