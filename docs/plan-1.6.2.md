@@ -756,6 +756,18 @@ under 0.05 % of pixels differ); stopped when not seen, in power saver, half the 
 **The owner's check:** Display Properties › Dynamic Backgrounds › Desert Camp on the Vivobook, light and dark, on Native,
 Chromium and Lite.
 
+### 37. The taskbar at the left or the right: its pop-ups and menus (added on 2026-11-22)
+The owner, 2026-11-22: "Some of the taskbar menus and visuals when set to the left and right side options need correction."
+Found on the page (screenshots of every menu with the taskbar at each side) and in rudolf-native.c, the same on both:
+Quick settings, the notifications and the calendar opened in the bottom-right corner (as for a taskbar at the bottom: over a
+taskbar at the right, across the screen from one at the left); a right-click menu opened at the pointer over the taskbar; the
+desktop's inset (--bw) followed the taskbar's width only at the clock's next minute, so a growing taskbar covered the icons.
+**Done (PR "The taskbar at the left or the right"):** desktop/tbside62.js (beside their buttons as flyPlace places the network's
+and the sound's; menus kept off the taskbar; --bw following the taskbar's width); rudolf-native.c the same (fl_place_over for
+quick settings, the notifications and the calendar; cm_open off a side taskbar). tbside62_t.js 8/8; the native desktop built
+in tbside-check.yml. **The owner's check:** the taskbar at the left and at the right on the Vivobook, on Native and Chromium:
+each pop-up and menu, and anything else that still looks wrong (with a screenshot).
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -774,3 +786,4 @@ Chromium and Lite.
 12. Part 34 (scanners): driverless eSCL first with the Scan app, then the older USB backends; the owner's check on the Canon.
 13. Part 35 (network shares): SMB in File Explorer in one PR; the owner's check on a share at home if there is one.
 14. Part 36 (Desert Camp): one PR; the owner's look on the Vivobook in light and dark on each engine.
+15. Part 37 (the side taskbar's pop-ups and menus): one PR; the owner's look on the Vivobook.

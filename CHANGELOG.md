@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: with the taskbar at the left or the right, Quick settings, the notifications and the calendar open beside their
+  buttons (they opened in the screen's bottom-right corner, over a taskbar at the right); a right-click menu no longer lies over
+  the taskbar; and the desktop's icons move at once when the taskbar grows instead of sitting under it. The same on Native.
 - New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
   tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
   night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same
