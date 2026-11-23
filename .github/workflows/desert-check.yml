@@ -1,0 +1,25 @@
+# Desert Camp, the third moving background (1.6.2): desktop/desert62.js on the desktop page with a stand-in rudolfd, and
+# rudolf-native.c's drawing of it (ds_draw, built on its own with cairo) compared with the page's frames
+# (qt/shell2/desert62_t.js). Publishes nothing.
+name: Desert Camp check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['desktop/desert62.js', 'desktop/base_v24.html', 'desktop/lean61.js', 'iso/sys/rudolf-native.c', 'iso/systools/backgrounds62/**',
+      'iso/qt/shell2/desert62_t.js', '.github/workflows/desert-check.yml']
+permissions: {contents: read}
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libcairo2-dev >/dev/null
+          npm install --no-save playwright@1 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page built
+        run: cd desktop && python3 build19.py ../iso/www/index.html
+      - name: Desert Camp on the page and on Native (desert62_t.js)
+        run: node iso/qt/shell2/desert62_t.js

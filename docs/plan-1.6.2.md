@@ -742,6 +742,20 @@ fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, a
    share, a wrong password, a share of another account not seen. **The owner's check:** a share on a Windows computer or a
    NAS at home, if there is one.
 
+### 36. Desert Camp, the third moving background (added on 2026-11-22)
+The owner, 2026-11-22: a third dynamic background in Display Properties: an open desert with sparse dry foliage and a few tents
+across it, one in front; light mode a bright orange mirage sunrise (the mirage animated, the campfires smoking); dark mode the
+tents lit from inside, blurred by the fabric, the campfires burning calmly, twinkling stars and a nebula with shooting stars now
+and then; very sparse high clouds in both. Then: the tents closer together with each campfire in the middle of its cluster;
+more variety in the tents' shapes and styles; the campers' things where people leave them; the tents behind one another in the
+right order.
+**Done (PR "Desert Camp"):** the picture (iso/systools/backgrounds62/desert.py, procedural; the owner's photos only a reference),
+`DYN.desert` with `DYN_LIVE`; the moving parts in desktop/desert62.js (Chromium and Lite) and rudolf-native.c `ds_draw`
+(Native), worked out from the time alone so both draw the same frames (desert62_t.js 11/11: Native's frames against the page's,
+under 0.05 % of pixels differ); stopped when not seen, in power saver, half the frames on battery, still with Reduce motion.
+**The owner's check:** Display Properties › Dynamic Backgrounds › Desert Camp on the Vivobook, light and dark, on Native,
+Chromium and Lite.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -759,3 +773,4 @@ fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, a
 11. Part 33 (VPN): WireGuard in one PR, then OpenVPN, then the kill switch; tested in QEMU; the owner's check with a real VPN.
 12. Part 34 (scanners): driverless eSCL first with the Scan app, then the older USB backends; the owner's check on the Canon.
 13. Part 35 (network shares): SMB in File Explorer in one PR; the owner's check on a share at home if there is one.
+14. Part 36 (Desert Camp): one PR; the owner's look on the Vivobook in light and dark on each engine.

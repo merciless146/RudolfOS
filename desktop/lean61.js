@@ -37,7 +37,8 @@ async function oaLeanCat(cat0,args){try{await oaAppsReady()}catch(e){}
  OA_LEANS.full=1;try{iconsApply()}catch(e){}OA_LEANS.given++;return cat0.apply(this,args)}
 /* (and what the page drew of them as it loaded, for the last account's background, before this module: taken away) */
 function oaLeanDynGone(){try{if(typeof STS=='object'&&STS.el){petStop();STS.el.remove();STS.el=STS.img=null;STS.key='';PET.cv=PET.lcv=null}}catch(e){}
- try{if(typeof AUR=='object'&&AUR.el){aurStop();AUR.el.remove();AUR.el=AUR.cv=AUR.sky=null;AUR.on=false}}catch(e){}}
+ try{if(typeof AUR=='object'&&AUR.el){aurStop();AUR.el.remove();AUR.el=AUR.cv=AUR.sky=null;AUR.on=false}}catch(e){}
+ try{if(typeof DSV=='object'&&DSV.el){dsStop();DSV.el.remove();DSV.el=DSV.cv=null;DSV.on=false}}catch(e){}}
 if(OA_LEAN){
  {const _ia=iconsApply;iconsApply=function(){return oaLeanIcons.call(this,_ia,...arguments)}}
  pinDraw=function(){PINS.innerHTML=''};

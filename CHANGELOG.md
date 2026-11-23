@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
+  tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
+  night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same
+  on Native, Chromium and Lite.
 - Fixed: Nintendo 64 and Dreamcast games in Emu never started. Starting one stopped Rudolf OS's system service (it restarts
   by itself) before the emulator opened. Now Rosalie's Mupen GUI and Flycast open with the game, full screen.
 - Fixed: Nintendo 64 games had no controls. Rosalie's Mupen GUI connects no controller until its settings have been saved
