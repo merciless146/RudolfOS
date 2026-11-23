@@ -6,6 +6,8 @@
 #define _GNU_SOURCE
 #include <gtk/gtk.h>
 #include <gdk/gdkx.h>
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
 #include <arpa/inet.h>
 #include <errno.h>
 #include <math.h>
@@ -27,7 +29,7 @@ RuiSettings RUI;
 static char HOST[64] = "127.0.0.1", TOKEN[64], APP[32];
 static int PORT = 8080;
 static GtkCssProvider *CSSP;
-typedef struct { void (*cb)(void *); void *d; } Cb;
+typedef struct { void (*cb)(void *); void *d; GtkWidget *w; } Cb;
 static GArray *SETCB;
 
 /* ------------------------------------------------------------------ rudolfd over HTTP (as rudolf-native's http()) */
@@ -123,6 +125,8 @@ const char *rui_tr(const char *en)
 /* ------------------------------------------------------------------ the settings and the theme */
 static double line_h(double px, int wt);
 double rui_px(double css) { return css * RUI.z; }
+const char *rui_version(void) { return RUI_RVER; }
+const char *rui_version_date(void) { return RUI_RVERDATE; }
 /* the theme for the settings now: mkui.py's CSS with the account's values in, every length scaled by the display scaling */
 static void theme_apply(void)
 {
@@ -166,10 +170,13 @@ static int settings_read(void)
 	{ char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
 	jstr(s, "tx", n.tx, sizeof n.tx); { RGB c; if (!hex2rgb(n.tx, &c)) snprintf(n.tx, sizeof n.tx, "#000000"); }
 	snprintf(n.acfg, sizeof n.acfg, "%s", ink_black(hexc(n.accent, "#2563eb")) ? "#000000" : "#ffffff");   /* (acFg) */
-	n.gen = jnum(v, "gen", 0); jfree(v);
-	int changed = memcmp(&n, &RUI, sizeof n) != 0; RUI = n; return changed ? 1 : 2;
+	n.gen = RUI.gen; int changed = memcmp(&n, &RUI, sizeof n) != 0;   /* (what the look depends on: not every change of the page's settings) */
+	n.gen = jnum(v, "gen", 0); jfree(v); RUI = n; return changed ? 1 : 2;
 }
-void rui_on_settings(void (*cb)(void *), void *d) { Cb c = { cb, d }; if (!SETCB) SETCB = g_array_new(FALSE, FALSE, sizeof(Cb)); g_array_append_val(SETCB, c); }
+void rui_on_settings(void (*cb)(void *), void *d) { Cb c = { cb, d, NULL }; if (!SETCB) SETCB = g_array_new(FALSE, FALSE, sizeof(Cb)); g_array_append_val(SETCB, c); }
+/* (a widget's own: forgotten when the widget goes) */
+static void cb_gone(GtkWidget *w, gpointer d) { (void)d; for (guint i = 0; SETCB && i < SETCB->len; i++) if (g_array_index(SETCB, Cb, i).w == w) { g_array_remove_index(SETCB, i); i--; } }
+static void on_settings_w(GtkWidget *w, void (*cb)(void *), void *d) { Cb c = { cb, d, w }; if (!SETCB) SETCB = g_array_new(FALSE, FALSE, sizeof(Cb)); g_array_append_val(SETCB, c); g_signal_connect(w, "destroy", G_CALLBACK(cb_gone), NULL); }
 static void redraw_all(void) { GList *l = gtk_window_list_toplevels(); for (GList *x = l; x; x = x->next) gtk_widget_queue_draw(x->data); g_list_free(l); }
 /* followed live: the page's settings' "gen" (every change the page saves), and light or dark as the day turns */
 static gboolean settings_tick(gpointer d)
@@ -177,7 +184,9 @@ static gboolean settings_tick(gpointer d)
 	(void)d; JV *v = (JV *)rui_get("/api/desktop/settings"); if (!v) return G_SOURCE_CONTINUE;
 	double g = jnum(v, "gen", 0); jfree(v);
 	int dk = RUI.dark; if (!strcmp(S.dm, "auto")) { int nd = is_dark(); dk = nd != RUI.dark; }
-	if (g != RUI.gen || dk) { if (settings_read() == 1) { theme_apply(); redraw_all(); for (guint i = 0; SETCB && i < SETCB->len; i++) { Cb *c = &g_array_index(SETCB, Cb, i); c->cb(c->d); } } }
+	if (g != RUI.gen || dk) { if (settings_read() == 1) { theme_apply(); redraw_all(); GArray *l = SETCB ? g_array_copy(SETCB) : NULL;   /* (a callback may make or destroy widgets) */
+		for (guint i = 0; l && i < l->len; i++) { Cb *c = &g_array_index(l, Cb, i); int live = !c->w; for (guint k = 0; !live && SETCB && k < SETCB->len; k++) if (g_array_index(SETCB, Cb, k).w == c->w && g_array_index(SETCB, Cb, k).d == c->d) live = 1; if (live) c->cb(c->d); }
+		if (l) g_array_unref(l); } }
 	return G_SOURCE_CONTINUE;
 }
 int rui_init(int *argc, char ***argv, const char *app)
@@ -320,7 +329,7 @@ static gboolean check_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	text_in(cr, c->label, bx + s + 3 + 8, 0, 2000, lh, RUI.fs, 400, 0);   /* (the gap: 8 px after the box's own margin) */
 	return TRUE;
 }
-static gboolean check_press(GtkWidget *w, GdkEventButton *e, gpointer d) { Check *c = d; if (e->button != 1) return FALSE; c->on = !c->on; gtk_widget_queue_draw(w); if (c->cb) c->cb(c->on, c->d); return TRUE; }
+static gboolean check_press(GtkWidget *w, GdkEventButton *e, gpointer d) { Check *c = d; if (e->button != 1 || e->type != GDK_BUTTON_RELEASE) return e->button == 1;   /* (on release, as a button is clicked) */ c->on = !c->on; gtk_widget_queue_draw(w); if (c->cb) c->cb(c->on, c->d); return TRUE; }
 static void check_free(gpointer d) { Check *c = d; g_free(c->label); g_free(c); }
 static void check_size(GtkWidget *w) { Check *c = g_object_get_data(G_OBJECT(w), "rui-ck"); cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *cr = cairo_create(s);
 	int tw = (int)lround(rui_px(4 + 13 + 3 + 8 + text_w(cr, c->label, RUI.fs, 400) + 1)); cairo_destroy(cr); cairo_surface_destroy(s);
@@ -329,15 +338,15 @@ static void check_re(void *d) { check_size(d); }
 GtkWidget *rui_check(const char *label, int on, void (*cb)(int, void *), void *d)
 {
 	Check *c = g_new0(Check, 1); c->on = on; c->label = g_strdup(rui_tr(label)); c->cb = cb; c->d = d;
-	GtkWidget *w = gtk_drawing_area_new(); g_object_set_data_full(G_OBJECT(w), "rui-ck", c, check_free); gtk_widget_add_events(w, GDK_BUTTON_PRESS_MASK);
-	g_signal_connect(w, "draw", G_CALLBACK(check_draw), c); g_signal_connect(w, "button-press-event", G_CALLBACK(check_press), c);
-	check_size(w); rui_on_settings(check_re, w); return w;
+	GtkWidget *w = gtk_drawing_area_new(); g_object_set_data_full(G_OBJECT(w), "rui-ck", c, check_free); gtk_widget_add_events(w, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
+	g_signal_connect(w, "draw", G_CALLBACK(check_draw), c); g_signal_connect(w, "button-press-event", G_CALLBACK(check_press), c); g_signal_connect(w, "button-release-event", G_CALLBACK(check_press), c);
+	check_size(w); on_settings_w(w, check_re, w); return w;
 }
 int rui_check_get(GtkWidget *w) { Check *c = g_object_get_data(G_OBJECT(w), "rui-ck"); return c && c->on; }
 
 /* ---- scroll bars as Chromium draws them (15 px: the track, the arrows at both ends, a grey rounded thumb) */
 #define SBW 15.0
-typedef struct { GtkWidget *sw, *bar; GtkAdjustment *adj; double grab, grab_v; } Scr;
+typedef struct { GtkWidget *sw, *bar; GtkAdjustment *adj; double grab, grab_v; int need; guint idle; } Scr;
 static gboolean sb_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	Scr *s = d; double z = RUI.z, H = gtk_widget_get_allocated_height(w) / z;
@@ -352,8 +361,10 @@ static gboolean sb_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	rrect(cr, 3, SBW + at + 4, 9, len - 8, 4.5); cairo_fill(cr);
 	return TRUE;
 }
+/* (shown only when there is more than fits, as Chromium's: its width set after GTK's allocation, not during it) */
+static gboolean sb_apply(gpointer d) { Scr *s = d; s->grab_v = s->grab_v; gtk_widget_set_size_request(s->bar, s->need ? (int)lround(rui_px(SBW)) : 0, -1); s->idle = 0; return G_SOURCE_REMOVE; }
 static void sb_changed(GtkAdjustment *a, gpointer d) { Scr *s = d; (void)a; double pg = gtk_adjustment_get_page_size(s->adj), r = gtk_adjustment_get_upper(s->adj) - gtk_adjustment_get_lower(s->adj);
-	gtk_widget_set_visible(s->bar, r > pg + .5); gtk_widget_queue_draw(s->bar); }
+	int need = r > pg + .5; if (need != s->need) { s->need = need; if (!s->idle) s->idle = g_idle_add(sb_apply, s); } gtk_widget_queue_draw(s->bar); }
 static gboolean sb_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	Scr *s = d; double z = RUI.z, y = e->y / z, H = gtk_widget_get_allocated_height(w) / z, pg = gtk_adjustment_get_page_size(s->adj), v = gtk_adjustment_get_value(s->adj);
@@ -368,62 +379,106 @@ static gboolean sb_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 	if (tl - len > 0) gtk_adjustment_set_value(s->adj, s->grab_v + (e->y / z - s->grab) * (up - lo - pg) / (tl - len)); return TRUE;
 }
 static gboolean sb_release(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)e; ((Scr *)d)->grab = 0; return TRUE; }
-static void sb_width(void *d) { Scr *s = d; gtk_widget_set_size_request(s->bar, (int)lround(rui_px(SBW)), -1); }
+static void sb_width(void *d) { Scr *s = d; gtk_widget_set_size_request(s->bar, s->need ? (int)lround(rui_px(SBW)) : 0, -1); }
 GtkWidget *rui_scroller(GtkWidget *child)
 {
 	Scr *s = g_new0(Scr, 1);
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0); g_object_set_data_full(G_OBJECT(box), "rui-scr", s, g_free);
 	s->sw = gtk_scrolled_window_new(NULL, NULL); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(s->sw), GTK_POLICY_NEVER, GTK_POLICY_EXTERNAL);
 	gtk_container_add(GTK_CONTAINER(s->sw), child); gtk_box_pack_start(GTK_BOX(box), s->sw, TRUE, TRUE, 0);
+	{ GtkWidget *vp = gtk_bin_get_child(GTK_BIN(s->sw)); if (GTK_IS_VIEWPORT(vp)) gtk_container_set_focus_vadjustment(GTK_CONTAINER(vp), NULL); }   /* (a click does not scroll the page to what it focused) */
 	s->adj = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(s->sw));
 	s->bar = gtk_drawing_area_new(); gtk_widget_add_events(s->bar, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK); sb_width(s);
 	g_signal_connect(s->bar, "draw", G_CALLBACK(sb_draw), s); g_signal_connect(s->bar, "button-press-event", G_CALLBACK(sb_press), s);
 	g_signal_connect(s->bar, "motion-notify-event", G_CALLBACK(sb_motion), s); g_signal_connect(s->bar, "button-release-event", G_CALLBACK(sb_release), s);
 	g_signal_connect(s->adj, "changed", G_CALLBACK(sb_changed), s); g_signal_connect(s->adj, "value-changed", G_CALLBACK(sb_changed), s);
-	gtk_box_pack_start(GTK_BOX(box), s->bar, FALSE, FALSE, 0); rui_on_settings(sb_width, s);
+	gtk_box_pack_start(GTK_BOX(box), s->bar, FALSE, FALSE, 0); on_settings_w(s->bar, sb_width, s);
 	return box;
 }
 
 /* ------------------------------------------------------------------ the table (.tmt) */
-typedef struct { char **c; long id; int group, muted[8], padl[8]; char *btn[8]; } Row;
-struct RuiTable { GtkWidget *w; int n; char *title[8]; int align[8]; double width[8], colx[9]; GPtrArray *rows; long sel; int hov;
-	void (*row)(long, int, double, double, void *); void (*head)(int, void *); void (*btn)(long, int, void *); void *d, *bd; };
+typedef struct { char **c; long id; int group, muted[8], padl[8], bold[8]; char *btn[8]; double y, h; } Row;
+struct RuiTable { GtkWidget *w; int n, nohead, wrap; char *title[8]; int align[8]; double width[8], colx[9], H, lastW; GPtrArray *rows; long sel; int hov;
+	void (*row)(long, int, double, double, void *); void (*head)(int, void *); void (*btn)(long, int, void *); void *d, *bd; int pend, pwhich; long pid_; };
 static void row_free(gpointer p) { Row *r = p; if (r->c) g_strfreev(r->c); for (int i = 0; i < 8; i++) g_free(r->btn[i]); g_free(r); }
-static double row_h(void) { const RuiPage *p = PG(); return p->td_pad[0] + line_h(p->tmt_fs[0], 400) + p->td_pad[2] + p->td_bw[0]; }
-static double head_h(void) { const RuiPage *p = PG(); return p->th_pad[0] + line_h(p->tmt_fs[0], 700) + p->th_pad[2] + p->th_bw[0]; }
+static double head_h0(void) { const RuiPage *p = PG(); return p->th_pad[0] + line_h(p->tmt_fs[0], 700) + p->th_pad[2] + p->th_bw[0]; }
+static double head_h(RuiTable *t) { return t->nohead ? 0 : head_h0(); }
 static double btn_w(cairo_t *cr, const char *l) { return 1 + 10 + text_w(cr, l, PG()->tmt_fs[0], 400) + 10 + 1; }
-/* CSS's automatic table layout (width 100 %): each column as wide as its widest writing, the width left shared out by those widths */
+static double cell_w(cairo_t *cr, Row *r, int c)
+{
+	const RuiPage *p = PG(); double w = p->td_pad[1] + r->padl[c] + text_w(cr, r->c[c] ? r->c[c] : "", p->tmt_fs[0], r->bold[c] ? 700 : 400) + p->td_pad[3];
+	if (r->btn[c]) { w = p->td_pad[1] + p->td_pad[3]; char **v = g_strsplit(r->btn[c], "\n", -1); for (int k = 0; v[k]; k++) w += btn_w(cr, v[k]) + (k ? 4 : 0); g_strfreev(v); }
+	return w;
+}
+/* the lines a cell's writing takes in its width (a table that wraps: .tmt's cells, white-space normal) */
+static int cell_lines(cairo_t *cr, const char *s, double w, int wt)
+{
+	PangoLayout *l = rui_layout(cr, s, PG()->tmt_fs[0], wt); pango_layout_set_width(l, (int)(w * RUI.z * PANGO_SCALE)); pango_layout_set_wrap(l, PANGO_WRAP_WORD_CHAR);
+	int n = pango_layout_get_line_count(l); g_object_unref(l); return n < 1 ? 1 : n;
+}
+/* CSS's automatic table layout (width 100 %): a column given a share keeps it; the others as wide as their widest writing, the width
+   left shared out by those widths (or, when it does not fit, by them too, a wrapping table's cells taking more lines) */
 static void table_layout(RuiTable *t, cairo_t *cr, double W)
 {
-	const RuiPage *p = PG(); double mx[8] = {0}, sum = 0;
-	for (int c = 0; c < t->n; c++) mx[c] = p->th_pad[1] + text_w(cr, t->title[c], p->tmt_fs[0], 700) + p->th_pad[3];
+	const RuiPage *p = PG(); double mx[8] = {0}, sum = 0, fixed = 0;
+	for (int c = 0; c < t->n; c++) if (!t->nohead) mx[c] = p->th_pad[1] + text_w(cr, t->title[c], p->tmt_fs[0], 700) + p->th_pad[3];
 	for (guint i = 0; i < t->rows->len; i++) { Row *r = g_ptr_array_index(t->rows, i); if (r->group) continue;
-		for (int c = 0; c < t->n; c++) { double w = p->td_pad[1] + r->padl[c] + text_w(cr, r->c[c] ? r->c[c] : "", p->tmt_fs[0], 400) + p->td_pad[3];
-			if (r->btn[c]) { w = p->td_pad[1] + p->td_pad[3]; char **v = g_strsplit(r->btn[c], "\n", -1); for (int k = 0; v[k]; k++) w += btn_w(cr, v[k]) + (k ? 4 : 0); g_strfreev(v); }
-			if (w > mx[c]) mx[c] = w; } }
-	for (int c = 0; c < t->n; c++) sum += mx[c];
-	double x = 0; t->colx[0] = 0;
-	for (int c = 0; c < t->n; c++) { double w = sum > 0 && W > sum ? mx[c] + (W - sum) * mx[c] / sum : mx[c]; x += w; t->colx[c + 1] = x; }
+		for (int c = 0; c < t->n; c++) { double w = cell_w(cr, r, c); if (w > mx[c]) mx[c] = w; } }
+	for (int c = 0; c < t->n; c++) if (t->width[c] > 0 && t->width[c] < 1) fixed += t->width[c] * W; else sum += mx[c];
+	double rest = W - fixed, x = 0; t->colx[0] = 0;
+	for (int c = 0; c < t->n; c++) { double w = t->width[c] > 0 && t->width[c] < 1 ? t->width[c] * W : sum > 0 ? (rest >= sum ? mx[c] + (rest - sum) * mx[c] / sum : rest * mx[c] / sum) : 0;
+		x += w; t->colx[c + 1] = x; }
+	/* the rows' places */
+	double y = head_h(t), lh = line_h(p->tmt_fs[0], 400);
+	for (guint i = 0; i < t->rows->len; i++) { Row *r = g_ptr_array_index(t->rows, i); int lines = 1;
+		if (t->wrap && !r->group) for (int c = 0; c < t->n; c++) if (!r->btn[c] && r->c[c] && *r->c[c]) { int k = cell_lines(cr, r->c[c], t->colx[c + 1] - t->colx[c] - p->td_pad[1] - p->td_pad[3] - r->padl[c], r->bold[c] ? 700 : 400); if (k > lines) lines = k; }
+		r->y = y; r->h = p->td_pad[0] + lines * lh + p->td_pad[2] + p->td_bw[0]; if (r->btn[0] || r->btn[1] || r->btn[2] || r->btn[3] || r->btn[4] || r->btn[5] || r->btn[6] || r->btn[7]) r->h = fmax(r->h, p->td_pad[0] + lh + 6 + 2 + p->td_pad[2] + p->td_bw[0]);   /* (a cell with the page's buttons: 23 px of button in its padding) */
+		y += r->h; }
+	t->H = y; t->lastW = W;
 }
-static void tsize(RuiTable *t) { gtk_widget_set_size_request(t->w, -1, (int)ceil(rui_px(head_h() + t->rows->len * row_h()))); }
+static void tsize(RuiTable *t)
+{
+	/* (the rows' heights: a row of buttons is taller; a wrapping table's rows as its width gives them, once it has one) */
+	double keep[9], lw = t->lastW; memcpy(keep, t->colx, sizeof keep);   /* (the columns as drawn kept: this only measures) */
+	cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *cr = cairo_create(s); table_layout(t, cr, t->lastW > 0 ? t->lastW : 600); cairo_destroy(cr); cairo_surface_destroy(s);
+	memcpy(t->colx, keep, sizeof keep); if (lw > 0) t->lastW = lw;
+	gtk_widget_set_size_request(t->w, -1, (int)ceil(rui_px(t->H)));
+}
+static void table_alloc(GtkWidget *w, GdkRectangle *a, gpointer d)
+{
+	RuiTable *t = d; (void)w; double W = a->width / RUI.z; if (!t->wrap || fabs(W - t->lastW) < .5) return; t->lastW = W; tsize(t);
+}
+static void cell_text(cairo_t *cr, const char *s, double x, double y, double w, double h, double fs, int wt, int align, int wrap)
+{
+	if (!wrap) { text_in(cr, s, x, y, w, h, fs, wt, align); return; }
+	PangoLayout *l = rui_layout(cr, s, fs, wt); pango_layout_set_width(l, (int)(w * RUI.z * PANGO_SCALE)); pango_layout_set_wrap(l, PANGO_WRAP_WORD_CHAR);
+	if (align == RUI_RIGHT) pango_layout_set_alignment(l, PANGO_ALIGN_RIGHT);
+	int n = pango_layout_get_line_count(l), lh = (int)lround(rui_px(line_h(fs, wt)));
+	for (int i = 0; i < n; i++) { PangoLayoutLine *ln = pango_layout_get_line_readonly(l, i); PangoRectangle lg; pango_layout_line_get_pixel_extents(ln, NULL, &lg);
+		double tx = x * RUI.z + (align == RUI_RIGHT ? w * RUI.z - lg.width : 0); PangoRectangle ink2, lg2; pango_layout_line_get_pixel_extents(ln, &ink2, &lg2);
+		cairo_move_to(cr, round(tx), round(y * RUI.z) + i * lh + round((lh - lg.height) / 2.0) - lg.y); pango_cairo_show_layout_line(cr, ln); }
+	g_object_unref(l);
+}
 static gboolean table_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
-	RuiTable *t = d; const RuiPage *p = PG(); double z = RUI.z, W = gtk_widget_get_allocated_width(w) / z, fs = p->tmt_fs[0], hh = head_h(), rh = row_h();
+	RuiTable *t = d; const RuiPage *p = PG(); double z = RUI.z, W = gtk_widget_get_allocated_width(w) / z, fs = p->tmt_fs[0], hh = head_h(t);
 	table_layout(t, cr, W);
-	/* the heading row */
-	setc(cr, p->th_bg, 1); cairo_rectangle(cr, 0, 0, W * z, (hh - p->th_bw[0]) * z); cairo_fill(cr);
-	setc(cr, p->th_bd, 1); cairo_rectangle(cr, 0, (hh - p->th_bw[0]) * z, W * z, p->th_bw[0] * z); cairo_fill(cr);
 	GtkStyleContext *sc = gtk_widget_get_style_context(w); GdkRGBA fg; gtk_style_context_get_color(sc, gtk_style_context_get_state(sc), &fg);
-	for (int c = 0; c < t->n; c++) { gdk_cairo_set_source_rgba(cr, &fg);
-		text_in(cr, t->title[c], t->colx[c] + p->th_pad[3], p->th_pad[0], t->colx[c + 1] - t->colx[c] - p->th_pad[1] - p->th_pad[3], line_h(fs, 700), fs, 700, t->align[c]); }
-	double y = hh;
-	for (guint i = 0; i < t->rows->len; i++, y += rh) {
-		Row *r = g_ptr_array_index(t->rows, i); int on = !r->group && r->id == t->sel && t->sel >= 0, hov = !on && !r->group && (int)i == t->hov;
+	/* the heading row */
+	if (!t->nohead) {
+		setc(cr, p->th_bg, 1); cairo_rectangle(cr, 0, 0, W * z, (hh - p->th_bw[0]) * z); cairo_fill(cr);
+		setc(cr, p->th_bd, 1); cairo_rectangle(cr, 0, (hh - p->th_bw[0]) * z, W * z, p->th_bw[0] * z); cairo_fill(cr);
+		for (int c = 0; c < t->n; c++) { gdk_cairo_set_source_rgba(cr, &fg);
+			text_in(cr, t->title[c], t->colx[c] + p->th_pad[3], p->th_pad[0], t->colx[c + 1] - t->colx[c] - p->th_pad[1] - p->th_pad[3], line_h(fs, 700), fs, 700, t->align[c]); }
+	}
+	double lh = line_h(fs, 400);
+	for (guint i = 0; i < t->rows->len; i++) {
+		Row *r = g_ptr_array_index(t->rows, i); double y = r->y, rh = r->h; int on = !r->group && r->id == t->sel && t->sel >= 0, hov = !on && !r->group && (int)i == t->hov;
 		if (r->group) { setc(cr, p->bg2, 1); cairo_rectangle(cr, 0, y * z, W * z, (rh - p->td_bw[0]) * z); cairo_fill(cr); }
 		if (on) { rui_color(cr, "ac", 1); cairo_rectangle(cr, 0, y * z, W * z, (rh - p->td_bw[0]) * z); cairo_fill(cr); }
 		if (hov) { setc(cr, p->tr_hov, 1); cairo_rectangle(cr, 0, y * z, W * z, (rh - p->td_bw[0]) * z); cairo_fill(cr); }
 		setc(cr, p->td_bd, 1); cairo_rectangle(cr, 0, (y + rh - p->td_bw[0]) * z, W * z, p->td_bw[0] * z); cairo_fill(cr);
-		double ty = y + p->td_pad[0], lh = line_h(fs, 400);
+		double ty = y + p->td_pad[0], th = rh - p->td_pad[0] - p->td_pad[2] - p->td_bw[0];
 		if (r->group) {
 			gdk_cairo_set_source_rgba(cr, &fg); double bw = text_w(cr, r->c[0], fs, 700), sp = text_w(cr, " ", fs, 400);
 			text_in(cr, r->c[0], p->td_pad[3], ty, W, lh, fs, 700, 0);
@@ -431,30 +486,37 @@ static gboolean table_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 			text_in(cr, r->c[1] ? r->c[1] : "", p->td_pad[3] + bw + sp, ty, W, lh, fs, 400, 0); continue; }
 		for (int c = 0; c < t->n; c++) {
 			double cx = t->colx[c] + p->td_pad[3] + r->padl[c], cw = t->colx[c + 1] - t->colx[c] - p->td_pad[1] - p->td_pad[3] - r->padl[c];
-			if (r->btn[c]) {   /* (buttons in the cell: the page's button, 23 px high in a 24 px row, centred) */
+			if (r->btn[c]) {   /* (buttons in the cell: the page's button, centred in the row) */
 				char **v = g_strsplit(r->btn[c], "\n", -1); double bx = cx, bh = lh + 6 + 2, by = y + (rh - p->td_bw[0] - bh) / 2;
 				for (int k = 0; v[k]; k++) { double bw = btn_w(cr, v[k]); if (RUI.dark) cairo_set_source_rgb(cr, 30 / 255.0, 41 / 255.0, 59 / 255.0); else cairo_set_source_rgb(cr, 1, 1, 1);
 					rrect(cr, (bx + .5) * z, (by + .5) * z, (bw - 1) * z, (bh - 1) * z, 4 * z); cairo_fill_preserve(cr); if (RUI.dark) cairo_set_source_rgb(cr, .2, .255, .333); else setc(cr, p->bd, 1); cairo_set_line_width(cr, z); cairo_stroke(cr);
 					if (RUI.dark) cairo_set_source_rgb(cr, .886, .91, .941); else cairo_set_source_rgb(cr, 0, 0, 0); text_in(cr, v[k], bx + 1 + 10, by + 4, bw - 22, lh, fs, 400, 0); bx += bw + 4; }
 				g_strfreev(v); continue; }
 			if (on) rui_color(cr, "acfg", 1); else if (r->muted[c]) setc(cr, p->mut, 1); else gdk_cairo_set_source_rgba(cr, &fg);
-			text_in(cr, r->c[c] ? r->c[c] : "", cx, ty, cw, lh, fs, 400, t->align[c]);
+			/* (vertical-align: middle, as .tmt td) */
+			if (t->wrap) { int k = cell_lines(cr, r->c[c] ? r->c[c] : "", cw, r->bold[c] ? 700 : 400); cell_text(cr, r->c[c] ? r->c[c] : "", cx, ty + (th - k * lh) / 2, cw, k * lh, fs, r->bold[c] ? 700 : 400, t->align[c], 1); }
+			else text_in(cr, r->c[c] ? r->c[c] : "", cx, ty + (th - lh) / 2, cw, lh, fs, r->bold[c] ? 700 : 400, t->align[c]);
 		}
 	}
 	return TRUE;
 }
-static int row_at(RuiTable *t, double y) { y /= RUI.z; double hh = head_h(), rh = row_h(); if (y < hh) return -1; int i = (int)((y - hh) / rh); return i < (int)t->rows->len ? i : -2; }
+static int row_at(RuiTable *t, double y) { y /= RUI.z; if (y < head_h(t)) return -1; for (guint i = 0; i < t->rows->len; i++) { Row *r = g_ptr_array_index(t->rows, i); if (y >= r->y && y < r->y + r->h) return i; } return -2; }
 static gboolean table_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
-	RuiTable *t = d; gtk_widget_grab_focus(w); int i = row_at(t, e->y);
+	RuiTable *t = d; if (t->row || t->head) gtk_widget_grab_focus(w); int i = row_at(t, e->y);
 	if (i == -1 && e->button == 1) { double x = e->x / RUI.z; for (int c = 0; c < t->n; c++) if (x >= t->colx[c] && x < t->colx[c + 1]) { if (t->head) t->head(c, t->d); } return TRUE; }
 	if (i < 0) return TRUE; Row *r = g_ptr_array_index(t->rows, i); if (r->group) return TRUE;
 	if (e->button == 1) { double x = e->x / RUI.z; for (int c = 0; c < t->n; c++) if (r->btn[c] && x >= t->colx[c] && x < t->colx[c + 1]) {
 			cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *cr = cairo_create(s); char **v = g_strsplit(r->btn[c], "\n", -1);
 			double bx = t->colx[c] + PG()->td_pad[3]; int hit = -1; for (int k = 0; v[k]; k++) { double bw = btn_w(cr, v[k]); if (x >= bx && x < bx + bw) hit = k; bx += bw + 4; }
-			g_strfreev(v); cairo_destroy(cr); cairo_surface_destroy(s); if (hit >= 0 && t->btn) t->btn(r->id, c * 16 + hit, t->bd); return TRUE; } }
+			g_strfreev(v); cairo_destroy(cr); cairo_surface_destroy(s); if (hit >= 0 && t->btn) { t->pend = 1; t->pid_ = r->id; t->pwhich = c * 16 + hit; } return TRUE; } }   /* (done on the release, as a button is clicked) */
 	if (e->button == 1 || e->button == 3) { if (t->row) t->row(r->id, e->button == 3, e->x_root, e->y_root, t->d); }
 	return TRUE;
+}
+static gboolean table_release(GtkWidget *w, GdkEventButton *e, gpointer d)
+{
+	RuiTable *t = d; (void)w; (void)e; if (!t->pend) return FALSE; t->pend = 0; long id = t->pid_; int which = t->pwhich;
+	if (t->btn) t->btn(id, which, t->bd); return TRUE;
 }
 static gboolean table_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { RuiTable *t = d; int i = row_at(t, e->y); if (i != t->hov) { t->hov = i; gtk_widget_queue_draw(w); } return FALSE; }
 static gboolean table_leave(GtkWidget *w, GdkEventCrossing *e, gpointer d) { (void)e; RuiTable *t = d; if (t->hov != -3) { t->hov = -3; gtk_widget_queue_draw(w); } return FALSE; }
@@ -468,21 +530,36 @@ static gboolean table_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 		return TRUE; }
 	return FALSE;
 }
-static void table_re(void *d) { tsize(d); gtk_widget_queue_draw(((RuiTable *)d)->w); }
+static void table_free(GtkWidget *w, gpointer d) { RuiTable *t = d; (void)w; g_ptr_array_unref(t->rows); for (int c = 0; c < 8; c++) g_free(t->title[c]); g_free(t); }
+static void table_re(void *d) { RuiTable *t = d; t->lastW = 0; tsize(t); gtk_widget_queue_draw(t->w); }
 RuiTable *rui_table_new(int n)
 {
 	RuiTable *t = g_new0(RuiTable, 1); t->n = MIN(n, 8); t->rows = g_ptr_array_new_with_free_func(row_free); t->sel = -1; t->hov = -3;
-	t->w = gtk_drawing_area_new(); gtk_widget_set_can_focus(t->w, TRUE); gtk_widget_add_events(t->w, GDK_BUTTON_PRESS_MASK | GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK | GDK_KEY_PRESS_MASK);
-	g_signal_connect(t->w, "draw", G_CALLBACK(table_draw), t); g_signal_connect(t->w, "button-press-event", G_CALLBACK(table_press), t);
+	t->w = gtk_drawing_area_new(); gtk_widget_set_can_focus(t->w, TRUE); gtk_widget_add_events(t->w, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_LEAVE_NOTIFY_MASK | GDK_KEY_PRESS_MASK);
+	g_signal_connect(t->w, "draw", G_CALLBACK(table_draw), t); g_signal_connect(t->w, "button-press-event", G_CALLBACK(table_press), t); g_signal_connect(t->w, "button-release-event", G_CALLBACK(table_release), t);
 	g_signal_connect(t->w, "motion-notify-event", G_CALLBACK(table_motion), t); g_signal_connect(t->w, "leave-notify-event", G_CALLBACK(table_leave), t);
-	g_signal_connect(t->w, "key-press-event", G_CALLBACK(table_key), t);
+	g_signal_connect(t->w, "key-press-event", G_CALLBACK(table_key), t); g_signal_connect(t->w, "size-allocate", G_CALLBACK(table_alloc), t);
+	g_signal_connect_after(t->w, "destroy", G_CALLBACK(table_free), t);   /* (the table goes with its widget) */
 	for (int c = 0; c < t->n; c++) t->title[c] = g_strdup("");
-	tsize(t); rui_on_settings(table_re, t); return t;
+	tsize(t); on_settings_w(t->w, table_re, t); return t;
 }
 GtkWidget *rui_table_widget(RuiTable *t) { return t->w; }
+void rui_table_nohead(RuiTable *t, int on) { t->nohead = on; }
+int rui_table_button_rect(RuiTable *t, long id, int col, int k, GdkRectangle *o)
+{
+	memset(o, 0, sizeof *o); cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *cr = cairo_create(s); int ok = 0;
+	for (guint i = 0; i < t->rows->len && !ok; i++) { Row *r = g_ptr_array_index(t->rows, i); if (r->group || r->id != id || !r->btn[col]) continue; char **v = g_strsplit(r->btn[col], "\n", -1);
+		double bx = t->colx[col] + PG()->td_pad[3], lh = line_h(PG()->tmt_fs[0], 400), bh = lh + 8;
+		for (int j = 0; v[j]; j++) { double bw = btn_w(cr, v[j]); if (j == k) { int x, y; gtk_widget_translate_coordinates(t->w, gtk_widget_get_toplevel(t->w), (int)lround(rui_px(bx)), (int)lround(rui_px(r->y + (r->h - PG()->td_bw[0] - bh) / 2)), &x, &y);
+				o->x = x; o->y = y; o->width = (int)lround(rui_px(bw)); o->height = (int)lround(rui_px(bh)); ok = 1; } bx += bw + 4; }
+		g_strfreev(v); }
+	cairo_destroy(cr); cairo_surface_destroy(s); return ok;
+}
+double rui_table_col_x(RuiTable *t, int c) { return c >= 0 && c <= t->n ? rui_px(t->colx[c]) : 0; }
+void rui_table_wrap(RuiTable *t, int on) { t->wrap = on; }
 void rui_table_col(RuiTable *t, int c, const char *title, int align, double width) { if (c < 0 || c >= t->n) return; g_free(t->title[c]); t->title[c] = g_strdup(rui_tr(title)); t->align[c] = align; t->width[c] = width; }
 void rui_table_heading(RuiTable *t, int c, const char *title) { if (c < 0 || c >= t->n) return; g_free(t->title[c]); t->title[c] = g_strdup(title); }
-void rui_table_clear(RuiTable *t) { g_ptr_array_set_size(t->rows, 0); }
+void rui_table_clear(RuiTable *t) { g_ptr_array_set_size(t->rows, 0); t->hov = -3; }
 int rui_table_add(RuiTable *t, const char *const *cells, long id)
 {
 	Row *r = g_new0(Row, 1); r->c = g_new0(char *, t->n + 1); for (int c = 0; c < t->n; c++) r->c[c] = g_strdup(cells[c] ? cells[c] : ""); r->id = id;
@@ -494,19 +571,20 @@ int rui_table_group(RuiTable *t, const char *bold, const char *rest)
 	for (int c = 2; c < t->n; c++) r->c[c] = g_strdup(""); g_ptr_array_add(t->rows, r); return t->rows->len - 1;
 }
 void rui_table_cell_style(RuiTable *t, int row, int col, int muted, int padl) { if (row < 0 || row >= (int)t->rows->len || col < 0 || col >= t->n) return; Row *r = g_ptr_array_index(t->rows, row); r->muted[col] = muted; r->padl[col] = padl; }
+void rui_table_cell_bold(RuiTable *t, int row, int col) { if (row < 0 || row >= (int)t->rows->len || col < 0 || col >= t->n) return; ((Row *)g_ptr_array_index(t->rows, row))->bold[col] = 1; }
 void rui_table_set_button(RuiTable *t, int row, int col, const char *label, void (*cb)(long, int, void *), void *d)
 {
 	if (row < 0 || row >= (int)t->rows->len || col < 0 || col >= t->n) return; Row *r = g_ptr_array_index(t->rows, row); g_free(r->btn[col]); r->btn[col] = g_strdup(label); t->btn = cb; t->bd = d;
 }
 void rui_table_select(RuiTable *t, long id) { t->sel = id; gtk_widget_queue_draw(t->w); }
 long rui_table_selected(RuiTable *t) { return t->sel; }
-void rui_table_done(RuiTable *t) { tsize(t); gtk_widget_queue_draw(t->w); }
+void rui_table_done(RuiTable *t) { t->lastW = t->wrap ? gtk_widget_get_allocated_width(t->w) / RUI.z : 0; if (t->lastW < 2) t->lastW = 0; tsize(t); gtk_widget_queue_draw(t->w); }
 void rui_table_on(RuiTable *t, void (*row)(long, int, double, double, void *), void (*head)(int, void *), void *d) { t->row = row; t->head = head; t->d = d; }
 void rui_table_rect(RuiTable *t, long id, GdkRectangle *o)
 {
-	double rh = row_h(), y = head_h(); memset(o, 0, sizeof *o);
-	for (guint i = 0; i < t->rows->len; i++, y += rh) { Row *r = g_ptr_array_index(t->rows, i); if (!r->group && r->id == id) { int x, yy; gtk_widget_translate_coordinates(t->w, gtk_widget_get_toplevel(t->w), 0, (int)lround(rui_px(y)), &x, &yy);
-		o->x = x; o->y = yy; o->width = gtk_widget_get_allocated_width(t->w); o->height = (int)lround(rui_px(rh)); return; } }
+	memset(o, 0, sizeof *o);
+	for (guint i = 0; i < t->rows->len; i++) { Row *r = g_ptr_array_index(t->rows, i); if (!r->group && r->id == id) { int x, yy; gtk_widget_translate_coordinates(t->w, gtk_widget_get_toplevel(t->w), 0, (int)lround(rui_px(r->y)), &x, &yy);
+		o->x = x; o->y = yy; o->width = gtk_widget_get_allocated_width(t->w); o->height = (int)lround(rui_px(r->h)); return; } }
 }
 
 /* ------------------------------------------------------------------ the right-click menu (the page's cmenu: .ctx.cmenu) */
@@ -704,14 +782,50 @@ void rui_about(RuiWin *w, const char *name, const char *what)
 
 /* ------------------------------------------------------------------ notifications: as any program of the desktop's, through the
    desktop's notification service (rudolf-portal's org.freedesktop.Notifications), which hands them to the desktop's toasts */
+typedef struct { char *app, *title, *body; int error; } Note;
+static void notify_bus(GObject *src, GAsyncResult *res, gpointer d)
+{
+	(void)src; Note *n = d; GDBusConnection *c = res ? g_bus_get_finish(res, NULL) : NULL;
+	if (c) { GVariantBuilder a, h; g_variant_builder_init(&a, G_VARIANT_TYPE("as")); g_variant_builder_init(&h, G_VARIANT_TYPE("a{sv}"));
+		if (n->error) g_variant_builder_add(&h, "{sv}", "urgency", g_variant_new_byte(2));
+		g_dbus_connection_call(c, "org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify",
+			g_variant_new("(susssasa{sv}i)", n->app, 0, "", n->title, n->body, &a, &h, 3000), NULL, G_DBUS_CALL_FLAGS_NONE, 2000, NULL, NULL, NULL); g_object_unref(c); }
+	else g_printerr("librudolf-ui: %s%s%s\n", n->title, *n->body ? ": " : "", n->body);
+	g_free(n->app); g_free(n->title); g_free(n->body); g_free(n);
+}
 void rui_notify(const char *title, const char *body, int error)
 {
-	GDBusConnection *c = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
-	if (!c) { g_printerr("librudolf-ui: %s%s%s\n", title, body ? ": " : "", body ? body : ""); return; }
-	GVariantBuilder a, h; g_variant_builder_init(&a, G_VARIANT_TYPE("as")); g_variant_builder_init(&h, G_VARIANT_TYPE("a{sv}"));
-	if (error) g_variant_builder_add(&h, "{sv}", "urgency", g_variant_new_byte(2));
-	char app[48]; snprintf(app, sizeof app, "rudolf-%s", APP);
-	g_dbus_connection_call(c, "org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify",
-		g_variant_new("(susssasa{sv}i)", app, 0, "", rui_tr(title), body ? body : "", &a, &h, 3000), NULL, G_DBUS_CALL_FLAGS_NONE, 2000, NULL, NULL, NULL);
-	g_object_unref(c);
+	/* (only the session's own bus: never one started for this program, which an X session without a bus would start) */
+	const char *e = getenv("DBUS_SESSION_BUS_ADDRESS"), *x = getenv("XDG_RUNTIME_DIR"); char *sock = x ? g_strdup_printf("%s/bus", x) : NULL; int bus = (e && *e) || (sock && g_file_test(sock, G_FILE_TEST_EXISTS)); g_free(sock);
+	Note *n = g_new0(Note, 1); n->app = g_strdup_printf("rudolf-%s", APP); n->title = g_strdup(rui_tr(title)); n->body = g_strdup(body ? body : ""); n->error = error;
+	if (!bus) { notify_bus(NULL, NULL, n); return; }
+	g_bus_get(G_BUS_TYPE_SESSION, NULL, notify_bus, n);
+}
+
+/* ------------------------------------------------------------------ asking the native shell (rudolf-native's native_ask): the request in
+   the window's own property _RUDOLF_ASK, a ClientMessage to the screen's root (the window manager's); the windows' list comes back in
+   the window's property _RUDOLF_WINS */
+typedef struct { void (*cb)(const char *json, void *d); void *d; Atom a; } WinsCb;
+void rui_shell(RuiWin *w, const char *ask)
+{
+	GdkWindow *g = gtk_widget_get_window(w->win); if (!g || !GDK_IS_X11_WINDOW(g)) return; Display *d = GDK_WINDOW_XDISPLAY(g); Window x = GDK_WINDOW_XID(g);
+	Atom a = XInternAtom(d, "_RUDOLF_ASK", False), u = XInternAtom(d, "UTF8_STRING", False);
+	XChangeProperty(d, x, a, u, 8, PropModeReplace, (const unsigned char *)ask, (int)strlen(ask));
+	XEvent e; memset(&e, 0, sizeof e); e.xclient.type = ClientMessage; e.xclient.window = x; e.xclient.message_type = a; e.xclient.format = 32;
+	XSendEvent(d, DefaultRootWindow(d), False, SubstructureRedirectMask | SubstructureNotifyMask, &e); XFlush(d);
+}
+static GdkFilterReturn wins_filter(GdkXEvent *xe, GdkEvent *ev, gpointer data)
+{
+	(void)ev; XEvent *e = xe; WinsCb *c = data;
+	if (e->type != PropertyNotify || e->xproperty.atom != c->a || e->xproperty.state != PropertyNewValue) return GDK_FILTER_CONTINUE;
+	Atom type; int fmt; unsigned long n = 0, after; unsigned char *p = NULL;
+	if (XGetWindowProperty(e->xproperty.display, e->xproperty.window, c->a, 0, 1 << 20, True, AnyPropertyType, &type, &fmt, &n, &after, &p) == Success && p) {
+		char *j = g_strndup((char *)p, n); XFree(p); if (c->cb) c->cb(j, c->d); g_free(j); }
+	return GDK_FILTER_CONTINUE;
+}
+void rui_shell_wins(RuiWin *w, void (*cb)(const char *json, void *d), void *d)
+{
+	static WinsCb *C; GdkWindow *g = gtk_widget_get_window(w->win); if (!g || !GDK_IS_X11_WINDOW(g)) return;
+	if (!C) { C = g_new0(WinsCb, 1); C->a = XInternAtom(GDK_WINDOW_XDISPLAY(g), "_RUDOLF_WINS", False); gdk_window_add_filter(g, wins_filter, C); }
+	C->cb = cb; C->d = d; rui_shell(w, "wins");
 }
