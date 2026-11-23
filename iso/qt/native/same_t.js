@@ -92,6 +92,12 @@ CASES.push({n: 'fly-qs-dark', set: {dm: 'dark', darkui: true}, fly: 'qs', parts:
 CASES.push({n: 'fly-nc', set: {}, more: NOTES, fly: 'notes', parts: ['fly']});
 CASES.push({n: 'fly-nc-empty', set: {}, fly: 'notes', parts: ['fly']});
 CASES.push({n: 'fly-net', set: {}, fly: 'net', parts: ['fly']});   /* (the network's pop-up: item 3's last part) */
+/* (1.6.2 Part 33: the VPNs' rows after the adapters, vpn62.js vpnRows and rudolf-native.c fl_net: one on and connected, one off) */
+const VPNS = {ok: true, wireguard: true, active: 'v00000001', me: {name: 'Ann', admin: true, signedIn: true}, vpns: [
+  {id: 'v00000001', name: 'Home', type: 'wireguard', on: true, state: 'connected', by: 'Ann'},
+  {id: 'v00000002', name: 'Work office', type: 'wireguard', on: false, state: 'off', by: ''}]};
+CASES.push({n: 'fly-net-vpn', set: {}, rd: {vpn: VPNS}, fly: 'net', parts: ['fly']});
+CASES.push({n: 'fly-net-vpn-off', set: {dm: 'dark', darkui: true}, rd: {vpn: Object.assign({}, VPNS, {active: null, vpns: [Object.assign({}, VPNS.vpns[0], {on: false, state: 'off', by: ''})]})}, fly: 'net', parts: ['fly']});
 /* (item 3) the notifications' pop-ups (a page's notifications: rudolfd's "memory closed" events, apps57.js; one, two, the dark theme, the
    taskbar at the top) and the call's 🎙️ (an app using the microphone, muted or not) */
 CASES.push({n: 'toast', set: {}, act: 'notepad', ev: ['memory closed Paint 300'], parts: ['toast']});
@@ -238,7 +244,7 @@ const only = ONLY ? ONLY.split(',') : null;
 // ---- Standard: the page in Chromium
 let BR;
 const micSet = c => { fs.writeFileSync(path.join(D, 'mic'), JSON.stringify(c.mic || [])); if (c.mic) cp.execSync(`curl -s --noproxy '*' -X POST -H 'X-Rudolf-Token: tok160same' '${BASE}/api/mic?muted=${c.micmuted ? 1 : 0}'`) };
-const rdSet = c => { for (const k of ['deb', 'ai', 'net', 'engine']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
+const rdSet = c => { for (const k of ['deb', 'ai', 'net', 'engine', 'vpn']) { const f = path.join(D, k); if (c.rd && c.rd[k]) fs.writeFileSync(f, JSON.stringify(c.rd[k])); else try { fs.unlinkSync(f) } catch (e) {} } };
 async function stdCase(c) {
   fs.writeFileSync(path.join(D, 'std-on'), '');   /* (rudolfd's events Standard's while its case runs: same_rd.py, the native shell's events thread since #410) */
   XTRA.std = {}; XTRA.nat = {};

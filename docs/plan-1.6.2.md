@@ -709,6 +709,22 @@ Tor windows, or for calls and games) and what the best VPN would be: "Yes. That 
    refused off), import of malformed files refused. **The owner's checks:** a real VPN (a provider's or a home router's
    WireGuard) on the Vivobook: connect, browse, a call, sleep and wake, change Wi-Fi.
 
+#### Status (2026-11-23, scheduled task)
+- **Step 1, WireGuard (PR "VPN 1"):** built. The VPN helper (iso/sys/rudolf-vpn.c, /usr/lib/rudolf/root/vpn, run by
+  rudolf-rootd: CAP_NET_ADMIN and the file capabilities only, no mount) sets the kernel's WireGuard up through netlink
+  itself (rvpn0: key, peers, addresses, MTU; the whole computer's routes in a table of its own behind WireGuard's fwmark,
+  as wg-quick does, so the server's own route stays outside the tunnel on any network; IPv6 made unreachable when the
+  file has none; the file's DNS servers in /etc/resolv.conf and RUN/dns-vpn, which udhcpc.sh and the modem script keep
+  while it is on). rudolfd's vpn requests (rudolfd-vpn.inc): add, rename, remove with an administrator's password checked
+  by rudolfd; on and off by any account. The files root's 0600 in /persist/etc/vpn (0700); the key is never in an answer,
+  a log or the page. Settings › Network › VPN (desktop/vpn62.js) and the taskbar's network pop-up (the page's and
+  rudolf-native.c's fl_net: the VPNs' rows after the adapters). Not done: the QR code from the camera (Rudolf OS has a QR
+  encoder, qr61.js, but no decoder; a decoder of its own is a part of its own).
+  Tests (vpn-check.yml): qt/host/vpn162_t.sh (the real rudolfd and helper in namespaces of their own against the kernel's
+  WireGuard as the server, a capture on the outside link), the parser's fuzz test, qt/shell2/vpn62_t.js, and the network
+  pop-up on both engines (same_t.sh fly-net-vpn, fly-net-vpn-off).
+- Steps 2-5 (who may, OpenVPN, the kill switch, the Oracle line): their own PRs, after this one.
+
 ### 34. Scanners (added on 2026-11-22)
 The owner, 2026-11-22: scanners and network shares are what is left to add from what Mint and Ubuntu have (a phone link,
 fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, already handled, or already there).

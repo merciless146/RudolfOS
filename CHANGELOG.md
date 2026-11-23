@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- New: a VPN for the whole computer (Settings › Network › VPN). Add your VPN provider's or your home router's WireGuard file
+  (an administrator's password), then connect and disconnect there or from the taskbar's network pop-up, which shows its
+  state. While it is on, every app's traffic and its name lookups go through it, the local network is still reached
+  directly, and nothing goes round it by IPv6. Its key is kept where only the system reads it. The same on Native,
+  Chromium and Lite.
 - New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
   tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
   night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same
