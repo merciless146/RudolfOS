@@ -31,6 +31,14 @@
  *   drives bring-close DISK           the old disk's partitions closed again
  *   drives bring-import ACCT DIR PERSON   one person's files from a copy (DIR, on a drive under /media) into the account's
  *                                     folder, run as the account's own Linux user (never root), the account signed in
+ *   drives share-mount UID ID IP SERVER SHARE 3|2.1 0|1   1.6.2 (docs/plan-1.6.2.md Part 35): a network share (SMB) opened for
+ *                                     the signed-in account's own Linux user UID (1000 with nobody signed in) at
+ *                                     /run/rudolf/shares/UID/ID: its files owned by UID, 0600 and 0700, the folder UID's own
+ *                                     (0700), without programs, device files or set-user-ID; SMB 3 (encryption asked for,
+ *                                     and without it only where the server has none) or 2.1; 1: as a guest. The name,
+ *                                     password and domain on standard input (three lines), never an argument; passed to the
+ *                                     kernel one option at a time (fsconfig), so nothing in them can be read as an option
+ *   drives share-umount UID ID | share-umount-all UID   one share, or every one of UID's, closed
  * (the home-* actions: ACCT is checked here, then rudolfd's own functions do the work, built as drives-home:
  * rudolf-drives-home.c)
  *
@@ -51,6 +59,8 @@
 #include <ctype.h>
 #include <sys/mount.h>
 #include <grp.h>
+#include <dirent.h>
+#include <arpa/inet.h>
 
 #define SYSFS  rr_env("RR_TEST_SYS", "/sys")
 #define LIB    rr_env("RR_TEST_LIB", "/usr/lib/rudolf")
@@ -190,15 +200,162 @@ static int bring_action(const char *op, char **a, int n)
 	return refuse("an unknown action", op);
 }
 
+/* ---------------- 1.6.2 (docs/plan-1.6.2.md Part 35): network shares */
+#define SHARES rr_env("RR_TEST_SHARES", "/run/rudolf/shares")
+#include <sys/syscall.h>
+#ifndef FSCONFIG_SET_FLAG
+#include <linux/mount.h>
+#endif
+static int r_fsopen(const char *fs, unsigned fl) { return (int)syscall(SYS_fsopen, fs, fl); }
+static int r_fsconfig(int fd, unsigned cmd, const char *k, const void *v, int aux) { return (int)syscall(SYS_fsconfig, fd, cmd, k, v, aux); }
+static int r_fsmount(int fd, unsigned fl, unsigned attr) { return (int)syscall(SYS_fsmount, fd, fl, attr); }
+static int r_move_mount(int ffd, const char *fp, int tfd, const char *tp, unsigned fl) { return (int)syscall(SYS_move_mount, ffd, fp, tfd, tp, fl); }
+/* the uid a share may be opened for: the signed-in account's own (its line in the list), else the desktop's */
+static unsigned share_uid(void) { unsigned u = session_uid(); return u ? u : RR_DESK_UID; }
+static int share_id_ok(const char *s) { if (!s || strlen(s) != 16) return 0; for (; *s; s++) if (!((*s >= '0' && *s <= '9') || (*s >= 'a' && *s <= 'f'))) return 0; return 1; }
+/* a server's name: a host name (letters, digits, "-", "_" and dots) or an address; a share's: what Windows allows in one,
+   at most 80, without "/", "\\", the characters Windows refuses, commas, or anything below a space */
+static int share_server_ok(const char *s)
+{
+	size_t n = s ? strlen(s) : 0; if (!n || n > 253 || s[0] == '.' || s[0] == '-') return 0;
+	for (; *s; s++) if (!((*s >= 'a' && *s <= 'z') || (*s >= 'A' && *s <= 'Z') || (*s >= '0' && *s <= '9') || strchr(".-_:", *s))) return 0;
+	return 1;
+}
+static int share_name_ok(const char *s)
+{
+	size_t n = s ? strlen(s) : 0; if (!n || n > 80 || !strcmp(s, ".") || !strcmp(s, "..")) return 0;
+	for (const unsigned char *c = (const unsigned char *)s; *c; c++) if (*c < 32 || *c == 127 || strchr("/\\:*?\"<>|,", *c)) return 0;
+	return 1;
+}
+static int share_ip_ok(const char *s)
+{
+	unsigned char b[16];
+	if (inet_pton(AF_INET, s, b) == 1) return b[0] != 0 && b[0] != 127 && b[0] < 224 && !(b[0] == 255);
+	if (inet_pton(AF_INET6, s, b) == 1) { static const unsigned char lo[16] = { [15] = 1 }, z[16] = { 0 }; return memcmp(b, lo, 16) && memcmp(b, z, 16) && b[0] != 0xff; }
+	return 0;
+}
+/* the folder of UID's shares, made and checked (root's /run/rudolf/shares 0711; SHARES/UID UID's own, 0700); its fd */
+static int share_dir(unsigned uid)
+{
+	mkdir(SHARES, 0711);
+	int r = open(SHARES, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); struct stat st;
+	if (r < 0 || fstat(r, &st) || st.st_uid != 0) { if (r >= 0) close(r); return -1; }
+	if (fchmod(r, 0711)) {}
+	char u[16]; snprintf(u, sizeof u, "%u", uid);
+	if (mkdirat(r, u, 0700) && errno != EEXIST) { close(r); return -1; }
+	int d = openat(r, u, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC); close(r);
+	if (d < 0 || fchown(d, uid, uid) || fchmod(d, 0700)) { if (d >= 0) close(d); return -1; }
+	return d;
+}
+static int share_mounted(int dfd, const char *id)
+{
+	struct stat a, b; if (fstatat(dfd, id, &a, AT_SYMLINK_NOFOLLOW) || fstat(dfd, &b)) return 0;
+	return S_ISDIR(a.st_mode) && a.st_dev != b.st_dev;
+}
+static void share_msgs(int fs)
+{
+	char m[512]; ssize_t n; while ((n = read(fs, m, sizeof m - 1)) > 0) { m[n] = 0; m[strcspn(m, "\n")] = 0; fprintf(stderr, "share: %s\n", m); }
+}
+/* one try; the mount's fd, or -errno */
+static int share_try(const char *src, const char *ip, const char *ver, const char *user, const char *pass, const char *dom, unsigned uid, int seal)
+{
+	int fs = r_fsopen("cifs", FSOPEN_CLOEXEC); if (fs < 0) return -errno;
+	char u[16]; snprintf(u, sizeof u, "%u", uid);
+	struct { const char *k, *v; } o[] = { { "source", src }, { "ip", ip }, { "vers", ver }, { "sec", "ntlmssp" }, { "uid", u }, { "gid", u },
+		{ "file_mode", "0600" }, { "dir_mode", "0700" }, { "username", user }, { "password", *pass ? pass : NULL }, { "domain", *dom ? dom : NULL } };
+	int e = 0;
+	for (size_t i = 0; i < sizeof o / sizeof o[0] && !e; i++) if (o[i].v && r_fsconfig(fs, FSCONFIG_SET_STRING, o[i].k, o[i].v, 0)) e = errno;
+	const char *fl[] = { "forceuid", "forcegid", "nosharesock", seal ? "seal" : NULL };
+	for (size_t i = 0; i < sizeof fl / sizeof fl[0] && !e; i++) if (fl[i] && r_fsconfig(fs, FSCONFIG_SET_FLAG, fl[i], NULL, 0)) e = errno;
+	if (!e && r_fsconfig(fs, FSCONFIG_CMD_CREATE, NULL, NULL, 0)) e = errno;
+	share_msgs(fs);
+	if (e) { close(fs); return -e; }
+	int m = r_fsmount(fs, FSMOUNT_CLOEXEC, MOUNT_ATTR_NOSUID | MOUNT_ATTR_NODEV | MOUNT_ATTR_NOEXEC); e = errno; close(fs);
+	return m < 0 ? -e : m;
+}
+static void chomp_line(char *s) { s[strcspn(s, "\r\n")] = 0; }
+static int share_action(const char *op, char **a, int n)
+{
+	if (n < 1) return refuse("a share without its owner", op);
+	char *e; long uid = strtol(a[0], &e, 10);
+	if (!*a[0] || *e || uid < 1000 || uid > 59999 || (unsigned)uid != share_uid()) return refuse("a share for another user than the signed-in account's", a[0]);
+	if (!strcmp(op, "share-umount-all") || !strcmp(op, "share-umount")) {
+		int all = !strcmp(op, "share-umount-all");
+		if (n != (all ? 1 : 2) || (!all && !share_id_ok(a[1]))) return refuse("a share that is not one", n > 1 ? a[1] : op);
+		int d = share_dir((unsigned)uid); if (d < 0) { printf("the shares' folder could not be opened\n"); return 1; }
+		char p[PATH_MAX]; int k = 0;
+		DIR *dd = all ? fdopendir(dup(d)) : NULL; struct dirent *de;
+		for (;;) {
+			const char *id = all ? NULL : a[1];
+			if (all) { de = dd ? readdir(dd) : NULL; if (!de) break; if (!share_id_ok(de->d_name)) continue; id = de->d_name; }
+			snprintf(p, sizeof p, "%s/%ld/%s", SHARES, uid, id);
+			if (share_mounted(d, id)) { if (umount2(p, UMOUNT_NOFOLLOW) && umount2(p, MNT_DETACH | UMOUNT_NOFOLLOW)) fprintf(stderr, "share: %s: %s\n", id, strerror(errno)); else k++; }
+			unlinkat(d, id, AT_REMOVEDIR);
+			if (!all) break;
+		}
+		if (dd) closedir(dd);
+		close(d); printf("%d closed\n", k); return 0;
+	}
+	if (n != 7) return refuse("the wrong arguments for a share", op);
+	const char *id = a[1], *ip = a[2], *srv = a[3], *sh = a[4], *ver = a[5], *gu = a[6];
+	if (!share_id_ok(id)) return refuse("a share's id that is not one", id);
+	if (!share_ip_ok(ip)) return refuse("a server's address that is not one", ip);
+	if (!share_server_ok(srv)) return refuse("a server's name that is not one", srv);
+	if (!share_name_ok(sh)) return refuse("a share's name that is not one", sh);
+	if (strcmp(ver, "3") && strcmp(ver, "2.1")) return refuse("an SMB version other than 3 or 2.1 (SMB 1 and 2.0 are never used)", ver);
+	if (strcmp(gu, "0") && strcmp(gu, "1")) return refuse("a guest choice that is not 0 or 1", gu);
+	char user[260] = "", pass[520] = "", dom[260] = "";
+	if (!fgets(user, sizeof user, stdin)) user[0] = 0;
+	if (!fgets(pass, sizeof pass, stdin)) pass[0] = 0;
+	if (!fgets(dom, sizeof dom, stdin)) dom[0] = 0;
+	chomp_line(user); chomp_line(pass); chomp_line(dom);
+	int guest = !strcmp(gu, "1"); if (guest) { user[0] = 0; explicit_bzero(pass, sizeof pass); }
+	for (const char *c = user; *c; c++) if ((unsigned char)*c < 32 || strchr("/\\[]:;|=,+*?<>\"", *c)) { explicit_bzero(pass, sizeof pass); return refuse("a user name with characters a name cannot have", "(the name)"); }
+	for (const char *c = dom; *c; c++) if (!((*c >= 'a' && *c <= 'z') || (*c >= 'A' && *c <= 'Z') || (*c >= '0' && *c <= '9') || strchr(".-_", *c))) { explicit_bzero(pass, sizeof pass); return refuse("a domain that is not one", dom); }
+	if (!guest && !*user) { explicit_bzero(pass, sizeof pass); return refuse("a share without a name to sign in with (or as a guest)", sh); }
+	int d = share_dir((unsigned)uid); if (d < 0) { explicit_bzero(pass, sizeof pass); printf("the shares' folder could not be made\n"); return 1; }
+	if (share_mounted(d, id)) { close(d); explicit_bzero(pass, sizeof pass); printf("open already\n"); return 0; }
+	if (mkdirat(d, id, 0700) && errno != EEXIST) { close(d); explicit_bzero(pass, sizeof pass); printf("the share's folder could not be made\n"); return 1; }
+	int t = openat(d, id, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+	if (t < 0 || fchown(t, (unsigned)uid, (unsigned)uid) || fchmod(t, 0700)) { if (t >= 0) close(t); close(d); explicit_bzero(pass, sizeof pass); printf("the share's folder is not one\n"); return 1; }
+	char src[400]; snprintf(src, sizeof src, "//%s/%s", srv, sh);
+	/* SMB 3: encryption asked for first; refused by a server without it (EOPNOTSUPP), then without. A guest: anonymous, then
+	   the name "guest" without a password (servers that map unknown users to their guest) */
+	int seal = !strcmp(ver, "3"), m = -1, enc = 0;
+	for (int round = 0; round < 4; round++) {
+		const char *us = guest && (round & 2) ? "guest" : user;
+		m = share_try(src, ip, ver, us, pass, dom, (unsigned)uid, seal);
+		if (m >= 0) { enc = seal; break; }
+		if (m == -EOPNOTSUPP && seal) { seal = 0; continue; }
+		if (guest && !(round & 2) && (m == -EACCES || m == -EPERM)) { round = 1; seal = !strcmp(ver, "3"); continue; }
+		break;
+	}
+	explicit_bzero(pass, sizeof pass);
+	if (m < 0) {
+		int er = -m; unlinkat(d, id, AT_REMOVEDIR); close(t); close(d);
+		fprintf(stderr, "share: %s: %s\n", src, strerror(er));
+		if (er == ENODEV) { printf("nomodule\n"); return 7; }
+		if (er == EACCES || er == EPERM || er == EKEYREJECTED || er == EKEYEXPIRED) { printf("password\n"); return 3; }
+		if (er == ENOENT || er == ENXIO || er == EREMOTE) { printf("noshare\n"); return 4; }
+		if (er == EHOSTDOWN || er == EHOSTUNREACH || er == ENETUNREACH || er == ETIMEDOUT || er == ECONNREFUSED || er == ECONNRESET || er == EAGAIN || er == ECONNABORTED) { printf("noanswer\n"); return 5; }
+		printf("proto %s\n", strerror(er)); return 6;
+	}
+	int mv = r_move_mount(m, "", t, "", MOVE_MOUNT_F_EMPTY_PATH | MOVE_MOUNT_T_EMPTY_PATH), er = errno; close(m); close(t);
+	if (mv) { unlinkat(d, id, AT_REMOVEDIR); close(d); printf("the share could not be put in its folder (%s)\n", strerror(er)); return 1; }
+	close(d);
+	printf("mounted%s\n", enc ? " encrypted" : ""); return 0;
+}
+
 int main(int argc, char **argv)
 {
 	if (argc < 2) { fprintf(stderr, "usage: drives mount|umount|eject|info|install|bootfiles-write|bootfiles-stage|mkstick|keepfiles|home-unlock|home-lock|home-bind|home-store|bring-* ...\n"); return 2; }
 	const char *op = argv[1];
 	/* --sha=HEX, wherever it is; the other arguments in order */
-	const char *sha = NULL; char *a[8]; int n = 0;
+	const char *sha = NULL; char *a[9]; int n = 0;
 	for (int i = 2; i < argc; i++) {
 		if (!strncmp(argv[i], "--sha=", 6)) { if (sha || !rr_hex_ok(argv[i] + 6, 64)) return refuse("a checksum that is not 64 hex digits", argv[i]); sha = argv[i] + 6; continue; }
-		if (n >= 7) return refuse("too many arguments", op);
+		if (n >= 7 && strcmp(op, "share-mount")) return refuse("too many arguments", op);
+		if (n >= 8) return refuse("too many arguments", op);
 		a[n++] = argv[i];
 	}
 	a[n] = NULL;
@@ -224,6 +381,7 @@ int main(int argc, char **argv)
 		printf("the encrypted folder could not be opened (drives-home did not start)\n"); return 200;
 	}
 	if (!strncmp(op, "bring-", 6)) { if (sha) return refuse("a checksum for Bring your files", op); return bring_action(op, a, n); }
+	if (!strncmp(op, "share-", 6)) { if (sha) return refuse("a checksum for a share", op); if (strcmp(op, "share-mount") && strcmp(op, "share-umount") && strcmp(op, "share-umount-all")) return refuse("an unknown action", op); return share_action(op, a, n); }
 	if (!strcmp(op, "vault-move")) { if (n || sha) return refuse("arguments for vault-move", op); char *s[] = { NULL }; return run_script("vault-move", s, NULL); }
 	if (!strcmp(op, "info")) {
 		if (n != 1 || !rr_dev_ok(a[0], 16)) return refuse("a disk name that is not one", n ? a[0] : "");

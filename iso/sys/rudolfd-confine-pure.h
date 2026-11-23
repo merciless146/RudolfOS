@@ -125,6 +125,7 @@ static const char *const CONFINE_START[] = {
 	"secureboot/*",
 	"selftest",
 	"service/restart",
+	"shares/*",
 	"shell",
 	"shell/*",
 	"shutdown/log",
