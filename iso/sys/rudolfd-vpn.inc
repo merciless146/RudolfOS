@@ -159,7 +159,7 @@ static void api_vpn(struct req *r, const char *w, int post)
 		int off = !strcmp(w, "off");
 		const char *la[] = { "vpn", "list", NULL }; int st; char *list = vpn_helper(la, NULL, 0, &st);
 		if (st < 0 || !list || *list != '{') { free(list); reply_err(r->fd, 503, "this Rudolf OS cannot set up VPNs (its VPN helper did not start)"); return; }
-		char *id = off ? NULL : qparam(r->query, "id"), act[16] = "";
+		const char *id = off ? NULL : qparam(r->query, "id"); char act[16] = "";   /* (qparam's own buffer: never freed) */
 		if (off) { const char *ac = dj_get(list, "active"); char *x = ac ? dj_str(ac) : NULL; if (x) snprintf(act, sizeof act, "%s", x); free(x);
 			if (!*act) { free(list); reply_ok(r->fd, "No VPN is on."); return; } }
 		const char *vid = off ? act : id;
@@ -180,12 +180,12 @@ static void api_vpn(struct req *r, const char *w, int post)
 			adm = 1; no = vpn_may(&me, pol, off, 1); no2 = *curpol ? vpn_may(&me, curpol, 1, 1) : NULL;
 		}
 		if (no || no2) { str j = {0}; sadd(&j, "{\"ok\":false,\"needAdmin\":%s,\"error\":", (no ? strstr(no, "Only an administrator") != NULL : strstr(no2, "Only an administrator") != NULL) ? "true" : "false"); sjson(&j, no ? no : no2); sadd(&j, "}");
-			reply(r->fd, 403, "application/json", j.b, j.n, NULL); free(j.b); free(id); return; }
+			reply(r->fd, 403, "application/json", j.b, j.n, NULL); free(j.b); return; }
 		(void)adm;
 		int st2; char *o;
 		if (off) { const char *av[] = { "vpn", "down", NULL }; o = vpn_helper(av, NULL, 0, &st2); }
 		else { const char *av[] = { "vpn", "up", vid, me.name[0] ? me.name : "-", NULL }; o = vpn_helper(av, NULL, 0, &st2); }
-		free(id); vpn_reply(r, o, st2); return;
+		vpn_reply(r, o, st2); return;
 	}
 	reply_err(r->fd, 404, "unknown VPN request");
 }

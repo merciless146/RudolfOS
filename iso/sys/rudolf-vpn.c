@@ -604,6 +604,7 @@ static int wg_up(const char *id, Conf *c, char *why, size_t wn)
 {
 	struct sockaddr_storage ep[MAXPEERS]; socklen_t epl[MAXPEERS]; char eps[300];
 	if (wg() < 0) { snprintf(why, wn, "this kernel has no WireGuard"); return -1; }
+	dns_off();   /* (the network's own name servers to find the server: a VPN's own cannot answer while its tunnel is down) */
 	if (resolve(c, ep, epl, eps, sizeof eps, why, wn)) return -1;
 	{ Meta m; if (!meta_read(id, &m) && strcmp(m.ep, eps)) { snprintf(m.ep, sizeof m.ep, "%s", eps); meta_write(&m); } }   /* (remembered: the kill switch lets these out) */
 	link_del(VPN_IF);
