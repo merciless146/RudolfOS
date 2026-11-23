@@ -10,7 +10,7 @@ on:
     paths: ['iso/sys/ui/**', 'iso/sys/apps/**', 'iso/qt/native/ui_*', 'iso/qt/native/pxdiff.py', 'iso/qt/native/taskmgr*', '.github/workflows/native-apps-check.yml']
   pull_request:
     paths: ['iso/sys/ui/**', 'iso/sys/apps/**', 'iso/qt/native/ui_*', 'iso/qt/native/pxdiff.py', 'iso/qt/native/taskmgr*', 'iso/qt/native/same_rd.py',
-      'iso/sys/rudolfd-desktop.inc', 'iso/sys/rudolfd-confine.inc', 'iso/sys/rudolfd-winapi.h', 'iso/systools/winapi.py', 'desktop/tm26.js', 'desktop/tmtop57.js',
+      'iso/sys/rudolfd-desktop.inc', 'iso/sys/rudolfd-confine.inc', 'iso/sys/rudolf-native.c', 'desktop/oneapp59.js', 'iso/qt/host/fixtures/tmdata.js', 'iso/sys/rudolfd-winapi.h', 'iso/systools/winapi.py', 'desktop/tm26.js', 'desktop/tmtop57.js',
       'desktop/styles25.css', 'desktop/base_v24.html', '.github/workflows/native-apps-check.yml']
 permissions: {contents: read}
 jobs:
@@ -34,6 +34,28 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: native-ui, retention-days: 7, path: out}
+  taskmgr:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc libgtk-3-dev libwebkit2gtk-4.1-dev libxrandr-dev libxcomposite-dev libxi-dev xvfb x11-utils xdotool xclip imagemagick python3-pil fonts-dejavu-core fonts-liberation >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: rudolf-taskmgr built as the release builds it (hardened, no warning; its size)
+        run: |
+          cd iso && . systools/hardflags.sh && RUI_WERROR=1 sh sys/ui/build.sh $RUNNER_TEMP/ui $RUNNER_TEMP/rudolf-taskmgr taskmgr $HARD
+          python3 systools/hardcheck.py $RUNNER_TEMP/rudolf-taskmgr && cp $RUNNER_TEMP/rudolf-taskmgr $RUNNER_TEMP/s && strip $RUNNER_TEMP/s
+          echo "::notice title=rudolf-taskmgr::$(($(stat -c %s $RUNNER_TEMP/s) / 1024)) KB stripped (budget 1 MB)"
+      - name: "taskmgr_t.sh: every tab against the web one (light, dark), the checklist, started by the native shell, the memory"
+        run: mkdir -p out && NODE_PATH=$PWD/node_modules TM_PORT=8684 TM_DSP=:90 sh iso/qt/native/taskmgr_t.sh $PWD/out "" $RUNNER_TEMP/rudolf-taskmgr
+      - if: always()
+        run: cat out/memory.txt 2>/dev/null | sed 's/^/::notice title=Task Manager memory::/' || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: native-taskmgr, retention-days: 7, path: out}
   host:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -43,7 +65,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc zlib1g-dev curl python3 >/dev/null
       - name: "deskapi59_t.sh (desktop/admin with the native desktop's sign-in)"
         run: sudo sh iso/qt/host/deskapi59_t.sh
-      - name: "confine161_t.sh (the windows' lists: the native apps')"
+      - name: "confine161_t.sh (the windows' lists: the native apps', rudolf-taskmgr's)"
         run: sudo sh iso/qt/host/confine161_t.sh
       - name: the lists read from the source are current
         run: python3 iso/systools/winapi.py && python3 iso/systools/confinepure.py

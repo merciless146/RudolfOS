@@ -179,6 +179,8 @@ if pkg-config --exists webkit2gtk-4.1 gtk+-3.0 2>/dev/null; then
 	gcc -O2 $HARD -Wno-deprecated-declarations -o /tmp/rudolf-webkit.$$ "$SYS/rudolf-webkit.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) &&
 	gcc -O2 $HARD -Wno-deprecated-declarations -o /tmp/rudolf-native.$$ "$SYS/rudolf-native.c" $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm &&
 	"$HERE/systools/addwebkit.sh" "$OUT" /tmp/rudolf-webkit.$$ /tmp/rudolf-native.$$; rm -f /tmp/rudolf-webkit.$$ /tmp/rudolf-native.$$
+	# (1.6.2, docs/plan-1.6.2.md Part 39: the native apps, with librudolf-ui: GTK 3, which WebKitGTK brought)
+	for a in "$SYS"/apps/*.c; do n=$(basename "$a" .c); sh "$SYS/ui/build.sh" /tmp/rui.$$ usr/bin/rudolf-$n $n $HARD || exit 1; done; rm -rf /tmp/rui.$$
 else echo "mkrootfs: no WebKitGTK here (libwebkit2gtk-4.1-dev): this build has no Lite desktop engine"; fi
 mkdir -p usr/share/rudolf
 cp -a "$WWW" usr/share/rudolf/www
