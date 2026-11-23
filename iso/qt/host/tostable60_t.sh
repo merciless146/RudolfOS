@@ -104,8 +104,9 @@ ok "17. Developer mode on: to-stable refused, pointing to Return to official Rud
 rm -f $T/extra
 # the data check: a stable release that cannot read this computer's data
 rel 2026111700 1.5.8.261117 stable norecord; hist test 2026111000 2026111503 2026111700
-cp $T/sys/state $T/state1; cp $T/conf $T/conf1
-i=$(run $RU check >/dev/null; run $RU stable-info); o=$(run $RU to-stable); rc=$?
+# (what to-stable must leave as it was is copied after the check, which writes the time it checked into the conf: copied
+#  before, the test failed whenever the check came in another second than the one before it)
+i=$(run $RU check >/dev/null; run $RU stable-info); cp $T/sys/state $T/state1; cp $T/conf $T/conf1; o=$(run $RU to-stable); rc=$?
 ok "18. a stable release that cannot read this computer's data (1.5.8: one Linux user for every account) is refused, saying why; nothing changed" \
 	"$([ $rc = 8 ] && [ "$(echo "$i" | J "d['compatible']")" = False ] && echo "$o" | grep -q 'cannot read the accounts and files on this computer' && echo "$o" | grep -q 'own Linux user' && cmp -s $T/state1 $T/sys/state && cmp -s $T/conf1 $T/conf && [ ! -e $T/sys/a.new ] && echo 0)" "$rc $o"
 rel 2026111800 1.6.1.261118 stable; echo 3 > $T/datafmt; cp $T/sys/state $T/state1
