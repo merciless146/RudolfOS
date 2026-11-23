@@ -111,7 +111,9 @@ def make_drive(path):
 make_drive(DRV)
 FIXIMG = os.path.abspath('sc162fix.img'); subprocess.run(['truncate', '-s', '64M', FIXIMG], check=True)
 subprocess.run(['truncate', '-s', '256M', FIXIMG], check=True); subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'R161FIX', '-d', FIX, FIXIMG], check=True)
-NET = ['-netdev', f'user,id=u0,restrict=on,guestfwd=tcp:10.0.2.100:8641-tcp:127.0.0.1:{P1},guestfwd=tcp:10.0.2.101:8642-tcp:127.0.0.1:{P2}',
+# (each connection the guest makes is a command QEMU starts, socat to the stand-in: a tcp: target is one connection for the whole run,
+# and sane-airscan makes several a scan)
+NET = ['-netdev', f'user,id=u0,restrict=on,guestfwd=tcp:10.0.2.100:8641-cmd:socat - TCP:127.0.0.1:{P1},guestfwd=tcp:10.0.2.101:8642-cmd:socat - TCP:127.0.0.1:{P2}',
        '-netdev', 'hubport,id=hp1,hubid=0,netdev=u0',
        '-netdev', f'socket,id=s0,udp=127.0.0.1:{HPORT},localaddr=127.0.0.1:{QPORT}', '-netdev', 'hubport,id=hp2,hubid=0,netdev=s0']
 extra = ['-drive', f'file={DRV},format=raw,if=none,id=nv', '-device', 'nvme,drive=nv,serial=rudolf162',
@@ -152,8 +154,8 @@ if up:
     BIN = '/run/s162b/rudolf-scan' if 'BIN-IN-RUN' in o else '/usr/bin/rudolf-scan'
     ok("F. this tree's rudolf-scan, firewall (its wsd chain) and listeners in place; libsane and sane-airscan put in the library folder", ('OVERLAY-OK' in o or 'LIBS-COPIED' in o) and 'udp dport @wsdopen accept' in o and 'libsane-airscan.so.1' in o, o)
     run("mkdir -p /tmp/sc && chown rudolf:rudolf /tmp/sc && chmod 700 /tmp/sc")
-    b0 = run('/usr/lib/rudolf/firewall status'); run('/usr/lib/rudolf/firewall wsd open')
-    o = run(f"{AS} '{BIN} find'", 60); b1 = run('/usr/lib/rudolf/firewall status')
+    b0 = run('/usr/lib/rudolf/firewall status')
+    o = run(f"/usr/lib/rudolf/firewall wsd open; {AS} '{BIN} find'", 60); b1 = run('/usr/lib/rudolf/firewall status')   # (the window opened just before, as rudolfd opens it)
     ok('1. find, as the desktop\'s user, the firewall on: the eSCL scanner (multicast DNS) and the WSD scanner (its metadata asked through QEMU\'s forwarding), the blocked counter not rising',
        '"id":"escl:http://10.0.2.100:8641/eSCL","name":"QEMU Scanner","model":"QEMU Scanner","via":"network","proto":"eSCL"' in o and '"id":"wsd:http://10.0.2.101:8642/wsd/scan","name":"QEMU WSD Scanner (WSD)"' in o and num(b0) == num(b1), f'{o} {SEEN} {b0} {b1}')
     ID = 'escl:http://10.0.2.100:8641/eSCL'
