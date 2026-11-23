@@ -735,6 +735,55 @@ Tor windows, or for calls and games) and what the best VPN would be: "Yes. That 
    refused off), import of malformed files refused. **The owner's checks:** a real VPN (a provider's or a home router's
    WireGuard) on the Vivobook: connect, browse, a call, sleep and wake, change Wi-Fi.
 
+#### Status (2026-11-23, scheduled task)
+- **Step 1, WireGuard (PR "VPN 1"):** built. The VPN helper (iso/sys/rudolf-vpn.c, /usr/lib/rudolf/root/vpn, run by
+  rudolf-rootd: CAP_NET_ADMIN and the file capabilities only, no mount) sets the kernel's WireGuard up through netlink
+  itself (rvpn0: key, peers, addresses, MTU; the whole computer's routes in a table of its own behind WireGuard's fwmark,
+  as wg-quick does, so the server's own route stays outside the tunnel on any network; IPv6 made unreachable when the
+  file has none; the file's DNS servers in /etc/resolv.conf and RUN/dns-vpn, which udhcpc.sh and the modem script keep
+  while it is on). rudolfd's vpn requests (rudolfd-vpn.inc): add, rename, remove with an administrator's password checked
+  by rudolfd; on and off by any account. The files root's 0600 in /persist/etc/vpn (0700); the key is never in an answer,
+  a log or the page. Settings › Network › VPN (desktop/vpn62.js) and the taskbar's network pop-up (the page's and
+  rudolf-native.c's fl_net: the VPNs' rows after the adapters). Not done: the QR code from the camera (Rudolf OS has a QR
+  encoder, qr61.js, but no decoder; a decoder of its own is a part of its own).
+  Tests (vpn-check.yml): qt/host/vpn162_t.sh (the real rudolfd and helper in namespaces of their own against the kernel's
+  WireGuard as the server, a capture on the outside link), the parser's fuzz test, qt/shell2/vpn62_t.js, and the network
+  pop-up on both engines (same_t.sh fly-net-vpn, fly-net-vpn-off).
+- **Step 2, who may do what (PR "VPN 2", after VPN 1):** built. Per VPN, set by an administrator (its password, checked
+  by rudolfd): "Everyone can turn it on and off" (the default), "Administrators only" (a standard account is asked for an
+  administrator's password, checked by rudolfd; a signed-in administrator is not), "Always on: nobody can turn it off"
+  (turned on at every start, vpn boot; off refused to everyone, an administrator's password included, until an
+  administrator changes the setting). An account under parental controls (the page's a.pc) never turns a VPN off. The
+  account is rudolfd's own record of who is signed in (HOME_SESSION), never one the request names. Turning off a VPN
+  another account turned on asks first ("Ann's VPN is on for everyone on this computer"); the pop-up (both engines)
+  opens Settings › Network for anything that needs a password or a question. Tests: vpn162_t.sh 18-25 (the policies,
+  the child, Always on at rudolfd's start), vpn62_t.js 11-18.
+- **Step 4, the kill switch (PR "VPN 4", after VPN 2; OpenVPN, step 3, comes last: it is the largest):** built. Per VPN,
+  an administrator's (its password), off at first. While a VPN with it is meant to be on, the table inet rudolf_vpnkill
+  (the VPN helper's, beside the firewall's own, so it holds whether that one is on or off) lets out only the tunnel, the
+  VPN's server (WireGuard's marked packets, and the server's addresses as last found: its name cannot be looked up through
+  it) and DHCP and IPv6's neighbour discovery (so the computer keeps its network); nothing is forwarded but into the
+  tunnel. Gone when the VPN is turned off or its kill switch is. Tests: vpn162_t.sh K1-K5 (nothing out while the tunnel
+  is down, back by itself with the remembered address), vpn62_t.js 18b.
+- **Step 5, Oracle (PR "VPN 5", after VPN 4):** Settings › Network › VPN says in a line that Oracle's Tor windows then run
+  inside the VPN (Tor connects through it; the VPN sees only that Tor is used). Tor itself unchanged. vpn62_t.js 1.
+- **Step 3, OpenVPN 2.6 (PR "VPN 3", the last: after VPN 5):** built. A .ovpn file imported the same way, checked line by
+  line against what a client's file may say (scripts, script-security, plugins, the management port, log and pid files,
+  another config, a user, a folder, files of its own: refused with the line; certificates and keys only inside the file;
+  a tap VPN refused; a provider's username and password asked for in the add dialog, kept root's 0600 beside it). The
+  VPN helper runs OpenVPN (/usr/sbin/openvpn, Ubuntu 24.04's 2.6 with OpenSSL, which the base layer has) only while the
+  VPN is on, as a daemon of its own outside the Linux apps' sandbox, from a run file it writes (the checked lines, the
+  servers as found now so the kill switch knows them, rvpn0, nobody once connected) with itself as OpenVPN's route-up
+  hook (the server's DNS servers; IPv6 unreachable when the server gives none). **DCO:** not used. OpenVPN 2.6 talks to
+  the out-of-tree ovpn-dco module; Linux 6.16 and later (Rudolf OS's 6.18 included) have their own in-tree ovpn module
+  instead, which needs OpenVPN 2.7 (not in Ubuntu 24.04, whose packages the base layer is made from). So OpenVPN runs with --disable-dco: its data in its
+  own process (measured in the test: about 9 MB of memory while connected, nothing while off). The way to DCO later:
+  CONFIG_OVPN in kconfig.sh (built in, signed with the kernel) and OpenVPN 2.7. Disk: the check workflow says what the
+  base layer lacks of it (the program is about 0.9 MB; ci_release.sh says the total at each build; the aim is about 3 MB).
+  Tests: qt/host/vpnovpn162_t.sh (an OpenVPN server of the test's in a namespace: refused files, connected as nobody,
+  traffic and DNS through it, a capture outside, the kill switch, started again by itself, off with nothing left, a
+  login), the fuzz test of both parsers, vpn62_t.js 2b-2c.
+
 ### 34. Scanners (added on 2026-11-22)
 The owner, 2026-11-22: scanners and network shares are what is left to add from what Mint and Ubuntu have (a phone link,
 fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, already handled, or already there).
@@ -819,6 +868,27 @@ them. Tests: qt/host/debscan162_t.sh 6/6, debhome_t.sh 6/6 unchanged.
 (SMB 2.1 and 3 only: CIFS_ALLOW_INSECURE_LEGACY off, so the kernel itself has no SMB 1 or 2.0; no upcalls, RDMA, cache or key
 dump; no SMB server), in iso/kconfig-required.txt; .github/workflows/shares-check.yml builds this tree's kernel and checks the
 module (iso/qt/host/cifsmod62_t.sh: signed, SHA-256, no device alias, so it is loaded only when a share is mounted).
+Step 2 (PR "Network shares, step 2"): rudolfd's shares/ requests (iso/sys/rudolfd-shares.inc: open, close, the open ones,
+list, found, kept, forget); the drives helper's share-mount, share-umount, share-umount-all (rudolf-drives.c: the kernel's SMB
+client through fsopen/fsconfig, one option at a time, so nothing in a name or password is read as an option; for the signed-in
+account's own Linux user only, at /run/rudolf/shares/UID/ID, 0700, files 0600, nosuid, nodev, noexec; SMB 3 with "seal" first,
+without it only where the server has no encryption; 2.1 only when asked; a guest anonymously, then as "guest"); rudolf-shares
+(iso/sys/rudolf-shares.c, run as nobody: resolve by DNS or multicast DNS, probe, list by its own small SMB 2.1/3 client with
+NTLMv2 and signing, find); the password in the account's keyring only when asked (rudolf-portal --keyring-store share-ID);
+fs/ reaches only the signed-in account's open shares, links followed must stay inside the share (shares_path_ok); every share
+closed at sign-out (au_session_stop). Tests: iso/qt/host/shares62_t.sh (Samba in network namespaces, the runner's kernel) and
+iso/qt/sb/shares62_q.py (the newest beta with this tree's kernel and programs, two accounts) in shares-check.yml.
+Step 3 (PR "Network shares, step 3"): File Explorer's Network (desktop/shares62.js; five one-line hooks in files25.js: the places,
+the Network view, the address bar, a share's Disconnect, and the window's xNetApi): the computers and NAS boxes found, signing
+in (name, password, guest, "Remember the password", More options: domain and SMB 2.1), a server's shared folders, a share opened
+as a drive pane (so copying, opening and dragging onto the desktop are the drives' own: xfer61.js, deskxfer61.js), the open
+shares in the places, the account's recent shares (its own settings, no password; reconnected only when clicked), \\server\share
+and smb:// in the address bar, Disconnect. The firewall's wsd chain lets in WS-Discovery's answers only (3702 from 3702, private
+addresses, not cellular; nothing listens on 3702 but rudolf-shares find for its two seconds). Tests: iso/qt/shell2/shares62_t.js
+(Standard's page in Chromium and Native's app window in WebKit, Native's engine, compared), shares62_t.sh's firewall checks,
+shares62_q.py's found checks (20-22).
+**Left:** NFS (only SMB is built: NFS for NAS boxes that offer only NFS, later, if asked; the kernel's NFS client is there, the
+mount and its user mapping, root squash and Kerberos-less security, are not quick to make safe). Real hardware: the owner's checks.
 
 ### 36. Desert Camp, the third moving background (added on 2026-11-22)
 The owner, 2026-11-22: a third dynamic background in Display Properties: an open desert with sparse dry foliage and a few tents
@@ -846,6 +916,102 @@ quick settings, the notifications and the calendar; cm_open off a side taskbar).
 in tbside-check.yml. **The owner's check:** the taskbar at the left and at the right on the Vivobook, on Native and Chromium:
 each pop-up and menu, and anything else that still looks wrong (with a screenshot).
 
+### 38. Smaller pages for the native desktop's app windows, measured (added on 2026-11-22)
+The owner, 2026-11-22, after a screenshot of Task Manager on the Vivobook (two WebKitWebProcess, 434 MB and 354 MB by their RSS)
+and another session's suggestion that some windows could run "at a fraction of the MB": "Yes, add it to the plan and take the
+measurements necessary. Follow your suggested steps to implement the improvement."
+**Why:** on the native desktop every app window loads the whole desktop page (index.html#app=NAME, oneapp59.js): the core of
+base_v24.html (about 1.8 MB of script) and the modules (about 2.8 MB), less the self-contained apps the build already moves to
+files loaded when opened (1.5.9 plan 10.1) and what 1.6.1 Part 23 B (lean61.js) stops an app window from building. Each window's
+page is a whole document with all of that parsed and kept, even in the shared web process; Task Manager has a web process of its
+own since #598 (kept: it stays responsive while the shared one is busy). Chromium mode is not concerned: its windows are part of
+its one page.
+**The readings (devlink, read-only; PSS / private, MB):**
+- 2026-11-22 20:24 CST (000567; 12.5 min after start; Task Manager and one other window open): the shared web process 325 / 264,
+  Task Manager's own 190 / 131, rudolf-native 145 / 95, the network process 33 / 22; memory used 1.4 GB of 3.4.
+- What each kind of window adds, 2026-11-22 21:19-21:22 CST (devlink 000568-000570; the owner closed Task Manager, opened
+  Calculator and Notepad, reopened Task Manager, then opened Settings; own memory, MB):
+  - Calculator and Notepad together: the shared web process 264 -> 294, about **15 MB each** (they reuse what the shared
+    process has already loaded);
+  - Task Manager reopened: its own web process 132 again (110-132 as WebKit tidies it): **about 130 MB**, all of it its own;
+  - Settings: the shared process 294 -> 331 at once and 466 a minute later as its panels came in: **about 170 MB**;
+  - Xorg 92, rudolf-native 96, the network process 22-40 (unchanged by the windows).
+- After a restart, 2026-11-22 21:28-21:36 CST (devlink 000574-000577; the kernel now refuses even root the processes'
+  smaps after the restart, so these are /proc/PID/status's RssAnon, the processes' own memory): signed in, nothing open, the
+  system used 650 MB (the hidden page 85, rudolf-native 69, Xorg 77, the network process 16); **WordPro +131 MB**;
+  **SpreadsheetPro +41 MB more** at first (both Office apps 85 -> 257 MB), settling to 216 a minute later (WebKit's tidying,
+  rudolf-native.c's memory-pressure settings); the rest of "used" rising with them was the kernel's caches (slab about 270 MB),
+  given back under pressure, not a program's.
+  The owner, 2026-11-22: "It feels like Rudolf should actually be running a lot leaner than it currently does."
+  So: Task Manager (its own process, the whole page loaded fresh), Settings and the Office apps (WordPro, SpreadsheetPro,
+  PresentPro) are where the memory goes; a small app in the shared process costs little, below this part's 40 MB bar: Calculator, Notepad and the like are
+  not moved (step 3 kept only for an app measured above the bar).
+- On the host (Chrome 153's renderer, 2026-11-22, private / PSS MB): a blank page 26 / 50; the desktop page signed in 106 / 134;
+  as an app window (#app=taskmgr) 101 / 129; the same page with its scripts taken out 31 / 55 (its styles and markup cost about
+  5 MB). So nearly all of a window's cost is the page's 3.5 MB of script being loaded, compiled and kept (about 75 MB here),
+  while the scripts' live objects are small (a JS heap of 4 MB after collecting). A small page with a tenth of the script
+  should bring a window from about 100 MB to about 35 MB in Chrome; WebKit's figures (JavaScriptCore) are to be measured the
+  same way on the Vivobook before and after.
+**Steps (each kept only if the numbers say so):**
+1. **Measured on the Vivobook** (above), and on the host: each window kind's cost in the shared process and in its own; a web
+   process's floor with a near-empty page; what of the page a window really runs (Chromium's precise coverage of a Task Manager,
+   a Calculator and a Notepad window through a test session), so the saving is known before building.
+2. **Task Manager first:** `build19.py` also makes a small page for it (`a/app-taskmgr.html`, from the same modules and the parts of
+   base_v24.html it needs, by a list in the build, never a copy), which the native shell opens for Task Manager instead of
+   index.html#app=taskmgr; in its own web process as now. The same rudolfd token, peer check and confinement; nothing new asked of
+   rudolfd. Tests: the small page against the full page's Task Manager (its DOM, its tabs, every action; as sethooks61_t.js
+   compares), Native against Chromium (same_t.sh), and the memory before and after (host and the owner's Vivobook).
+3. **(By the readings: only apps measured above 40 MB; Calculator and Notepad are not.) Then the simple apps, one at a time** (Calculator, Notepad, the media player; not the shell's hidden
+   page, File Explorer, Blitzen or the Office apps, which use most of the page), each kept only with a measured saving worth it
+   (aim: 40 MB or more per window) and its own comparison test.
+3b. **The Office apps** (WordPro, SpreadsheetPro, PresentPro), right after Task Manager: a small page each from the same
+   sources (their groups are already files loaded when opened; what remains is the whole page under them), with their
+   comparison tests; measured before and after.
+3c. **The shell's hidden page** (rudolf-native's do-bg page: the catalogue, the settings, the services): it too loads the
+   whole page; what it needs measured by coverage, and trimmed where that lowers the baseline without slowing the shell.
+4. **Settings, panel by panel** (the owner names it with Task Manager as the main concern): Settings reaches into most of the
+   page, so a small page per panel (Sound, Display, Network...) rather than one for all of it, each with its comparison test.
+5. **Oracle's Chromium apart:** on Native, Oracle runs in Rudolf's own Chromium (one for every Oracle window), not in these pages;
+   its memory (how Chromium splits and keeps its tab processes) is measured and worked on as its own item.
+5b. **Longer term (WendigOS, docs/plan-2.0.md):** the core apps rewritten natively (GTK, 10 to 40 MB a window instead of a
+   whole page each): the lean end of this, too large for 1.6.x; the owner's WendigOS session reads this part.
+6. **The sign-in screen's flash:** each app window loading the whole page showed the desktop's sign-in screen for a moment
+   before its app (the owner saw it early in Native's work; it was hidden since); a small page has no sign-in screen at all.
+7. **Nothing weakened, nothing drifting:** a module missing from a small page is a test failure, never a quiet gap (each small page
+   checks at load that the functions its list says it needs exist, and its test runs every action); Native keeps looking and
+   working exactly as Chromium.
+**The owner's checks:** Task Manager (and each app moved) on the Vivobook: everything it does, and the memory in Task Manager's own
+Processes tab before and after.
+
+### 39. Native apps for Rudolf OS too, starting in 1.6.2 (added on 2026-11-22)
+The owner, 2026-11-22, after the per-window readings (Part 38: Task Manager ~130 MB, Settings ~170 MB, WordPro ~130 MB, each
+app window a whole copy of the desktop page): "If native re-writes of the core apps is suitable for Rudolf as well as Rudolf
+WendigOS, then make it a core fix for 1.6.2 as well as 2.0."
+**Suitable for Rudolf OS:** yes. docs/plan-2.0.md's "How a native app is built" needs nothing of 2.0's: C and GTK 3 as
+rudolf-native (already in the system layer, on X11 as Rudolf OS is), one program per app, `librudolf-ui` (`iso/sys/ui/`) for
+the look and rudolfd's client, files and settings through rudolfd. A native app is not WendigOS-only, so it needs no build
+switch: both editions build the same apps from main. The owner's rule holds as that plan already says: each native app is
+screenshot-compared with its web version (under 2 % of pixels different) and passes a checklist from it before the Start
+menu points to it; Chromium and Lite keep their web versions inside their page (where a window costs little), and Native
+switches to the native app once it passes. Security as rudolf-native: rudolfd's token and peer check, confinement, the
+account's own Linux user, nothing new opened up.
+**The order for Rudolf OS, by memory saved first** (2.0's waves kept, re-ordered by the readings):
+1. **librudolf-ui** (`iso/sys/ui/`): the GTK CSS theme from the page's styles (light and dark, the accent colour's rules,
+   Display Properties' fonts and sizes), the dialogs, the about box, rudolfd's client, translations; with its own test
+   (a sample window screenshot-compared with the page's same controls).
+2. **Task Manager** (1.6.2): the first native app; ~130 MB today in its own web process; aim 15 to 40 MB. Its small page
+   (Part 38 step 2) is the stopgap until the native one passes, then the native one replaces it.
+3. **Settings** (1.6.3, panel by panel, each panel switched as it passes): ~170 MB today. Small pages per panel (Part 38) only
+   where a panel's native version is further off.
+4. **The Office apps** (WordPro, SpreadsheetPro, PresentPro; after Settings: the largest work): ~130 MB each today; their small
+   pages (Part 38 step 3b) meanwhile.
+5. **Then 2.0's waves in their order** for the rest (Calculator, Notepad and the other small apps cost little, about 15 MB, so
+   they come after the heavy ones here).
+Each app's PR as docs/plan-2.0.md "Each app's pull request" says (its program, its host test under Xvfb, its screenshots
+against the web version, its memory at idle against the web version, the Start menu switched once it passes).
+**The owner's checks:** each native app on the Vivobook against its web version (Chromium mode), every action, and its memory
+in Task Manager.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -865,3 +1031,5 @@ each pop-up and menu, and anything else that still looks wrong (with a screensho
 13. Part 35 (network shares): SMB in File Explorer in one PR; the owner's check on a share at home if there is one.
 14. Part 36 (Desert Camp): one PR; the owner's look on the Vivobook in light and dark on each engine.
 15. Part 37 (the side taskbar's pop-ups and menus): one PR; the owner's look on the Vivobook.
+16. Part 38 (smaller pages for app windows): the measurements, then Task Manager in one PR, then the simple apps one at a time.
+17. Part 39 (native apps for Rudolf OS too): librudolf-ui, then native Task Manager in 1.6.2; Settings and the Office apps after.

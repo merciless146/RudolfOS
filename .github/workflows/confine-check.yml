@@ -101,7 +101,9 @@ jobs:
         with: {name: kernel, path: kout}
       - if: matrix.r.kernel == 'built'
         name: The kernel built here in place of the release's
-        run: cp kout/vmlinuz rel/vmlinuz && cp kout/modules.sfs rel/modules.sfs && grep -E '^CONFIG_SECURITY_LANDLOCK=' kout/config.txt || true
+        # (the release's own two kept in rel/release-kernel: t160 then checks that the official recovery system is not
+        # made from a system with this kernel, and starts from the one the official release made)
+        run: mkdir -p rel/release-kernel && mv rel/vmlinuz rel/modules.sfs rel/release-kernel/ && cp kout/vmlinuz rel/vmlinuz && cp kout/modules.sfs rel/modules.sfs && (grep -E '^CONFIG_SECURITY_LANDLOCK=' kout/config.txt || true)
       - name: This tree's rudolfd, rudolf-rootd and helpers (as the release builds them), and the switch
         run: |
           . iso/systools/hardflags.sh; mkdir -p fix/root

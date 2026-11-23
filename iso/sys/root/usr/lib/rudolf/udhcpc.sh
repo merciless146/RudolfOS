@@ -16,8 +16,9 @@ umask 022; mkdir -p "$RUN/dns" "$RUN/nointernet" 2>/dev/null; chmod 755 "$RUN/dn
 
 # the interface that carries the default route (the lowest metric)
 best() { ip route 2>/dev/null | awk '/^default/{d="";m=0;for(i=1;i<NF;i++){if($i=="dev")d=$(i+1);if($i=="metric")m=$(i+1)}if(d!="")print m+0, d}' | sort -n | head -1 | cut -d' ' -f2; }
-# /etc/resolv.conf from the connection that carries the default route
-resolv() { b=$(best); [ -n "$b" ] && [ -f "$RUN/dns/$b" ] && cat "$RUN/dns/$b" > "$RESOLV" 2>/dev/null; true; }
+# /etc/resolv.conf from the connection that carries the default route (1.6.2 Part 33: while a VPN is on, its own
+# name servers, RUN/dns-vpn: the VPN helper's, so a new address on the Wi-Fi never puts the network's back)
+resolv() { [ -s "$RUN/dns-vpn" ] && { cat "$RUN/dns-vpn" > "$RESOLV" 2>/dev/null; return 0; }; b=$(best); [ -n "$b" ] && [ -f "$RUN/dns/$b" ] && cat "$RUN/dns/$b" > "$RESOLV" 2>/dev/null; true; }
 # does the internet answer through this interface (and only through it)?
 online() { ping -c1 -W3 -I "$1" 1.1.1.1 >/dev/null 2>&1 || ping -c1 -W3 -I "$1" 8.8.8.8 >/dev/null 2>&1; }
 # another connection's default route

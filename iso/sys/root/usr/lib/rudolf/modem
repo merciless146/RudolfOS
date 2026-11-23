@@ -383,7 +383,7 @@ sms_new() {   # MODEM
 CM=${RUDOLF_CELL_METRIC:-700}; RESOLV=${RUDOLF_RESOLV:-/etc/resolv.conf}; PROCNET=${RUDOLF_PROCNET:-/proc/sys/net}
 NAT64=${RUDOLF_NAT64:-}; FW=${RUDOLF_FIREWALL:-/usr/lib/rudolf/firewall}
 best() { ip route 2>/dev/null | awk '/^default/{d="";m=0;for(i=1;i<NF;i++){if($i=="dev")d=$(i+1);if($i=="metric")m=$(i+1)}if(d!=""&&$0!~/linkdown/)print m+0, d}' | sort -n | head -1 | cut -d' ' -f2; }
-resolv() { b=$(best); [ -n "$b" ] && [ -f "$R/dns/$b" ] && cat "$R/dns/$b" > "$RESOLV" 2>/dev/null; true; }
+resolv() { [ -s "$R/dns-vpn" ] && { cat "$R/dns-vpn" > "$RESOLV" 2>/dev/null; return 0; }; b=$(best); [ -n "$b" ] && [ -f "$R/dns/$b" ] && cat "$R/dns/$b" > "$RESOLV" 2>/dev/null; true; }
 note() { mkdir -p $R; n=$(( $(sed -n '$s/|.*//p' $R/cell-notes 2>/dev/null || echo 0) + 1 )); printf '%s|%s|%s\n' "$n" "$1" "$2" >> $R/cell-notes
 	[ "$(wc -l < $R/cell-notes)" -gt 40 ] && { tail -20 $R/cell-notes > $R/cell-notes.new; mv $R/cell-notes.new $R/cell-notes; }; echo "$(date) $1: $2" >> $LOG; }
 bkv() { printf '%s\n' "$BK" | sed -n "s/^bearer\.$1  *: //p" | head -1 | sed 's/^--$//'; }

@@ -5853,6 +5853,56 @@ static void net_read(void)
 	for (int i = 0; i < NNIF && NCUR < 0; i++) if (NIF[i].ip[0] && !strcmp(NIF[i].state, "up")) NCUR = i;
 	jfree(v);
 }
+/* (1.6.2 Part 33: the VPNs, vpn62.js vpnRows: after the adapters, each a row of the same list; GET vpn) */
+typedef struct { char id[16], name[96], state[16], by[96], policy[16]; int on, may_on, may_off; } VpnRow;
+static VpnRow VPNR[8]; static int NVPN; static char VPN_ME[96], VPN_ACT[16], VPN_BUSY[16];
+static void vpn_read(void)
+{
+	JV *v = jget("/api/vpn"); NVPN = 0; VPN_ME[0] = VPN_ACT[0] = 0; if (!v) return;
+	JV *me = jprop(v, "me"); jstr(me, "name", VPN_ME, sizeof VPN_ME); jstr(v, "active", VPN_ACT, sizeof VPN_ACT);
+	JV *a = jprop(v, "vpns");
+	for (int i = 0; a && a->t == 4 && i < a->len && NVPN < 8; i++) { JV *o = jat(a, i); VpnRow *r = &VPNR[NVPN++]; memset(r, 0, sizeof *r);
+		jstr(o, "id", r->id, sizeof r->id); jstr(o, "name", r->name, sizeof r->name); jstr(o, "state", r->state, sizeof r->state); jstr(o, "by", r->by, sizeof r->by); jstr(o, "policy", r->policy, sizeof r->policy);
+		r->on = jbool(o, "on"); r->may_on = jbool(o, "mayOn"); r->may_off = jbool(o, "mayOff"); }
+	jfree(v);
+}
+/* (vpnState) */
+static const char *vpn_state(const VpnRow *r)
+{
+	if (VPN_BUSY[0] && !strcmp(VPN_BUSY, r->id)) return r->on ? "Turning off…" : "Connecting…";
+	return !r->on ? "Off" : !strcmp(r->state, "connected") ? "Connected" : !strcmp(r->state, "noanswer") ? "No answer" : !strcmp(r->state, "down") ? "Down" : "Connecting…";
+}
+/* (vpnDirect: at once from the pop-up, with no password and no question; else Settings › Network asks) */
+static int vpn_direct(const VpnRow *r)
+{
+	if (r->on) return r->may_off && !(r->by[0] && VPN_ME[0] && strcmp(r->by, VPN_ME));
+	if (!r->may_on) return 0;
+	for (int i = 0; i < NVPN; i++) if (VPN_ACT[0] && strcmp(VPN_ACT, r->id) && !strcmp(VPNR[i].id, VPN_ACT) && !VPNR[i].may_off) return 0;
+	return 1;
+}
+typedef struct { char path[64], name[96]; int off, code; GByteArray *b; } VpnJob;
+static gboolean vpn_done(gpointer p)
+{
+	VpnJob *j = p; char msg[300] = ""; const char *kind = "info";
+	JV *v = j->b ? jparse((char *)j->b->data) : NULL;
+	if (j->code == 200) { if (j->off) snprintf(msg, sizeof msg, "%s is off.", j->name); else { jstr(v, "message", msg, sizeof msg); if (!msg[0]) snprintf(msg, sizeof msg, "%s is on.", j->name); } }
+	else { kind = "error"; jstr(v, "error", msg, sizeof msg); if (!msg[0]) snprintf(msg, sizeof msg, "It did not work."); }
+	jfree(v); if (j->b) g_byte_array_free(j->b, TRUE);
+	char at[40]; snprintf(at, sizeof at, "%.0f", g_get_real_time() / 1000.0);
+	const char *f[4] = {"VPN", msg, kind, at}; nt_notef(fget_note4, (void *)f); toast_addf(NULL, NULL, fget_note4, (void *)f);
+	VPN_BUSY[0] = 0; vpn_read(); if (FLK == FL_NET && FLAREA) gtk_widget_queue_draw(FLAREA);
+	g_free(j); return G_SOURCE_REMOVE;
+}
+static gpointer vpn_thread(gpointer p) { VpnJob *j = p; j->code = http("POST", j->path, NULL, 0, &j->b); g_idle_add(vpn_done, j); return NULL; }
+static void vpn_click(int i)
+{
+	if (i < 0 || i >= NVPN || VPN_BUSY[0]) return; VpnRow *r = &VPNR[i];
+	if (!vpn_direct(r)) { fl_close(); tb_settings("net"); return; }
+	VpnJob *j = g_new0(VpnJob, 1); j->off = r->on; snprintf(j->name, sizeof j->name, "%s", r->name);
+	if (r->on) snprintf(j->path, sizeof j->path, "/api/vpn/off"); else snprintf(j->path, sizeof j->path, "/api/vpn/on?id=%s", r->id);
+	snprintf(VPN_BUSY, sizeof VPN_BUSY, "%s", r->id); if (FLAREA) gtk_widget_queue_draw(FLAREA);
+	g_thread_unref(g_thread_new("vpn", vpn_thread, j));
+}
 static int fl_hov(const char *k) { return FLHOV >= 0 && !strcmp(FLBK[FLHOV], k); }
 /* the lines a text breaks into at width W, as a browser breaks white-space:normal text */
 static int css_wrap(cairo_t *cr, const char *t, const char *fam, int wt, double px, double w, char (*out)[320], int max)
@@ -5884,14 +5934,16 @@ static void fl_net(cairo_t *cr, int draw, int dark, int top)
 	double l12 = fl_lh(cr, 400, 12), l13 = fl_lh(cr, 400, 13), l11 = fl_lh(cr, 400, 11); const NetIf *wl = NULL; for (int i = 0; i < NNIF && !wl; i++) if (NIF[i].wireless) wl = &NIF[i];
 	char msg[200] = ""; if (wl && !NWTOOLS) snprintf(msg, sizeof msg, "This system has no Wi-Fi tools; update Rudolf OS or use a network cable.");
 	char ml[6][320]; int nm = msg[0] ? css_wrap(cr, msg, UIFAM, 400, 13, 330, ml, 6) : 0; double mh = nm ? fmax(18, nm * l13) : 0;
-	double rows = NNIF ? NNIF * (10 + l12) : l12, bh = 2 + 6 + l12;
+	double rows = (NNIF ? NNIF * (10 + l12) : l12) + NVPN * (10 + l12), bh = 2 + 6 + l12;   /* (1.6.2 Part 33: the VPNs' rows after the adapters) */
 	/* (placed as the page places it: by flyPlace before the Wi-Fi's part is filled in, so it grows downwards from there) */
 	FLW = 330 + 24 + 2; FLH = 1 + 10 + l12 + 2 + l12 + 6 + rows + 8 + bh + 10 + 1; fl_place_over(NETB, top); FLH += nm ? 10 + mh : 0;   /* (an empty Wi-Fi part: its margin and the buttons' one as one) */
 	if (!draw) return;
 	Box b; memset(&b, 0, sizeof b); b.bg = cx("#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 10; shd_add(&b, 0, 10, 26, cx("#000000", .3), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 	RGBA ink = cx("#111111", 1); double x = FLX + 13, y = FLY + 11;
 	css_text(cr, "Network", UIFAM, 700, 12, x, y, l12, ink, 0); y += l12 + 2;
-	css_text(cr, NCUR >= 0 ? "Connected" : "Not connected", UIFAM, 400, 12, x, y, l12, cx("#4b5563", 1), 0); y += l12 + 6;
+	{ char st[200]; snprintf(st, sizeof st, "%s", NCUR >= 0 ? "Connected" : "Not connected");
+		for (int i = 0; i < NVPN; i++) if (VPNR[i].on) { size_t L = strlen(st); snprintf(st + L, sizeof st - L, " · VPN: %s", VPNR[i].name); break; }   /* (vpnRows: the header says so) */
+		css_text(cr, st, UIFAM, 400, 12, x, y, l12, cx("#4b5563", 1), 330); } y += l12 + 6;
 	if (!NNIF) { css_text(cr, "No network adapter was found.", UIFAM, 400, 12, x, y, l12, cx("#6b7280", 1), 0); y += l12; }
 	for (int i = 0; i < NNIF; i++) { const NetIf *f = &NIF[i]; int on = i == NCUR; char key[16]; snprintf(key, sizeof key, "row:%d", i); double rh = 10 + l12;
 		RGBA bg = on ? ca(accent(), 1) : fl_hov(key) ? ca(accent(), .18) : (RGBA){0, 0, 0, 0};
@@ -5900,6 +5952,15 @@ static void fl_net(cairo_t *cr, int draw, int dark, int top)
 		char nm2[200]; if (f->cellular) snprintf(nm2, sizeof nm2, "Mobile data%s%s", f->cell[0] ? " · " : "", f->cell); else if (f->wireless) { if (f->ssid[0] && f->ip[0]) snprintf(nm2, sizeof nm2, "Wi-Fi · %s", f->ssid); else snprintf(nm2, sizeof nm2, "Wi-Fi"); } else snprintf(nm2, sizeof nm2, "Ethernet (%s)", f->name);
 		const char *st = f->cellular && !on ? "In reserve" : f->cellular ? "Connected" : f->ip[0] ? "Connected" : !strcmp(f->state, "up") ? "No address" : f->wireless ? "Not connected" : "No cable";
 		const char *ic = f->wireless || f->cellular ? "📶" : "🔌"; double iw = css_width(cr, ic, UIFAM, 400, 12), sw = css_width(cr, st, UIFAM, 400, 11);
+		css_text(cr, ic, UIFAM, 400, 12, x + 6, y + 5, l12, c1, 0);
+		double bx = x + 6 + iw + 8, bw = 330 - 12 - iw - 8 - 8 - sw; css_text(cr, nm2, UIFAM, 600, 12, bx, y + 5, l12, c1, bw);
+		css_text(cr, st, UIFAM, 400, 11, x + 330 - 6 - sw, y + 5 + (l12 - l11) / 2, l11, c2, 0); fl_btn(key, x, y, 330, rh); y += rh; }
+	for (int i = 0; i < NVPN; i++) { const VpnRow *v = &VPNR[i]; int on = v->on; char key[16]; snprintf(key, sizeof key, "vpn:%d", i); double rh = 10 + l12;   /* (1.6.2 Part 33: vpn62.js vpnRows) */
+		RGBA bg = on ? ca(accent(), 1) : fl_hov(key) ? ca(accent(), .18) : (RGBA){0, 0, 0, 0};
+		if (bg.a > 0) { Box r; memset(&r, 0, sizeof r); r.bg = bg; r.rad = 6; box_paint(cr, x, y, 330, rh, &r); }
+		RGBA c1 = on ? cx("#ffffff", 1) : ink, c2 = on ? cx("#ffffff", 1) : cx("#15803d", 1);
+		char nm2[200]; snprintf(nm2, sizeof nm2, "VPN · %s", v->name); const char *st = vpn_state(v);
+		const char *ic = "🔒"; double iw = css_width(cr, ic, UIFAM, 400, 12), sw = css_width(cr, st, UIFAM, 400, 11);
 		css_text(cr, ic, UIFAM, 400, 12, x + 6, y + 5, l12, c1, 0);
 		double bx = x + 6 + iw + 8, bw = 330 - 12 - iw - 8 - 8 - sw; css_text(cr, nm2, UIFAM, 600, 12, bx, y + 5, l12, c1, bw);
 		css_text(cr, st, UIFAM, 400, 11, x + 330 - 6 - sw, y + 5 + (l12 - l11) / 2, l11, c2, 0); fl_btn(key, x, y, 330, rh); y += rh; }
@@ -6100,6 +6161,7 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "mute")) { char q[16]; snprintf(q, sizeof q, "muted=%d", !FLMUTE); fl_volume_set(q); }
 	else if (!strcmp(k, "sounds")) { fl_close(); tb_settings("vol"); return; }
 	else if (!strcmp(k, "npo")) { fl_close(); tb_settings("net"); return; }   /* (the network's Network Settings…) */
+	else if (!strncmp(k, "vpn:", 4)) { vpn_click(atoi(k + 4)); return; }   /* (1.6.2 Part 33: a VPN's row) */
 	else if (!strcmp(k, "qs:8")) { air_set(!AIR_ON); }
 	else if (!strcmp(k, "qs:9")) { mob_set(!MOB_ON); }
 	else if (!strncmp(k, "qs:", 3)) qs_toggle(atoi(k + 3));
@@ -6187,7 +6249,7 @@ static void fl_open(int kind)
 	if (kind == FL_QS) { air_read(); mob_read(); }   /* (1.6.0 Parts 2 and 3: Airplane mode and Mobile data, as they are now) */
 	FLK = kind; FLHOV = FLPRESS = -1; FLSCROLL = 0;
 	if (kind == FL_CAL) { GDateTime *n = fl_now(); FL_Y = g_date_time_get_year(n); FL_M = g_date_time_get_month(n); g_date_time_unref(n); }
-	else if (kind == FL_NET) net_read();
+	else if (kind == FL_NET) { net_read(); vpn_read(); }
 	else if (kind == FL_BRI) bri_load();
 	else { JV *v = jget("/api/volume"); if (v && jbool(v, "ok")) { FLVOL = VOL = (int)jnum(v, "volume", -1); FLMUTE = MUTED = jbool(v, "muted"); } else { FLVOL = VOL; FLMUTE = MUTED; } jfree(v); }
 	if (kind == FL_NC) { for (int i = 0; i < NNT; i++) NT_SEEN = fmax(NT_SEEN, NT[i].at); bar_redraw(); }   /* (ncToggle: what is in the centre is seen) */
