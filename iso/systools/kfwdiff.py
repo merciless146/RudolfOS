@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rudolf Kryptonite (2.0): the firmware a new kernel's drivers ask for, against the old kernel's and what Rudolf ships.
+"""WendigOS (2.0): the firmware a new kernel's drivers ask for, against the old kernel's and what Rudolf ships.
 
   kfwdiff.py OLD-MODULES NEW-MODULES FIRMWARE-LIST [BASE-FIRMWARE-NAMES]
 

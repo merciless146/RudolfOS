@@ -1,5 +1,5 @@
 #!/bin/sh
-# 2.0 (Rudolf Kryptonite, the kryptonite branch; docs/plan-2.0.md "Status: the 7.3 kernel", finding b): with Secure Boot
+# 2.0 (WendigOS, the kryptonite branch; docs/plan-2.0.md "Status: the 7.3 kernel", finding b): with Secure Boot
 # off, a layer that does not match its signed hash starts unchecked (the start-up script mounts its loop device itself
 # and Task Manager says so). The checked device set up on that loop device first held it, so the mount failed with
 # "Device or resource busy", the layer was called damaged and the start went back to the previous system: kr20_t.py's

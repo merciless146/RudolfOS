@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rudolf Kryptonite (2.0, docs/plan-2.0.md): kconfig.sh moved from one kernel to another, option by option. Tests only.
+"""WendigOS (2.0, docs/plan-2.0.md): kconfig.sh moved from one kernel to another, option by option. Tests only.
 
   kconfdiff.py OLD-TREE NEW-TREE [KCONFIG.SH ...]
 

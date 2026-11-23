@@ -1,5 +1,5 @@
 #!/bin/bash
-# Rudolf Kryptonite (2.0): the Secure Boot parts iso/boot/sb/parts.txt pins, into DIR, for the QEMU checks only
+# WendigOS (2.0): the Secure Boot parts iso/boot/sb/parts.txt pins, into DIR, for the QEMU checks only
 # (.github/workflows/kryptonite-kernel.yml): Ubuntu's packages by systools/sb_fetch.sh, and when Ubuntu has a newer package
 # than the pinned one, the pinned version's package from Launchpad's archive (which keeps every published version). Every
 # file is checked against its pin either way.   kr20_sbparts.sh DIR   GPL-2.0-or-later.

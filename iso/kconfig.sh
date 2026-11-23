@@ -1,6 +1,6 @@
 #!/bin/sh
 # Rudolf OS kernel configuration on top of x86_64_defconfig
-# Rudolf Kryptonite (2.0, the kryptonite branch): Linux 7.3.y (.github/kryptonite-kernel.txt), moved over from 6.18 option by
+# WendigOS (2.0, the kryptonite branch): Linux 7.3.y (.github/kryptonite-kernel.txt), moved over from 6.18 option by
 # option (iso/systools/kconfdiff.py lists what 7.3 renamed, removed, changed and added; the decisions are marked "2.0 (7.3)")
 set -e
 KDIR=$(cd "$(dirname "$0")" && pwd)   # (1.6.1: for the required features' list, iso/kconfig-required.txt)

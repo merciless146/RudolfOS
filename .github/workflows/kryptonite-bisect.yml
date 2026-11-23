@@ -1,8 +1,8 @@
-# Rudolf Kryptonite (2.0): a parallel bisect of the 7.x start-up finding (.github/kryptonite-bisect.txt says what). Each point is
+# WendigOS (2.0): a parallel bisect of the 7.x start-up finding (.github/kryptonite-bisect.txt says what). Each point is
 # a mainline commit built by systools/testkernel.sh (this tree's kconfig.sh, a TEST certificate made in its job) and started
 # after the kexec handover at 1.5 GB in QEMU with Secure Boot on (qt/sb/recovery_sb_t.sh, RECSB_ONLY1). Nothing is published,
 # no secret is read, the test keys are deleted with each job. Pull requests into kryptonite that change the list only.
-name: Kryptonite bisect
+name: WendigOS bisect
 on:
   pull_request:
     branches: [kryptonite]
@@ -57,7 +57,7 @@ jobs:
           git init -q src; for u in https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git https://github.com/torvalds/linux.git; do git -C src fetch -q --depth 1 "$u" ${{ matrix.p.sha }} && break; done
           git -C src checkout -q FETCH_HEAD; V=$(make -s -C src kernelversion); echo "Linux $V"
           K=$RUNNER_TEMP/sbtest; mkdir -p $K; chmod 700 $K
-          (cd $K && openssl req -new -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=Rudolf Kryptonite TEST Secure Boot/" -keyout sb.key -out sb.crt \
+          (cd $K && openssl req -new -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=WendigOS TEST Secure Boot/" -keyout sb.key -out sb.crt \
             -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=codeSigning" 2>/dev/null)
           P='${{ matrix.p.patch }}'; [ -z "$P" ] || { patch -d src -p1 --forward --batch < "$P"; echo "applied $P"; }
           set +e; LINUX_SRC=$PWD/src KERNEL_VERSION=$V TEST_SB_CERT=$K/sb.crt OUT=$PWD/kout bash iso/systools/testkernel.sh > build.log 2>&1; RC=$?; set -e
