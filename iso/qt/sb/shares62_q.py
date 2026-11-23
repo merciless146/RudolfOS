@@ -84,12 +84,12 @@ def net_up():
 ''')
     os.makedirs('/run/samba', exist_ok=True)
     subprocess.run(['smbpasswd', '-c', f'{SV}/nas/smb.conf', '-s', '-a', U1], input=f'{P1}\n{P1}\n', text=True, capture_output=True)
-    for c in ([ 'setsid', 'ip', 'netns', 'exec', 'nas62', 'smbd', '-s', f'{SV}/nas/smb.conf', '-F', '--no-process-group', '--debug-stdout', '-d', '1'],
-              [ 'setsid', 'ip', 'netns', 'exec', 'old62', 'smbd', '-s', f'{SV}/old/smb.conf', '-F', '--no-process-group', '--debug-stdout', '-d', '1'],
+    for c in ([ 'setsid', 'ip', 'netns', 'exec', 'nas62', 'smbd', '-s', f'{SV}/nas/smb.conf', '-F', '--no-process-group', '--debug-stdout', '-d', '3'],
+              [ 'setsid', 'ip', 'netns', 'exec', 'old62', 'smbd', '-s', f'{SV}/old/smb.conf', '-F', '--no-process-group', '--debug-stdout', '-d', '3'],
               [ 'setsid', 'ip', 'netns', 'exec', 'win62', 'wsdd', '-i', 'ewin62', '-n', 'WIN62', '-w', 'HOME62'],
               [ 'setsid', 'ip', 'netns', 'exec', 'nas62', sys.executable, os.path.join(QT, 'host', 'fixtures', 'smbmdns.py'), 'Nas62', '192.168.62.2'],
               [ 'dnsmasq', '--no-daemon', '--interface=br62', '--bind-interfaces', '--port=0', '--dhcp-range=192.168.62.100,192.168.62.150,12h', '--dhcp-leasefile=' + W + '/leases']):
-        PIDS.append(subprocess.Popen(c, stdout=open(f'{W}/{c[4] if len(c) > 4 else c[0]}-{len(PIDS)}.log', 'w'), stderr=subprocess.STDOUT))
+        PIDS.append(subprocess.Popen(['env', '-i', 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', 'LANG=C.UTF-8'] + c, stdin=subprocess.DEVNULL, stdout=open(f'{W}/{c[4] if len(c) > 4 else c[0]}-{len(PIDS)}.log', 'w'), stderr=subprocess.STDOUT))   # (stdin /dev/null, as a shell's background job has it: smbd -F watches its standard input)
 def net_down():
     for p in PIDS:
         try: p.terminate(); p.wait(10)
@@ -181,7 +181,7 @@ def srv_up():
     import socket
     r = {}
     for a in ('192.168.62.2', '192.168.62.3'):
-        for _ in range(30):
+        for _ in range(60):
             try: socket.create_connection((a, 445), 1).close(); r[a] = True; break
             except OSError: time.sleep(1)
         else: r[a] = False

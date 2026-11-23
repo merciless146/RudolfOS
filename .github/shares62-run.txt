@@ -1,2 +1,3 @@
 serial=
-# 2026-11-23T08:31:59Z follow-up: the servers under /tmp
+kernel_run=45139387769
+# 2026-11-23T09:09:11Z follow-up: the servers started with a clean environment
