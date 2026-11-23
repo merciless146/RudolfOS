@@ -12,7 +12,7 @@ if [ -z "$BIN" ]; then BIN=$T/rudolf-taskmgr
 fi
 # (the native shell, for the case that starts it from there: built here when WebKitGTK's headers are)
 if [ -z "$TM_NATIVE" ] && pkg-config --exists webkit2gtk-4.1 2>/dev/null; then gcc -O2 -Wno-deprecated-declarations -o $T/rudolf-native $R/iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm 2>$T/ncc && export TM_NATIVE=$T/rudolf-native || cat $T/ncc; fi
-D=$T/d; mkdir -p $D; node $R/iso/qt/host/fixtures/deskls.js $D/ls.json $D/keys.json || { echo "FAIL node"; exit 1; }
+export FONTCONFIG_FILE=$HERE/fonts-test.conf; D=$T/d; mkdir -p $D; node $R/iso/qt/host/fixtures/deskls.js $D/ls.json $D/keys.json || { echo "FAIL node"; exit 1; }
 python3 - "$D" <<'Y'
 import json, sys; D = sys.argv[1]; k = json.load(open(D + '/keys.json'))['Ann']
 json.dump({'ok': True, 'id': k['id'], 'n': 'Ann', 'r': 'admin', 'pk': k['pk'], 'fk': k['fk']}, open(D + '/session', 'w'))
