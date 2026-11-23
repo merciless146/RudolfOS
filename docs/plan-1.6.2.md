@@ -628,6 +628,21 @@ desktop and hurts on neither.
    stopwatch is enough), and Settings › System health's memory at idle, on each of Native, Chromium and Lite, in a table:
    machine, engine, build (xz/zstd), start, first Oracle, memory.
 
+**Status (2026-11-23, item 1: the kernel first; the PR "zstd for the system's images, step 1").** iso/kconfig.sh and
+iso/kconfig-arm64.sh build SQUASHFS_ZSTD in (it selects ZSTD_DECOMPRESS, built in already for the start-up image and
+zram), and kconfig-required.txt requires it; the images are unchanged (xz). How the updater knows what a kernel reads:
+the release list says it, signed: make_release.py writes "squashfs xz zstd zlib" from the kernel's own build
+configuration (--kernel-config: ci_release.sh's and build_iso.sh's .config; a kernel kept from the previous release
+keeps that release's line, --squashfs), and a row "C NAME COMPRESSION BLOCKSIZE" per layer from its squashfs superblock
+(the compression's number in the 16 bits at byte 20). A list without the line is from before 1.6.2, whose kernels read
+xz and zlib only. The kernel that reads a slot's layers is that slot's own (the start-up hands over to it with kexec
+before mounting them), so rudolf-update checks each release against its own kernel: when checking (the signed rows: the
+release is not offered), once downloaded (each layer's own superblock, which must also match its row), for the
+recovery system and for a stick; and the running kernel for the one layer it mounts itself (a stick's base layer, for
+its keys). make_release.py refuses to write such a release in the first place. Tested by iso/qt/host/sqcomp162_t.sh
+(17 checks; the workflow sqcomp-check.yml, with real mksquashfs images). **This must be in a released beta before any
+image switches** (item 3's PR says so).
+
 ### 32. Emu's Nintendo 64 and Dreamcast games, played for real (added on 2026-11-22)
 The owner: "Create a scheduled task to test run the Dreamcast and N64 emulators for Emu, making test games specifically for
 the test if needed." Until then the native path (1.6.1, PR #485: rudolfd's native/run with Flathub's Rosalie's Mupen GUI
@@ -774,6 +789,18 @@ under 0.05 % of pixels differ); stopped when not seen, in power saver, half the 
 **The owner's check:** Display Properties › Dynamic Backgrounds › Desert Camp on the Vivobook, light and dark, on Native,
 Chromium and Lite.
 
+### 37. The taskbar at the left or the right: its pop-ups and menus (added on 2026-11-22)
+The owner, 2026-11-22: "Some of the taskbar menus and visuals when set to the left and right side options need correction."
+Found on the page (screenshots of every menu with the taskbar at each side) and in rudolf-native.c, the same on both:
+Quick settings, the notifications and the calendar opened in the bottom-right corner (as for a taskbar at the bottom: over a
+taskbar at the right, across the screen from one at the left); a right-click menu opened at the pointer over the taskbar; the
+desktop's inset (--bw) followed the taskbar's width only at the clock's next minute, so a growing taskbar covered the icons.
+**Done (PR "The taskbar at the left or the right"):** desktop/tbside62.js (beside their buttons as flyPlace places the network's
+and the sound's; menus kept off the taskbar; --bw following the taskbar's width); rudolf-native.c the same (fl_place_over for
+quick settings, the notifications and the calendar; cm_open off a side taskbar). tbside62_t.js 8/8; the native desktop built
+in tbside-check.yml. **The owner's check:** the taskbar at the left and at the right on the Vivobook, on Native and Chromium:
+each pop-up and menu, and anything else that still looks wrong (with a screenshot).
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -792,3 +819,4 @@ Chromium and Lite.
 12. Part 34 (scanners): driverless eSCL first with the Scan app, then the older USB backends; the owner's check on the Canon.
 13. Part 35 (network shares): SMB in File Explorer in one PR; the owner's check on a share at home if there is one.
 14. Part 36 (Desert Camp): one PR; the owner's look on the Vivobook in light and dark on each engine.
+15. Part 37 (the side taskbar's pop-ups and menus): one PR; the owner's look on the Vivobook.
