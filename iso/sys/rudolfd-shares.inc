@@ -249,12 +249,11 @@ static void shares_api(struct req *r, const char *what, int post)
 	if (rc == 3 && fromkr) { shares_err(r, 401, "password", "The password kept for it is not right any more: type it again."); return; }
 	if (rc == 3) { shares_why(r, "password", srv, sh); return; }
 	if (rc == 4) { shares_why(r, "noshare", srv, sh); return; }
-	if (rc == 5) { shares_why(r, "noanswer", srv, sh); return; }
 	if (rc == 7) { shares_why(r, "nomodule", srv, sh); return; }
-	if (rc == 6) {   /* the kernel could not agree with it: which SMB does it speak? */
+	if (rc == 5 || rc == 6) {   /* no answer, or the kernel could not agree with it (an SMB 1 server hangs up: "host is down"): which SMB does it speak? */
 		int st; char *o = shares_ask("probe", ip, !strcmp(ver, "2.1") ? "2.1" : NULL, NULL, NULL, 0, 15, &st);
 		char why[40] = ""; const char *w = o ? strstr(o, "\"why\":\"") : NULL; if (w) snprintf(why, sizeof why, "%.*s", (int)strcspn(w + 7, "\""), w + 7);
-		free(o); shares_why(r, *why ? why : out, srv, sh); return;
+		free(o); shares_why(r, *why ? why : rc == 5 ? "noanswer" : out, srv, sh); return;
 	}
 	if (rc == 2) { reply_err(r->fd, 400, *out ? out : "refused"); return; }
 	shares_err(r, 500, "proto", *out ? out : "the share could not be opened (the drives helper did not run)");

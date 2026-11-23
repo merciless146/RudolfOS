@@ -321,13 +321,13 @@ static int share_action(const char *op, char **a, int n)
 	char src[400]; snprintf(src, sizeof src, "//%s/%s", srv, sh);
 	/* SMB 3: encryption asked for first; refused by a server without it (EOPNOTSUPP), then without. A guest: anonymous, then
 	   the name "guest" without a password (servers that map unknown users to their guest) */
-	int seal = !strcmp(ver, "3"), m = -1, enc = 0;
+	int seal = !strcmp(ver, "3") && !guest, m = -1, enc = 0;   /* (a guest's session has no key to encrypt with) */
 	for (int round = 0; round < 4; round++) {
 		const char *us = guest && (round & 2) ? "guest" : user;
 		m = share_try(src, ip, ver, us, pass, dom, (unsigned)uid, seal);
 		if (m >= 0) { enc = seal; break; }
 		if (m == -EOPNOTSUPP && seal) { seal = 0; continue; }
-		if (guest && !(round & 2) && (m == -EACCES || m == -EPERM)) { round = 1; seal = !strcmp(ver, "3"); continue; }
+		if (guest && !(round & 2) && (m == -EACCES || m == -EPERM)) { round = 1; continue; }
 		break;
 	}
 	explicit_bzero(pass, sizeof pass);
