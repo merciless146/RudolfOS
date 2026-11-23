@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,about').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,upd,about').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -77,6 +77,9 @@ async function natShots(mode, pages) {
       if (at == 'end') { const pg = rect('page'); xdo(`mousemove ${pg[0] + 300} ${Math.min(pg[1] + 200, 600)}`); for (let i = 0; i < 60; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(800) }
       const f = path.join(OUT, `${mode}-${k}-${at}.nat.png`); sh(`import -window root ${f}`); out[k + '-' + at] = {f, b: rect('body')};
     }
+    /* (a view in the middle of a long page: the native one scrolled a few steps, the page then at the same place: pageMid) */
+    { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 60; i++) xdo('click 4'); for (let i = 0; i < 6; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(800);
+      const f = path.join(OUT, `${mode}-${k}-mid.nat.png`); sh(`import -window root ${f}`); out[k + '-mid'] = {f, b: rect('body'), y: +line('scroll')} }
     out[k + '-harv'] = lines('harv').filter(x => x.startsWith(k + '|')).map(x => x.split('|').slice(1, 3).join('|') + (x.endsWith('|1') ? '|1' : ''));
     natStop(); await wait(300);
   }
@@ -188,7 +191,13 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
     if (ONLY && !only(mode) && !['light', 'dark'].includes(mode)) continue;
     const pages = PAGES.filter(k => only(mode) || only(k));
     const P = await pageShots(mode, pages), N = await natShots(mode, pages);
-    for (const k of pages) for (const at of ['top', 'end']) { const key = k + '-' + at;
+    { const {ctx, p} = await signin(mode); for (const k of pages) { if (!N[k + '-mid']) continue;
+        await p.evaluate(k => { document.querySelectorAll('.ntoast,#ntoasts>*').forEach(e => e.remove()); if (window.SW) { SW._ok = 1; SW.close() } settings(k); SW.el.style.left = '120px'; SW.el.style.top = '60px' }, k);
+        for (let i = 0; i < 6; i++) { await p.clock.runFor(500); await wait(200) } await p.mouse.move(5, 5);
+        await p.evaluate(y => { SW.body.querySelector('.sc').scrollTop = y }, N[k + '-mid'].y); await wait(400);
+        const b = await p.evaluate(() => { const r = SW.body.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
+        const f = path.join(OUT, `${mode}-${k}-mid.page.png`); await p.screenshot({path: f}); P[k + '-mid'] = {f, b} } await ctx.close() }
+    for (const k of pages) for (const at of ['top', 'mid', 'end']) { const key = k + '-' + at;
       if (!P[key] || !N[key] || !N[key].b) { ok(`${mode} ${key}: drawn by both`, false); continue }
       const d = px(P[key].f, N[key].f, P[key].b, N[key].b, path.join(OUT, `${mode}-${key}`)); rows.push([mode, key, d.pct]);
       ok(`${mode} ${k} (${at}): ${d.pct}% of the window's pixels differ (page ${P[key].b.slice(2).join('x')}, native ${N[key].b.slice(2).join('x')})`, d.pct < LIMIT, {box: d.box, map: d.map}) }

@@ -76,4 +76,20 @@ GtkWidget *s_logo_block(const char *title, const char *sub, const char *mark, in
 GtkWidget *s_table2(void);                                    /* .tmt.ab: names and values, its columns as CSS's automatic table layout */
 void s_table2_add(GtkWidget *t, const char *name, const char *value);
 char *set_date_str(double t);                                 /* the page's sysDateStr: a day in the time zone and date format of the settings */
+/* (the pages' own blocks: Update and recovery's card, table, rows) */
+GtkWidget *p_msg_m(const char *t, int grey, double mt, double mb);   /* a <p class=msg> with its margins; \x03 first: Pango markup */
+GtkWidget *p_check(const char *t, int on, void (*cb)(int on, void *d), void *d);   /* a label.ck of the page's own, its words wrapping */
+GtkWidget *p_buttons_h(const char *const *labels, int n, GCallback *cbs, void *d, double minh);   /* .rmrow whose buttons are minh tall (stretched) */
+void p_custom(double (*lay)(void *d, double x, double y, double w), void *d, double mt, double mb);   /* a block laid out by the page itself: its height */
+void p_put(GtkWidget *w);                             /* a part of a custom block, put on the page */
+void p_place(GtkWidget *w, double x, double y, double wd, double h);   /* ...placed (CSS px; 0: its own size) */
+double p_nat_w(GtkWidget *w);
+double p_nat_h(GtkWidget *w);
+void s_text(cairo_t *cr, const char *t, double x, double y, double px, int wt, double w, double lh);
+int s_lines(const char *t, double px, int wt, double w, double *tw);
+double s_lh(double px, int wt);
+void s_rrect(cairo_t *cr, double x, double y, double w, double h, double r);
+void s_col(cairo_t *cr, const char *what, double a);
+double s_z(void);
+void page_upd(void);
 #endif

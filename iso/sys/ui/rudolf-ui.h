@@ -116,6 +116,9 @@ void rui_confirm(RuiWin *w, const char *title, const char *text, const char *con
 GtkWidget *rui_dialog_box(void);                        /* the dialog open now (the tests) */
 /* the page's elevate: an administrator's account and password, checked by rudolfd; cb(1) allowed, cb(0) not */
 void rui_elevate(RuiWin *w, const char *reason, void (*cb)(int ok, void *d), void *d);
+/* the page's elevate(reason, {cred:true}): cred(name, password) once they are right (rudolfd checks them again with the request: send
+   them in its body, then forget them), cred(NULL, NULL) when cancelled */
+void rui_elevate_cred(RuiWin *w, const char *reason, void (*cred)(const char *n, const char *p, void *d), void *d);
 void rui_about(RuiWin *w, const char *name, const char *what);
 /* a notification as the page's notify (the desktop's toasts and notification centre, through rudolfd) */
 void rui_notify(const char *title, const char *body, int error);
