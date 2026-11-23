@@ -29,6 +29,8 @@ jobs:
           cd iso && . systools/hardflags.sh && RUI_WERROR=1 sh sys/ui/build.sh $RUNNER_TEMP/ui $RUNNER_TEMP/rudolf-uisample ui-sample $HARD
           python3 systools/hardcheck.py $RUNNER_TEMP/rudolf-uisample
           echo "::notice title=librudolf-ui::$(size -B $RUNNER_TEMP/ui/rudolf-ui.o | awk 'NR==2{print int(($1+$2+$3)/1024)}') KB in each native app"
+      - name: the fonts' antialiasing and hinting here (fontconfig's, which Chromium and librudolf-ui follow)
+        run: fc-match -v "DejaVu Sans:pixelsize=13" | grep -E "antialias|hint|rgba|lcdfilter" || true
       - name: "ui_t.sh: the sample window against the page's controls"
         run: mkdir -p out && NODE_PATH=$PWD/node_modules UI_PORT=8682 UI_DSP=:89 sh iso/qt/native/ui_t.sh $PWD/out "" $RUNNER_TEMP/rudolf-uisample
       - if: always()
