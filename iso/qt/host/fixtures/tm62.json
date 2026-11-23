@@ -1,0 +1,308 @@
+{
+"processes": {
+"ok": true,
+"threads": 8,
+"items": [
+{
+"pid": 1,
+"ppid": 0,
+"user": "root",
+"name": "systemd",
+"state": "S",
+"rss": 12582912,
+"cpu": 0.0,
+"tag": "system",
+"prot": true,
+"cmd": "/sbin/init"
+},
+{
+"pid": 2,
+"ppid": 0,
+"user": "root",
+"name": "kthreadd",
+"state": "S",
+"rss": 0,
+"cpu": null,
+"tag": "kernel",
+"prot": true,
+"cmd": ""
+},
+{
+"pid": 310,
+"ppid": 1,
+"user": "root",
+"name": "rudolfd",
+"state": "S",
+"rss": 9437184,
+"cpu": 0.3,
+"tag": "system",
+"prot": true,
+"cmd": "/usr/lib/rudolf/rudolfd"
+},
+{
+"pid": 420,
+"ppid": 1,
+"user": "root",
+"name": "Xorg",
+"state": "S",
+"rss": 96468992,
+"cpu": 1.2,
+"tag": "desktop",
+"prot": true,
+"cmd": "/usr/lib/xorg/Xorg :0 vt1"
+},
+{
+"pid": 500,
+"ppid": 1,
+"user": "rudolf",
+"name": "rudolf-native",
+"state": "S",
+"rss": 100663296,
+"cpu": 2.0,
+"tag": "desktop",
+"prot": true,
+"cmd": "/usr/lib/rudolf/rudolf-native"
+},
+{
+"pid": 520,
+"ppid": 500,
+"user": "rudolf",
+"name": "WebKitWebProcess",
+"state": "S",
+"rss": 276824064,
+"cpu": 3.1,
+"tag": "web",
+"prot": false,
+"cmd": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 7 19"
+},
+{
+"pid": 530,
+"ppid": 500,
+"user": "rudolf",
+"name": "WebKitWebProcess",
+"state": "S",
+"rss": 137363456,
+"cpu": 0.8,
+"tag": "web",
+"prot": false,
+"cmd": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitWebProcess 9 23"
+},
+{
+"pid": 540,
+"ppid": 500,
+"user": "rudolf",
+"name": "WebKitNetworkProcess",
+"state": "S",
+"rss": 23068672,
+"cpu": 0.1,
+"tag": "network",
+"prot": false,
+"cmd": "/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1/WebKitNetworkProcess 5 13"
+},
+{
+"pid": 600,
+"ppid": 1,
+"user": "rudolf",
+"name": "pipewire",
+"state": "S",
+"rss": 14680064,
+"cpu": 0.2,
+"tag": "audio",
+"prot": false,
+"cmd": "/usr/bin/pipewire"
+},
+{
+"pid": 700,
+"ppid": 500,
+"user": "rudolf",
+"name": "gedit",
+"state": "S",
+"rss": 50331648,
+"cpu": 0.0,
+"tag": "app",
+"prot": false,
+"cmd": "gedit notes.txt"
+},
+{
+"pid": 701,
+"ppid": 700,
+"user": "rudolf",
+"name": "gedit-helper",
+"state": "S",
+"rss": 6291456,
+"cpu": 0.0,
+"tag": "app",
+"prot": false,
+"cmd": "gedit-helper"
+},
+{
+"pid": 810,
+"ppid": 1,
+"user": "root",
+"name": "iwd",
+"state": "S",
+"rss": 7340032,
+"cpu": 0.0,
+"tag": "system",
+"prot": true,
+"cmd": "/usr/libexec/iwd"
+}
+]
+},
+"stats": {
+"ok": true,
+"cpu": 12.5,
+"load": 0.42,
+"memTotal": 3650722201,
+"memFree": 1073741824,
+"memAvailable": 2147483648,
+"battery": [
+{
+"name": "BAT0",
+"type": "Battery",
+"capacity": 81,
+"status": "Discharging"
+}
+],
+"brightness": 60,
+"tempC": 47,
+"processes": "  520 270336 WebKitWebProcess\n  530 134144 WebKitWebProcess"
+},
+"net": {
+"ok": true,
+"interfaces": [
+{
+"name": "lo",
+"state": "up",
+"mac": "00:00:00:00:00:00",
+"ip": "127.0.0.1",
+"wireless": false,
+"rx": 1000,
+"tx": 1000,
+"virtual": true,
+"default": false,
+"speed": -1
+},
+{
+"name": "wlan0",
+"state": "up",
+"mac": "02:00:00:00:00:01",
+"ip": "192.168.1.5",
+"wireless": true,
+"rx": 123456789,
+"tx": 2345678,
+"virtual": false,
+"default": true,
+"speed": 433
+}
+]
+},
+"info": {
+"ok": true,
+"version": "25",
+"kernel": "6.18.57-rudolf",
+"cpu": "Intel(R) Core(TM) i3-1115G4 @ 3.00GHz",
+"threads": 4,
+"memTotal": 3650722201,
+"memFree": 1073741824,
+"uptime": 754,
+"vendor": "ASUSTeK COMPUTER INC.",
+"product": "Vivobook",
+"boot": "uefi",
+"media": "disk",
+"battery": [
+{
+"name": "BAT0",
+"type": "Battery",
+"capacity": 81,
+"status": "Discharging"
+}
+]
+},
+"system": {
+"ok": true,
+"time": 1795404758,
+"kernel": {
+"release": "6.18.57-rudolf",
+"version": "#1 SMP PREEMPT_DYNAMIC",
+"machine": "x86_64",
+"uptime": 754,
+"load": [
+0.42,
+0.3,
+0.2
+],
+"procs": 180,
+"cmdline": "quiet lockdown=integrity",
+"boot": "uefi",
+"media": "disk",
+"live": false,
+"recovery": false,
+"modules": "i915 iwlwifi snd_hda_intel",
+"messages": "[    1.10] a test warning"
+},
+"memory": {
+"total": 3650722201,
+"available": 2147483648,
+"cached": 567877632,
+"buffers": 17047552,
+"swapTotal": 1825361100,
+"swapFree": 1725361100,
+"zramStored": 200000000,
+"zramUsed": 60000000
+},
+"cpu": {
+"model": "Intel(R) Core(TM) i3-1115G4 @ 3.00GHz",
+"threads": 4,
+"mhz": 2900,
+"tempC": 47
+},
+"battery": [
+{
+"name": "BAT0",
+"type": "Battery",
+"capacity": 81,
+"status": "Discharging"
+}
+],
+"machine": "ASUSTeK COMPUTER INC. Vivobook",
+"firmware": "American Megatrends X1500 2025",
+"gpu": "card0 0x8086:0x9a78 i915",
+"renderer": "Mesa Intel(R) UHD Graphics (TGL GT2)",
+"gsp": "",
+"display": "eDP-1 1920x1080 | 60 Hz | glamor",
+"audio": "0 HDA Intel PCH: ALC256 Analog",
+"audio_pcm": "",
+"thunderbolt": "",
+"unsupported": "",
+"input": "AT Translated Set 2 keyboard\nELAN touchpad",
+"net": "wlan0 up 433 123456789 2345678 wifi iwlwifi",
+"storage": "/dev/nvme0n1 256060514304 41234567890 /",
+"services": {
+"rudolfd": true,
+"display": true,
+"sound": true,
+"wifi": true,
+"shell": false,
+"shellFailed": false,
+"webWindow": false,
+"linuxApps": true,
+"x": true
+},
+"session": ""
+},
+"memory/breakdown": {
+"ok": true,
+"total": 3650722201,
+"free": 1073741824,
+"available": 2147483648,
+"programs": 1500000000,
+"cache": 600000000,
+"shared": 50000000,
+"kernel": 150000000,
+"graphics": 120000000,
+"ssd": 0,
+"compressed": 60000000,
+"other": 100000000
+}
+}
