@@ -30,9 +30,13 @@ jobs:
       - name: The releases (1.6.0, 1.5.9 stable) and 1.4.1's boot image
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
-          git fetch -q --depth 1 origin gh-pages
+          # The whole gh-pages history: an older release's signed list is only in the commit that published it (beta/ and
+          # stable/ hold the newest; there is no files/ folder), so a shallow fetch can't find 2026111503's.
+          git fetch -q origin gh-pages
           rel() { mkdir -p $1; gh release download "r$2" -D $1 -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs' $3
             for c in files/$2 beta stable; do git show origin/gh-pages:$c/manifest.txt > $1/manifest.txt 2>/dev/null && grep -q "^serial $2$" $1/manifest.txt && { git show origin/gh-pages:$c/manifest.sig > $1/manifest.sig; break; }; done
+            grep -q "^serial $2$" $1/manifest.txt || for k in stable beta; do h=$(git log --format=%H --grep="^$k: release $2\$" origin/gh-pages | head -1)
+              [ -n "$h" ] && git show $h:$k/manifest.txt > $1/manifest.txt && grep -q "^serial $2$" $1/manifest.txt && { git show $h:$k/manifest.sig > $1/manifest.sig; echo "$2's list from gh-pages $h ($k)"; break; }; done
             grep -q "^serial $2$" $1/manifest.txt || { echo "no release list for $2"; exit 1; }; }
           S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
           O="$N_old"; [ -n "$O" ] || O=2026111503
