@@ -98,7 +98,9 @@ async function flow(pg, tag) {
     if (process.env.SH62_DBG) console.log('DBG before Disconnect', JSON.stringify(await view()));
     await pg.evaluate(`[...document.querySelectorAll('.xsi')].find(e=>/^🔒/.test(e.textContent.trim())).click()`);   /* (the pane went elsewhere: the share opened again from the places) */
     await until(pg, `[...document.querySelectorAll('.xrb button')].some(b=>/Disconnect/.test(b.textContent))`) }
-  await pg.evaluate(`[...document.querySelectorAll('.xrb button')].find(b=>/Disconnect/.test(b.textContent)).click()`);
+  /* (clicked once it is there: the desktop's drop above ends by refreshing File Explorer, whose drive pane is "Loading…", without
+     its bar, until its list comes back) */
+  await until(pg, `(()=>{const b=[...document.querySelectorAll('.xrb button')].find(b=>/Disconnect/.test(b.textContent));if(!b)return false;b.click();return true})()`);
   v = await until(pg, `(()=>{const v=${VIEW};return v&&!v.bar.length&&!v.side.some(x=>/nas62/.test(x))?v:null})()`);
   ok(`${tag} 12. Disconnect: shares/close, the pane back home, gone from the places`, v && M.calls.some(c => c == 'POST shares/close?id=0123456789abcdef'), [v, M.calls.slice(-4)]);
   const rec = await pg.evaluate(`localStorage.getItem(netRecK())`);
@@ -139,18 +141,24 @@ async function flow(pg, tag) {
   const wk = process.env.SHARES62_WEBKIT != '0' ? await pw.webkit.launch().catch(e => { console.log('NOTE: no WebKit here: ' + e.message.split('\n')[0]); return null }) : null;
   const ctx2 = wk ? await wk.newContext({viewport: {width: 1200, height: 820}}) : ctx;
   p = await ctx2.newPage(); watch(p);
-  reset(); if (wk) { await p.goto(URL0); await setup(p); await p.goto('about:blank') }
+  /* (WebKit has its own storage: its own account, and the native session the shell hands its app windows is that one's) */
+  reset(); if (wk) { await p.goto(URL0); const a2 = await setup(p); M.session = {ok: true, id: a2.id, n: 'Ann', r: 'admin', pk: a2.pk, fk: a2.fk}; await p.goto('about:blank') }
   await p.goto(URL0 + '#app=explorer'); await p.waitForFunction(() => typeof explorer == 'function' && typeof ONEAPP != 'undefined' && ONEAPP && USER, null, {timeout: 30000});
-  await p.waitForSelector('.win.oamain', {timeout: 20000});
+  if (!(await p.waitForSelector('.win.oamain', {timeout: 30000}).catch(() => null))) {
+    console.log('NOTE: no app window:', JSON.stringify(await p.evaluate(`({user:!!USER,oneapp:typeof ONEAPP!='undefined'&&JSON.stringify(ONEAPP),wins:[...document.querySelectorAll('.win')].map(w=>w.className),hash:location.hash})`).catch(e => e.message)), errs.slice(-5));
+    throw new Error('Native\'s app window did not open') }
   vn = await flow(p, wk ? 'Native (WebKit)' : 'Native');
   // Native against Standard: the Network view part by part
-  const same = vs && vn && JSON.stringify(vs.cards) == JSON.stringify(vn.cards) && JSON.stringify(vs.side) == JSON.stringify(vn.side) && vs.sizes.length == vn.sizes.length &&
+  /* (the places compared up to the end of Network's: "Folders on this device" is Chromium's own File System Access API, which
+     WebKit, and so Native, does not have: a difference of File Explorer's from before network shares, in the PR for the owner) */
+  const netSide = v => { const i = v.side.indexOf('Folders on this device'); return i < 0 ? v.side : v.side.slice(0, i) };
+  const same = vs && vn && JSON.stringify(vs.cards) == JSON.stringify(vn.cards) && JSON.stringify(netSide(vs)) == JSON.stringify(netSide(vn)) && vs.sizes.length == vn.sizes.length &&
     vs.sizes.every((s, i) => Math.abs(s[1] - vn.sizes[i][1]) <= Math.max(6, s[1] * 0.15)) &&
     /* (widths: the buttons' own; the address box and the cards fill the window, which is the app's whole window on Native:
        they differ by the windows' difference alone) */
     [1, 2].every(i => Math.abs(vs.sizes[i][0] - vn.sizes[i][0]) <= Math.max(8, vs.sizes[i][0] * 0.15)) &&
     [0, ...vs.sizes.map((x, i) => i).slice(3)].every(i => Math.abs((vn.sizes[i][0] - vs.sizes[i][0]) - (vn.sizes[0][0] - vs.sizes[0][0])) <= 4);
-  ok(`Native and Standard: the same Network view (the places, the recent shares and the computers found, in the same order, with the same texts; each part's size within 15 %)`, same, vs && vn ? {cards: [vs.cards, vn.cards], side: vs.side.join() == vn.side.join() ? 'same' : [vs.side, vn.side], sizes: [vs.sizes, vn.sizes]} : [vs, vn]);
+  ok(`Native and Standard: the same Network view (the places, the recent shares and the computers found, in the same order, with the same texts; each part's size within 15 %)`, same, vs && vn ? {sizes: [vs.sizes, vn.sizes], side: netSide(vs).join() == netSide(vn).join() ? 'same' : [netSide(vs), netSide(vn)], cards: vs.cards.join() == vn.cards.join() ? 'same' : [vs.cards, vn.cards]} : [vs, vn]);
   ok('no page error', !errs.length, errs);
   await b.close(); if (wk) await wk.close(); srv.close(); const n = R.filter(Boolean).length; console.log(`${n}/${R.length} passed`); process.exit(n == R.length ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1) });

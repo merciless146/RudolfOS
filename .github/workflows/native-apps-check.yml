@@ -1,0 +1,49 @@
+# 1.6.2 (docs/plan-1.6.2.md Part 39): the native apps for Rudolf OS. look: librudolf-ui (iso/sys/ui) built as the release builds it
+# (hardened, mkui.py's theme and translations from the page) and its sample window against the page's own controls in Chromium
+# (qt/native/ui_t.sh: light, dark, two accent colours, another font and size, German; the settings followed live). host: rudolfd's
+# side (desktop/admin, the native apps' list in the confinement). Publishes nothing.
+name: Native apps check
+on:
+  workflow_dispatch:
+  push:
+    branches: ['native-ui', 'native-taskmgr']
+    paths: ['iso/sys/ui/**', 'iso/sys/apps/**', 'iso/qt/native/ui_*', 'iso/qt/native/pxdiff.py', 'iso/qt/native/taskmgr*', '.github/workflows/native-apps-check.yml']
+  pull_request:
+    paths: ['iso/sys/ui/**', 'iso/sys/apps/**', 'iso/qt/native/ui_*', 'iso/qt/native/pxdiff.py', 'iso/qt/native/taskmgr*', 'iso/qt/native/same_rd.py',
+      'iso/sys/rudolfd-desktop.inc', 'iso/sys/rudolfd-confine.inc', 'iso/sys/rudolfd-winapi.h', 'iso/systools/winapi.py', 'desktop/tm26.js', 'desktop/tmtop57.js',
+      'desktop/styles25.css', 'desktop/base_v24.html', '.github/workflows/native-apps-check.yml']
+permissions: {contents: read}
+jobs:
+  look:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc libgtk-3-dev xvfb x11-utils xdotool imagemagick python3-pil fonts-dejavu-core fonts-liberation >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: librudolf-ui built as the release builds it (hardened, no warning)
+        run: |
+          cd iso && . systools/hardflags.sh && RUI_WERROR=1 sh sys/ui/build.sh $RUNNER_TEMP/ui $RUNNER_TEMP/rudolf-uisample ui-sample $HARD
+          python3 systools/hardcheck.py $RUNNER_TEMP/rudolf-uisample
+          echo "::notice title=librudolf-ui::$(size -B $RUNNER_TEMP/ui/rudolf-ui.o | awk 'NR==2{print int(($1+$2+$3)/1024)}') KB in each native app"
+      - name: "ui_t.sh: the sample window against the page's controls"
+        run: mkdir -p out && NODE_PATH=$PWD/node_modules UI_PORT=8682 UI_DSP=:89 sh iso/qt/native/ui_t.sh $PWD/out "" $RUNNER_TEMP/rudolf-uisample
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: native-ui, retention-days: 7, path: out}
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc zlib1g-dev curl python3 >/dev/null
+      - name: "deskapi59_t.sh (desktop/admin with the native desktop's sign-in)"
+        run: sudo sh iso/qt/host/deskapi59_t.sh
+      - name: "confine161_t.sh (the windows' lists: the native apps')"
+        run: sudo sh iso/qt/host/confine161_t.sh
+      - name: the lists read from the source are current
+        run: python3 iso/systools/winapi.py && python3 iso/systools/confinepure.py

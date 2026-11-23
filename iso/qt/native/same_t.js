@@ -187,7 +187,7 @@ CASES.push({n: 'ctl-wordlite', set: {}, more: PINSL, app: 'wordlite', parts: ['w
 CASES.push({n: 'ctl-clock', set: {}, more: PINSL, app: 'clock', parts: ['win']});
 /* (1.6.2 Part 34) the Scan app: its scanner found, what it can do, in light and dark */
 const PINSS = {['bd95pins:' + ACCT]: ['explorer', 'notepad', 'settings', 'scan']};   /* (Native opens the case's app by its pin) */
-CASES.push({n: 'scan', set: {}, more: PINSS, app: 'scan', jswait: 1500, parts: ['win']});
+CASES.push({n: 'scan', set: {dm: 'light'}, more: PINSS, app: 'scan', jswait: 1500, parts: ['win']});
 CASES.push({n: 'scan-dark', set: {dm: 'dark', darkui: true}, more: PINSS, app: 'scan', jswait: 1500, parts: ['win']});
 CASES.push({n: 'explorer', set: {}, more: PINSL, app: 'explorer', parts: ['win'],
   read: "JSON.stringify([[...document.querySelectorAll('.win *')].some(e => !e.children.length && /^Folders on this device$/i.test(e.textContent.trim())), ([...document.querySelectorAll('.win *')].map(e => !e.children.length && /Storage: /.test(e.textContent) ? e.textContent : '').find(x => x) || '').replace(/[\\d.]+ (B|KB|MB|GB|TB)/g, 'N')])"});

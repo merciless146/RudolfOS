@@ -43,7 +43,6 @@ table inet rudolf {
 		icmpv6 type { echo-request, destination-unreachable, packet-too-big, time-exceeded, parameter-problem, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert, nd-redirect, mld-listener-query } accept
 		udp sport 67 udp dport 68 accept
 		udp sport 547 udp dport 546 accept
-		jump wsd
 		jump remote
 		jump hotspot
 		jump duel
