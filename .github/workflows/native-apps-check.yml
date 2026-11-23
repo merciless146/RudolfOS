@@ -33,6 +33,16 @@ jobs:
         run: fc-match -v "DejaVu Sans:pixelsize=13" | grep -E "antialias|hint|rgba|lcdfilter" || true
       - name: "ui_t.sh: the sample window against the page's controls"
         run: mkdir -p out && NODE_PATH=$PWD/node_modules UI_PORT=8682 UI_DSP=:89 sh iso/qt/native/ui_t.sh $PWD/out "" $RUNNER_TEMP/rudolf-uisample
+      - if: failure()
+        name: the writing's pixels, page and native (a line of the message's text: to see how each antialiases and hints)
+        run: |
+          python3 -c "
+          from PIL import Image
+          for s in ('std', 'nat'):
+              im = Image.open('out/light.msg.' + s + '.png').convert('L')
+              for y in range(4, 14): print(s, y, ' '.join('%02x' % im.getpixel((x, y)) for x in range(0, 40)))
+          "
+          fc-list | grep -i dejavusans.ttf; dpkg -l libfreetype6 fonts-dejavu-core | tail -2
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: native-ui, retention-days: 7, path: out}
