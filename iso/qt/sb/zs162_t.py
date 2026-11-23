@@ -73,6 +73,8 @@ def boot(v, tag, kernel=None, append=''):
     name = f'zs{tag}'; os.makedirs(name, exist_ok=True); open(f'{name}/vars.fd', 'ab').close()
     vm = sbvm.VM(name, PARTS, [], secure=False, mem=MEM, extra=extra); t = time.time()
     g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; seen = g.s.read(0.3)
+    # (nothing typed on the serial line for the first 30 s, as t160_t.py: the firmware and the kernel's start without it)
+    time.sleep(30); seen += g.s.read(0.5)
     up = False; end = time.time() + (900 if FAILS[0] < 2 else 420)
     while time.time() < end:
         try:
