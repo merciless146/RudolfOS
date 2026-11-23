@@ -549,6 +549,17 @@ and Nobara start into Steam's Game Mode under gamescope) and asking for gamescop
 offered (gamescope's Steam session as a separate session, or Rudolf's own console mode in its compositor), the owner asked to
 see the second as a concept, then its cost, and answered "Alright, sounds good". The concept's three screens (home, the
 in-game Quick menu, a game's page) are on the owner's design canvas "WendigOS Game Mode — concept".
+- **The look: Version 2** (the owner, 2026-11-22: "Version 2 is ideal"), the canvas's "Home, version 2" artboard: the
+  WendigOS brand leaned into (the wordmark set wide in capitals with "OS" in a glowing green, "Wayland-Enhanced ·
+  Driver-Integrated · Gaming" beneath it, a carbon-fibre off-black ground, one green accent used throughout, a frost and
+  night key art with aurora bands, no creature drawn) and what current game dashboards do: a full-bleed cinematic hero
+  with the game's title in large capitals, its progress and Resume on A; shoulder-button tabs (LB/RB: Home, Library,
+  Steam, Emu, Media); a shelf of cover-shaped cards with their source on each, the focused one larger, ringed and
+  glowing; glass side cards for the performance profile (and the play time left on battery) and downloads; the
+  controller, Wi-Fi, battery, the time and the account at the top; the controller's buttons along the bottom. The
+  Quick menu and the game's page are to be redone in the same look when Game Mode is built. Type: Space Grotesk and
+  Inter (both SIL Open Font License) unless fonts already in the system will do; the wordmark stays type until
+  WendigOS's logo is made in its own step.
 - **What it is:** a full-screen, controller-first session of WendigOS's compositor (not gamescope, not a web page): one
   launcher for the Library's games, Steam's (through Proton) and Emu's, with source tabs (All, Library, Steam, Emu,
   Recent), a game's page (continue, its save's state, its own settings) and "Switch to desktop" back to the WendigOS desktop.
