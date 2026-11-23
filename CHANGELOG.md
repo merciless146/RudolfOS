@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: on the native desktop the taskbar's pinned apps and workspace buttons kept their light grey edge in dark mode, where
+  Chromium mode draws a dim one, and a pinned app had no line under it while its window was open (grey, or the accent colour
+  while that window is the active one). Both now look as in Chromium mode, on every monitor's taskbar. The "Several monitors"
+  check compares both looks, light and dark, whatever the hour it runs at.
 - Kernel: the SMB client for network shares (Windows computers and NAS boxes, 1.6.2 Part 35) is built in as a signed module, loaded
   only when a share is opened. It speaks SMB 3 (and SMB 2.1 when asked for a share), never the old SMB 1 or 2.0, and Rudolf OS
   serves no share.
