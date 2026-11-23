@@ -24,4 +24,13 @@ n = m.histogram()[255]; tot = w * h or 1
 ca.save(out + '.std.png'); cb.save(out + '.nat.png')
 faint = Image.blend(ca.convert('L').convert('RGB'), Image.new('RGB', ca.size, (255, 255, 255)), .7)
 faint.paste(Image.new('RGB', ca.size, (255, 0, 0)), mask=m); faint.save(out + '.diff.png')
-print(json.dumps({'pct': round(100.0 * n / tot, 3), 'px': n, 'w': w, 'h': h}))
+# (where they differ: the box round the differing pixels, and a coarse map of it, one character a cell of 16x8 pixels: '.' none,
+# '1'-'9' a tenth of the cell's pixels and more, '#' all; printed by the test into the log, the pictures being out of reach there)
+bb = m.getbbox(); cw, chh = 16, 8; rows = []
+for y0 in range(0, h, chh):
+    r = ''
+    for x0 in range(0, w, cw):
+        c = m.crop((x0, y0, min(w, x0 + cw), min(h, y0 + chh))); k = c.histogram()[255]; t = c.size[0] * c.size[1] or 1
+        r += '.' if not k else ('#' if k == t else str(min(9, max(1, 10 * k // t))))
+    rows.append(r)
+print(json.dumps({'pct': round(100.0 * n / tot, 3), 'px': n, 'w': w, 'h': h, 'box': list(bb) if bb else None, 'map': rows}))

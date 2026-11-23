@@ -162,5 +162,7 @@ function cmp(name, ra, rb) {
   ok('the second taskbar looks the same (' + b2.pct + ' %)', b2.pct <= lim, b2); ok('the second wallpaper looks the same (' + wp2.pct + ' %)', wp2.pct <= 2, wp2);
   ok('the main taskbar looks the same (' + b1.pct + ' %)', b1.pct <= (SC == 100 ? 2 : 6), b1); ok('the second monitor covered alike when locked (' + lk.pct + ' %)', lk.pct <= 2, lk);
   ok('a window maximised on the second monitor looks the same, its taskbar too (' + mx.pct + ' %)', mx.pct <= lim, mx);
+  for (const [n, c] of [['bar2', b2], ['bar1', b1], ['max2', mx]]) if (c.map) console.log('the diff of ' + n + ' (' + c.pct + ' %), box ' + JSON.stringify(c.box) + ':\n  ' + c.map.join('\n  '));
+  if (process.env.MON_DUMP) for (const n of ['start-bar2', 'start-bar1']) for (const k of ['std', 'nat']) { try { console.log('DUMP ' + n + '.' + k + ' ' + fs.readFileSync(path.join(OUT, 'cmp.' + n + '.' + k + '.png')).toString('base64')) } catch (x) {} }
   const f = R.filter(x => !x).length; console.log(f ? 'FAIL ' + f + ' of ' + R.length : 'PASS all ' + R.length); process.exit(f ? 1 : 0);
 })();
