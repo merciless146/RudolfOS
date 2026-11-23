@@ -122,7 +122,7 @@ ok "6. listed: its name as given, the server, the address, the DNS server, the w
 tcpdump -i wlan0 -n -U -w $T/cap.pcap > $T/tcpdump.log 2>&1 & TD=$!; PIDS="$PIDS $TD"; w8 "grep -q listening $T/tcpdump.log" 50
 : > $T/dns-isp; : > $T/dns-vpn
 o=$(api POST "/api/vpn/on?id=$ID")
-ok "7. Bob (a standard account) turns it on, no password: connected, a handshake with the server (its name looked up first)" "$([ "$(code "$o")" = 200 ] && [ "$(js "$o" j.state)" = connected ] && B wg show wg0 latest-handshakes | awk '{print \$2}' | grep -qv '^0$' && grep -q '^vpn.test 1 ' $T/dns-isp && echo 1)" "$o $(B wg show wg0) $(tail -3 $T/rd.log)"
+ok "7. Bob (a standard account) turns it on, no password: connected, a handshake with the server (its name looked up first)" "$([ "$(code "$o")" = 200 ] && [ "$(js "$o" j.state)" = connected ] && B wg show wg0 latest-handshakes | cut -f2 | grep -qv '^0$' && grep -q '^vpn.test 1 ' $T/dns-isp && echo 1)" "$o $(B wg show wg0) $(tail -3 $T/rd.log)"
 IF=$(ip -d link show rvpn0 2>&1); RU=$(ip rule 2>&1); RT=$(ip route show table 52566 2>&1)
 ok "8. ...the kernel's own WireGuard (rvpn0), the whole computer's table and rules, the server's route outside the tunnel (its mark)" "$(echo "$IF" | grep -q wireguard && echo "$RU" | grep -q 'not from all fwmark 0x52564e lookup 52566' && echo "$RU" | grep -q 'lookup main suppress_prefixlength 0' && echo "$RT" | grep -q 'default dev rvpn0' && echo 1)" "$IF / $RU / $RT"
 ok "9. all traffic through the tunnel: the internet sees the tunnel's address (10.66.0.2), not wlan0's" "$([ "$(who 203.0.113.5:8631)" = 10.66.0.2 ] && echo 1)" "$(who 203.0.113.5:8631)"
