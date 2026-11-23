@@ -765,7 +765,9 @@ Tor windows, or for calls and games) and what the best VPN would be: "Yes. That 
   it) and DHCP and IPv6's neighbour discovery (so the computer keeps its network); nothing is forwarded but into the
   tunnel. Gone when the VPN is turned off or its kill switch is. Tests: vpn162_t.sh K1-K5 (nothing out while the tunnel
   is down, back by itself with the remembered address), vpn62_t.js 18b.
-- Steps 3 and 5 (OpenVPN, the Oracle line): their own PRs.
+- **Step 5, Oracle (PR "VPN 5", after VPN 4):** Settings › Network › VPN says in a line that Oracle's Tor windows then run
+  inside the VPN (Tor connects through it; the VPN sees only that Tor is used). Tor itself unchanged. vpn62_t.js 1.
+- Step 3 (OpenVPN): its own PR, last.
 
 ### 34. Scanners (added on 2026-11-22)
 The owner, 2026-11-22: scanners and network shares are what is left to add from what Mint and Ubuntu have (a phone link,
