@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
-      - name: Tools (wg only for the test's server: Rudolf OS ships none)
+      - name: "Tools (wg only for the test server: Rudolf OS ships none)"
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq wireguard-tools tcpdump iproute2 nftables python3 gcc zlib1g-dev >/dev/null
           sudo modprobe wireguard && echo "WireGuard: $(cat /sys/module/wireguard/version 2>/dev/null)"
@@ -35,3 +35,14 @@ jobs:
           . iso/systools/hardflags.sh
           gcc -O2 $HARD -Wall -Wno-misleading-indentation -Werror -o /tmp/vpn iso/sys/rudolf-vpn.c && python3 iso/systools/hardcheck.py /tmp/vpn
           gcc -O2 $HARD -Wall -o /tmp/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic && python3 iso/systools/hardcheck.py /tmp/rudolfd
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page as built is this tree's
+        run: cp iso/www/index.html /tmp/built.html && cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cmp ../iso/www/index.html /tmp/built.html
+      - name: Settings › Network › VPN and the network pop-up
+        run: node iso/qt/shell2/vpn62_t.js
