@@ -10,7 +10,9 @@
  *                                      by that user, 0700), as the account's own Linux user (the desktop's with nobody
  *                                      signed in), with no new privileges; answers when it is done (up to 15 minutes).
  *                                      A USB scanner (ipp-usb's address) is reached by that user only while it scans
- *                                      (usbprint's guard: the network helper's "usbscan allow|done UID"). One scan at a time.
+ *                                      (usbprint's guard: the network helper's "usbscan allow|done UID"), and so is a USB
+ *                                      scanner of SANE's drivers (sane:usb:VVVV:PPPP, step 3: the devices helper's "scanusb
+ *                                      allow|done UID", its device node given to that user and back). One scan at a time.
  *   POST scan/cancel                   the running scan stopped (it keeps nothing of the page it was on)
  *   GET  scan/page?session=S&name=N    a page of the session (page-N.png, preview.png), read as that user
  *   POST scan/save?session=S&format=pdf|png|jpeg&pages=N,N,...[&to=REL]
@@ -104,6 +106,15 @@ static void scan_helper(const char *const a[], const char *cmd)
 	if ((root_have("network") ? root_net(a, 1) : -2) == -2) run(cmd);
 }
 static int scan_usb_id(const char *id) { return !strncmp(id, "escl:http://127.0.0.1:600", 25); }
+/* (step 3) a USB scanner of SANE's drivers: every such scanner plugged in given to the scanning user while it scans
+   (the devices helper's "scanusb allow|done UID": /usr/lib/rudolf/scanusb), given back after, however the scan ended */
+static void scan_give(const char *id, uid_t u, int give)
+{
+	char us[16]; snprintf(us, sizeof us, "%u", (unsigned)u);
+	if (scan_usb_id(id) && u >= 1001) { const char *a[] = { "network", "usbscan", give ? "allow" : "done", us, NULL }; char c[120]; snprintf(c, sizeof c, "/usr/lib/rudolf/usbprint scanner %s %s >/dev/null 2>&1", give ? "allow" : "done", us); scan_helper(a, c); }
+	if (!strncmp(id, "sane:usb:", 9) && u >= 1000) { const char *a[] = { "devices", "scanusb", give ? "allow" : "done", us, NULL }; char c[120]; snprintf(c, sizeof c, "/usr/lib/rudolf/scanusb %s %s >/dev/null 2>&1", give ? "allow" : "done", us);
+		if ((root_have("devices") ? root_net(a, 1) : -2) == -2) run(c); }
+}
 static void api_scan(struct req *r, const char *what, int post)
 {
 	if (access(SCAN_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS cannot scan"); return; }
@@ -125,11 +136,10 @@ static void api_scan(struct req *r, const char *what, int post)
 	if (!strcmp(what, "caps")) {
 		const char *id = qparam(r->query, "id"); if (!scan_id_ok(id)) { reply_err(r->fd, 400, "id: one that find gave"); return; }
 		char ib[350]; snprintf(ib, sizeof ib, "%s", id);
-		uid_t u; gid_t g; char home[300]; scan_user(&u, &g, home, sizeof home); char us[16]; snprintf(us, sizeof us, "%u", (unsigned)u);
-		int usb = scan_usb_id(ib) && u >= 1001;
-		if (usb) { const char *a[] = { "network", "usbscan", "allow", us, NULL }; char c[120]; snprintf(c, sizeof c, "/usr/lib/rudolf/usbprint scanner allow %s >/dev/null 2>&1", us); scan_helper(a, c); }
+		uid_t u; gid_t g; char home[300]; scan_user(&u, &g, home, sizeof home);
+		scan_give(ib, u, 1);
 		const char *av[] = { SCAN_BIN, "caps", ib, NULL }; size_t n = 0; char *o = scan_run(av, NULL, 65536, 60000, NULL, &n);
-		if (usb) { const char *a[] = { "network", "usbscan", "done", us, NULL }; char c[120]; snprintf(c, sizeof c, "/usr/lib/rudolf/usbprint scanner done %s >/dev/null 2>&1", us); scan_helper(a, c); }
+		scan_give(ib, u, 0);
 		if (!o || strncmp(o, "{\"ok\":", 6)) { free(o); reply_err(r->fd, 500, "The scanner could not be asked."); return; }
 		reply(r->fd, 200, "application/json", o, n, NULL); free(o); return;
 	}
@@ -154,10 +164,9 @@ static void api_scan(struct req *r, const char *what, int post)
 			if (!scan_word(q, 40, ".,")) { reply_err(r->fd, 400, "a setting that is not one"); return; }
 			snprintf(opt[i], sizeof opt[i], "%s=%s", K[i], q); av[n++] = opt[i]; }
 		av[n] = NULL;
-		char us[16]; snprintf(us, sizeof us, "%u", (unsigned)u); int usb = scan_usb_id(ib) && u >= 1001;
-		if (usb) { const char *a[] = { "network", "usbscan", "allow", us, NULL }; char c[120]; snprintf(c, sizeof c, "/usr/lib/rudolf/usbprint scanner allow %s >/dev/null 2>&1", us); scan_helper(a, c); }
+		scan_give(ib, u, 1);
 		size_t on = 0; char *o = scan_run(av, sess, 65536, 15 * 60 * 1000, SCAND "/pid", &on);
-		if (usb) { const char *a[] = { "network", "usbscan", "done", us, NULL }; char c[120]; snprintf(c, sizeof c, "/usr/lib/rudolf/usbprint scanner done %s >/dev/null 2>&1", us); scan_helper(a, c); }
+		scan_give(ib, u, 0);
 		if (!o || strncmp(o, "{\"ok\":", 6)) { free(o); reply_err(r->fd, 500, "The scan stopped: Rudolf OS's scanning did not answer."); return; }
 		reply(r->fd, 200, "application/json", o, on, NULL); free(o); return;   /* (an error of the scanner's is {"ok":false,...}: the page says it) */
 	}
