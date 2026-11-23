@@ -413,6 +413,7 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# 1.5.9 (plan Part 12): the native desktop engine's prototype, with WebKit
 	gcc -O2 $HARD -Wno-deprecated-declarations -o "$B/rudolf-native" sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm || { echo "rudolf-native did not build"; exit 1; }
 	python3 systools/hardcheck.py "$B/rudolf-webkit" "$B/rudolf-native" || { echo "rudolf-webkit or rudolf-native was built without the hardening flags (plan 15.5)"; exit 1; }
+	systools/addwebkit.sh "$W/broot" "$B/rudolf-webkit" "$B/rudolf-native"
 	# 1.6.2 (docs/plan-1.6.2.md Part 39): librudolf-ui, linked into each native app (sys/ui; its theme and translations made from the
 	# page by sys/ui/mkui.py, with rudolf-native's own JSON reader and accent colour rules): built hardened, with its sample window
 	# (the test's: not shipped) as the program that proves it; what it adds to each app said, in a budget of 512 KB
@@ -421,7 +422,19 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	RUIB=$(size -B "$W/ui/rudolf-ui.o" | awk 'NR==2{print $1+$2+$3}'); rm -f "$B/rudolf-uisample"
 	[ "$RUIB" -lt 524288 ] || { echo "librudolf-ui adds $((RUIB / 1024)) KB to each native app: over its 512 KB budget (docs/plan-1.6.2.md Part 39)"; exit 1; }
 	echo "::notice title=librudolf-ui::$((RUIB / 1024)) KB in each native app (its theme and translations from the page included)"
-	systools/addwebkit.sh "$W/broot" "$B/rudolf-webkit" "$B/rudolf-native"
+	# (Part 39 step 2) the native apps (sys/apps/NAME.c: /usr/bin/rudolf-NAME, started by rudolf-native for its app on the native desktop),
+	# each built hardened with librudolf-ui, checked, put in the base layer; the release fails when one is missing or over its 1 MB budget
+	# (GTK 3, cairo and Pango, which they use, are WebKitGTK's, already there: addwebkit.sh)
+	for a in sys/apps/*.c; do n=$(basename "$a" .c)
+		RUI_WERROR=1 sh sys/ui/build.sh "$W/ui" "$B/rudolf-$n" "$n" $HARD || { echo "rudolf-$n did not build (sys/ui/build.sh)"; exit 1; }
+		python3 systools/hardcheck.py "$B/rudolf-$n" || { echo "rudolf-$n was built without the hardening flags (plan 15.5)"; exit 1; }
+		strip "$B/rudolf-$n"; NAB=$(stat -c %s "$B/rudolf-$n")
+		[ "$NAB" -lt 1048576 ] || { echo "rudolf-$n is $((NAB / 1024)) KB: over a native app's 1 MB budget (docs/plan-1.6.2.md Part 39)"; exit 1; }
+		sudo install -m 0755 "$B/rudolf-$n" "$W/broot/usr/bin/rudolf-$n"
+		for l in $(ldd "$B/rudolf-$n" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "rudolf-$n needs $l, which the base layer lacks"; exit 1; }; done
+		echo "::notice title=rudolf-$n::$((NAB / 1024)) KB added to the base layer (a native app, with librudolf-ui)"
+	done
+	[ -x "$W/broot/usr/bin/rudolf-taskmgr" ] || { echo "the native Task Manager (rudolf-taskmgr) is missing from the base layer"; exit 1; }
 	# 1.6.0 (plan Part 14): the keyring for Linux apps, gnome-keyring-daemon's secrets part (/usr/lib/rudolf/keyring starts
 	# it at sign-in, as the account's user), with what it needs that the base layer lacks, in a budget of its own, 3 MB.
 	# After WebKit, whose libraries it

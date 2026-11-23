@@ -54,6 +54,7 @@ held() { rm -f /run/rudolf/events; curl -s -m 30 -H "X-Rudolf-Token: $TOK" "http
 	w8 "[ -n \"\$(pgrep -P $M rudolfd)\" ]" 40; C=$(pgrep -P $M rudolfd | head -1); }
 # clients as nobody (the desktop's user here), listed in the desktop's group: python3 (the page) or a copy named rudolf-native
 cp /usr/bin/python3 $T/rudolf-native; chmod 755 $T/rudolf-native
+cp /usr/bin/python3 $T/rudolf-taskmgr; chmod 755 $T/rudolf-taskmgr   # (1.6.2 Part 39: a native app, known by its program as the shell is)
 cat > $T/cl.py <<'EOF'
 import os, sys, time, urllib.request, urllib.error
 path, tok = sys.argv[1], sys.argv[2]
@@ -93,6 +94,9 @@ ok "...said in the health log" "$(health | grep -q "the desktop's page asked for
 ok "...and in the confinement's own log (never trimmed), with rudolfd's start" "$(grep -q 'the page asked for desktop/accounts: refused' /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null && grep -q 'confinement on, Landlock ABI' /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null && echo 1)" "$(cat /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null | tail -3)"
 o=$(win $T/rudolf-native /api/desktop/accounts); o2=$(win $T/rudolf-native /api/fs/list)
 ok "15. the native shell (rudolf-native) gets its own (desktop/accounts) and is refused the rest (fs/list)" "$([ "$(echo "$o" | head -1)" = 200 ] && echo "$o2" | grep -q '^403' && echo 1)" "$o / $o2"
+o=$(win $T/rudolf-taskmgr /api/processes); o2=$(win $T/rudolf-taskmgr /api/fs/list); o3=$(win $T/rudolf-taskmgr /api/stats)
+ok "15b. a native app (rudolf-taskmgr) gets what its code asks for (processes, stats) and is refused the rest (fs/list, which the page asks for)" "$([ "$(echo "$o" | head -1)" = 200 ] && [ "$(echo "$o3" | head -1)" = 200 ] && echo "$o2" | grep -q '^403' && echo 1)" "$o / $o2 / $o3"
+ok "...noted as a native app's in the confinement's log" "$(grep -q 'a native app asked for fs/list: refused' /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null && echo 1)" "$(cat /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null | tail -2)"
 c=$(api desktop/accounts)
 ok "16. root (rudolfd's helpers, the session's scripts) is never checked" "$([ "$c" = 200 ] && echo 1)" "$c"
 stop

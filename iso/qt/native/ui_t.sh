@@ -11,7 +11,7 @@ if [ -z "$BIN" ]; then BIN=$T/ui-sample
 	sh $R/iso/sys/ui/build.sh $T/ui $BIN ui-sample 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 	[ -s $T/cc ] && { echo "FAIL the sample builds with warnings:"; cat $T/cc; exit 1; }
 fi
-D=$T/d; mkdir -p $D; node $R/iso/qt/host/fixtures/deskls.js $D/ls.json $D/keys.json || { echo "FAIL node"; exit 1; }
+export FONTCONFIG_FILE=$HERE/fonts-test.conf; D=$T/d; mkdir -p $D; node $R/iso/qt/host/fixtures/deskls.js $D/ls.json $D/keys.json || { echo "FAIL node"; exit 1; }
 # (Native's side is signed in as Ann: the stand-in's session file, as its desktop/login writes it)
 python3 - "$D" <<'Y'
 import json, sys; D = sys.argv[1]; k = json.load(open(D + '/keys.json'))['Ann']

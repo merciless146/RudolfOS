@@ -168,6 +168,7 @@ def css(T, dark):
     o.append(f'.rui-h4 {{ font-size: {px(T["h4_fs"]):g}px; font-weight: bold; color: {h4}; letter-spacing: @LS@px; }}')
     o.append(f'.rui-msg {{ font-size: {px(T["msg_fs"]):g}px; color: {msg}; }}')
     o.append(f'.rui-frame {{ border: 1px solid {col(T["bd"])}; }}')
+    o.append(f'.rui-foot {{ border-top: 1px solid {col(T["bd"])}; padding: 4px 8px; }}')   # (a window's footer row: the page's .rmrow with its border, tm26.js .tmfoot)
     o.append(f'.rui-dim {{ background-color: {col(T["dlg_dim"])}; }}')
     dp = box(T['dlg_pad'])
     o.append(f'.rui-dlg {{ background-color: {dbg}; color: {dfg}; border-radius: {px(T["dlg_r"]):g}px; padding: {dp[0]:g}px {dp[1]:g}px {dp[2]:g}px {dp[3]:g}px; }}')
@@ -241,6 +242,11 @@ out.append('static const char *const RUI_LANGS[] = { ' + ', '.join(cstr(x) for x
 out.append('static const char *const RUI_TR[][9] = {')
 for k in sorted(TR): out.append('\t{ ' + ', '.join(cstr(x) for x in [k] + TR[k]) + ' },')
 out.append('};')
+
+# ---------------------------------------------------------------- the page's version (core25.js's RVER, RVERDATE, in the built page)
+m = re.search(r"const RVER='([^']+)',RVERDATE='([^']+)'", html)
+if not m: die("the page's version (const RVER=...,RVERDATE=...) was not found in the page")
+out.append('static const char RUI_RVER[] = %s, RUI_RVERDATE[] = %s;' % (cstr(m.group(1)), cstr(m.group(2))))
 
 # ---------------------------------------------------------------- rudolf-native's own code, by its markers
 nat = open(NAT, encoding='utf-8').read().split('\n')

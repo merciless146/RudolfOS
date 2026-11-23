@@ -411,6 +411,7 @@ static const char *const WINAPI_SHELL[] = {   /* the native shell, rudolf-native
 	"desktop/lock",
 	"desktop/login",
 	"desktop/logout",
+	"desktop/priority",
 	"desktop/session",
 	"desktop/settings",
 	"desktop/unlock",
@@ -446,13 +447,37 @@ static const char *const WINAPI_SHELL[] = {   /* the native shell, rudolf-native
 	NULL
 };
 static const char *const WINAPI_APPS[] = {   /* (1.6.2 Part 39) the native apps (iso/sys/apps) with librudolf-ui (iso/sys/ui) */
+	"apps/end",
+	"apps/kill",
+	"apps/running",
+	"clientlog",
+	"crashes",
 	"desktop/accounts",
 	"desktop/admin",
+	"desktop/apps",
+	"desktop/priority",
 	"desktop/session",
 	"desktop/settings",
+	"devlink",
+	"firewall",
+	"info",
+	"lsync",
+	"memory/breakdown",
+	"memory/dropcache",
+	"net",
+	"proc/end",
+	"processes",
+	"secureboot/status",
+	"service/restart",
+	"shell/switch",
+	"stats",
+	"sys/status",
+	"system",
+	"vault",
+	"wifi/status",
 	NULL
 };
 static const char *const WINAPI_APPS_EXE[] = {   /* their programs (/usr/bin/rudolf-NAME) */
-
+	"rudolf-taskmgr",
 	NULL
 };
