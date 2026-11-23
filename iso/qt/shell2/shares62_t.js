@@ -98,7 +98,9 @@ async function flow(pg, tag) {
     if (process.env.SH62_DBG) console.log('DBG before Disconnect', JSON.stringify(await view()));
     await pg.evaluate(`[...document.querySelectorAll('.xsi')].find(e=>/^🔒/.test(e.textContent.trim())).click()`);   /* (the pane went elsewhere: the share opened again from the places) */
     await until(pg, `[...document.querySelectorAll('.xrb button')].some(b=>/Disconnect/.test(b.textContent))`) }
-  await pg.evaluate(`[...document.querySelectorAll('.xrb button')].find(b=>/Disconnect/.test(b.textContent)).click()`);
+  /* (clicked once it is there: the desktop's drop above ends by refreshing File Explorer, whose drive pane is "Loading…", without
+     its bar, until its list comes back) */
+  await until(pg, `(()=>{const b=[...document.querySelectorAll('.xrb button')].find(b=>/Disconnect/.test(b.textContent));if(!b)return false;b.click();return true})()`);
   v = await until(pg, `(()=>{const v=${VIEW};return v&&!v.bar.length&&!v.side.some(x=>/nas62/.test(x))?v:null})()`);
   ok(`${tag} 12. Disconnect: shares/close, the pane back home, gone from the places`, v && M.calls.some(c => c == 'POST shares/close?id=0123456789abcdef'), [v, M.calls.slice(-4)]);
   const rec = await pg.evaluate(`localStorage.getItem(netRecK())`);
