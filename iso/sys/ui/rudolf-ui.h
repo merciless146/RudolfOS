@@ -38,6 +38,8 @@ int rui_init(int *argc, char ***argv, const char *app);
 void rui_on_settings(void (*cb)(void *d), void *d);   /* called after the settings changed (the theme is already applied) */
 double rui_px(double css_px);                          /* a page's CSS pixel on this screen (the display scaling) */
 const char *rui_tr(const char *en);                    /* the page's translation of an English text, or the text */
+const char *rui_version(void);                         /* the page's RVER (1.6.2) */
+const char *rui_version_date(void);                    /* the page's RVERDATE */
 
 /* ---- rudolfd */
 typedef struct RuiJ RuiJ;   /* a JSON value (rudolf-native's JV) */
@@ -94,6 +96,11 @@ void rui_table_done(RuiTable *t);                       /* drawn again after a c
 void rui_table_on(RuiTable *t, void (*row)(long id, int how /* 0 click 1 right-click 2 Enter 3 Delete 4 Shift+Delete */, double x, double y, void *d),
 	void (*head)(int c, void *d), void *d);
 void rui_table_rect(RuiTable *t, long id, GdkRectangle *r);   /* (the tests) */
+double rui_table_col_x(RuiTable *t, int c);
+int rui_table_button_rect(RuiTable *t, long id, int col, int k, GdkRectangle *r);   /* the k-th button in row id's cell (the tests) */              /* where column c begins, in the widget (the tests) */
+void rui_table_nohead(RuiTable *t, int on);              /* no heading row (a table of names and values) */
+void rui_table_wrap(RuiTable *t, int on);                /* long writing wraps in its cell, the row as tall as its lines */
+void rui_table_cell_bold(RuiTable *t, int row, int col);
 void rui_table_set_button(RuiTable *t, int row, int col, const char *label, void (*cb)(long id, int col, void *d), void *d);   /* a button in a cell ("Switch to") */
 
 /* ---- the right-click menu (the page's cmenu) */
@@ -114,4 +121,9 @@ void rui_notify(const char *title, const char *body, int error);
 /* ---- drawing in the page's look (for an app's own drawn parts) */
 PangoLayout *rui_layout(cairo_t *cr, const char *text, double px, int weight);
 void rui_color(cairo_t *cr, const char *what, double alpha);   /* "wbg" "bg2" "bd" "mut" "fg" "ac" "acfg" */
+
+/* ---- the native shell (rudolf-native): "open APP" (an app opened as the start menu opens it), "winop FRAME focus|end"; the windows'
+   list as the page's Task Manager is given it (JSON), to cb */
+void rui_shell(RuiWin *w, const char *ask);
+void rui_shell_wins(RuiWin *w, void (*cb)(const char *json, void *d), void *d);
 #endif

@@ -1078,6 +1078,41 @@ Each app's PR as docs/plan-2.0.md "Each app's pull request" says (its program, i
 against the web version, its memory at idle against the web version, the Start menu switched once it passes).
 **The owner's checks:** each native app on the Vivobook against its web version (Chromium mode), every action, and its memory
 in Task Manager.
+#### Status (2026-11-23, scheduled task)
+- **Step 1, librudolf-ui** (`iso/sys/ui/`, PR #658, merged, and its follow-up #662): the GTK 3 theme made at build time from the page's own styles
+  (`mkui.py`: its rules by their selectors, light and dark, the accent colour's rules, the Font setting and the display scaling),
+  the controls GTK cannot draw as Chromium does drawn in the page's values (check box, `.tmt` table, scroll bars, the cmenu),
+  the settings from rudolfd followed live, rudolfd's client (the token as rudolf-native gets it), Confirm, the administrator's
+  permission (rudolfd's new `desktop/admin`: no app holds a password hash), the about box, the page's translations, the
+  writing drawn greyscale and unhinted, as Chromium draws the page (the look tests pin fontconfig so: `qt/native/fonts-test.conf`;
+  GitHub's runner hints and draws subpixel colour by default). rudolf-native's JSON reader and accent rules are taken from its
+  source, not copied. The confinement knows a native app by its program (`WINAPI_APPS`, `winapi.py`). 101 KB in each app.
+  Its sample window against the page's controls (qt/native/ui_t.sh): 97/97, the window 0.17 to 1.21 % different (light, dark,
+  two accents, Liberation Sans 14 px, German), the settings followed while it runs; the same here and on GitHub's runner
+  (`native-apps-check.yml`).
+- **Step 2, the native Task Manager** (`/usr/bin/rudolf-taskmgr`, `iso/sys/apps/taskmgr.c`, PR #660): every tab,
+  column, sort, the search box, End process, End process tree, End now (the right-click menu, Enter, Delete, Shift+Delete), the
+  administrator's permission for what is not the person's own, Clear cache, the services' Restart and Restart the desktop,
+  Refresh, the details, Startup's Reopen and Remove, Copy system report (made from rudolfd as the page's sysReport), Report a
+  problem… and Check this computer… (the page's own dialogs, opened by the shell), Developer Console. rudolf-native starts it for
+  Task Manager (Ctrl+Shift+Esc, Ctrl+Alt+Del, the start menu, the pins, the taskbar), one window, framed and listed as Task
+  Manager's, and answers its Apps tab with the windows (`_RUDOLF_ASK`); Chromium and Lite keep the web one.
+  Against the web one (qt/native/taskmgr_t.sh): every tab under 2 % (0.29 to 1.10 %, light and dark); its checklist 29/29; started
+  by the native shell 4/4; 46/46 here and on GitHub's runner. **Memory at idle, Processes open (host): 15 MB RssAnon, 52 to 56 MB PSS, against the web one's 75 to 82 MB
+  RssAnon, 134 to 137 MB PSS** (Chromium's renderer for `#app=taskmgr`; on the Vivobook the web one's own WebKit process was ~130 MB,
+  Part 38). 279 KB stripped, in the release build (its 1 MB budget) with librudolf-ui.
+- **Known differences, said so:** the Apps tab's own row shows "—" for Task Manager's memory (the web one estimates its page's);
+  System › "Runs in" says the native desktop; Copy system report leaves out what only the page knows (the shell's notes, the
+  Linux apps' check, the health log's latest; the hardware check's summary says "not run" until read from the page's storage).
+**The owner's checklist (Vivobook, after #662 and #660 are in a beta):**
+1. Native desktop: Ctrl+Shift+Esc, Ctrl+Alt+Del, the start menu, a pin and the taskbar's right-click each open the native Task
+   Manager (one window, above the others for Ctrl+Alt+Del), titled and iconed as Task Manager in the taskbar.
+2. Each tab against Chromium mode's Task Manager, light and dark: the same look (the writing as soft or as sharp: if not, librudolf-ui follows fontconfig instead); every sort, Find a process, End process / tree /
+   now on one of your own apps (Confirm) and on another (the administrator's password; a wrong one refused), the right-click menu.
+3. Performance's graphs moving, Clear cache; System's Restart (sound) and Refresh; Hardware's Check this computer… opens the check.
+4. Startup: Reopen my apps and Remove, then sign out and in.
+5. Copy system report (paste it in Notepad), Report a problem…, Developer Console.
+6. The memory: Task Manager's own row in its Processes tab (rudolf-taskmgr) against the web one's WebKit process before (~130 MB).
 
 ### The checks made green (added on 2026-11-23)
 

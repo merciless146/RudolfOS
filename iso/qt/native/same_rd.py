@@ -104,6 +104,18 @@ class H(http.server.BaseHTTPRequestHandler):
                 import urllib.parse; v = (L.get('data') or {}).get(urllib.parse.unquote(q[4:]))
                 return self.j({'ok': True, 'gen': L.get('gen') or 0, 'v': v if isinstance(v, str) else None})
             return self.j({'ok': True, 'message': 'saved'})
+        # (1.6.2 Part 39, taskmgr_t.js) DIR/tm: Task Manager's requests answered from a JSON file ({"processes": {...}, "system": {...}, ...}: the
+        # same for the page's Task Manager and the native one); the actions taken answered as rudolfd answers them (and noted in DIR/calls)
+        if rd('tm') is not None:
+            T = json.loads(rd('tm'))
+            if w in T and (m == 'GET' or w in ('apps/running',)): return self.j(T[w])
+            if w == 'proc/end' and m == 'POST': return self.j({'ok': True, 'message': 'proc', 'ended': 3, 'kept': 0} if 'tree=1' in q else {'ok': True, 'message': 'proc'})
+            if w in ('service/restart', 'apps/end', 'apps/kill', 'shell/switch') and m == 'POST': return self.j({'ok': True, 'message': w})
+            if w == 'memory/dropcache' and m == 'POST': return self.j({'ok': True, 'freed': 104857600})
+            if w == 'desktop/priority': return self.j({'ok': True, 'on': False})
+        if w == 'desktop/admin' and m == 'POST':   # (1.6.2 Part 39: an administrator's permission, as rudolfd-desktop.inc checks it)
+            o = json.loads(b or b'{}'); k = KEYS.get('Ann')
+            return self.j({'ok': True, 'message': 'allowed'}) if k and o.get('n') == 'Ann' and o.get('p') == k['pw'] else self.err(403, 'Wrong password.')
         if w == 'desktop/accounts':
             acc = (sget(data, 'bd95user') or {}).get('accts', [])
             last = max(acc, key=lambda a: a.get('last', 0))['id'] if acc else ''

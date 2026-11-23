@@ -9,6 +9,10 @@ Summary: In progress.
   locked, though it has no password of its own. Rudolf OS now unlocks such a keyring itself before keeping the secret.
 - Changed: the plan (docs/plan-1.6.2.md Part 38): the app windows' memory on the native desktop measured; a small page for
   Task Manager built and measured (about 3 % less in WebKit) and not kept; Settings' panels measured and left as they are.
+- Added: native apps for Rudolf OS (docs/plan-1.6.2.md Part 39): librudolf-ui, the shared library that draws a native app as
+  its web version (its theme made from the page's styles, light and dark, the accent colour, the font settings, followed live),
+  and the native Task Manager: on the native desktop Task Manager is now its own program (15 MB instead of a ~130 MB web page),
+  with every tab and action of the web one; Chromium and Lite keep the web Task Manager.
 - Changed: the plan (docs/plan-1.6.2.md Part 39): native apps for Rudolf OS too, not only WendigOS: librudolf-ui and a native
   Task Manager first (1.6.2), then Settings and the Office apps, each screenshot-compared with its web version before it
   replaces it on the native desktop.
