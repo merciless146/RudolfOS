@@ -1,2 +1,2 @@
-# the kryptonite branch: the Kernel configuration check on Rudolf Kryptonite's kernel (.github/kryptonite-kernel.txt)
+# the kryptonite branch: the Kernel configuration check on WendigOS's kernel (.github/kryptonite-kernel.txt)
 kernel=7.3.5

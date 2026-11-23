@@ -1,6 +1,6 @@
 # Draft upstream report: a kexec'd kernel writes into the previous kernel's INITRD config table (not sent)
 
-Rudolf Kryptonite (2.0), the kryptonite branch. A draft for the owner: **nothing here has been sent anywhere.** If the
+WendigOS (2.0), the kryptonite branch. A draft for the owner: **nothing here has been sent anywhere.** If the
 owner decides to report it, it goes to the EFI maintainers (Ard Biesheuvel; linux-efi@vger.kernel.org, Cc
 kexec@lists.infradead.org and the reporter of the original problem), as a reply to the thread of the commit below or as a
 new patch. The patch Rudolf's 7.3 build carries is `iso/systools/kpatches/efi-initrd-table-kexec.patch`.

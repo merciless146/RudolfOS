@@ -3,8 +3,9 @@
 Each version's first line after "Summary:" is what Settings shows before an update is installed; the list is what
 "What's new" and the notification after an update show. The newest version comes first.
 
-## 2.0 (Rudolf Kryptonite, in progress)
-Summary: In progress, on the kryptonite branch only (held for 2.0: not in 1.6.x, its releases or the update channels).
+## 2.0 (WendigOS, in progress)
+Summary: In progress, on the kryptonite branch only (WendigOS: Wayland-ENhanced Driver-Integrated Gaming Operating
+System; named Rudolf Kryptonite until 2026-11-22) (held for 2.0: not in 1.6.x, its releases or the update channels).
 - Kernel: squashfs reads zstd images too (SQUASHFS_ZSTD, x86-64 and ARM64, and a required feature), as the betas move their
   images from xz to zstd (docs/plan-1.6.2.md Part 31), so the 7.3 kernel keeps starting the newest beta's layers.
 - Kernel: Linux 7.3.5 for x86-64 in place of 6.18 (docs/plan-2.0.md, "Status: the 7.3 kernel"): Rudolf's kernel configuration

@@ -1,8 +1,8 @@
-# Rudolf Kryptonite (2.0, docs/plan-2.0.md "The newest kernel"): Linux 7.3.y for x86-64, checked on the kryptonite branch
+# WendigOS (2.0, docs/plan-2.0.md "The newest kernel"): Linux 7.3.y for x86-64, checked on the kryptonite branch
 # only. Nothing is published: no release, no gh-pages, no channel, no secret; the kernel is built with a TEST Secure Boot
 # key made in the job and thrown away with it. Runs on pushes to kryptonite and on pull requests into kryptonite (the
 # branches of its work, kryp-*), never on main.
-name: Kryptonite kernel
+name: WendigOS kernel
 on:
   push:
     branches: [kryptonite]
@@ -29,11 +29,11 @@ jobs:
           NEWEST=$(echo "$ALL" | tail -1)
           case "$W" in *.*.*) KV=$W;; *) KV=$NEWEST;; esac
           [ -n "$KV" ] || { echo "::error::no Linux $W on kernel.org"; exit 1; }
-          [ "$KV" = "$NEWEST" ] || echo "::warning title=Kryptonite kernel::$KV is pinned in .github/kryptonite-kernel.txt; $NEWEST is out"
+          [ "$KV" = "$NEWEST" ] || echo "::warning title=WendigOS kernel::$KV is pinned in .github/kryptonite-kernel.txt; $NEWEST is out"
           git fetch -q --depth 1 origin gh-pages
           OLD=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); OLD=${OLD%-rudolf}
           echo "kv=$KV" >> $GITHUB_OUTPUT; echo "old=$OLD" >> $GITHUB_OUTPUT
-          echo "::notice title=Kryptonite kernel::Linux $KV (newest $SER.y: $NEWEST; 1.6.x stable: $OLD); every $SER.y: $(echo "$ALL" | tr '\n' ' ')"
+          echo "::notice title=WendigOS kernel::Linux $KV (newest $SER.y: $NEWEST; 1.6.x stable: $OLD); every $SER.y: $(echo "$ALL" | tr '\n' ' ')"
   kconfig:
     needs: version
     runs-on: ubuntu-24.04
@@ -99,7 +99,7 @@ jobs:
       - name: TEST Secure Boot key (this job only)
         run: |
           K=$RUNNER_TEMP/sbtest; mkdir -p $K; chmod 700 $K
-          (cd $K && openssl req -new -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=Rudolf Kryptonite TEST Secure Boot/" -keyout sb.key -out sb.crt \
+          (cd $K && openssl req -new -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=WendigOS TEST Secure Boot/" -keyout sb.key -out sb.crt \
             -addext "keyUsage=critical,digitalSignature" -addext "extendedKeyUsage=codeSigning" 2>/dev/null)
           echo "SBT=$K" >> $GITHUB_ENV; openssl x509 -in $K/sb.crt -noout -subject -fingerprint -sha256
       - name: Build Linux ${{ needs.version.outputs.kv }}

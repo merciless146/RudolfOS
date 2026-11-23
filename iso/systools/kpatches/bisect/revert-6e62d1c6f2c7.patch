@@ -1,4 +1,4 @@
-Rudolf Kryptonite (2.0) bisect only (.github/kryptonite-bisect.txt): 6e62d1c6f2c7 ("efi: Wipe INITRD config table from
+WendigOS (2.0) bisect only (.github/kryptonite-bisect.txt): 6e62d1c6f2c7 ("efi: Wipe INITRD config table from
 memory after consumption") taken back out of a tree that has it, to show that this line alone breaks the handover. Never
 carried by a build.
 

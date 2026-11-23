@@ -1,4 +1,4 @@
-Rudolf Kryptonite (2.0), the kryptonite branch only: carried by the 7.3 build (.github/kryptonite-kernel.txt, patch=).
+WendigOS (2.0), the kryptonite branch only: carried by the 7.3 build (.github/kryptonite-kernel.txt, patch=).
 GPL-2.0 (a change to Linux). Reason: docs/plan-2.0.md, "Status: the 7.3 kernel".
 
 efi: a kernel started by kexec neither uses nor wipes the INITRD config table

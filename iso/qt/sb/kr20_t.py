@@ -1,4 +1,4 @@
-# Rudolf Kryptonite (2.0, docs/plan-2.0.md "The newest kernel"): a test build's kernel (Linux 7.3.y with this tree's
+# WendigOS (2.0, docs/plan-2.0.md "The newest kernel"): a test build's kernel (Linux 7.3.y with this tree's
 # kconfig.sh, built by systools/testkernel.sh) in QEMU on the newest beta release's layers, next to the release's own
 # kernel on the same machine. Installed as in kt161_t.py (slot a on an NVMe drive with RUDOLFDATA, UEFI with Secure Boot
 # off: the Secure Boot path is recovery_sb_t.sh's, with test keys), X11 as today. Tests only.

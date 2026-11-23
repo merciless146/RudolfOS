@@ -1,4 +1,4 @@
-# Rudolf Kryptonite (2.0): the 7.x start-up finding (docs/plan-2.0.md, "Status: the 7.3 kernel") bisected in parallel by
+# WendigOS (2.0): the 7.x start-up finding (docs/plan-2.0.md, "Status: the 7.3 kernel") bisected in parallel by
 # .github/workflows/kryptonite-bisect.yml: POINTS commits evenly along Linux's mainline (first parent) from GOOD to BAD, each
 # built with this tree's kconfig.sh and started after the handover at 1.5 GB (qt/sb/recovery_sb_t.sh, test keys). Each round
 # narrows GOOD and BAD to the two neighbours where the result changes. 6.18.64 passes, 6.19.14 and 7.0 to 7.3 fail.
