@@ -391,6 +391,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		sudo install -m 0755 "$x" "$W/broot/usr/sbin/${x##*/}"
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	done
+	# 1.6.2 (docs/plan-1.6.2.md Part 33 step 3): OpenVPN 2.6, Ubuntu 24.04's (with OpenSSL, which the base layer has
+	# already), run by the VPN helper (root/vpn) only while an OpenVPN VPN is on; the disk it adds is said here
+	x=/usr/sbin/openvpn; [ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install openvpn)"; exit 1; }
+	sudo install -m 0755 "$x" "$W/broot/usr/sbin/openvpn"; OVA=$(stat -c %s "$x")
+	for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; OVA=$((OVA + $(stat -L -c %s "$l"))); echo "  openvpn needs $l"; }; done
+	echo "  openvpn: $((OVA / 1024)) KB added to the base layer (the program and the libraries it lacked)"
 	# 1.5.4: ALSA's use case files (alsa-ucm-conf), how PulseAudio sets up the speakers, headphones and microphones of
 	# sound processors (Intel SOF, AMD ACP) and USB sound cards (/usr/lib/rudolf/sound)
 	[ -f /usr/share/alsa/ucm2/ucm.conf ] || { echo "alsa-ucm-conf is missing on the build machine (apt-get install alsa-ucm-conf)"; exit 1; }

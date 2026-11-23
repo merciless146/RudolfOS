@@ -45,8 +45,9 @@ static const struct { const char *name; uint64_t keep; } HELPER_CAPS[] = {
 	{ "sound", CB(CAP_SETUID) | CB(CAP_SETGID) | CB(CAP_KILL) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_CHOWN) },
 	/* the VPN (1.6.2 Part 33): WireGuard's interface, its addresses, routes and rules through netlink, the kernel's
 	   src_valid_mark (CAP_NET_ADMIN), the VPNs' files in /persist/etc/vpn and /etc/resolv.conf (root's: the DAC
-	   capabilities, CAP_FOWNER for their modes); no CAP_SYS_ADMIN, so no mount and no_new_privs */
-	{ "vpn", CB(CAP_NET_ADMIN) | CB(CAP_NET_RAW) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) },
+	   capabilities, CAP_FOWNER for their modes); OpenVPN (step 3) run by it, which becomes nobody once connected
+	   (CAP_SETUID, CAP_SETGID) and is stopped again (CAP_KILL); no CAP_SYS_ADMIN, so no mount and no_new_privs */
+	{ "vpn", CB(CAP_NET_ADMIN) | CB(CAP_NET_RAW) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_SETUID) | CB(CAP_SETGID) | CB(CAP_KILL) },
 	{ NULL, 0 }
 };
 /* the system calls of CF_HELPER_DENY a helper may still make, by name: the power helper restarts and sets the clock */
