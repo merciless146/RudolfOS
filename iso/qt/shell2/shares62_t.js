@@ -147,13 +147,16 @@ async function flow(pg, tag) {
     throw new Error('Native\'s app window did not open') }
   vn = await flow(p, wk ? 'Native (WebKit)' : 'Native');
   // Native against Standard: the Network view part by part
-  const same = vs && vn && JSON.stringify(vs.cards) == JSON.stringify(vn.cards) && JSON.stringify(vs.side) == JSON.stringify(vn.side) && vs.sizes.length == vn.sizes.length &&
+  /* (the places compared up to the end of Network's: "Folders on this device" is Chromium's own File System Access API, which
+     WebKit, and so Native, does not have: a difference of File Explorer's from before network shares, in the PR for the owner) */
+  const netSide = v => { const i = v.side.indexOf('Folders on this device'); return i < 0 ? v.side : v.side.slice(0, i) };
+  const same = vs && vn && JSON.stringify(vs.cards) == JSON.stringify(vn.cards) && JSON.stringify(netSide(vs)) == JSON.stringify(netSide(vn)) && vs.sizes.length == vn.sizes.length &&
     vs.sizes.every((s, i) => Math.abs(s[1] - vn.sizes[i][1]) <= Math.max(6, s[1] * 0.15)) &&
     /* (widths: the buttons' own; the address box and the cards fill the window, which is the app's whole window on Native:
        they differ by the windows' difference alone) */
     [1, 2].every(i => Math.abs(vs.sizes[i][0] - vn.sizes[i][0]) <= Math.max(8, vs.sizes[i][0] * 0.15)) &&
     [0, ...vs.sizes.map((x, i) => i).slice(3)].every(i => Math.abs((vn.sizes[i][0] - vs.sizes[i][0]) - (vn.sizes[0][0] - vs.sizes[0][0])) <= 4);
-  ok(`Native and Standard: the same Network view (the places, the recent shares and the computers found, in the same order, with the same texts; each part's size within 15 %)`, same, vs && vn ? {cards: [vs.cards, vn.cards], side: vs.side.join() == vn.side.join() ? 'same' : [vs.side, vn.side], sizes: [vs.sizes, vn.sizes]} : [vs, vn]);
+  ok(`Native and Standard: the same Network view (the places, the recent shares and the computers found, in the same order, with the same texts; each part's size within 15 %)`, same, vs && vn ? {sizes: [vs.sizes, vn.sizes], side: netSide(vs).join() == netSide(vn).join() ? 'same' : [netSide(vs), netSide(vn)], cards: vs.cards.join() == vn.cards.join() ? 'same' : [vs.cards, vn.cards]} : [vs, vn]);
   ok('no page error', !errs.length, errs);
   await b.close(); if (wk) await wk.close(); srv.close(); const n = R.filter(Boolean).length; console.log(`${n}/${R.length} passed`); process.exit(n == R.length ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1) });
