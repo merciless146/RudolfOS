@@ -24,6 +24,8 @@ const CASES = [
   {n: 'light-de', set: {dm: 'light', darkui: true, accent: '#2563eb', lang: 'de'}},   /* (the page's language tables: Cancel, Abbrechen) */
 ];
 const PARTS = ['tabs', 'field', 'fieldv', 'btn', 'btnd', 'pri', 'check', 'h4', 'table', 'msg', 'scroll', 'menu', 'dlg'];
+/* (Chromium's hinting pinned to none, as librudolf-ui writes: fontconfig's own differs between machines, GitHub's runner hinting
+   DejaVu Sans at 13 px and this one not, and Chromium follows it; the comparison is of the controls, not of the machine's fonts) */
 let BR;
 async function pageCase(c) {
   ST.state(D, c.set, {});
@@ -78,7 +80,7 @@ async function nativeCase(c, P) {
 }
 const px = (a, b, ra, rb, out) => JSON.parse(cp.execSync(`python3 ${path.join(__dirname, 'pxdiff.py')} ${a} ${b} ${ra.join(',')} ${rb.join(',')} ${TOL} ${out} 1`, {env: Object.assign({}, process.env, {PXDIFF_MAP: '1', PXDIFF_AA: '1'})}).toString());
 (async () => {
-  BR = await chromium.launch({ignoreDefaultArgs: ['--hide-scrollbars']});   /* (the scroll bars drawn, as the desktop's Chromium draws them) */
+  BR = await chromium.launch({ignoreDefaultArgs: ['--hide-scrollbars'], args: ['--font-render-hinting=none']});   /* (the scroll bars drawn, as the desktop's Chromium draws them) */
   const rows = [];
   for (const c of CASES) {
     if (ONLY && !ONLY.split(',').includes(c.n)) continue;
