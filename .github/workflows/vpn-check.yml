@@ -5,7 +5,7 @@
 #         Always on at the start), the helper's fuzz test, the release's build flags for it and rudolfd
 #   page: qt/shell2/vpn62_t.js (Settings › Network › VPN and the taskbar's network pop-up, in Playwright's Chromium,
 #         against a stand-in rudolfd)
-#   native: the native shell's pop-up drawn against the page's (qt/native/vpn62_native.sh)
+#   native: the network pop-up with its VPNs drawn by both engines, compared (qt/native/same_t.sh fly-net-vpn...)
 # Run by a pull request that changes these files, or by a push that changes .github/vpn-run.txt.
 name: VPN check
 on:
@@ -14,7 +14,7 @@ on:
     paths: ['.github/vpn-run.txt']
   pull_request:
     paths: ['iso/sys/rudolf-vpn.c', 'iso/sys/rudolfd-vpn.inc', 'iso/qt/host/vpn162_t.sh', 'iso/qt/host/fixtures/vpn*', 'iso/qt/host/fuzz/vpn_fuzz.c',
-      'desktop/vpn62.js', 'iso/qt/shell2/vpn62_t.js', 'iso/qt/native/vpn62_native.sh', 'iso/sys/root/usr/lib/rudolf/udhcpc.sh', '.github/workflows/vpn-check.yml']
+      'desktop/vpn62.js', 'iso/qt/shell2/vpn62_t.js', 'iso/qt/native/same_t.js', 'iso/qt/native/same_rd.py', 'iso/sys/rudolf-native.c', 'iso/sys/root/usr/lib/rudolf/udhcpc.sh', '.github/workflows/vpn-check.yml']
 permissions: {contents: read}
 jobs:
   host:
@@ -46,3 +46,18 @@ jobs:
         run: cp iso/www/index.html /tmp/built.html && cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cmp ../iso/www/index.html /tmp/built.html
       - name: Settings › Network › VPN and the network pop-up
         run: node iso/qt/shell2/vpn62_t.js
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xdotool imagemagick python3-pil libwebkit2gtk-4.1-dev libxtst-dev libxrandr-dev libxfixes-dev fonts-dejavu-core faketime >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: "The network pop-up with its VPNs: Native drawn as Standard (same_t.sh)"
+        run: mkdir -p out && SAME_PORT=8631 SAME_DSP=:87 sh iso/qt/native/same_t.sh $PWD/out fly-net,fly-net-vpn,fly-net-vpn-off
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: vpn-native, retention-days: 7, path: out}

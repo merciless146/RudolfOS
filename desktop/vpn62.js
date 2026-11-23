@@ -59,7 +59,7 @@ async function vpnAdmin(v,what,val){const T='VPN';const say={name:'Rename the VP
 /* Settings › Network › VPN */
 (function(){if(typeof netPanelS!='function')return;netPanelS=__after(netPanelS,function(c,W){if(!RD||c.dataset.oracle)return;
  const box=document.createElement('div');box.className='vpn62';c.appendChild(box);let last='';
- const draw=async(force,cached)=>{const s=cached?VPN62.s:await vpnGet();if(!box.isConnected)return;if(!s){box.innerHTML='';return}
+ const draw=async(force,cached)=>{const s=cached?VPN62.s:await vpnGet();if(!box.isConnected)return;if(!s||!s.vpns){box.innerHTML='';return}
   const k=JSON.stringify([s,VPN62.busy]);if(k==last&&!force)return;last=k;const adm=!!(s.me&&s.me.admin)||isAdmin();
   box.innerHTML=`<h4 class='sh4'>VPN</h4><div class='msg vpnwhy'>A VPN for the whole computer: while one is on, every app's traffic and its name lookups go through it.</div><div class='vpnl'></div>
 <div class='rmrow' style='justify-content:flex-start'><button class='vpna'>Add a VPN…</button></div>${adm?'':"<div class='msg'>Only an administrator can add, rename or remove a VPN.</div>"}${s.wireguard===false?"<div class='msg'>This system's kernel has no WireGuard: update Rudolf OS.</div>":''}`;
