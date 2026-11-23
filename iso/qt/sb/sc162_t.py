@@ -168,7 +168,7 @@ if up:
     o = run(f"{AS} '{BIN} scan {ID} /tmp/sc source=adf res=75 first=10' && {AS} '{BIN} save pdf /tmp/sc/three.pdf /tmp/sc/page-10.png /tmp/sc/page-11.png /tmp/sc/page-12.png'; ls -la /tmp/sc", 180)
     fetch('/tmp/sc/three.pdf', f'{W}/three.pdf'); pi = subprocess.run(['pdfinfo', f'{W}/three.pdf'], capture_output=True, text=True).stdout
     cs = [check(f'{W}/three.pdf', f'pdfpage={k}', f'page={k}', 'dpi=75', 'tol=10') for k in (1, 2, 3)]
-    ok('4. the feeder\'s three pages into one PDF (rudolf-scan save pdf): 3 pages, each its own picture', re.search(r'Pages:\s+3', pi) is not None and all(x.startswith('ok') for x in cs) and ' rudolf rudolf ' in o, f'{o} {pi} {cs}')
+    ok('4. the feeder\'s three pages into one PDF (rudolf-scan save pdf): 3 pages, each its own picture', re.search(r'Pages:\s+3', pi) is not None and all(x.startswith('ok') for x in cs) and re.search(r' rudolf +rudolf ', o) is not None, f'{o} {pi} {cs}')
     codes = []
     for st in ('adf=jam', 'adf=open'):
         ctl('set?' + st); o = run(f"{AS} '{BIN} scan {ID} /tmp/sc source=adf first=20'", 60); codes.append((re.search(r'"code":"(\w+)"', o) or re.search('()', '')).group(1))
@@ -224,11 +224,16 @@ if up and FIX and os.path.exists(os.path.join(FIX, 'rudolfd')):
     dv = js(f"[...{q_('.scdev')}.options].map(o=>o.textContent).join('|')")
     ok('A2. Scan (Start menu): rudolfd\'s scan/find lists the eSCL and the WSD scanner (the firewall on), scan/caps fills its settings', r is True and 'QEMU Scanner (eSCL)' in str(dv) and 'QEMU WSD Scanner (WSD)' in str(dv), (r, dv, js(f"{q_('.scm')}.textContent")))
     js(f"(()=>{{const d={q_('.scdev')};d.value='{ID}';d.dispatchEvent(new Event('change'));return 1}})()"); wait_for(f"{q_('.scres')}.options.length>0&&!{W_}.scan.busy", 60)
-    js(f"(()=>{{{q_('.scres')}.value='75';{q_('.scgo')}.click();return 1}})()"); r = wait_for(f"{W_}.scan.pages.length==1&&!{W_}.scan.busy", 240, 3)
-    js(f"(()=>{{const s={q_('.scsrc')};s.value='adf';s.dispatchEvent(new Event('change'));{q_('.scres')}.value='75';{q_('.scgo')}.click();return 1}})()"); r2 = wait_for(f"{W_}.scan.pages.length==4&&!{W_}.scan.busy", 300, 3)
+    # (each click once, whatever the serial line does: cdp-eval's call is sent again when its answer is lost, and a second click on Scan
+    # while it scans is Cancel; window.__sc162 counts the clicks)
+    CLICK = lambda pre, n: js(f"(()=>{{if(window.__sc162>={n})return 'again';window.__sc162={n};{pre}{q_('.scgo')}.click();return 1}})()")
+    js("window.__sc162=0"); CLICK(f"{q_('.scres')}.value='75';", 1); r = wait_for(f"{W_}.scan.pages.length==1&&!{W_}.scan.busy", 240, 3)
+    m1 = js(f"[{q_('.scm')}.textContent,{W_}.scan.pages.length,{W_}.scan.next].join(' | ')"); out('after the first scan:', m1)
+    if r is not True: out(run("tail -30 /run/rudolf/rudolfd.log", 30))
+    CLICK(f"const s={q_('.scsrc')};s.value='adf';s.dispatchEvent(new Event('change'));{q_('.scres')}.value='75';", 2); r2 = wait_for(f"{W_}.scan.pages.length==4&&!{W_}.scan.busy", 300, 3)
     ps = run(f"ls -lan /home/{AU}/.cache/rudolf-scan/*/ 2>&1; ps -o user,comm 2>/dev/null | grep rudolf-scan", 30)
-    ok('A3. a page from the glass, then the feeder\'s three: four pages listed; scanned as the account\'s own user (its session\'s folder, its own, 0700)', r is True and r2 is True and f' {AUID} {AUID} ' in ps and 'page-4.png' in ps, (r, r2, ps, js(f"{q_('.scm')}.textContent")))
-    js(f"(()=>{{{q_('.scl')}.querySelectorAll('button[title=\"Remove\"]')[0].click();{q_('.scsave')}.click();return 1}})()")
+    ok('A3. a page from the glass, then the feeder\'s three: four pages listed; scanned as the account\'s own user (its session\'s folder, its own, 0700)', r is True and r2 is True and f' {AUID} {AUID} ' in ps and 'page-4.png' in ps, (r, r2, m1, ps, js(f"{q_('.scm')}.textContent")))
+    js(f"(()=>{{if(window.__sc162s)return 'again';window.__sc162s=1;{q_('.scl')}.querySelectorAll('button[title=\"Remove\"]')[0].click();{q_('.scsave')}.click();return 1}})()")
     wait_for("!!document.querySelector('.fdlg .fdok')", 30)
     js("(()=>{const d=document.querySelector('.fdlg');d.querySelector('.fdname').value='QEMU scan.pdf';d.querySelector('.fdname').dispatchEvent(new Event('input'));d.querySelector('.fdok').click();return 1})()")
     r = wait_for(f"!{W_}.scan.busy&&/saved/.test({q_('.scm')}.textContent)", 240, 3)
@@ -239,7 +244,7 @@ if up and FIX and os.path.exists(os.path.join(FIX, 'rudolfd')):
        r is True and re.search(rf'^{AUID} 644 \d+', o, re.M) is not None and re.search(r'Pages:\s+3', pi) is not None and all(x.startswith('ok') for x in cs), (r, o, pi, cs, js(f"{q_('.scm')}.textContent")))
     r = wait_for("!!Object.keys(node(homePath('DOCUMENTS'))||{}).find(k=>/^QEMU scan\\.pdf$/i.test(k))", 60, 3)
     ok('A5. ...and File Explorer\'s Documents shows it (the account\'s folder read again)', r is True, r)
-    ctl('set?adf=jam'); js(f"(()=>{{{q_('.scgo')}.click();return 1}})()"); r = wait_for(f"!{W_}.scan.busy&&/jammed/.test({q_('.scm')}.textContent)", 120, 3)
+    ctl('set?adf=jam'); CLICK('', 3); r = wait_for(f"!{W_}.scan.busy&&/jammed/.test({q_('.scm')}.textContent)", 120, 3)
     m = js(f"[{q_('.scm')}.textContent,{q_('.scm')}.getAttribute('role')].join(' | ')"); ctl('set?adf=loaded')
     ok('A6. a paper jam in the feeder: said plainly in Scan, as an alert', r is True and 'alert' in str(m), m)
     js(f"{W_}.close()"); time.sleep(3); o = run(f"ls -R /home/{AU}/.cache/rudolf-scan 2>&1", 20)
