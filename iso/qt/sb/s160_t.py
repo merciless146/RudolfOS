@@ -1,7 +1,7 @@
 # Rudolf OS 1.6.0 on the real release in QEMU (docs/plan-1.6.0.md Part 12, item 12): the Native desktop's background work runs once,
 # whatever is open, as on Standard. An alarm and a Calendar reminder a minute ahead, a Clock timer whose window is closed:
 #   1. Standard (the reference): the alarm rings once (one notification in the page's centre)
-#   2. Native: the desktop's service page (#app=do-svc) is up after sign-in, unseen (not on the taskbar); with no app window open the
+#   2. Native: the desktop's service page (#app=do-svc; since 1.6.1 the shell's one hidden page, #app=do-bg) is up after sign-in, unseen (not on the taskbar); with no app window open the
 #      alarm rings once and the reminder shows once (the shell's toasts); with three app windows open (Notepad, Calculator, Settings)
 #      once again, from the service page; a Clock timer started in the Clock's window, the window closed: it rings once; the service
 #      page closed: opened again; an app's window runs only the timers it needs (svc60.js); the pages' memory
@@ -132,9 +132,9 @@ try:
     SW, SH = [int(x) for x in st_get(st, 'screen').split()]
     def at(x, y, btn='left'): g.q.at(x, y, btn, SW, SH)
     def tev(key, expr, t=30):
-        n0 = sh("wc -l < /tmp/teval.out 2>/dev/null || echo 0", 20, False).strip().split('\n')[-1]
+        n0 = sh("wc -l 2>/dev/null < /tmp/teval.out || echo 0", 20, False).strip().split('\n')[-1]
         open(f'{W}/j.js', 'w').write(expr.replace('\n', ' ')); g.put(f'{W}/j.js', '/tmp/j.js', '644')
-        o = sh(f"timeout 5 sh -c '{{ printf \"%s \" {key}; cat /tmp/j.js; echo; }} > /tmp/teval'; for i in $(seq 1 {t}); do n=$(wc -l < /tmp/teval.out 2>/dev/null || echo 0); [ $n -gt {n0 or 0} ] && break; sleep 1; done; grep '^{key} ' /tmp/teval.out | tail -1", t + 10, False)
+        o = sh(f"timeout 5 sh -c '{{ printf \"%s \" {key}; cat /tmp/j.js; echo; }} > /tmp/teval'; for i in $(seq 1 {t}); do n=$(wc -l 2>/dev/null < /tmp/teval.out || echo 0); [ $n -gt {n0 or 0} ] && break; sleep 1; done; grep '^{key} ' /tmp/teval.out 2>/dev/null | tail -1", t + 10, False)
         o = o.strip(); return o[len(key) + 1:] if o.startswith(key + ' ') else o
     if st_get(st, 'signin') == '1':
         time.sleep(3); g.q.type('b1'); time.sleep(0.5); g.q.key('ret')
@@ -155,11 +155,14 @@ try:
     def toasts(t): return len(re.findall(rf'^toasted \d+ [^|]*\|{re.escape(t)}$', state(), re.M))
     def tfrom(t): return sorted(set(re.findall(rf'^toasted \d+ ([^|]*)\|{re.escape(t)}$', state(), re.M)))
     def svc(): return st_get(state(), 'svc') or ''
+    # (1.6.1: the service page is the shell's one hidden page, #app=do-bg (CHANGELOG 1.6.1 "the shell's hidden pages are one"); the shell
+    #  still hands it what is sent to do-svc, and its toasts are logged under its own name)
+    BG = 'do-bg'
     for _ in range(60):
         if svc().startswith('ready'): break
         time.sleep(3)
     st = state()
-    ok('N1. Native: the desktop\'s service page is up after sign-in, unseen (no window, no taskbar button)', svc().startswith('ready') and 'app=do-svc' not in st and not re.search(r'^hit win ', st, re.M), (svc(), [l for l in st.split('\n') if l.startswith(('client', 'hit win'))]))
+    ok('N1. Native: the desktop\'s service page is up after sign-in, unseen (no window, no taskbar button)', svc().startswith('ready') and 'app=do-svc' not in st and f'app={BG}' not in st and not re.search(r'^hit win ', st, re.M), (svc(), [l for l in st.split('\n') if l.startswith(('client', 'hit win'))]))
     def ahead(label, cal):
         r = tev('do-svc', "(()=>{const d=new Date(Date.now()+70000),p=x=>String(x).padStart(2,'0');const hm=p(d.getHours())+':'+p(d.getMinutes()),dd=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());"
                 f"svj(ALK(),[{{t:hm,label:'{label}',days:[],on:true}}]);svj(CALK(),[{{id:Date.now(),title:'{cal}',d:dd,t:hm,rem:0}}]);return hm}})()")
@@ -169,14 +172,14 @@ try:
         while time.time() < end and toasts(t) < 1: time.sleep(4)
         time.sleep(10); return toasts(t), tfrom(t)
     a = ahead('Wake', 'Dentist'); n = rings('⏰ Wake'); c = rings('📅 Dentist', 30)
-    ok('N2. Native, no app window open: the alarm rings once (the service page\'s)', n == (1, ['do-svc']), (a, n))
-    ok('N3. Native, no app window open: the Calendar\'s reminder shows once', c == (1, ['do-svc']), c)
+    ok('N2. Native, no app window open: the alarm rings once (the service page\'s)', n == (1, [BG]), (a, n))
+    ok('N3. Native, no app window open: the Calendar\'s reminder shows once', c == (1, [BG]), c)
     for k, q in (('notepad', 'notepad'), ('calc', 'calculator'), ('settings', 'settings')): out('open', k, open_app(k, q))
     time.sleep(10); st = state()
     ok('N4. Native: three app windows open', all(re.search(rf'^client .* app={k} ', st, re.M) for k in ('notepad', 'calc', 'settings')), [l for l in st.split('\n') if l.startswith('client')])
     a = ahead('Second', 'Meeting'); n = rings('⏰ Second'); c = rings('📅 Meeting', 30)
-    ok('N5. Native, three windows open: the alarm rings ONCE (the service page\'s, not each window\'s)', n == (1, ['do-svc']), (a, n))
-    ok('N6. Native, three windows open: the reminder once', c == (1, ['do-svc']), c)
+    ok('N5. Native, three windows open: the alarm rings ONCE (the service page\'s, not each window\'s)', n == (1, [BG]), (a, n))
+    ok('N6. Native, three windows open: the reminder once', c == (1, [BG]), c)
     l = tev('notepad', "JSON.stringify(SVC.held.filter(h=>!h.gone).map(h=>[h.mod,h.real!=null?1:0]))")
     try: L = json.loads(l)
     except Exception: L = []
@@ -190,7 +193,7 @@ try:
         time.sleep(8); st = state(); out('timer:', r, 'clock open:', bool(re.search(r'^client .* app=clock ', st, re.M)))
         ok('N8. Native: a Clock timer started (40 s), its window closed', r.strip().endswith('1') and not re.search(r'^client .* app=clock ', st, re.M), r)
         n = rings('⏰ Tea', 120)
-        ok('N9. Native: the timer rings once, its window closed (the service page\'s)', n == (1, ['do-svc']), n)
+        ok('N9. Native: the timer rings once, its window closed (the service page\'s)', n == (1, [BG]), n)
     else: ok('N8. Native: the Clock opened', False, state()[:800])
     s0 = svc(); tev('do-svc', "(()=>{oaPost({op:'close'});return 1})()", 10)
     for _ in range(40):

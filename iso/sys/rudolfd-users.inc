@@ -286,12 +286,14 @@ static void au_steam_quit(unsigned uid)
 	for (int i = 0; i < 150 && (n = sq_left(AU_PROC, uid, these, n)); i++) usleep(100000);
 	if (n) health_add("account", "Steam did not quit within 15 s at sign-out: ended with the account's other programs");
 }
+static void shares_stop_uid(unsigned uid);   /* rudolfd-shares.inc (1.6.2 Part 35) */
 /* au_keep (rudolfd-home.inc): the same account bound again (rudolfd started again in its session): its programs go on */
 static void au_session_stop(const char *id)
 {
 	if (au_keep) return;
 	unsigned uid = au_uid(id); if (!uid) { unlink(AU_ENV); return; }
 	au_steam_quit(uid);   /* (1.6.2 Part 14: while its session is there to run it in) */
+	shares_stop_uid(uid);   /* (1.6.2 Part 35: its network shares closed first) */
 	unlink(AU_ENV);
 	char xn[32]; au_name(uid, xn, sizeof xn); au_xaccess(xn, 0);
 	int left = au_kill_user(uid);
