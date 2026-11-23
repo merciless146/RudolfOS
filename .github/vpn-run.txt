@@ -1,0 +1,2 @@
+# VPN check (.github/workflows/vpn-check.yml): a push that changes this file runs it
+run=1

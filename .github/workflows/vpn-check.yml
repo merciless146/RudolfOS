@@ -1,0 +1,37 @@
+# 1.6.2 (docs/plan-1.6.2.md Part 33): a VPN for the whole computer. Checks only, nothing published.
+#   host: qt/host/vpn162_t.sh (the real rudolfd and its VPN helper in namespaces of their own, as root, against the
+#         kernel's WireGuard set up as a server with wg in another namespace: importing, malformed files, the key root's
+#         only, connected, all traffic and DNS through the tunnel and a capture outside it, disconnected, who may do what,
+#         Always on at the start), the helper's fuzz test, the release's build flags for it and rudolfd
+#   page: qt/shell2/vpn62_t.js (Settings › Network › VPN and the taskbar's network pop-up, in Playwright's Chromium,
+#         against a stand-in rudolfd)
+#   native: the native shell's pop-up drawn against the page's (qt/native/vpn62_native.sh)
+# Run by a pull request that changes these files, or by a push that changes .github/vpn-run.txt.
+name: VPN check
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/vpn-run.txt']
+  pull_request:
+    paths: ['iso/sys/rudolf-vpn.c', 'iso/sys/rudolfd-vpn.inc', 'iso/qt/host/vpn162_t.sh', 'iso/qt/host/fixtures/vpn*', 'iso/qt/host/fuzz/vpn_fuzz.c',
+      'desktop/vpn62.js', 'iso/qt/shell2/vpn62_t.js', 'iso/qt/native/vpn62_native.sh', 'iso/sys/root/usr/lib/rudolf/udhcpc.sh', '.github/workflows/vpn-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools (wg only for the test's server: Rudolf OS ships none)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq wireguard-tools tcpdump iproute2 nftables python3 gcc zlib1g-dev >/dev/null
+          sudo modprobe wireguard && echo "WireGuard: $(cat /sys/module/wireguard/version 2>/dev/null)"
+      - name: "vpn162_t.sh (as root: its own mount and network namespaces)"
+        run: sudo sh iso/qt/host/vpn162_t.sh
+      - name: The helper's parsing, fuzzed (ASan, UBSan)
+        run: gcc -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -o /tmp/vpn_fuzz iso/qt/host/fuzz/vpn_fuzz.c && /tmp/vpn_fuzz 30
+      - name: The release's flags
+        run: |
+          . iso/systools/hardflags.sh
+          gcc -O2 $HARD -Wall -Wno-misleading-indentation -Werror -o /tmp/vpn iso/sys/rudolf-vpn.c && python3 iso/systools/hardcheck.py /tmp/vpn
+          gcc -O2 $HARD -Wall -o /tmp/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic && python3 iso/systools/hardcheck.py /tmp/rudolfd
