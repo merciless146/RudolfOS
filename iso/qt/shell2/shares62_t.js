@@ -51,6 +51,8 @@ const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); con
     const f = path.join(WWW, path.normalize(u)); if (!f.startsWith(WWW) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { s.writeHead(404); return s.end() }
     s.writeHead(200, {'content-type': T[path.extname(f)] || 'application/octet-stream'}); fs.createReadStream(f).pipe(s) }) }).listen(PORT, '127.0.0.1');
 const wait = ms => new Promise(r => setTimeout(r, ms));
+/* a button of a drive pane's bar clicked once it is there (a pane loading again shows "Loading…" without its bar) */
+const barClick = (pg, re) => until(pg, `(()=>{const b=[...document.querySelectorAll('.xrb button')].find(b=>${re}.test(b.textContent));if(!b)return false;b.click();return true})()`);
 async function until(pg, js, ms) { const t = Date.now() + (ms || 8000); for (;;) { let v; try { v = await pg.evaluate(js) } catch (e) { v = null } if (v || Date.now() > t) return v; await wait(150) } }
 const VIEW = `(()=>{const W=[...document.querySelectorAll('.win')].find(w=>w.querySelector('.xp25'));if(!W)return null;const b=W.querySelector('.xp25');
   const r=e=>{const x=e.getBoundingClientRect();return [Math.round(x.width),Math.round(x.height)]};
@@ -83,11 +85,11 @@ async function flow(pg, tag) {
   ok(`${tag} 7. the password only in the requests' bodies (name, password, domain), never in an address; nowhere in the page or its storage afterwards`, M.bodies[oc] == `ann\n${PW}\n\n` && !M.calls.some(c => c.includes(PW.slice(0, 8))) && !(await pg.evaluate(`(document.documentElement.outerHTML+JSON.stringify(localStorage)+[...document.querySelectorAll('input')].map(i=>i.value).join('')).includes(${JSON.stringify(PW)})`)), M.bodies);
   ok(`${tag} 8. the open share in the places (🔒 \\\\nas62.local\\docs) and Disconnect in its bar`, v && v.side.some(x => x == '🔒\\\\nas62.local\\docs') && v.bar.includes('⏏ Disconnect'), v);
   // copied each way, and onto the desktop
-  await pg.evaluate(`(()=>{const tr=[...document.querySelectorAll('tr[data-k]')].find(t=>/onserver/.test(t.textContent));tr.click();[...document.querySelectorAll('.xrb button')].find(b=>/Copy selected into Rudolf OS/.test(b.textContent)).click()})()`);
+  await until(pg, `(()=>{const tr=[...document.querySelectorAll('tr[data-k]')].find(t=>/onserver/.test(t.textContent));const b=[...document.querySelectorAll('.xrb button')].find(b=>/Copy selected into Rudolf OS/.test(b.textContent));if(!tr||!b)return false;tr.click();b.click();return true})()`);
   const got = await until(pg, `(()=>{const d=node(downloadsPath());return d&&Object.keys(d).find(k=>/ONSERVER/i.test(k))?String(d[Object.keys(d).find(k=>/ONSERVER/i.test(k))]):null})()`, 10000);
   ok(`${tag} 9. copied into Rudolf OS (Downloads): read from the share's folder (fs/read)`, /from the NAS/.test(got || '') && M.calls.some(c => c.startsWith('GET fs/read?path=' + encodeURIComponent(SP + '/onserver.txt'))), [got, M.calls.filter(c => /fs\//.test(c))]);
   await until(pg, `[...document.querySelectorAll('.xrb button')].some(b=>/Copy Rudolf OS clipboard here/.test(b.textContent))&&!/Copying/.test((document.querySelector('.xp25 .stat')||{}).textContent)`);
-  await pg.evaluate(`(()=>{const p=homePath('DOCUMENTS');node(p)['LETTER.TXT']='to the NAS';fsSave();FC.op='copy';FC.items=[[...p,'LETTER.TXT']];FC.r=null;try{fcPut()}catch(e){}[...document.querySelectorAll('.xrb button')].find(b=>/Copy Rudolf OS clipboard here/.test(b.textContent)).click()})()`);
+  await pg.evaluate(`(()=>{const p=homePath('DOCUMENTS');node(p)['LETTER.TXT']='to the NAS';fsSave();FC.op='copy';FC.items=[[...p,'LETTER.TXT']];FC.r=null;try{fcPut()}catch(e){}})()`); await barClick(pg, '/Copy Rudolf OS clipboard here/');
   const put = await until(pg, `(()=>1)()`, 100) && await (async () => { for (let i = 0; i < 40; i++) { const k = Object.keys(M.files).find(f => /letter\.txt$/i.test(f) && f.startsWith(SP)); if (k) return k + '=' + M.files[k]; await wait(200) } return null })();
   ok(`${tag} 10. copied onto the share (Paste): written into its folder (fs/write)`, /letter\.txt=to the NAS$/i.test(put || ''), [put, M.calls.filter(c => /fs\//.test(c))]);
   await pg.evaluate(`(()=>{const W=[...document.querySelectorAll('.win')].find(w=>w.querySelector('.xp25'));dkPut({dragR:{r:{dev:'share:0123456789abcdef',root:${JSON.stringify(SP)},path:${JSON.stringify(SP)},label:'\\\\\\\\nas62.local\\\\docs',ro:false},items:[{name:'onserver.txt',dir:false,size:13,mtime:1795000000000}]}},homePath('DESKTOP'),true,null)})()`).catch(e => null);
