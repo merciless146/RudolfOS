@@ -259,10 +259,54 @@ static int delta_fetch(const char *url, const char *rzs_url, char seeds[][300], 
 	return r;
 }
 
+/* ---------------- 1.6.2 (docs/plan-1.6.2.md Part 31): the system layers' compression
+   A layer's compression is in its own squashfs superblock ("hsqs", then the compression's number in the 16 bits at byte
+   20: 1 zlib, 2 lzma, 3 lzo, 4 xz, 5 lz4, 6 zstd). What a release's kernel reads is in its signed release list, the line
+   "squashfs xz zstd zlib" that make_release.py writes from that kernel's build configuration (CONFIG_SQUASHFS_XZ, ...),
+   with a row "C NAME COMPRESSION BLOCKSIZE" per layer; a list without the line is from before 1.6.2, whose kernels read
+   xz and zlib only (iso/kconfig.sh). The kernel that reads a slot's layers is that slot's own (the start-up hands over
+   to it with kexec before it mounts them), so an update, the recovery system and a stick are each checked against their
+   own release's kernel; the running kernel only for what it mounts itself (a stick's base layer, for its keys). */
+static const char *SQN[7] = {"?", "zlib", "lzma", "lzo", "xz", "lz4", "zstd"};
+#define SQ_OLD (1 << 1 | 1 << 4)
+static int sq_mask(const char *s)
+{
+	int m = 0; char w[16];
+	for (int n; sscanf(s, " %15s%n", w, &n) == 1; s += n) for (int i = 1; i < 7; i++) if (!strcmp(w, SQN[i])) m |= 1 << i;
+	return m;
+}
+/* the compression of a squashfs image: its number, 0 when the file is not one (the start-up's own checks refuse that) */
+static int sq_comp(const char *path)
+{
+	unsigned char h[32]; int f = open(path, O_RDONLY | O_CLOEXEC); if (f < 0) return 0;
+	ssize_t r = pread(f, h, sizeof h, 0); close(f);
+	if (r != (ssize_t)sizeof h || memcmp(h, "hsqs", 4)) return 0;
+	int c = h[20] | h[21] << 8; return c > 0 && c < 7 ? c : 7;
+}
+/* (its block size, the 32 bits at byte 12; 0 when not one) */
+static long sq_block(const char *path)
+{
+	unsigned char h[16]; int f = open(path, O_RDONLY | O_CLOEXEC); if (f < 0) return 0;
+	ssize_t r = pread(f, h, sizeof h, 0); close(f);
+	return r == (ssize_t)sizeof h && !memcmp(h, "hsqs", 4) ? (long)(h[12] | h[13] << 8 | h[14] << 16 | (unsigned long)h[15] << 24) : 0;
+}
+static const char *sq_name(int c) { return c > 0 && c < 7 ? SQN[c] : "an unknown compression"; }
+static void sq_list(int m, char *o, size_t n) { *o = 0; for (int i = 1; i < 7; i++) if (m & 1 << i) { if (*o) strncat(o, " and ", n - strlen(o) - 1); strncat(o, SQN[i], n - strlen(o) - 1); } }
+
 /* ---------------- manifest */
 typedef struct { char name[16], sha[65], file[400]; long long size; } lay_t;
 typedef struct { long long serial; char version[64], released[16], expires[16], notes[300], chromium[64], kernel[64]; int urgent; lay_t L[NL]; int nl;
-	int datafmt, rmin, rmax; } man_t;   /* (1.6.0: the data layout the release keeps, and the oldest and newest it reads; 0: no record) */
+	int datafmt, rmin, rmax;   /* (1.6.0: the data layout the release keeps, and the oldest and newest it reads; 0: no record) */
+	int sqr, sqc[NL], sqb[NL]; } man_t;   /* (1.6.2, Part 31: what its kernel reads layers in, and each layer's compression: sq_*) */
+/* (1.6.2, Part 31: a row "C NAME COMPRESSION BLOCKSIZE") */
+static int sq_layer_n(const char *n) { for (int i = 1; i < NL; i++) if (!strcmp(n, LAYERS[i])) return i; return 0; }
+static void sq_row(man_t *m, const char *row)
+{
+	char n[16], c[16]; long bs = 0; if (sscanf(row, "%15[^\t]\t%15[^\t]\t%ld", n, c, &bs) < 2) return;
+	int i = sq_layer_n(n), k = sq_mask(c); if (!i || !k) return;
+	for (int b = 1; b < 7; b++) if (k == 1 << b) m->sqc[i] = b;
+	if (bs > 0 && bs <= 1048576) m->sqb[i] = (int)bs;
+}
 static int parse_manifest(char *t, man_t *m)
 {
 	memset(m, 0, sizeof *m);
@@ -277,6 +321,8 @@ static int parse_manifest(char *t, man_t *m)
 		else if (!strncmp(l, "kernel ", 7)) snprintf(m->kernel, sizeof m->kernel, "%s", l + 7);
 		else if (!strncmp(l, "urgent ", 7)) m->urgent = atoi(l + 7);
 		else if (!strncmp(l, "datafmt ", 8)) m->datafmt = atoi(l + 8);
+		else if (!strncmp(l, "squashfs ", 9)) m->sqr = sq_mask(l + 9);
+		else if (!strncmp(l, "C\t", 2)) sq_row(m, l + 2);
 		else if (!strncmp(l, "readsfmt ", 9)) { int a = 0, b = 0; if (sscanf(l + 9, "%d-%d", &a, &b) == 2 && a > 0 && b >= a) { m->rmin = a; m->rmax = b; } }
 		else if (!strncmp(l, "L\t", 2) && m->nl < NL) {
 			lay_t *y = &m->L[m->nl]; char *p = l + 2, *f[4]; int k = 0;
@@ -291,6 +337,29 @@ static int parse_manifest(char *t, man_t *m)
 	return m->serial > 0 && m->nl == NL ? 0 : -1;
 }
 static lay_t *mlayer(man_t *m, const char *n) { for (int i = 0; i < m->nl; i++) if (!strcmp(m->L[i].name, n)) return &m->L[i]; return NULL; }
+/* (1.6.2, Part 31: the layers' compression against what the release's kernel reads) */
+static int sq_reads(const man_t *m) { return m->sqr ? m->sqr : SQ_OLD; }
+static void sq_why(const man_t *m, const char *layer, int c, char *why, size_t n)
+{
+	char r[64]; sq_list(sq_reads(m), r, sizeof r);
+	snprintf(why, n, "Refused: Rudolf OS %s's %s layer is packed with %s, which its own kernel (Linux %s) cannot read (it reads %s%s), so it "
+		"could not start. Nothing was changed.", m->version, layer, sq_name(c), *m->kernel ? m->kernel : "of that release", r,
+		m->sqr ? "" : ", as every kernel before Rudolf OS 1.6.2");
+}
+/* the signed list: every layer's listed compression one its kernel reads; 1, or 0 with why */
+static int sq_list_ok(const man_t *m, char *why, size_t n)
+{
+	for (int i = 1; i < NL; i++) if (m->sqc[i] && !(sq_reads(m) & 1 << m->sqc[i])) { sq_why(m, LAYERS[i], m->sqc[i], why, n); return 0; }
+	return 1;
+}
+/* a layer's file (its SHA-256 already the list's): its own compression, the list's row and the kernel's; 1, or 0 with why */
+static int sq_file_ok(const man_t *m, const char *layer, const char *path, char *why, size_t n)
+{
+	int c = sq_comp(path), i = sq_layer_n(layer); if (!c || !i) return 1;
+	if (m->sqc[i] && m->sqc[i] != c) { snprintf(why, n, "Refused: Rudolf OS %s's %s layer is packed with %s, not with %s as its signed release list says. Nothing was changed.", m->version, layer, sq_name(c), sq_name(m->sqc[i])); return 0; }
+	if (!(sq_reads(m) & 1 << c)) { sq_why(m, layer, c, why, n); return 0; }
+	return 1;
+}
 
 /* ---------------- where things are */
 /* 1.5.8: r is a stick's rescue system (Make a stick keeps it; updates never write it, they only ever choose a or b) */
@@ -512,6 +581,8 @@ static int cmd_check(int quiet)
 	char ap[300]; snprintf(ap, sizeof ap, "%s/available.txt", SYSD); size_t ol; char *old = slurp(ap, &ol); long long seen = 0;
 	if (old) { man_t om; char *oc = strdup(old); if (!parse_manifest(oc, &om)) seen = om.serial; free(oc); free(old); }
 	if (m.serial < seen) { say("Refused: this release list is older than one already seen."); return 4; }
+	/* 1.6.2 (Part 31): a release whose layers its own kernel cannot read is never offered */
+	{ char why[600]; if (!sq_list_ok(&m, why, sizeof why)) { say("%s", why); free(t); free(g); return 4; } }
 	char sp2[300]; snprintf(sp2, sizeof sp2, "%s/available.sig", SYSD);
 	rename(mp, ap); rename(sp, sp2);
 	kv_t cf2; kv_read(CONFP, &cf2, '='); char ts[32]; snprintf(ts, sizeof ts, "%ld", (long)now); kv_set(&cf2, "checked", ts); kv_write(CONFP, &cf2, '=');
@@ -520,6 +591,38 @@ static int cmd_check(int quiet)
 	else say("Rudolf OS is up to date (%s).", kv(&r, "version")[0] ? kv(&r, "version") : "this release");
 	free(t); free(g);
 	return 0;
+}
+/* 1.6.2 (Part 31, item 4): layer I of release M packed another way than the file LOCAL (its compression or its block
+   size, from its signed row against the file's superblock): none of its blocks can be found in it, so the delta finds
+   nothing and the layer is downloaded whole. 0 when either is not known */
+static int sq_repacked(const man_t *m, int i, const char *local)
+{
+	if (i < 1 || i >= NL || !m->sqc[i]) return 0;
+	int c = sq_comp(local); long b = sq_block(local); if (!c) return 0;
+	return c != m->sqc[i] || (m->sqb[i] && b && b != m->sqb[i]);
+}
+static void sq_desc(const man_t *m, int i, char *o, size_t n) { if (m->sqb[i] >= 1048576) snprintf(o, n, "%s, %d MB blocks", sq_name(m->sqc[i]), m->sqb[i] / 1048576); else if (m->sqb[i]) snprintf(o, n, "%s, %d KB blocks", sq_name(m->sqc[i]), m->sqb[i] / 1024); else snprintf(o, n, "%s", sq_name(m->sqc[i])); }
+/* 1.6.2 (Part 31): each layer of the system in DIR (or, PERMANENT, the disc's copy it uses) one its own kernel reads;
+   0, or 9 with why said */
+static int sq_files_ok(const man_t *m, const char *dir, int permanent)
+{
+	for (int i = 1; i < NL; i++) {
+		char f[420], why[600]; struct stat s2; snprintf(f, sizeof f, "%s/%s.sfs", dir, LAYERS[i]);
+		if (stat(f, &s2) && permanent) snprintf(f, sizeof f, "%s/rudolf/%s.sfs", MEDIA, LAYERS[i]);
+		if (!sq_file_ok(m, LAYERS[i], f, why, sizeof why)) { say("%s", why); return 9; }
+	}
+	return 0;
+}
+/* what the running kernel reads: its own release list's line (the running slot's, or the disc's), and whatever its own
+   layers are packed with (it is reading them now). Only for what it mounts itself: not a security check (a layer it
+   cannot read would not mount); it turns that failure into a clear message */
+static int sq_running(void)
+{
+	char bs[8], p[400]; booted(bs); man_t m; int r = SQ_OLD;
+	if (strcmp(bs, "disc")) snprintf(p, sizeof p, "%s/%s/manifest.txt", SYSD, bs); else snprintf(p, sizeof p, "%s/rudolf/manifest.txt", MEDIA);
+	char *t = slurp(p, NULL); if (t && !parse_manifest(t, &m)) r = sq_reads(&m); free(t);
+	for (int i = 1; i < NL; i++) { layer_path(bs, LAYERS[i], p, sizeof p); int c = sq_comp(p); if (c > 0 && c < 7) r |= 1 << c; }
+	return r;
 }
 static int FORCE_DL;   /* (1.5.9: Return to official: the official release even when the custom build's number is higher) */
 static int cmd_download(void)
@@ -563,10 +666,13 @@ static int cmd_download(void)
 		}
 		if (done) continue;
 		char fu[500], ru[510]; url_join(base, y->file, fu, sizeof fu); snprintf(ru, sizeof ru, "%s.rzs", fu);
-		say("%s: downloading the changes (%lld MB file)", y->name, (y->size + 1048575) / 1048576);
-		long long got = 0; int dr = delta_fetch(fu, ru, cand, nc, out, y->size, &got);
+		long long got = 0; int dr;
+		/* (1.6.2, Part 31, item 4: a layer packed another way than this computer's has no block in common with it) */
+		if (sq_repacked(&m, i, cand[0])) { char d[64]; sq_desc(&m, i, d, sizeof d);
+			say("%s: packed in a new way (%s), so it is downloaded whole this once (%lld MB)", y->name, d, (y->size + 1048575) / 1048576); dr = -1; }
+		else { say("%s: downloading the changes (%lld MB file)", y->name, (y->size + 1048575) / 1048576); dr = delta_fetch(fu, ru, cand, nc, out, y->size, &got); }
 		if (dr || sha256_file(out, hex) || strcmp(hex, y->sha)) {
-			say("  the delta did not work out; downloading the whole file");
+			if (!sq_repacked(&m, i, cand[0])) say("  the delta did not work out; downloading the whole file");
 			if (http_to_file(fu, out) || sha256_file(out, hex) || strcmp(hex, y->sha)) { say("%s: download failed or does not match the release list; try again later.", y->name); return 5; }
 			got = y->size;
 		}
@@ -588,6 +694,7 @@ static int cmd_download(void)
 		say("%s: missing from the new system; it is not used.", y->name);
 		{ char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } return 7;
 	}
+	if (sq_files_ok(&m, tn, permanent)) { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); return 9; }
 	snprintf(rp, sizeof rp, "%s/complete", tn); write_file(rp, "1\n");
 	sync();
 	{ char *a[] = {"rm", "-rf", tp, NULL}; spawn(a); } if (rename(tn, tp)) die("could not finish the slot");
@@ -703,6 +810,7 @@ static int cmd_recovery_fetch(void)
 	man_t m; char *cp = mt ? strdup(mt) : NULL; if (ok && parse_manifest(cp, &m)) ok = 0;
 	if (!ok) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } say("Refused: the release list there is not signed by the official Rudolf OS key."); return 4; }
 	if (have && m.serial <= rser) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } say("The official recovery system is the newest official stable release (%lld).", rser); return 0; }
+	{ char why[600]; if (!sq_list_ok(&m, why, sizeof why)) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } say("%s", why); return 4; } }   /* (1.6.2, Part 31) */
 	if (have) say("A newer official stable release (%lld) than the recovery system's (%lld): it is downloaded beside it, and replaces it when complete.", m.serial, rser);
 	long long need = 0; for (int i = 0; i < m.nl; i++) need += m.L[i].size;
 	struct statvfs v; if (!statvfs(SYSD, &v) && (long long)v.f_bavail * v.f_frsize < need) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } die("not enough free space on RUDOLFDATA (about %lld MB needed)", need / 1048576); }
@@ -719,6 +827,7 @@ static int cmd_recovery_fetch(void)
 		url_join(url, y->file, fu, sizeof fu); say("%s: downloading (%lld MB)", y->name, (y->size + 1048575) / 1048576);
 		if (http_to_file(fu, out) || sha256_file(out, hex) || strcmp(hex, y->sha)) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } say("%s: the download failed or does not match the official release list; try again later.", y->name); return 5; }
 	}
+	if (sq_files_ok(&m, tn, 0)) { free(mt); free(cp); { char *a[] = {"rm", "-rf", tn, NULL}; spawn(a); } return 9; }   /* (1.6.2, Part 31) */
 	char rel[1200], f[420]; snprintf(rel, sizeof rel, "serial %lld\nversion %s\nreleased %s\nchromium %s\nkernel %s\nnotes %s\n", m.serial, m.version, m.released, m.chromium, m.kernel, m.notes);
 	snprintf(f, sizeof f, "%s/RELEASE", tn); write_file(f, rel);
 	char note[300], ts[40]; time_t now = time(NULL); strftime(ts, sizeof ts, "%Y-%m-%d %H:%M", localtime(&now));
@@ -1038,8 +1147,13 @@ static int cmd_status(void)
 	if (mt && sg && sl == 64 && verify((unsigned char *)mt, ml, (unsigned char *)sg)) { char *c = strdup(mt); okm = !parse_manifest(c, &m); free(c); }
 	if (okm && wanted(m.serial, atoll(kv(&r, "serial")))) {
 		long long sz = 0; for (int i = 0; i < m.nl; i++) sz += m.L[i].size;
+		/* 1.6.2 (Part 31, item 4): what is downloaded whole (layers packed another way than this computer's: no delta) */
+		long long whole = 0; char wl[80] = ""; int nw = 0;
+		for (int i = 1; i < NL; i++) { lay_t *y = mlayer(&m, LAYERS[i]); char lp[400]; layer_path(bs, LAYERS[i], lp, sizeof lp);
+			if (y && sq_repacked(&m, i, lp)) { whole += y->size; snprintf(wl + strlen(wl), sizeof wl - strlen(wl), "%s%s", nw++ ? "," : "", LAYERS[i]); } }
 		printf("{\"serial\":%lld,\"version\":", m.serial); jstr(m.version); printf(",\"notes\":"); jstr(m.notes); printf(",\"released\":"); jstr(m.released);
-		printf(",\"chromium\":"); jstr(m.chromium); printf(",\"kernel\":"); jstr(m.kernel); printf(",\"urgent\":%s,\"size\":%lld}", m.urgent ? "true" : "false", sz);
+		printf(",\"chromium\":"); jstr(m.chromium); printf(",\"kernel\":"); jstr(m.kernel); printf(",\"urgent\":%s,\"size\":%lld", m.urgent ? "true" : "false", sz);
+		printf(",\"whole\":%lld,\"wholeLayers\":", whole); jstr(wl); { char d[64] = ""; for (int i = 1; i < NL && !*d; i++) if (m.sqc[i] && strstr(wl, LAYERS[i])) sq_desc(&m, i, d, sizeof d); printf(",\"packed\":"); jstr(d); } printf("}");
 	} else printf("null");
 	printf("}\n"); free(mt); free(sg); free(d);
 	return 0;
@@ -1138,6 +1252,7 @@ static int cmd_stick_fetch(const char *url0, const char *dir)
 	if (http_to_file(mu, mp) || http_to_file(su, sp)) { say("The address does not answer."); return 3; }
 	size_t ml, sl; char *mt = slurp(mp, &ml), *sg = slurp(sp, &sl); man_t m; char *cp = mt ? strdup(mt) : NULL;
 	if (!cp || sl != 64 || parse_manifest(cp, &m)) { say("That is not a Rudolf OS release list."); return 4; }
+	{ char why[600]; if (!sq_list_ok(&m, why, sizeof why)) { say("%s", why); return 4; } }   /* (1.6.2, Part 31) */
 	long long need = 0; for (int i = 0; i < m.nl; i++) need += m.L[i].size;
 	struct statvfs vf; if (!statvfs(dir, &vf) && (long long)vf.f_bavail * vf.f_frsize < need + 64LL * 1048576) { say("Not enough room on RUDOLFDATA to download it (about %lld MB).", need / 1048576 + 64); return 5; }
 	char bu[500] = "";
@@ -1153,12 +1268,16 @@ static int cmd_stick_fetch(const char *url0, const char *dir)
 		if (http_to_file(fu, out) || sha256_file(out, hex) || strcmp(hex, y->sha)) { unlink(out); say("%s: the download failed or does not match the release list.", y->name); return 3; }
 	}
 	if (!*bu) { say("The release list does not say where its boot image is."); return 3; }
+	if (sq_files_ok(&m, sd, 0)) return 9;   /* (1.6.2, Part 31: the stick starts the release's own kernel) */
 	{ char bp[500]; snprintf(bp, sizeof bp, "%s/boot.iso", dir); struct stat st; if (stat(bp, &st) || st.st_size < 1048576) { say("boot image: downloading"); if (http_to_file(bu, bp)) { say("Its boot image (boot.iso) could not be downloaded."); return 3; } } }
 	/* the release's own key: the base layer's list (its checksum is the signed list's, so read only after it matched) */
 	unsigned char ks[8][32]; int nk = 0;
 	{ char bp[600], mnt[400]; snprintf(bp, sizeof bp, "%s/base.sfs", sd); snprintf(mnt, sizeof mnt, "%s/.base", dir); mkdirs(mnt);
 	  char *mo[] = {"mount", "-t", "squashfs", "-o", "ro,loop", bp, mnt, NULL}; char kf[500]; snprintf(kf, sizeof kf, "%s/etc/rudolf/rpk-keys", mnt);
 	  const char *tk = getenv("RU_STICK_BASEKEYS");   /* (the host test: a key list in place of mounting the layer) */
+	  /* (1.6.2, Part 31: this layer is mounted by the running kernel, which must read its compression) */
+	  int c = sq_comp(bp); if (!tk && c && !(sq_running() & 1 << c)) { rmdir(mnt);
+		say("This computer's Rudolf OS cannot read that release's base layer (packed with %s, which its kernel does not read): update this computer first, then make the stick.", sq_name(c)); return 9; }
 	  if (tk || !spawn(mo)) { char *t = slurp(tk ? tk : kf, NULL); if (t) { char kp2[500]; snprintf(kp2, sizeof kp2, "%s/keys", dir); write_file(kp2, t); }   /* (install.sh checks the boot image with them) */
 		for (char *l = t ? strtok(t, "\n") : NULL; l && nk < 8; l = strtok(NULL, "\n")) if (key_line(l, ks[nk])) nk++; free(t);
 		if (!tk) { char *um[] = {"umount", mnt, NULL}; spawn(um); } }

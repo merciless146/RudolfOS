@@ -18,6 +18,45 @@ Summary: In progress.
 - New: Settings › Network › VPN says that Oracle's Tor windows then run inside the VPN.
 - New: OpenVPN VPNs: add a provider's .ovpn file the same way (with its username and password when it asks for them).
   Rudolf OS runs OpenVPN only while that VPN is on; files that would run scripts or plugins are refused.
+- Fixed: on the native desktop the taskbar's pinned apps and workspace buttons kept their light grey edge in dark mode, where
+  Chromium mode draws a dim one, and a pinned app had no line under it while its window was open (grey, or the accent colour
+  while that window is the active one). Both now look as in Chromium mode, on every monitor's taskbar. The "Several monitors"
+  check compares both looks, light and dark, whatever the hour it runs at.
+- Kernel: the SMB client for network shares (Windows computers and NAS boxes, 1.6.2 Part 35) is built in as a signed module, loaded
+  only when a share is opened. It speaks SMB 3 (and SMB 2.1 when asked for a share), never the old SMB 1 or 2.0, and Rudolf OS
+  serves no share.
+- New (for File Explorer's network shares, Part 35): Rudolf OS can open a shared folder of a Windows computer or a NAS box for the
+  account signed in. Its files are that account's alone (other accounts cannot see it), the server is asked to encrypt where it
+  can, the password is kept in the account's keyring only if asked, and every share closes at sign-out. A wrong password, a
+  missing share or a server that speaks only the old SMB 1 is said plainly.
+- New: scanners (step 1 of 4: driverless scanning, without the Scan app yet). Rudolf OS finds the scanners and
+  printer-scanners on the home network that speak eSCL (AirScan) or WSD, as most made since about 2015 do, with the
+  firewall on, and USB ones that speak eSCL through IPP over USB; it scans with sane-airscan (pages in colour, grey or black
+  and white, an area, the resolution, the document feeder's pages) and saves PDF, PNG or JPEG. Scanning runs as the
+  account's own user. 495 KB more on the disk; nothing runs until a scan.
+- New: Scan, an app of Rudolf's own for those scanners (step 2 of 4), in the Start menu, in File Explorer (Scan into this
+  folder), in the Print dialog and in Settings › Devices: the scanners found, a preview, the area drawn on it or a paper
+  size, colour, grey or black and white, the resolution, the glass or the document feeder; pages added one scan after
+  another, put in order or taken out, then saved as one PDF, or each page as PNG or JPEG, in Documents or where you choose.
+  A paper jam, the cover open, an empty feeder, a busy scanner or none found are said plainly. Scanning runs as your
+  account's own user, which also writes the file. The same on Native, Chromium and Lite.
+- New: older USB scanners (step 3 of 4): eight of SANE's own drivers for scanners that need one, chosen by what is
+  common: Canon PIXMA and CanoScan (pixma, genesys, plustek, canon_lide70), Epson (epson2, epsonds), Samsung, Xerox and
+  Dell all-in-ones (xerox_mfp) and Fujitsu document scanners (fujitsu). They work only over USB, and the scanner is given
+  to your account's own user only while it scans. 2.4 MB more on the disk.
+- New: Linux apps such as Simple Scan use the network scanners Rudolf OS found (step 4 of 4): after Scan has looked
+  for scanners, their addresses are given read-only to the Debian sandbox's own scanning settings. USB scanners stay
+  with Rudolf's Scan app: Linux apps get no USB devices.
+- Fixed: with the taskbar at the left or the right, Quick settings, the notifications and the calendar open beside their
+  buttons (they opened in the screen's bottom-right corner, over a taskbar at the right); a right-click menu no longer lies over
+  the taskbar; and the desktop's icons move at once when the taskbar grows instead of sitting under it. The same on Native.
+- Kernel: the system's images can be packed with zstd (squashfs reads zstd as well as xz, on x86-64 and ARM64). The images
+  themselves are unchanged in this version; a later one moves them to zstd once every updated computer can read them.
+- Updates: an update whose system images its own kernel could not read is refused with a message saying so (when it is
+  checked, and again once downloaded), as are the recovery system and Make a stick; nothing on the computer is changed.
+- Updates: when an update packs the system's images in a new way (as the move to zstd does), Settings › Update says before
+  downloading that they come whole this once, and how much ("Download (about 530 MB)"), on every connection; later updates
+  download only the changes again. The download no longer tries the changes first for such an image.
 - New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
   tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
   night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same
