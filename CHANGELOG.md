@@ -7,6 +7,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 Summary: In progress.
 - Added: the native Settings' Update and recovery page (docs/plan-1.6.2.md Part 39), as the web one: updates, system extensions,
   installing, recovery, the drive's start-up files and the boot menu; bringing in an old computer's files follows.
+- Fixed: the release workflow (the 6-hourly security releases and the betas) had not started since 2026-11-22: two merges
+  had each given its Tools step its own `run:` line, and GitHub runs nothing of a workflow with a key given twice. One
+  line now has both (OpenVPN and the scanners' packages); deadcheck.py checks every workflow for this (wfkeys.py).
 - Faster start-up: the system's images are packed with zstd instead of xz, so Rudolf OS unpacks them about ten times faster.
   Measured in QEMU on all three desktop engines: the desktop is ready in 8-9 s instead of 16-25 s from a fast disk and in
   11-15 s instead of 17-24 s from a USB stick, and Oracle's first window opens in about 1 s instead of 8 s on Native and Lite.
