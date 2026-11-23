@@ -929,8 +929,23 @@ its one page.
 **The readings (devlink, read-only; PSS / private, MB):**
 - 2026-11-22 20:24 CST (000567; 12.5 min after start; Task Manager and one other window open): the shared web process 325 / 264,
   Task Manager's own 190 / 131, rudolf-native 145 / 95, the network process 33 / 22; memory used 1.4 GB of 3.4.
-- What each kind of window adds (the owner closing and opening Task Manager, Calculator and Notepad, read after each): below,
-  as they come.
+- What each kind of window adds, 2026-11-22 21:19-21:22 CST (devlink 000568-000570; the owner closed Task Manager, opened
+  Calculator and Notepad, reopened Task Manager, then opened Settings; own memory, MB):
+  - Calculator and Notepad together: the shared web process 264 -> 294, about **15 MB each** (they reuse what the shared
+    process has already loaded);
+  - Task Manager reopened: its own web process 132 again (110-132 as WebKit tidies it): **about 130 MB**, all of it its own;
+  - Settings: the shared process 294 -> 331 at once and 466 a minute later as its panels came in: **about 170 MB**;
+  - Xorg 92, rudolf-native 96, the network process 22-40 (unchanged by the windows).
+- After a restart, 2026-11-22 21:28-21:36 CST (devlink 000574-000577; the kernel now refuses even root the processes'
+  smaps after the restart, so these are /proc/PID/status's RssAnon, the processes' own memory): signed in, nothing open, the
+  system used 650 MB (the hidden page 85, rudolf-native 69, Xorg 77, the network process 16); **WordPro +131 MB**;
+  **SpreadsheetPro +41 MB more** at first (both Office apps 85 -> 257 MB), settling to 216 a minute later (WebKit's tidying,
+  rudolf-native.c's memory-pressure settings); the rest of "used" rising with them was the kernel's caches (slab about 270 MB),
+  given back under pressure, not a program's.
+  The owner, 2026-11-22: "It feels like Rudolf should actually be running a lot leaner than it currently does."
+  So: Task Manager (its own process, the whole page loaded fresh), Settings and the Office apps (WordPro, SpreadsheetPro,
+  PresentPro) are where the memory goes; a small app in the shared process costs little, below this part's 40 MB bar: Calculator, Notepad and the like are
+  not moved (step 3 kept only for an app measured above the bar).
 - On the host (Chrome 153's renderer, 2026-11-22, private / PSS MB): a blank page 26 / 50; the desktop page signed in 106 / 134;
   as an app window (#app=taskmgr) 101 / 129; the same page with its scripts taken out 31 / 55 (its styles and markup cost about
   5 MB). So nearly all of a window's cost is the page's 3.5 MB of script being loaded, compiled and kept (about 75 MB here),
@@ -946,13 +961,20 @@ its one page.
    index.html#app=taskmgr; in its own web process as now. The same rudolfd token, peer check and confinement; nothing new asked of
    rudolfd. Tests: the small page against the full page's Task Manager (its DOM, its tabs, every action; as sethooks61_t.js
    compares), Native against Chromium (same_t.sh), and the memory before and after (host and the owner's Vivobook).
-3. **Then the simple apps, one at a time** (Calculator, Notepad, the media player; not the shell's hidden
+3. **(By the readings: only apps measured above 40 MB; Calculator and Notepad are not.) Then the simple apps, one at a time** (Calculator, Notepad, the media player; not the shell's hidden
    page, File Explorer, Blitzen or the Office apps, which use most of the page), each kept only with a measured saving worth it
    (aim: 40 MB or more per window) and its own comparison test.
+3b. **The Office apps** (WordPro, SpreadsheetPro, PresentPro), right after Task Manager: a small page each from the same
+   sources (their groups are already files loaded when opened; what remains is the whole page under them), with their
+   comparison tests; measured before and after.
+3c. **The shell's hidden page** (rudolf-native's do-bg page: the catalogue, the settings, the services): it too loads the
+   whole page; what it needs measured by coverage, and trimmed where that lowers the baseline without slowing the shell.
 4. **Settings, panel by panel** (the owner names it with Task Manager as the main concern): Settings reaches into most of the
    page, so a small page per panel (Sound, Display, Network...) rather than one for all of it, each with its comparison test.
 5. **Oracle's Chromium apart:** on Native, Oracle runs in Rudolf's own Chromium (one for every Oracle window), not in these pages;
    its memory (how Chromium splits and keeps its tab processes) is measured and worked on as its own item.
+5b. **Longer term (WendigOS, docs/plan-2.0.md):** the core apps rewritten natively (GTK, 10 to 40 MB a window instead of a
+   whole page each): the lean end of this, too large for 1.6.x; the owner's WendigOS session reads this part.
 6. **The sign-in screen's flash:** each app window loading the whole page showed the desktop's sign-in screen for a moment
    before its app (the owner saw it early in Native's work; it was hidden since); a small page has no sign-in screen at all.
 7. **Nothing weakened, nothing drifting:** a module missing from a small page is a test failure, never a quiet gap (each small page
@@ -960,6 +982,58 @@ its one page.
    working exactly as Chromium.
 **The owner's checks:** Task Manager (and each app moved) on the Vivobook: everything it does, and the memory in Task Manager's own
 Processes tab before and after.
+
+### 39. Native apps for Rudolf OS too, starting in 1.6.2 (added on 2026-11-22)
+The owner, 2026-11-22, after the per-window readings (Part 38: Task Manager ~130 MB, Settings ~170 MB, WordPro ~130 MB, each
+app window a whole copy of the desktop page): "If native re-writes of the core apps is suitable for Rudolf as well as Rudolf
+WendigOS, then make it a core fix for 1.6.2 as well as 2.0."
+**Suitable for Rudolf OS:** yes. docs/plan-2.0.md's "How a native app is built" needs nothing of 2.0's: C and GTK 3 as
+rudolf-native (already in the system layer, on X11 as Rudolf OS is), one program per app, `librudolf-ui` (`iso/sys/ui/`) for
+the look and rudolfd's client, files and settings through rudolfd. A native app is not WendigOS-only, so it needs no build
+switch: both editions build the same apps from main. The owner's rule holds as that plan already says: each native app is
+screenshot-compared with its web version (under 2 % of pixels different) and passes a checklist from it before the Start
+menu points to it; Chromium and Lite keep their web versions inside their page (where a window costs little), and Native
+switches to the native app once it passes. Security as rudolf-native: rudolfd's token and peer check, confinement, the
+account's own Linux user, nothing new opened up.
+**The order for Rudolf OS, by memory saved first** (2.0's waves kept, re-ordered by the readings):
+1. **librudolf-ui** (`iso/sys/ui/`): the GTK CSS theme from the page's styles (light and dark, the accent colour's rules,
+   Display Properties' fonts and sizes), the dialogs, the about box, rudolfd's client, translations; with its own test
+   (a sample window screenshot-compared with the page's same controls).
+2. **Task Manager** (1.6.2): the first native app; ~130 MB today in its own web process; aim 15 to 40 MB. Its small page
+   (Part 38 step 2) is the stopgap until the native one passes, then the native one replaces it.
+3. **Settings** (1.6.3, panel by panel, each panel switched as it passes): ~170 MB today. Small pages per panel (Part 38) only
+   where a panel's native version is further off.
+4. **The Office apps** (WordPro, SpreadsheetPro, PresentPro; after Settings: the largest work): ~130 MB each today; their small
+   pages (Part 38 step 3b) meanwhile.
+5. **Then 2.0's waves in their order** for the rest (Calculator, Notepad and the other small apps cost little, about 15 MB, so
+   they come after the heavy ones here).
+Each app's PR as docs/plan-2.0.md "Each app's pull request" says (its program, its host test under Xvfb, its screenshots
+against the web version, its memory at idle against the web version, the Start menu switched once it passes).
+**The owner's checks:** each native app on the Vivobook against its web version (Chromium mode), every action, and its memory
+in Task Manager.
+
+### The checks made green (added on 2026-11-23)
+
+The owner's item of 2026-11-22: the seven checks that had been red for days, each case found to be the test or a real bug,
+and fixed. Only one real bug was found, in Native's taskbar, shown by the monitors check; every other case was a test out of
+date with a deliberate change, or a test that did not fit the release it tested. No check was weakened and no limit raised.
+
+| Check | Case | Test or bug | Evidence | Fix | PR |
+|---|---|---|---|---|---|
+| svc-check (host) | svc60_t.js 8, Oracle's window | test: stale since #504 | Oracle's window now runs a second tabs26.js timer, which clears the websites listed while Oracle was closed | the case expects and names both timers | #632 |
+| svc-check (QEMU) | N2, N3, N5, N6, N9 | test: stale since 1.6.1 (the shell's hidden pages made one) | each alarm, reminder and timer rang once, from `do-bg`, not `do-svc` | expects `do-bg`; N1 also checks it has no window | #632 |
+| portal-check (QEMU) | N6, N11, N12 | test: stale since #537 (one hidden page for the shell) | the dialog came once, above the apps; the page was hidden as `do-bg`, the test looked for `do-portal` | looks for `do-bg`; its "page on top" wait (N3, N5, N7, N9) checks again too | #631 |
+| webkey-check (QEMU) | 3, 6, 7 ("the key store did not start") | test: the release's session starts its own key store since #533 (r2026112111) | TPM present (`/dev/tpmrm0`, family 2.0); this tree's `webkey_start` started a second store beside the release's | the test ends the release's store first and restores the sealed file; "no TPM 2.0" is case 9's deliberate no-TPM boot | #638 |
+| roothelpers-check, confine-check (r161) | 24, 27 | test: since they were added (2026-11-21) | the release has no curl and busybox wget hides a refusal's code and body | requests go through `busybox nc` when there is no curl | #654 |
+| same | 29 | test | busybox `pgrep` has no `-u` | the user's process found through `/proc/PID/status` | #654 |
+| confine-check (t160, built kernel) | 11, 12, 14, 15, 16 (why it never passed) | test: the premise could not hold | the built kernel replaced the release's, so slot a no longer matched its signed list and `rudolf-update` rightly refused to make an official recovery system from it | the official recovery system is made from the release's own kernel (checked against the signed SHA-256); the lock to the official stable release is now checked directly | #654 |
+| monitors-check | the taskbars differ (2.743 %, 2.006 %) | **bug in Native**, shown after 17:43 UTC | not the runner: the same image and packages pass before 17:30 UTC and fail after 20:00, when "auto" is dark; Native drew the pin and workspace edges #d1d5db where Chromium draws #334155 in dark | Native's edge follows the dark look; Native also draws the line under a pinned app as Chromium does | #641 |
+| monitors-check | the result depended on the hour | test | the look was left on "auto" | the test sets dark at 100 % and light at 125 % | #641 |
+| bootentry-check | "no release list for 2026111503" | test | gh-pages fetched with `--depth 1`: beta/ and stable/ hold only the newest release and there is no files/ folder | the whole gh-pages history fetched; the list and its signature taken from the commit that published that release | #655 |
+| bootentry-check | then bootentry60 0a, 0b; t160b 2b, 2c, 3, 5 | test: a stale default | both replay 1.6.0 (2026111620) and expect its faults; the default release was the newest beta, 1.6.0 then, 1.6.2b now, which no longer has them | 1.6.0 by default; the run with fix=1 checks this tree's rudolfd, espcheck and bootfiles.sh on top | #655 |
+
+Found, not fixed (a follow-up): on "auto" with no latitude set, Native's `is_dark()` uses 07:00 to 19:00 while the page works
+out sunrise and sunset from the time zone's city, so the two engines disagree around dawn and dusk. No check depends on it now.
 
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
@@ -981,3 +1055,4 @@ Processes tab before and after.
 14. Part 36 (Desert Camp): one PR; the owner's look on the Vivobook in light and dark on each engine.
 15. Part 37 (the side taskbar's pop-ups and menus): one PR; the owner's look on the Vivobook.
 16. Part 38 (smaller pages for app windows): the measurements, then Task Manager in one PR, then the simple apps one at a time.
+17. Part 39 (native apps for Rudolf OS too): librudolf-ui, then native Task Manager in 1.6.2; Settings and the Office apps after.

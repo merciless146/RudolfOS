@@ -81,7 +81,7 @@ jobs:
           echo "QEMU=$Q" >> $GITHUB_ENV
           mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
       - uses: actions/download-artifact@v4
-        with: {name: shares62-kernel, path: kout}
+        with: {name: shares62-kernel, path: .}   # (the artifact holds kout/... and cifsmod62.txt: their common folder is the workspace)
       - name: The release
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |

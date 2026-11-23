@@ -1,2 +1,2 @@
 serial=
-# 2026-11-23T01:48:43Z step 3 with step 2's fixes
+# 2026-11-23T05:59:41Z follow-up: the kernel artifact's path

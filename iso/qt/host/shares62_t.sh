@@ -102,6 +102,8 @@ try: t.connect(('192.168.62.10',445))
 except Exception as e: print(type(e).__name__)"; c1=$(ip netns exec cli62 nft list counter inet rudolf blocked | grep -o 'packets [0-9]*')
 	ok "1b. with the firewall on: the wsd chain (3702 while \"firewall wsd open\"'s ten seconds last, private addresses, not cellular); found both ways (multicast DNS's and WS-Discovery's answers let in); nothing listening afterwards, and what the NAS sends to it dropped" "$(echo "$o" | grep -q 'iifname @cellular return' && echo "$o" | grep -q 'udp dport @wsdopen accept' && echo "$o2" | grep -q '"how":"mdns"' && [ -z "$(echo $o3)" ] && [ "$c0" != "$c1" ] && echo 1)" "$o | $o2 | listening: $o3 | $c0 -> $c1"
 	ip netns exec cli62 sh $FW wsd open; o2=$(ip netns exec cli62 env RS_CELLULAR=/nonexistent RS_MDNS=127.0.0.1:9 $RS find)
+	timeout 11 tail -f /dev/null; o3=$(ip netns exec cli62 env RS_CELLULAR=/nonexistent RS_MDNS=127.0.0.1:9 $RS find)
+	ok "1d. ...and once the ten seconds are over, WS-Discovery's answers are dropped again (found nothing without \"wsd open\")" "$(echo "$o3" | grep -q '"servers":\[\]' && echo 1)" "$o3"
 	ok "1c. ...and the Windows-like computer by WS-Discovery alone, through the firewall" "$(echo "$o2" | grep -q '"name":"WIN62".*"how":"wsd"' && echo 1)" "$o2"
 else echo "NOTE: no nft here, or a firewall without the wsd chain (step 3): the firewall checks are skipped"; fi
 o=$($RS resolve nas62); o2=$($RS resolve 192.168.62.3); o3=$($RS resolve 'a;b' 2>&1; echo "rc=$?")
