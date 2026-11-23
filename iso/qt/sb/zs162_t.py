@@ -66,19 +66,31 @@ def drive_args(path):
     return ['-drive', d] + dev
 
 INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()"
-def boot(v, tag):
+FAILS = [0]
+def boot(v, tag, kernel=None):
     subprocess.run('sync; echo 3 > /proc/sys/vm/drop_caches', shell=True)   # (the host's copy of the drive: cold)
-    extra = drive_args(f'{W}/{v}.img') + ['-kernel', f'{KER}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
+    extra = drive_args(f'{W}/{v}.img') + ['-kernel', kernel or f'{KER}/vmlinuz', '-append', 'quiet loglevel=3 consoleblank=0 rudolf.slot=a rudolf.debug=1']
     name = f'zs{tag}'; os.makedirs(name, exist_ok=True); open(f'{name}/vars.fd', 'ab').close()
     vm = sbvm.VM(name, PARTS, [], secure=False, mem=MEM, extra=extra); t = time.time()
-    g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; g.s.read(0.3)
-    up = False; end = time.time() + 900
+    g = Guest.__new__(Guest); g.N = vm.name; g.s = Ser(vm.ser_path); g.q = vm.q; seen = g.s.read(0.3)
+    up = False; end = time.time() + (900 if FAILS[0] < 2 else 420)
     while time.time() < end:
         try:
-            if 'ready' in g.sh('echo ready', 8): up = True; break
+            o = g.sh('echo "UP$((40+2))"', 8); seen = (seen + o)[-6000:]
+            if 'UP42' in o: up = True; break
         except OSError: pass
+        if vm.p.poll() is not None: break   # (QEMU ended)
         time.sleep(2)
     out(f'start {tag} ({v}): serial shell {"up" if up else "NOT up"} after {time.time() - t:.0f} s')
+    if not up:
+        FAILS[0] += 1
+        try: ql = open(os.path.join(vm.dir, 'qemu.log')).read()[-2000:]
+        except OSError: ql = ''
+        out('  QEMU:', 'running' if vm.p.poll() is None else f'ended ({vm.p.returncode})', '| its log:', ql.replace('\n', ' / ') or '(empty)')
+        out('  the serial line, last:', seen[-2500:].replace('\r', '').replace('\n', ' / '))
+        try: vm.shot('notup'); out('  screenshot taken')
+        except Exception as e: out('  no screenshot:', e)
+    else: FAILS[0] = 0
     return vm, g, up
 def run(g, c, t=60):
     f = os.path.join(W, 'c.sh'); open(f, 'w').write(c + '\n'); g.put(f, '/tmp/zs.sh', '644')
@@ -127,12 +139,18 @@ def num(rx, o, f=float):
 
 drives = {}
 for v in VARS: drives[v] = make_drive(v); out('drive for', v, os.path.getsize(f'{LD}/{v}/base.sfs'))
-seen = {v: 0 for v in VARS}; ALL = []
+seen = {v: 0 for v in VARS}; ALL = []; CONTROL = []
 try:
     for i in range(STARTS + 1):
         for v in (VARS if i % 2 else VARS[::-1]):
             vm, g, up = boot(v, f'{i}{v}')
-            if not up: res = {'variant': v, 'start': i, 'error': 'no serial shell'}; JS.write(json.dumps(res) + '\n'); stop(vm, g); continue
+            if not up:
+                res = {'variant': v, 'start': i, 'error': 'no serial shell'}; JS.write(json.dumps(res) + '\n'); stop(vm, g)
+                if os.environ.get('KERNEL2') and not CONTROL:
+                    CONTROL.append(1); vm2, g2, up2 = boot(v, f'c{i}{v}', os.environ['KERNEL2'])
+                    out(f'control: the same drive with the release\'s own kernel: serial shell {"up" if up2 else "NOT up"}'); stop(vm2, g2)
+                if FAILS[0] >= 4: out('four starts in a row without a serial shell: stopped (see the lines above)'); raise SystemExit(3)
+                continue
             o = run(g, WAIT % seen[v], 800)
             seen[v] = num(r'^READYN (\d+)', o, int) or seen[v]
             if i == 0:   # the first start: the first-time setup on Chromium; then the engine chosen for the next starts
