@@ -30,6 +30,8 @@
 #                      the cellular notices (mobile/notes, those after since); DIR/mic.json: the apps using a microphone (mic)
 #   DIR/hotkey         (when there) the path of Rudolf OS's hotkey script: mic and volume answered through it as rudolfd does
 #                      (the sound server: pactl, PULSE_SERVER from the environment)
+#   DIR/tm.json        (when there, 1.6.2 Part 38) Task Manager's answers (fixtures/tm62.json: a made-up laptop): system, processes,
+#                      stats, net, info, memory/breakdown; proc/end, service/restart and memory/dropcache answered as done
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
 import http.server, json, os, re, sys, threading
 PORT = int(sys.argv[1]); D = sys.argv[2]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../www')
@@ -93,7 +95,7 @@ class H(http.server.BaseHTTPRequestHandler):
         if u == '/iwa/id' and rd('iwa-id') is not None: return self.send(200, rd('iwa-id'), 'text/plain')
         f = os.path.normpath(os.path.join(WWW, u.lstrip('/')))
         if f.startswith(os.path.normpath(WWW)) and os.path.isfile(f):
-            ct = {'.js': 'text/javascript', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.wasm': 'application/wasm'}.get(os.path.splitext(f)[1], 'application/octet-stream')
+            ct = {'.js': 'text/javascript', '.html': 'text/html; charset=utf-8', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.woff': 'font/woff', '.wasm': 'application/wasm'}.get(os.path.splitext(f)[1], 'application/octet-stream')
             if m == 'HEAD':
                 try: self.send_response(200); self.send_header('content-type', ct); self.send_header('content-length', str(os.path.getsize(f))); self.end_headers()
                 except Exception: pass
@@ -230,6 +232,12 @@ class H(http.server.BaseHTTPRequestHandler):
                 except OSError: pass
             on = os.path.exists(os.path.join(D, 'tor-on'))
             return self.j({'ok': True, 'state': 'on' if on else 'off', 'pct': 100 if on else 0, 'line': '', 'secs': 1, 'stopping': False})
+        # (1.6.2 Part 38, lean162_t.js) Task Manager's answers, when DIR/tm.json is there (fixtures/tm62.json: a made-up laptop): system,
+        # processes, stats, net, info, memory/breakdown; ending a process and restarting a service answered as done, and noted
+        if rd('tm.json') is not None:
+            T = json.loads(rd('tm.json'))
+            if w in T: return self.j(T[w])
+            if w in ('proc/end', 'service/restart', 'memory/dropcache') and m == 'POST': return self.j({'ok': True, 'ended': 1, 'freed': 1 << 20, 'message': 'ok'})
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'lo', 'ip': '127.0.0.1', 'state': 'up', 'wireless': False}, {'name': 'wlan0', 'ip': '192.168.1.5', 'state': 'up', 'wireless': True}]})
         if w.startswith('dl/') and rd('dl-dir') is not None: return self.dl(m, w[3:], q)
         if w in ('mic', 'volume') and rd('hotkey') is not None: return self.hotkey(m, w, q)

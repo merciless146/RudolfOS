@@ -991,6 +991,64 @@ its one page.
    working exactly as Chromium.
 **The owner's checks:** Task Manager (and each app moved) on the Vivobook: everything it does, and the memory in Task Manager's own
 Processes tab before and after.
+**Step 1, measured on the host (2026-11-23; Chromium 157, `iso/qt/shell2/lean162m.js`; a renderer's private memory, MB, 20 s after
+the window opened, alone in its browser):**
+- How it is read: `memraw` starts Chromium by hand with no automation attached. Playwright's network domain keeps every response's
+  body, the page's 3.7 MB among them, so the plan's first host readings (101 MB) were about 15 MB too high. Read this way: a blank
+  page 19.6; the desktop page without its scripts 25.5-27.9; the page's script read but not run (a syntax error at its end) 37-38;
+  the whole page as a Task Manager window 72-75; **the whole page with no app at all (#app=none) 76**. So Task Manager itself costs
+  nothing. What costs is the whole page starting.
+- Where it goes (the page cut short with `throw 0` at statement boundaries, no app): reading and compiling the script about 11;
+  base_v24.html's own code before the modules about 11 (spread across it); every module's setup about 8 (spread: no module over
+  2); the sign-in (the native session, `userLogin` and its additions, the catalogue, `oaOpen`) about 18. Moving only the functions
+  that do not run into a file of their own (1.5 of the 3.5 MB of script) saved 2-3 MB. A small page has to leave out what the page
+  *does* at start, not only what it holds.
+- Chromium's coverage (precise, function by function, `lean162m.js cover`) of a session of every tab and action: a Task Manager
+  window runs about 380 of the page's 2,109 top-level functions, in 79 of its 159 modules (most of them at sign-in). A Settings
+  window run through every panel runs 107 modules (1,581 function starts); each panel adds 15 to 41 modules to what Settings runs
+  as it opens (Display 41, Security 26, Internet 29, the smallest Notifications 15).
+- The same in WebKit (JavaScriptCore): rudolf-native under Xvfb on GitHub's runner (`lean162_t.sh` on the branch
+  `lean-taskmgr-small`), Task Manager's own web process: 94.5 MB private with the whole page (step 2 below).
+
+**Step 2, Task Manager's small page: built, measured, not kept (2026-11-23).** The numbers said no, so by this part's rule the
+small page is not in the release. It is kept on the branch `lean-taskmgr-small` (PR #659's first commits) in case Part 39's native
+Task Manager is far off.
+- What was built. `desktop/lean62.py` made the small page from the whole page as built, read statement by statement, keeping a
+  list: 36 modules, 71 of base_v24.html's functions, every variable those read, every app's registration, shortcut and setting
+  default. Everything else went into one file read only if ever called. What the whole page does at each sign-in for the whole
+  desktop was left out: the start menu's catalogue, the desktop's icons, the lists. The hidden page named the small page to
+  rudolf-native (op `tmpage`), which opened Task Manager there (`/?oa=ID`, served by rudolfd as the apps' page; nothing new
+  asked of rudolfd).
+- How it was checked. In Chromium it matched the whole page's Task Manager in all 22 steps (every tab and action), in what it
+  told the shell and asked rudolfd, and in the settings it saved (`lean162_t.js`: 10/10). Native against Chromium was the same
+  for Task Manager's rows, its title bars and its tabs (`same_t.sh` 8/9; Performance's live graphs differed). In WebKit
+  (`lean162_t.sh`) the shell named the small page and opened it in Task Manager's own web process, every tab worked, and nothing
+  else of the page was read.
+- **The numbers:**
+
+  | Task Manager's memory (private) | Whole page | Small page | Saved |
+  |---|---|---|---|
+  | Chromium, here | 74.2 MB | 63 MB | about 11 MB, 15 % |
+  | Chromium, GitHub's runner | 61.7 MB | 53.1 MB | 8.6 MB |
+  | **WebKit (rudolf-native), GitHub's runner** | **94.5 MB** (PSS 147.6) | **91.5 MB** (PSS 144.4) | **3 MB, about 3 %** |
+
+  rudolf-native's WebKit is what the owner's Vivobook runs, so the saving there would be a few MB, far below the 40 MB aim, for
+  about 3.5 MB more in the release and another list to keep up to date. WebKit's JavaScriptCore keeps much less of the script it
+  never runs than Chromium does; what a WebKit web process holds is mostly its own floor and what the page does as it signs in.
+  The real fix is Part 39's native Task Manager (aim 15 to 40 MB).
+- What stays from this step: the measuring tool (`iso/qt/shell2/lean162m.js`: coverage, and memory read without automation),
+  Task Manager's stand-in answers for the stand-in rudolfd (`iso/qt/host/fixtures/tm62.json`, `native_rd.py`'s `DIR/tm.json`),
+  and these readings, for Part 39's comparisons.
+
+**Step 4, Settings panel by panel (measured, not done):** Settings in Chromium is 100-104 MB. A small page keeping every module
+the coverage saw Settings run (107) gave 99-101 MB, the same. A page per panel would start from about what Task Manager's small page cost (60 MB in Chromium, about 3 % less
+than the whole page in WebKit), plus the panel's 15 to 41 modules. That would save at most 30-35 MB, below the 40 MB bar. It would also change how
+Settings moves between panels: each panel would be a page of its own, or the rest of the page would be read at the first panel
+change, back to the whole page. So it is written up as not worth it. Settings' memory is Part 39's native Settings (1.6.3).
+
+**The owner's checks (Vivobook):** none for this part's steps now (nothing of them is in the release). If the owner wants the
+small page all the same: the branch `lean-taskmgr-small`, then Task Manager's own memory in its Processes tab before and after
+(Ctrl+Shift+Esc, 20 s after it opens) and every tab and action.
 
 ### 39. Native apps for Rudolf OS too, starting in 1.6.2 (added on 2026-11-22)
 The owner, 2026-11-22, after the per-window readings (Part 38: Task Manager ~130 MB, Settings ~170 MB, WordPro ~130 MB, each
@@ -1020,6 +1078,29 @@ Each app's PR as docs/plan-2.0.md "Each app's pull request" says (its program, i
 against the web version, its memory at idle against the web version, the Start menu switched once it passes).
 **The owner's checks:** each native app on the Vivobook against its web version (Chromium mode), every action, and its memory
 in Task Manager.
+
+### The checks made green (added on 2026-11-23)
+
+The owner's item of 2026-11-22: the seven checks that had been red for days, each case found to be the test or a real bug,
+and fixed. Only one real bug was found, in Native's taskbar, shown by the monitors check; every other case was a test out of
+date with a deliberate change, or a test that did not fit the release it tested. No check was weakened and no limit raised.
+
+| Check | Case | Test or bug | Evidence | Fix | PR |
+|---|---|---|---|---|---|
+| svc-check (host) | svc60_t.js 8, Oracle's window | test: stale since #504 | Oracle's window now runs a second tabs26.js timer, which clears the websites listed while Oracle was closed | the case expects and names both timers | #632 |
+| svc-check (QEMU) | N2, N3, N5, N6, N9 | test: stale since 1.6.1 (the shell's hidden pages made one) | each alarm, reminder and timer rang once, from `do-bg`, not `do-svc` | expects `do-bg`; N1 also checks it has no window | #632 |
+| portal-check (QEMU) | N6, N11, N12 | test: stale since #537 (one hidden page for the shell) | the dialog came once, above the apps; the page was hidden as `do-bg`, the test looked for `do-portal` | looks for `do-bg`; its "page on top" wait (N3, N5, N7, N9) checks again too | #631 |
+| webkey-check (QEMU) | 3, 6, 7 ("the key store did not start") | test: the release's session starts its own key store since #533 (r2026112111) | TPM present (`/dev/tpmrm0`, family 2.0); this tree's `webkey_start` started a second store beside the release's | the test ends the release's store first and restores the sealed file; "no TPM 2.0" is case 9's deliberate no-TPM boot | #638 |
+| roothelpers-check, confine-check (r161) | 24, 27 | test: since they were added (2026-11-21) | the release has no curl and busybox wget hides a refusal's code and body | requests go through `busybox nc` when there is no curl | #654 |
+| same | 29 | test | busybox `pgrep` has no `-u` | the user's process found through `/proc/PID/status` | #654 |
+| confine-check (t160, built kernel) | 11, 12, 14, 15, 16 (why it never passed) | test: the premise could not hold | the built kernel replaced the release's, so slot a no longer matched its signed list and `rudolf-update` rightly refused to make an official recovery system from it | the official recovery system is made from the release's own kernel (checked against the signed SHA-256); the lock to the official stable release is now checked directly | #654 |
+| monitors-check | the taskbars differ (2.743 %, 2.006 %) | **bug in Native**, shown after 17:43 UTC | not the runner: the same image and packages pass before 17:30 UTC and fail after 20:00, when "auto" is dark; Native drew the pin and workspace edges #d1d5db where Chromium draws #334155 in dark | Native's edge follows the dark look; Native also draws the line under a pinned app as Chromium does | #641 |
+| monitors-check | the result depended on the hour | test | the look was left on "auto" | the test sets dark at 100 % and light at 125 % | #641 |
+| bootentry-check | "no release list for 2026111503" | test | gh-pages fetched with `--depth 1`: beta/ and stable/ hold only the newest release and there is no files/ folder | the whole gh-pages history fetched; the list and its signature taken from the commit that published that release | #655 |
+| bootentry-check | then bootentry60 0a, 0b; t160b 2b, 2c, 3, 5 | test: a stale default | both replay 1.6.0 (2026111620) and expect its faults; the default release was the newest beta, 1.6.0 then, 1.6.2b now, which no longer has them | 1.6.0 by default; the run with fix=1 checks this tree's rudolfd, espcheck and bootfiles.sh on top | #655 |
+
+Found, not fixed (a follow-up): on "auto" with no latitude set, Native's `is_dark()` uses 07:00 to 19:00 while the page works
+out sunrise and sunset from the time zone's city, so the two engines disagree around dawn and dusk. No check depends on it now.
 
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).

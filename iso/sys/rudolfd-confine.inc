@@ -127,7 +127,9 @@ static int confine_request(int fd, const char *path)
 }
 
 /* ---- the windows' lists ---- */
-/* which window holds this connection: 0 root or unknown (not checked), 1 the page, 2 the native shell */
+/* which window holds this connection: 0 root or unknown (not checked), 1 the page, 2 the native shell, 3 a native app (1.6.2 Part 39:
+   /usr/bin/rudolf-NAME, started by the native shell, so in the desktop's group as the peer check asks; known by its program as the
+   shell is: WINAPI_APPS_EXE) */
 static int confine_window_kind(void)
 {
 	if (peer_uid_seen == 0 || peer_pid_seen <= 0) return 0;
@@ -135,6 +137,7 @@ static int confine_window_kind(void)
 	ssize_t k = readlink(p, e, sizeof e - 1); if (k <= 0) return 0;
 	e[k] = 0; const char *b = strrchr(e, '/'); b = b ? b + 1 : e;
 	if (!strcmp(b, "rudolf-native")) return 2;
+	for (int i = 0; WINAPI_APPS_EXE[i]; i++) if (!strcmp(b, WINAPI_APPS_EXE[i])) return 3;
 	return 1;   /* (Chromium's network process on Standard, WebKit's for the native desktop's windows and Lite) */
 }
 /* 1 answer it; 0 refused (answered here) */
@@ -143,16 +146,16 @@ static int confine_window(struct req *r)
 	if (cf_mode == CF_OFF) return 1;
 	int k = cf_kind >= 0 ? cf_kind : confine_window_kind(); if (!k) return 1;
 	const char *p = r->path + 5;
-	if (cf_match(k == 2 ? WINAPI_SHELL : WINAPI_PAGE, p)) return 1;
+	if (cf_match(k == 3 ? WINAPI_APPS : k == 2 ? WINAPI_SHELL : WINAPI_PAGE, p)) return 1;
 	static const char T[] = RUN "/winapi-refused"; struct stat st; time_t now = time(NULL);
 	if (stat(T, &st) || now - st.st_mtime >= 10) {   /* (said at most every 10 s) */
 		int w = open(T, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600); if (w >= 0) close(w);
 		char safe[80]; size_t i = 0; for (; p[i] && i < sizeof safe - 1; i++) safe[i] = isalnum((unsigned char)p[i]) || strchr("/_.-", p[i]) ? p[i] : '?';
 		safe[i] = 0;
-		health_add("security", "%s asked for %s, which it never asks for: %s", k == 2 ? "the native shell" : "the desktop's page", safe, cf_mode == CF_ON ? "refused" : "answered (confinement: log)");
+		health_add("security", "%s asked for %s, which it never asks for: %s", k == 3 ? "a native app" : k == 2 ? "the native shell" : "the desktop's page", safe, cf_mode == CF_ON ? "refused" : "answered (confinement: log)");
 	}
 	{ char safe[80]; size_t i = 0; for (; p[i] && i < sizeof safe - 1; i++) safe[i] = isalnum((unsigned char)p[i]) || strchr("/_.-", p[i]) ? p[i] : '?'; safe[i] = 0;
-	  confine_note("%s asked for %s: %s", k == 2 ? "the native shell" : "the page", safe, cf_mode == CF_ON ? "refused" : "answered (log)"); }
+	  confine_note("%s asked for %s: %s", k == 3 ? "a native app" : k == 2 ? "the native shell" : "the page", safe, cf_mode == CF_ON ? "refused" : "answered (log)"); }
 	if (cf_mode == CF_LOG) return 1;
 	reply_err(r->fd, 403, "this window does not use that part of the API");
 	return 0;
