@@ -64,7 +64,7 @@ KR=$(ls "$W/mods/lib/modules"); cp initramfs/bin/busybox "$W/mods/depmod"; sudo 
 [ -s "$W/mods/lib/modules/$KR/modules.dep.bb" ] || { echo "no module index"; exit 1; }
 mkdir -p "$W/ms/usr/lib"; cp -a "$W/mods/lib/modules" "$W/ms/usr/lib/"
 mkdir -p "$W/ms/usr/lib/firmware" && cp -a "$W/fw/." "$W/ms/usr/lib/firmware/"
-mksquashfs "$W/ms" "$OUT/modules.sfs" -comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress
+. systools/sqopts.sh; mksquashfs "$W/ms" "$OUT/modules.sfs" $SQ_OPTS -noappend -all-root -quiet -no-progress   # (1.6.2 Part 31: zstd, as a release's)
 cp "$W/linux/arch/x86/boot/bzImage" "$OUT/vmlinuz"; cp initramfs/bin/rudolf-kexec "$OUT/rudolf-kexec"
 { [ -n "$EXTRA$OFF$MOD" ] && grep -E "^CONFIG_($(echo $EXTRA $OFF $MOD | tr ' ' '|'))=|^# CONFIG_($(echo $EXTRA $OFF $MOD | tr ' ' '|')) " "$W/linux/.config"; grep -E "^CONFIG_(HZ|PREEMPT[A-Z_]*)=" "$W/linux/.config"; } > "$OUT/config-extra.txt"
 cp "$W/linux/.config" "$OUT/config.txt"

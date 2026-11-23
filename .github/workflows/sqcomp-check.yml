@@ -2,15 +2,16 @@
 # (iso/qt/host/sqcomp162_t.sh: make_release.py's line and rows, rudolf-update's refusals), with real images made by
 # mksquashfs; and rudolf-update's other host tests, unchanged by it. Item 4: the first update after the images are packed
 # another way, its size before downloading (iso/qt/host/updsize162_t.sh, and Settings › Update: iso/qt/shell2/updsize162_t.js).
+# Item 3: the images packed with zstd (mklayers.sh, ci_release.sh's repack_layers: iso/qt/host/zsswitch162_t.sh).
 # Nothing is built or published.
 name: Layers' compression check
 on:
   workflow_dispatch:
   push:
     branches-ignore: [main, gh-pages]
-    paths: ['iso/qt/host/sqcomp162_t.sh', 'iso/qt/host/updsize162_t.sh', 'iso/qt/shell2/updsize162_t.js', 'desktop/sysupd25.js', 'iso/sys/rudolf-update.c', 'iso/systools/make_release.py', '.github/workflows/sqcomp-check.yml']
+    paths: ['iso/qt/host/sqcomp162_t.sh', 'iso/qt/host/updsize162_t.sh', 'iso/qt/shell2/updsize162_t.js', 'desktop/sysupd25.js', 'iso/qt/host/zsswitch162_t.sh', 'iso/systools/sqopts.sh', 'iso/systools/mklayers.sh', 'iso/systools/ci_release.sh', 'iso/sys/rudolf-update.c', 'iso/systools/make_release.py', '.github/workflows/sqcomp-check.yml']
   pull_request:
-    paths: ['iso/qt/host/sqcomp162_t.sh', 'iso/qt/host/updsize162_t.sh', 'iso/qt/shell2/updsize162_t.js', 'desktop/sysupd25.js', 'iso/sys/rudolf-update.c', 'iso/systools/make_release.py', '.github/workflows/sqcomp-check.yml']
+    paths: ['iso/qt/host/sqcomp162_t.sh', 'iso/qt/host/updsize162_t.sh', 'iso/qt/shell2/updsize162_t.js', 'desktop/sysupd25.js', 'iso/qt/host/zsswitch162_t.sh', 'iso/systools/sqopts.sh', 'iso/systools/mklayers.sh', 'iso/systools/ci_release.sh', 'iso/sys/rudolf-update.c', 'iso/systools/make_release.py', '.github/workflows/sqcomp-check.yml']
 permissions: {contents: read}
 concurrency: {group: 'sqcomp-check-${{ github.ref }}', cancel-in-progress: true}
 jobs:
@@ -23,6 +24,8 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools python3-cryptography libssl-dev >/dev/null
       - name: The layers' compression (sqcomp162_t.sh)
         run: bash iso/qt/host/sqcomp162_t.sh
+      - name: The images packed with zstd (zsswitch162_t.sh, item 3)
+        run: bash iso/qt/host/zsswitch162_t.sh
       - name: The first update after the images are packed another way (updsize162_t.sh)
         run: bash iso/qt/host/updsize162_t.sh
       - name: rudolf-update's other host tests

@@ -35,7 +35,8 @@ MA=$(gcc -print-multiarch); [ -n "$MA" ] || MA=x86_64-linux-gnu
 # 1.5.9 (plan 15.5): every program built hardened (systools/hardflags.sh: HARD, HARD_STATIC), checked on the built
 # programs (systools/hardcheck.py)
 . systools/hardflags.sh
-MK="mksquashfs"; SQ="-comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress"
+# 1.6.2 (docs/plan-1.6.2.md Part 31, item 3): zstd (systools/sqopts.sh); xz -Xbcj x86 -b 1M before
+. systools/sqopts.sh; MK="mksquashfs"; SQ="$SQ_OPTS -noappend -all-root -quiet -no-progress"
 NOTES=(); CH=$(pv chromium); KV=$(pv kernel); KCFG=""
 for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cp "$PREV/$f" "$W/new/$f"; done
 
@@ -498,6 +499,21 @@ fi
 $MK "$W/ds" "$W/desk.sfs" $SQ; python3 systools/verity.py add "$W/desk.sfs" desktop >/dev/null
 if ! cmp -s "$W/desk.sfs" "$W/new/desktop.sfs"; then cp "$W/desk.sfs" "$W/new/desktop.sfs"; NOTES+=("desktop update"); fi
 
+# 1.6.2 (Part 31, item 3): every layer packed as $SQ says. One kept from the previous release (its files unchanged, so not
+# made again above) but packed another way (xz, before 1.6.2) is made again from its own files: the same files give the
+# same bytes, so the next release's unchanged layer is the same again and its update a delta
+repack_layers() {
+	local n c b R=0
+	for n in base chromium desktop modules; do
+		c=$(od -An -tu2 -j20 -N2 "$W/new/$n.sfs" | tr -d ' '); b=$(od -An -tu4 -j12 -N4 "$W/new/$n.sfs" | tr -d ' ')
+		[ "$c" = "$SQ_COMP_ID" ] && [ "$b" = "$SQ_BLOCK" ] && continue
+		echo "$n.sfs: packed another way (compression $c, blocks of $b): made again with $SQ_OPTS"
+		sudo rm -rf "$W/rp"; sudo unsquashfs -q -n -d "$W/rp" "$W/new/$n.sfs" >/dev/null
+		sudo env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" $MK "$W/rp" "$W/new/$n.sfs.rp" $SQ; sudo chown "$(id -u)" "$W/new/$n.sfs.rp"; mv "$W/new/$n.sfs.rp" "$W/new/$n.sfs"; sudo rm -rf "$W/rp"; R=1
+	done
+	[ $R = 0 ] || NOTES+=("the system's images packed with zstd (the first update after it downloads them whole)")
+}
+repack_layers
 # every layer carries its dm-verity hash tree (1.2.2); the same data always gives the same tree
 for n in base chromium desktop modules; do python3 systools/verity.py add "$W/new/$n.sfs" $n >/dev/null; done
 CHANGED=0; for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cmp -s "$PREV/$f" "$W/new/$f" || CHANGED=1; done

@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Faster start-up: the system's images are packed with zstd instead of xz, so Rudolf OS unpacks them about ten times faster.
+  Measured in QEMU on all three desktop engines: the desktop is ready in 8-9 s instead of 16-25 s from a fast disk and in
+  11-15 s instead of 17-24 s from a USB stick, and Oracle's first window opens in about 1 s instead of 8 s on Native and Lite.
+  The images are 9 % larger (578 MB). The first update to this version downloads them whole, once (Settings › Update says
+  how much before downloading); later updates download only the changes again.
 - Fixed: a Windows program installed before 1.5.9 (Starport GE on the owner's Vivobook) did nothing when its icon was clicked. Since
   1.5.9 Wine runs as the account's own Linux user, with a Wine folder of its own, and the programs in the folder every account
   shared before were never carried into it. Rudolf OS now offers to bring them in (once after sign-in, in Settings › Apps › Linux,
