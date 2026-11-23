@@ -726,6 +726,24 @@ fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, a
    page scanned and checked; a USB stand-in where QEMU allows. **The owner's check:** the Canon (if it scans) over USB and,
    if it has it, over Wi-Fi; one page and three pages into a PDF.
 
+**Status (2026-11-23, the scheduled task):** step 1 built, **PR scan-driverless** (one PR per step, in order: 1 driverless
+scanning, 2 the Scan app, 3 older USB scanners, 4 Linux apps). `rudolf-scan` (iso/sys/rudolf-scan.c, GPL-2.0-or-later)
+finds eSCL scanners by multicast DNS (_uscan/_uscans, as rudolf-print finds printers: from port 5353, the firewall's mdns
+chain), WSD ones by WS-Discovery (from port 3702; the firewall's new wsd chain lets port 3702 in from private addresses
+only for ten seconds after `firewall wsd open`, and only ProbeMatches for its own random MessageID are read) and USB ones
+that speak eSCL through ipp-usb's address; it scans with libsane (opened with dlopen) and sane-airscan, each scan with its
+own SANE configuration naming just that scanner (sane-airscan's own discovery, which needs Avahi, off), and keeps pages as
+PNG; `save` makes one PDF of several pages (JPEG for colour and grey, 1-bit for black and white: its own encoder), PNG or
+JPEG, never over another file. usbprint's guard gains `scanner allow|done UID` (an account's user reaches ipp-usb's port
+only while it scans; the set's element times out in 15 minutes). The base layer gains libsane.so.1 (SANE's dll backend:
+GPL-2.0-or-later with SANE's exception) and libsane-airscan.so.1 (GPL-2.0-or-later with its linking exception) from
+Ubuntu 24.04's libsane1 1.2.1 and sane-airscan 0.99.29; every library they need is in the base already. Measured: 495 KB
+on the disk (rudolf-scan 149 KB, libsane 94 KB, sane-airscan 251 KB); nothing in memory while idle (no process), about 62
+MB at most scanning A4 at 300 dpi in colour, about 28 MB making its PDF. Tests: qt/host/scan162_t.sh 30/30,
+qt/sb/sc162_t.py (QEMU, the release with this tree's files; the USB path only on the host: QEMU has no emulated IPP over
+USB device), .github/workflows/scan-check.yml. Not testable here: scanning over WSD itself (the stand-in answers
+discovery and metadata, not WS-Scan's jobs): the owner's check.
+
 ### 35. Network shares in File Explorer (added on 2026-11-22)
 1. **Windows and NAS shares (SMB):** File Explorer's Network lists the shares found on the home network (WS-Discovery and
    mDNS, with the firewall on), and a share's address typed (\\server\share or smb://server/share). Signing in with a name
