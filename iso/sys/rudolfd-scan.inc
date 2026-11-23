@@ -26,6 +26,7 @@
 #include <grp.h>
 #include <pwd.h>
 #include <sys/prctl.h>
+#include "rudolf-scanconf.h"
 #ifndef SCAN_BIN
 #define SCAN_BIN "/usr/bin/rudolf-scan"
 #endif
@@ -115,6 +116,20 @@ static void scan_give(const char *id, uid_t u, int give)
 	if (!strncmp(id, "sane:usb:", 9) && u >= 1000) { const char *a[] = { "devices", "scanusb", give ? "allow" : "done", us, NULL }; char c[120]; snprintf(c, sizeof c, "/usr/lib/rudolf/scanusb %s %s >/dev/null 2>&1", give ? "allow" : "done", us);
 		if ((root_have("devices") ? root_net(a, 1) : -2) == -2) run(c); }
 }
+/* (step 4) the network scanners found, for Linux apps: PERSIST/etc/rudolf/scanners.conf, sane-airscan's settings, which
+   the Debian sandbox binds read only over its /etc/sane.d/airscan.conf (rudolf-debian.c); rewritten in place (the same
+   file: a bind keeps the file it was given) when find found any, kept as it was when it found none (away from home) */
+#ifndef SCAN_SHARE
+#define SCAN_SHARE PERSIST "/etc/rudolf/scanners.conf"
+#endif
+static void scan_share(const char *json)
+{
+	char c[16384]; if (scanconf_make(json, c, sizeof c) <= 0) return;
+	mkdir(PERSIST "/etc", 0755); mkdir(PERSIST "/etc/rudolf", 0755);
+	int f = open(SCAN_SHARE, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0644); if (f < 0) return;
+	struct stat st; if (fstat(f, &st) || !S_ISREG(st.st_mode)) { close(f); return; }
+	size_t n = strlen(c); if (ftruncate(f, 0) || write(f, c, n) != (ssize_t)n) {} fchmod(f, 0644); close(f);
+}
 static void api_scan(struct req *r, const char *what, int post)
 {
 	if (access(SCAN_BIN, X_OK)) { reply_err(r->fd, 404, "this Rudolf OS cannot scan"); return; }
@@ -131,6 +146,7 @@ static void api_scan(struct req *r, const char *what, int post)
 		while (p > 0 && o.n < 65536) { struct pollfd q = { pf[0], POLLIN, 0 }; if (time(NULL) > until || poll(&q, 1, 1000) < 0) break; if (!q.revents) continue; ssize_t n = read(pf[0], b, sizeof b - 1); if (n <= 0) break; b[n] = 0; sadd(&o, "%s", b); }
 		close(pf[0]); if (p > 0) { kill(p, SIGKILL); waitpid(p, NULL, 0); }
 		if (!o.b || strncmp(o.b, "{\"ok\":", 6)) { free(o.b); reply_err(r->fd, 500, "Rudolf OS couldn't look for scanners."); return; }
+		scan_share(o.b);
 		reply(r->fd, 200, "application/json", o.b, o.n, NULL); free(o.b); return;
 	}
 	if (!strcmp(what, "caps")) {

@@ -165,6 +165,18 @@ static int bindmnt(const char *src, const char *dst, int dir)
 	if (dir) mkdirs(dst, 0755); else if (access(dst, F_OK)) { int f = open(dst, O_WRONLY | O_CREAT, 0644); if (f >= 0) close(f); }
 	return mount(src, dst, NULL, MS_BIND | MS_REC, NULL);
 }
+/* 1.6.2 (docs/plan-1.6.2.md Part 34, step 4): Linux apps (Simple Scan) use the network scanners Rudolf OS found: its list
+   (/persist/etc/rudolf/scanners.conf, sane-airscan's settings that rudolfd writes after each Find scanners; their own
+   discovery off) bound read only over Debian's /etc/sane.d/airscan.conf, when Debian has SANE (its /etc/sane.d). They
+   reach the scanners as any program of the account reaches the network; nothing listens, and no USB device is given. */
+#ifndef SCAN_SHARE
+#define SCAN_SHARE "/persist/etc/rudolf/scanners.conf"
+#endif
+static void scanners_share(void)
+{
+	struct stat st; if (lstat(SCAN_SHARE, &st) || !S_ISREG(st.st_mode) || stat(ROOT "/etc/sane.d", &st) || !S_ISDIR(st.st_mode)) return;
+	if (!bindmnt(SCAN_SHARE, ROOT "/etc/sane.d/airscan.conf", 0)) mount(NULL, ROOT "/etc/sane.d/airscan.conf", NULL, MS_REMOUNT | MS_BIND | MS_RDONLY, NULL);
+}
 static pid_t keeper_pid(void)
 {
 	char *t = slurp(INITPID, NULL); if (!t) return 0; pid_t p = atoi(t); free(t);
@@ -276,6 +288,7 @@ static void keeper_main(void)   /* pid 1 inside: set up the file system, then re
 homed:
 	if (access("/etc/resolv.conf", F_OK)) write_str("/etc/resolv.conf", "");
 	bindmnt("/etc/resolv.conf", ROOT "/etc/resolv.conf", 0);
+	scanners_share();   /* 1.6.2 (Part 34, step 4) */
 	/* 1.6.0: rudolf-fetch in the Terminal (Rudolf's logo and this computer's details), read only: Rudolf's own files
 	   (the logo, VERSION) in /usr/share/rudolf-os, the command as /usr/local/bin/rudolf-fetch, and the facts Debian
 	   cannot see (the desktop engine, the update channel) in /run/rudolf-os/facts. Nothing else in Debian changes. */

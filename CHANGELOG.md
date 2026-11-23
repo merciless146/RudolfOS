@@ -23,6 +23,9 @@ Summary: In progress.
   common: Canon PIXMA and CanoScan (pixma, genesys, plustek, canon_lide70), Epson (epson2, epsonds), Samsung, Xerox and
   Dell all-in-ones (xerox_mfp) and Fujitsu document scanners (fujitsu). They work only over USB, and the scanner is given
   to your account's own user only while it scans. 2.4 MB more on the disk.
+- New: Linux apps such as Simple Scan use the network scanners Rudolf OS found (step 4 of 4): after Scan has looked
+  for scanners, their addresses are given read-only to the Debian sandbox's own scanning settings. USB scanners stay
+  with Rudolf's Scan app: Linux apps get no USB devices.
 - Fixed: with the taskbar at the left or the right, Quick settings, the notifications and the calendar open beside their
   buttons (they opened in the screen's bottom-right corner, over a taskbar at the right); a right-click menu no longer lies over
   the taskbar; and the desktop's icons move at once when the taskbar grows instead of sitting under it. The same on Native.
