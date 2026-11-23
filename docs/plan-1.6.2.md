@@ -1159,6 +1159,74 @@ in Task Manager.
 4. About: the rows (Graphics names the GPU), Licences, Help, Copy details (paste it), Roll back (the administrator's password).
 5. The memory: rudolf-settings in Task Manager's Processes tab against the web Settings' WebKit process (~170 MB, Part 38).
 
+### 40. Windows programs from before 1.5.9, and no silent failure (added on 2026-11-23)
+**What happened (the owner's Vivobook, 1.6.2b, release 2026112223; read-only devlink 000578-000579 in the main session):** Starport GE
+(installed on 2026-11-02 into the desktop user's Wine prefix, /home/rudolf/.wine) did not start: its icon was there, a click did
+nothing. Its launcher, /usr/local/bin/starport-ge (`cd "$HOME/.wine/drive_c/users/rudolf/StarportGE" && exec wine Launcher.exe`), runs
+as the account's own Linux user since 1.5.9 (plan 15.3: Debian's home is the account's folder), whose prefix had no StarportGE, so the
+cd failed ("can't cd to ..." in /run/rudolf/debian/starport-ge.log) and nothing was said. The main session fixed the Vivobook by hand
+with the owner's go-ahead (the old prefix copied whole into /home/acct1001/.wine; the account's fresh one kept as
+.wine.fresh-20261123); Wine's launchers and icons in ~/.local are the owner's to finish.
+
+**Why the account had a fresh prefix (item 1):** nothing in Rudolf OS makes ~/.wine (no wineboot or WINEPREFIX anywhere in the
+source); Wine makes it itself the first time any Wine program runs as a user whose prefix does not exist. Starport GE's launcher
+does not (its cd fails before wine runs). So it was the first Wine run as the account. The account's folder was not new: its user
+is acct1001, the first account user made on this computer, and a uid is never given again (rudolfd-users.inc), so a re-made account
+would be acct1002 or later; au_migrate only changes ownership inside the account's folder and never makes or moves a prefix; 1.6.2b's
+installation (promoted ~17:40 CST) and Native as the default (#620, in r2026112223) came after 08:30 that day. 08:30 UTC is
+02:30 CST, inside the Wayland test with the owner (WendigOS W0 (A), 2026-11-22 02:18-02:35 CST, devlink 000555-000562), in which
+Wine Notepad ran through Xwayland in the owner's Debian, as the account: almost certainly that run made the prefix (the owner's
+checklist below confirms the time). The fault itself is older: since 1.5.9 nothing carried the shared prefix into an account, so
+every Windows program from before failed for a signed-in account, with or without a prefix of its own; and rudolf-debian's launch
+dropped the program's exit status, so the failure was silent.
+
+**Built (one PR):**
+1. **The offer** (rudolfd-wineold.inc: GET wine/old, POST wine/bring, POST wine/decline; wineold62.js): when the signed-in
+   account runs Debian as its own user and the desktop user's old prefix has programs (folders of drive_c that are not Wine's own)
+   that neither of the account's prefixes has, or Wine's launchers the account lacks, Rudolf offers to bring them in: once after
+   sign-in (the desktop's page; on Native the hidden page), in Settings › Apps › Linux beside Wine (also after "Don't ask again"),
+   and in System health while it is pending. Nothing is copied without the person's choice. With several accounts the old prefix
+   was all of theirs: only an administrator's name and password start it (checked by rudolfd, desk_admin_check), and the programs'
+   names are not shown, only how many. Room is checked first (the copy and 256 MB to spare).
+2. **The copy** (a child of rudolfd, in the background; its progress in GET wine/old's "job"): the whole prefix (a program lives as
+   much in the prefix's registry as in drive_c, and two registries cannot be merged safely), owned by the account's user (group
+   1000, as Wine's own files in Debian), the old prefix never changed. **Chosen:** if the account's prefix has no programs of its own
+   (Wine made it fresh, as on the Vivobook) the copy becomes ~/.wine and the account's is kept as ~/.wine.own-DATE (nothing lost, and
+   launchers that use $HOME/.wine work); if it has programs of its own it stays ~/.wine and the copy goes beside it as
+   ~/.wine-shared, with the launchers brought pointed at it; if every program is there already (copied by hand) only the launchers
+   come. Wine's launchers, menus, their folders and the icons they name come too, never over one of the account's own. It reads as
+   the desktop's user and writes as the account's (setfsuid), one folder at a time without following links; it is made in
+   ~/.wine.bringing and renamed ~/.wine.brought only once whole, and only then does the account's prefix move: a copy cut off leaves
+   the account's prefix as it was and is started again; while a Windows program of the account runs (its wineserver) the copy
+   waits, kept, for the next try.
+3. **No silent failure** (rudolf-debian.c launch_report; linux26.js lxPortal via wineold62.js): a Debian or Windows program that
+   ends within 10 s with an exit status other than 0 (or a signal) leaves a request of the desktop portal's of its own kind
+   ("lxfail"), which every engine collects as it does the portal's other requests (Chromium's and Lite's desktop page; the native
+   desktop's hidden page, handed it by the shell): a message naming the program, how it ended and the last lines of its log
+   (Wine's fixme: lines left out), and for a Windows program whose folder is only in the old prefix (or while the offer is
+   pending) the offer with it. One that runs longer, or ends with 0, is not said.
+4. **Tests:** iso/qt/host/wineold162_t.sh (30 checks: one account, several, too little room, a copy cut off, a running Windows
+   program, links planted on either side, launchers only, declined, the portal's answer, rudolf-debian's message) and
+   iso/qt/shell2/wineold162_t.js (28: the message and the offer on Chromium, Lite and Native's hidden page, several accounts, room,
+   Settings, System health, the notice once); workflow wineold-check.yml on pull requests touching them.
+   rudolfd's requests: wine/old and wine/decline start nothing (narrow); wine/bring starts the copy (confinepure.py, winapi.py).
+
+**Left for later:** the copy moves into the accounts helper (rudolf-accounts.c) when Part 11 drops rudolfd's root (it needs to read
+as uid 1000 and write as the account's user); the native Settings (Part 39) carries the two rows (Apps › Linux, System health) when
+those panels are done; no Cancel while copying (it can be cut off and started again); one prefix whole, not program by program.
+
+**The owner's checklist (Vivobook):**
+1. Starport GE starts from its icon (after the hand copy of 2026-11-23).
+2. After the owner's remaining copy of Wine's launchers and icons (~/.local, ~/.config): Starport GE's own entry in the Start menu,
+   with its icon. (If they are not copied by hand, the offer now brings them: Settings › Apps › Linux, "Bring them in…".)
+3. A second, test account (standard): signed in, the offer comes once, says how many programs (no names) and that an administrator
+   decides; Bring them in asks for the administrator's name and password (a wrong one refused); then Starport GE starts in that
+   account too. Remove the test account afterwards.
+4. A deliberately broken launcher (for example a copy of starport-ge's launcher whose cd names a folder that is not there): a click
+   shows "... did not start" with the log's last line, on Native, Chromium and Lite.
+5. (Optional) the time of /home/acct1001/.wine.fresh-20261123/system.reg's making, in UTC: about 08:30 UTC on 2026-11-22 is the Wine
+   Notepad test.
+
 ### The checks made green (added on 2026-11-23)
 
 The owner's item of 2026-11-22: the seven checks that had been red for days, each case found to be the test or a real bug,
@@ -1203,3 +1271,4 @@ out sunrise and sunset from the time zone's city, so the two engines disagree ar
 15. Part 37 (the side taskbar's pop-ups and menus): one PR; the owner's look on the Vivobook.
 16. Part 38 (smaller pages for app windows): the measurements, then Task Manager in one PR, then the simple apps one at a time.
 17. Part 39 (native apps for Rudolf OS too): librudolf-ui, then native Task Manager in 1.6.2; Settings and the Office apps after.
+18. Part 40 (Windows programs from before 1.5.9, no silent failure): one PR; then the owner's checklist on the Vivobook.

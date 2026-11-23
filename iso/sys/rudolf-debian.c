@@ -850,6 +850,49 @@ static void titlebar_ask(const char *id)
 	}
 	int st; waitpid(c, &st, 0);
 }
+/* 1.6.2 (docs/plan-1.6.2.md Part 40, the owner's Vivobook on 2026-11-23: Starport GE's launcher could not find its folder, which
+   was in the Wine prefix from before 1.5.9, and nothing at all was shown): a program that ends within LR_QUICK seconds of starting
+   with an error (an exit status other than 0, or a signal) is said, as a request of the desktop portal's that waits for no
+   answer ("lxfail-...", kind "lxfail": rudolfd's portal/poll hands it to the page, Chromium's and Lite's desktop page or the
+   native desktop's hidden page, which shows the message, linux26.js and wineold62.js): the program's name, how it ended, the
+   last lines of its log (RUND/ID.log; Wine's "fixme:" lines left out), whether it is a Windows program, and a folder of the
+   Wine prefix it names (its launcher's Path=, or the first /home/rudolf/.wine/... in those lines), which rudolfd checks against
+   the prefix from before 1.5.9 (rudolfd-wineold.inc). One that runs longer, or ends with 0, is not said. */
+#ifndef LR_DIR
+#define LR_DIR "/run/rudolf/portal/req"
+#endif
+#define LR_QUICK 10
+static void launch_report(const char *id, const desk *k, int status, double secs, const char *log)
+{
+	if (!status || secs > LR_QUICK) return;
+	char *t = slurp(log, NULL); char lines[4][300]; int nl = 0; const char *wdir = NULL; char dir[400] = "";
+	if (t) {
+		/* the last 3 lines that say something */
+		char *e = t + strlen(t);
+		while (e > t && nl < 3) {
+			while (e > t && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ')) *--e = 0;
+			char *b = e; while (b > t && b[-1] != '\n') b--;
+			if (*b && strncmp(b, "fixme:", 6) && !strstr(b, ":fixme:")) snprintf(lines[nl++], sizeof lines[0], "%s", b);   /* (Wine's: "0024:fixme:...") */
+			e = b; if (e > t) *--e = 0;
+		}
+	}
+	int wine = strstr(k->exec, "wine") || strstr(k->exec, ".exe") || strstr(k->path, "/.wine/");
+	for (int i = 0; i < nl && !wine; i++) if (strstr(lines[i], "/.wine/") || strstr(lines[i], "wine:")) wine = 1;
+	if (!strncmp(k->path, "/home/rudolf/.wine/", 19)) wdir = k->path;
+	for (int i = nl - 1; i >= 0 && !wdir; i--) { char *w = strstr(lines[i], "/home/rudolf/.wine/"); if (w) wdir = w; }
+	if (wdir) { snprintf(dir, sizeof dir, "%s", wdir); dir[strcspn(dir, "\"':\n")] = 0; size_t l = strlen(dir); while (l && (dir[l - 1] == ' ' || dir[l - 1] == '/')) dir[--l] = 0; if (strstr(dir, "..")) dir[0] = 0; }
+	mkdirs("/run/rudolf/portal", 0755); if (!mkdir(LR_DIR, 01733)) chmod(LR_DIR, 01733);   /* (as rudolfd makes it: anyone may add, only the owner changes) */
+	char p[300], tp[320]; snprintf(p, sizeof p, LR_DIR "/lxfail-%ld-%d.json", (long)time(NULL), (int)getpid()); snprintf(tp, sizeof tp, "%s.tmp", p);
+	FILE *f = fopen(tp, "w"); if (!f) { free(t); return; }
+	fprintf(f, "{\"kind\":\"lxfail\",\"app\":"); jstr(f, id); fprintf(f, ",\"name\":"); jstr(f, k->name);
+	fprintf(f, ",\"status\":%d,\"secs\":%.1f,\"wine\":%s,\"dir\":", status, secs, wine ? "true" : "false"); jstr(f, dir);
+	fprintf(f, ",\"log\":"); jstr(f, log); fprintf(f, ",\"lines\":[");
+	for (int i = nl - 1; i >= 0; i--) { jstr(f, lines[i]); if (i) fputc(',', f); }
+	fprintf(f, "]}\n"); int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); free(t); return; }
+	/* (the request file appears whole: rudolfd lists only *.json) */
+	if (rename(tp, p)) unlink(tp);
+	free(t);
+}
 static int cmd_launch(const char *id, const char *file)
 {
 	for (const char *c = id; *c; c++) if (!isalnum((unsigned char)*c) && !strchr("._-+", *c)) die("bad app id");
@@ -881,12 +924,16 @@ static int cmd_launch(const char *id, const char *file)
 	pid_t d = fork(); if (d) { printf("started\n"); return 0; }
 	setsid();
 	/* 1.4.9: in the launcher's own folder (Path=), as Windows programs' launchers and updaters expect */
+	struct timespec t0, t1; clock_gettime(CLOCK_MONOTONIC, &t0);
 	pid_t c = enter(0, k.path[0] == '/' && !strstr(k.path, "..") ? k.path : "/home/rudolf");
 	if (!c) {
 		int nul = open("/dev/null", O_RDWR); dup2(nul, 0); if (lf >= 0) { dup2(lf, 1); dup2(lf, 2); }
 		execvp(argv[0], argv); fprintf(stderr, "%s: %s\n", argv[0], strerror(errno)); _exit(127);
 	}
-	int st; waitpid(c, &st, 0); _exit(0);
+	int st; waitpid(c, &st, 0); clock_gettime(CLOCK_MONOTONIC, &t1);
+	if (lf >= 0) close(lf);
+	launch_report(id, &k, WIFEXITED(st) ? WEXITSTATUS(st) : 128 + WTERMSIG(st), (t1.tv_sec - t0.tv_sec) + (t1.tv_nsec - t0.tv_nsec) / 1e9, log);   /* (1.6.2 Part 40) */
+	_exit(0);
 }
 
 /* ------------------------------------------------------------------ the account's folders (1.5.6) */

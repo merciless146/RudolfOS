@@ -1497,6 +1497,8 @@ static void api_portal(struct req *r, const char *what)
 		snprintf(id, sizeof id, "%s", iq);
 		if (r->blen < 2 || r->blen > 65536 || r->body[0] != '{') { reply_err(r->fd, 400, "bad answer"); return; }
 		char f[300], t[320], q[300]; snprintf(f, sizeof f, PORTALD "/resp/%s.json", id); snprintf(t, sizeof t, "%s.tmp", f); snprintf(q, sizeof q, PORTALD "/req/%s.json", id);
+		/* (1.6.2 Part 40: a program's message that it did not start, left by rudolf-debian, waits for nobody's answer: only taken away) */
+		if (!strncmp(id, "lxfail-", 7)) { unlink(q); reply_ok(r->fd, "ok"); return; }
 		/* (1.6.0: the answer may hold a password (the keyring's prompts): only for the user whose portal asked, the owner
 		   of its question, 0600) */
 		unlink(t); int fd = open(t, O_WRONLY | O_CREAT | O_EXCL | O_TRUNC | O_CLOEXEC, 0600); struct stat st; unsigned ou = 1000, og = 1000; if (!stat(q, &st)) { ou = st.st_uid; og = st.st_gid; }
@@ -4577,6 +4579,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
 #include "rudolfd-bring.inc"     /* 1.6.2: Bring your files, the installer's step (plan-1.6.2 Part 27) */
 #include "rudolfd-shares.inc"    /* 1.6.2: network shares in File Explorer (plan-1.6.2 Part 35) */
+#include "rudolfd-wineold.inc"   /* 1.6.2: the Windows programs from before 1.5.9, brought into the account (plan-1.6.2 Part 40) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -4784,6 +4787,10 @@ static void api(struct req *r)
 	if (!strcmp(p, "net")) { api_net(r); return; }
 	if (!strcmp(p, "vpn")) { api_vpn(r, "", post); return; }   /* 1.6.2 (plan-1.6.2 Part 33: rudolfd-vpn.inc) */
 	if (!strncmp(p, "vpn/", 4)) { api_vpn(r, p + 4, post); return; }
+	/* 1.6.2 (plan-1.6.2 Part 40: rudolfd-wineold.inc): what there is and "don't ask again" start nothing (narrow); the copy is a child */
+	if (!strcmp(p, "wine/old")) { api_wineold_old(r, post); return; }
+	if (!strcmp(p, "wine/decline")) { api_wineold_decline(r, post); return; }
+	if (!strcmp(p, "wine/bring")) { api_wineold_bring(r, post); return; }
 	/* 1.5.8 (plan 6.3): metered connections (/usr/lib/rudolf/netplug). GET: the connection in use, metered or not and
 	   why, this month's data on it. POST if=IF&v=on|off|auto: metered by hand for that network, or automatic again */
 	/* 1.5.9 (plan Part 4): Share this connection. GET net/hotspot: the state; POST net/hotspot?on=0: off; POST with a
