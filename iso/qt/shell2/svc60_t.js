@@ -62,7 +62,10 @@ const runs = (l, m) => l.filter(h => h.mod == m && h.run).length;
   ok('7. ...no heartbeat from it (the shell has its own)', !M.calls.some(c => c.t > t1 && c.c == 'POST heartbeat'), M.calls.filter(c => c.t > t1).map(c => c.c));
   await p.close();
   p = await open('#app=browser', NAT); await wait(2500); l = await p.evaluate('__svcList()');
-  ok('8. Oracle\'s window: its own (its real tabs, dark pages, the bookmarks bar) run there', runs(l, 'tabs26.js') == 1 && runs(l, 'web46.js') == 1 && runs(l, 'apps25b.js') == 0, l.filter(h => h.run).map(h => h.mod));
+  // (tabs26.js has two since #504: the tabs' own tick (rtFw) and, at Oracle's start, the websites listed while it was closed cleared
+  //  (__oaWebClearIn))
+  const rt = l.filter(h => h.run && h.mod == 'tabs26.js');
+  ok('8. Oracle\'s window: its own (its real tabs, the websites cleared at its start, dark pages, the bookmarks bar) run there', rt.length == 2 && rt.some(h => /rtFw/.test(h.f)) && rt.some(h => /rtOn\(\)/.test(h.f)) && runs(l, 'web46.js') == 1 && runs(l, 'apps25b.js') == 0, l.filter(h => h.run).map(h => h.mod + ' ' + h.f.slice(0, 40)));
   await p.close();
   // ---- the service page
   const hm = d => String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');

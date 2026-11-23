@@ -3,7 +3,7 @@
 # installed (slot a on an NVMe drive with RUDOLFDATA), UEFI with Secure Boot off and OVMF measuring into the TPM, with a
 # kernel that has the TPM's driver (KERNEL: a folder with vmlinuz and modules.sfs built from this tree's kconfig.sh; the
 # release's kernel has none, so the check says so and stops). This tree's rudolf-webkey and session are on a disk of their
-# own (WK161FIX); the session's own webkey_start is what runs. Checks: the TPM seen, its PCR 7 measured by the firmware;
+# own (WK161FIX); the session's own webkey_start is what runs (the release's, started at the start, ended first). Checks: the TPM seen, its PCR 7 measured by the firmware;
 # webkey_start: a new key (the first time), Chromium's key store on the desktop's session bus, PWSTORE kwallet6, rudolfd's
 # webkey saying so; the release's own Chromium, as the desktop's user, keeping a cookie as v11 and reading it back; the
 # key store unreachable for an account's own Linux user; a restart: the same key, the cookie still read; Secure Boot's
@@ -119,10 +119,23 @@ if ! mountpoint -q /usr/bin/rudolfd; then cp /tmp/fx/rudolfd $X/rudolfd; chmod 7
   for i in $(seq 1 20); do busybox wget -q -O /dev/null http://127.0.0.1:8080/favicon.png 2>/dev/null || break; sleep 0.5; done
   (setsid /usr/bin/rudolf-rootd /usr/bin/rudolfd >> /run/rudolf/rudolfd.log 2>&1 < /dev/null &)
   for i in $(seq 1 60); do busybox wget -q -O /dev/null http://127.0.0.1:8080/favicon.png 2>/dev/null && break; sleep 1; done; fi
+# the release's own session (1.6.1 and on: r2026112111, #533) runs its webkey_start at the start: its key store holds the
+# desktop's bus names, so this tree's webkey_start (the one tested) would find them taken ("the key store did not start").
+# Once the release's has answered (webkey.json), its key store is ended and the sealed file put back as this tree's
+# webkey_start left it at the previous start (none before the first), so what is checked is this tree's alone.
+if [ ! -e $X/boot-done ]; then : > $X/boot-done
+  i=0; while [ $i -lt 120 ] && [ ! -e /run/rudolf/webkey.json ]; do sleep 1; i=$((i+1)); done
+  echo "the release's webkey at the start: $(cat /run/rudolf/webkey.json 2>/dev/null)"; pgrep -f '^/usr/bin/rudolf-webkey wallet$' >/dev/null && echo "the release's key store: running"
+  pkill -f '^/usr/bin/rudolf-webkey wallet$'; i=0; while [ $i -lt 20 ] && pgrep -f '^/usr/bin/rudolf-webkey wallet$' >/dev/null; do sleep 0.5; i=$((i+1)); done
+  pgrep -f '^/usr/bin/rudolf-webkey wallet$' >/dev/null && echo "the release's key store did not end"
+  rm -f /run/rudolf/webkey.json
+  if [ -e /persist/etc/rudolf-webkey/sealed.wk161 ]; then cp -p /persist/etc/rudolf-webkey/sealed.wk161 /persist/etc/rudolf-webkey/sealed; else rm -f /persist/etc/rudolf-webkey/sealed; fi; fi
 '''
 START = r'''
 set -a; . /run/rudolf/session.env; set +a; PROFILE=/home/rudolf/.wk161-prof; mkdir -p $PROFILE; chown rudolf:rudolf $PROFILE
 . /run/wk161/wk.sh; webkey_start; echo "PWSTORE=$PWSTORE WKPID=$WKPID"; cat /run/rudolf/webkey.json; cat /run/rudolf/webkey.err 2>/dev/null | tail -2
+[ "$PWSTORE" = kwallet6 ] || tail -3 /run/rudolf/webkey.log 2>/dev/null
+[ -e /persist/etc/rudolf-webkey/sealed ] && cp -p /persist/etc/rudolf-webkey/sealed /persist/etc/rudolf-webkey/sealed.wk161
 '''
 def chrome(store, page):
     return (f"set -a; . /run/rudolf/session.env; set +a; su -s /bin/sh rudolf -c \"timeout 120 /opt/chromium/chrome --headless=new --no-sandbox --user-data-dir=/home/rudolf/.wk161-prof "
@@ -141,7 +154,7 @@ try:
             ok('1. the kernel has the TPM driver (/dev/tpmrm0)' + ('' if KERNEL else ': the release\'s kernel has none (KERNEL: one built from this tree)'), False, o)
             raise SystemExit
         ok('1. the kernel has the TPM driver: /dev/tpmrm0, root\'s only', re.search(r'crw-------.*root.*/dev/tpmrm0', o) or re.search(r'crw-rw----\s+\d+ root\s+(root|tss).*/dev/tpmrm0', o), o)
-        o = run(g, SETUP + "\n/run/wk161/rudolf-webkey status", 60); st = re.search(r'\{"tpm":true.*\}', o)
+        o = run(g, SETUP + "\n/run/wk161/rudolf-webkey status", 220); st = re.search(r'\{"tpm":true.*\}', o)
         ok("2. rudolf-webkey sees a TPM 2.0; the firmware measured Secure Boot's state into PCR 7", st and '"family":"2.0"' in o and not re.search(r'"pcr7":"0{64}"', o), o[-600:])
         P7A = re.search(r'"pcr7":"([0-9a-f]{64})"', o); P7A = P7A.group(1) if P7A else ''
         o = run(g, START, 120)
@@ -161,7 +174,7 @@ try:
         # a restart: the same key
         vm, g, up = boot('b', VARS0)
         if up:
-            run(g, SETUP, 60); o = run(g, START, 120)
+            run(g, SETUP, 220); o = run(g, START, 120)
             ok('6. after a restart (Secure Boot as it was): the same key, nothing new said, the cookie still read', 'PWSTORE=kwallet6' in o and '"why":""' in o, o)
             o = run(g, chrome('kwallet6', 'show.html'), 200); ok('...the cookie still read', 'cookie=[sid=kept-under-the-tpm]' in o, o)
             stop(vm, g)
@@ -170,7 +183,7 @@ try:
         if HAVE_KEYS:
             vm, g, up = boot('c', VARSK)
             if up:
-                o = run(g, SETUP + "\n/run/wk161/rudolf-webkey status", 60); P7C = re.search(r'"pcr7":"([0-9a-f]{64})"', o)
+                o = run(g, SETUP + "\n/run/wk161/rudolf-webkey status", 220); P7C = re.search(r'"pcr7":"([0-9a-f]{64})"', o)
                 o2 = run(g, START, 120)
                 ok("7. the firmware's Secure Boot keys changed (Microsoft's enrolled): PCR 7 differs, a new key, said why", P7C and P7C.group(1) != P7A and 'PWSTORE=kwallet6' in o2 and "Secure Boot's measurements changed" in o2, [P7A, o, o2])
                 o = run(g, "tail -4 /persist/var/log/health.log 2>/dev/null; " + api_webkey(), 30)
@@ -184,7 +197,7 @@ try:
         # no TPM
         vm, g, up = boot('d', VARS0, tpm=False)
         if up:
-            run(g, SETUP, 60); o = run(g, START, 120)
+            run(g, SETUP, 220); o = run(g, START, 120)
             ok("9. no TPM: Chromium's built-in key (basic), said in rudolfd's webkey and the health log", 'PWSTORE=basic' in o and '"state":"none"' in o, o)
             o = run(g, "tail -2 /persist/var/log/health.log", 30); ok('...the health log says so', 'has no TPM 2.0' in o, o)
             stop(vm, g)
