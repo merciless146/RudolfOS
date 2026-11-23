@@ -742,6 +742,11 @@ fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, a
    share, a wrong password, a share of another account not seen. **The owner's check:** a share on a Windows computer or a
    NAS at home, if there is one.
 
+**Status (2026-11-23, the scheduled task):** step 1 (PR "Network shares, step 1"): CIFS a signed module in iso/kconfig.sh
+(SMB 2.1 and 3 only: CIFS_ALLOW_INSECURE_LEGACY off, so the kernel itself has no SMB 1 or 2.0; no upcalls, RDMA, cache or key
+dump; no SMB server), in iso/kconfig-required.txt; .github/workflows/shares-check.yml builds this tree's kernel and checks the
+module (iso/qt/host/cifsmod62_t.sh: signed, SHA-256, no device alias, so it is loaded only when a share is mounted).
+
 ### 36. Desert Camp, the third moving background (added on 2026-11-22)
 The owner, 2026-11-22: a third dynamic background in Display Properties: an open desert with sparse dry foliage and a few tents
 across it, one in front; light mode a bright orange mirage sunrise (the mirage animated, the campfires smoking); dark mode the

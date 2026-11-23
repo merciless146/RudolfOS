@@ -1,0 +1,30 @@
+# 1.6.2 (docs/plan-1.6.2.md Part 35): network shares in File Explorer. Step 1, the kernel's SMB client: the module job builds
+# this tree's kernel (iso/systools/testkernel.sh: the stable release's Linux 6.18.y with kconfig.sh as it is; kept as this
+# run's artifact only) and checks the SMB client in it (iso/qt/host/cifsmod62_t.sh: a signed module, SMB 2.1 and 3 only, no
+# server). Run by a push that changes .github/shares62-run.txt, or iso/kconfig.sh with this workflow. Nothing is published.
+name: Network shares check
+on:
+  push:
+    paths: ['.github/shares62-run.txt', '.github/workflows/shares-check.yml']
+permissions: {contents: read}
+jobs:
+  module:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bc flex bison libelf-dev libssl-dev squashfs-tools kmod >/dev/null
+      - name: This tree's kernel (the release's Linux 6.18.y, kconfig.sh as it is; an artifact of this run only)
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
+          S=$(date +%s); cd iso && OUT=$PWD/../kout bash systools/testkernel.sh; echo "built in $(( $(date +%s) - S )) s"
+      - name: The SMB client (cifsmod62_t.sh)
+        run: |
+          M=$(ls -d iso/work-test/mods/lib/modules/*); sh iso/qt/host/cifsmod62_t.sh kout/config.txt "$M" | tee cifsmod62.txt
+          echo "::notice title=SMB client::$(tail -1 cifsmod62.txt), $(du -k $(find "$M" -name 'cifs.ko*') | cut -f1) KB"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: shares62-kernel, retention-days: 7, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\ncifsmod62.txt"}

@@ -48,6 +48,16 @@ y DRM_AMDGPU_SI DRM_AMDGPU_CIK DRM_AMD_DC DRM_NOUVEAU_SVM
 # kernel since 1.5.9, missing here until the list below found it)
 y FUSE_FS
 y SQUASHFS SQUASHFS_XZ SQUASHFS_ZLIB SQUASHFS_FILE_DIRECT ISO9660_FS JOLIET ZISOFS OVERLAY_FS EXT4_FS VFAT_FS MSDOS_FS EXFAT_FS NTFS3_FS TMPFS DEVTMPFS DEVTMPFS_MOUNT NLS_CODEPAGE_437 NLS_ISO8859_1 NLS_UTF8 FAT_DEFAULT_UTF8 UDF_FS
+# 1.6.2 (docs/plan-1.6.2.md Part 35): File Explorer's network shares (Windows computers, NAS boxes): the kernel's SMB client
+# (CIFS) as a module, signed as every module is (MODULE_SIG_ALL, MODULE_SIG_FORCE), loaded by the kernel itself only when a
+# share is opened (the mount of type cifs asks modprobe for fs-cifs), never at start. SMB 3 by default, SMB 2.1 when asked
+# for a share (rudolfd's drives helper says which); SMB 1 and SMB 2.0 never: built without the insecure legacy dialects, so
+# the kernel itself refuses vers=1.0 and 2.0. No Kerberos or DFS upcalls (no cifs.upcall program), no witness, no RDMA, no
+# cache, no session keys in the log; and no SMB server (ksmbd): Rudolf OS serves no share, it is a client only
+SHARESM="CIFS"
+SHARESN="CIFS_ALLOW_INSECURE_LEGACY CIFS_UPCALL CIFS_DFS_UPCALL CIFS_SWN_UPCALL CIFS_SMB_DIRECT CIFS_FSCACHE CIFS_ROOT CIFS_DEBUG2 CIFS_DEBUG_DUMP_KEYS CIFS_POSIX CIFS_NFSD_EXPORT SMB_SERVER"
+m $SHARESM
+n $SHARESN
 # storage
 y BLK_DEV_LOOP BLK_DEV_SR CDROM ATA SATA_AHCI ATA_PIIX ATA_GENERIC PATA_AMD PATA_OLDPIIX BLK_DEV_NVME SCSI BLK_DEV_SD USB_STORAGE USB_UAS MMC MMC_BLOCK MMC_SDHCI MMC_SDHCI_PCI MMC_SDHCI_ACPI MMC_REALTEK_PCI MISC_RTSX_PCI VIRTIO VIRTIO_PCI VIRTIO_BLK SCSI_VIRTIO VIRTIO_NET VIRTIO_INPUT
 # USB and input
@@ -268,6 +278,9 @@ for o in ANDROID_BINDER_IPC ANDROID_BINDERFS; do grep -q "^CONFIG_$o=y$" .config
 for o in $AMDPMY; do grep -q "^CONFIG_$o=y$" .config || { echo "kconfig.sh: the sleep option $o is not on after olddefconfig (a dependency is missing)"; exit 1; }; done
 for o in $AMDPMM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the power driver $o is not a module after olddefconfig (a dependency is missing)"; exit 1; }; done
 grep -q "^CONFIG_PSI_DEFAULT_DISABLED=y" .config && { echo "kconfig.sh: PSI is off by default"; exit 1; }
+# 1.6.2 (Part 35): the SMB client a module, without SMB 1 and 2.0 and without a server
+for o in $SHARESM; do grep -q "^CONFIG_$o=m$" .config || { echo "kconfig.sh: the SMB client $o is not a module after olddefconfig"; exit 1; }; done
+for o in $SHARESN; do grep -qE "^CONFIG_$o=(y|m)$" .config && { echo "kconfig.sh: $o is on: Rudolf OS's SMB client is SMB 2.1 and 3 only, without upcalls, and Rudolf OS serves no share"; exit 1; }; done
 # 1.6.1 (plan-1.6.1.md Part 12): every kernel feature Rudolf OS's programs and security rely on, each with who needs it
 # (iso/kconfig-required.txt): a tuning change that drops one stops here, by name
 sh "$KDIR/systools/kreq.sh" "$KDIR/kconfig-required.txt" .config

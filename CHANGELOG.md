@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Kernel: the SMB client for network shares (Windows computers and NAS boxes, 1.6.2 Part 35) is built in as a signed module, loaded
+  only when a share is opened. It speaks SMB 3 (and SMB 2.1 when asked for a share), never the old SMB 1 or 2.0, and Rudolf OS
+  serves no share.
 - New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
   tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
   night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same
