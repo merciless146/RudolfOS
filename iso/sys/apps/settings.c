@@ -124,6 +124,7 @@ static PangoLayout *lay(PangoContext *pc, const char *t, double px, int wt, doub
 				p = *e ? e + 1 : e; continue; }
 			g_string_append_c(o, *p++); }
 		pango_layout_set_text(l, o->str, -1); pango_layout_set_attributes(l, al); pango_attr_list_unref(al); g_string_free(o, TRUE); }
+	else if (t && t[0] == '\x03') pango_layout_set_markup(l, t + 1, -1);   /* (\x03: the rest is Pango's markup: the page's <b>, <i>) */
 	else pango_layout_set_text(l, t ? t : "", -1);
 	if (ls) { PangoAttrList *al = pango_attr_list_new(); pango_attr_list_insert(al, pango_attr_letter_spacing_new((int)lround(ls * px * RUI.z * PANGO_SCALE))); pango_layout_set_attributes(l, al); pango_attr_list_unref(al); }
 	if (w > 0) { pango_layout_set_width(l, (int)(w * RUI.z * PANGO_SCALE)); pango_layout_set_wrap(l, PANGO_WRAP_WORD_CHAR); }
@@ -180,7 +181,7 @@ static gboolean state_write(gpointer d)
 {
 	(void)d; const char *f = getenv("RUDOLF_SET_STATE"); if (!f || !SW) return G_SOURCE_REMOVE;
 	GString *s = g_string_new(NULL); state_more(s);
-	if (NAMED) { GHashTableIter it; gpointer k, v; g_hash_table_iter_init(&it, NAMED); while (g_hash_table_iter_next(&it, &k, &v)) rect_line(s, k, v); }
+	if (NAMED) { GHashTableIter it; gpointer k, v; g_hash_table_iter_init(&it, NAMED); while (g_hash_table_iter_next(&it, &k, &v)) { rect_line(s, k, v); if (g_object_get_data(G_OBJECT(v), "set-sel")) g_string_append_printf(s, "sel %s %s\n", (char *)k, s_select_get(v)); } }
 	GtkWidget *m = rui_menu_window(); if (m && gtk_widget_get_mapped(m)) { int x, y; gdk_window_get_origin(gtk_widget_get_window(m), &x, &y); g_string_append_printf(s, "menu %d %d %d %d\n", x, y, gtk_widget_get_allocated_width(m), gtk_widget_get_allocated_height(m)); }
 	GtkWidget *dl = rui_dialog_box(); if (dl) rect_line(s, "dialog", dl);
 	if (NOTES) g_string_append(s, NOTES->str);
@@ -192,10 +193,10 @@ void set_state_soon(void) { if (getenv("RUDOLF_SET_STATE") && !STATE_ID) STATE_I
 void set_notify(const char *title, const char *body, int error) { rui_notify(title, body, error); set_note("notify %s | %s", title, body ? body : ""); }
 
 /* ================================================================== the page: blocks laid out as the page's CSS lays them out */
-enum { I_H3, I_H4, I_SGRP, I_MSG, I_R2, I_BTNS, I_BLOCK, I_SPACE };
+enum { I_H3, I_H4, I_SGRP, I_MSG, I_R2, I_BTNS, I_BLOCK, I_SPACE, I_CUSTOM, I_CHECK };
 typedef struct { int k; GtkWidget *w; double gap, dy, mt, mb; int full; char *text; int grey, weight; double x, y, wd, h; GtkWidget *bt[8]; int nb; } CItem;   /* k: 0 a control, 1 a line break, 2 .msg, 3 writing, 4 label.ck, 5 .rmrow, 6 pre */
 struct Cell { char *label; GPtrArray *items; int more; double lx, ly, lw, lh, y, h; };
-typedef struct { int k; char *text; int grey; double mt, mb, x, y, w, h; GtkWidget *wg; Cell *cell; GtkWidget *btn[8]; int nb; } Item;
+typedef struct { int k; char *text; int grey; double mt, mb, x, y, w, h; GtkWidget *wg; Cell *cell; GtkWidget *btn[8]; int nb; double minh; double (*lay)(void *d, double x, double y, double w); void *ld; } Item;
 static GPtrArray *ITEMS; static GtkWidget *FX, *SCR, *FOOT, *FOOTST, *FOOTB[3], *AREA, *OUTER, *SIDE, *SBAR, *SQ, *DD; static int (*FDIRTY)(void); static SetFoot FACT; static double FX_W = 587;
 static char CUR[16];
 static void item_free(gpointer p) { Item *i = p; g_free(i->text); if (i->cell) { g_free(i->cell->label); for (guint k = 0; k < i->cell->items->len; k++) g_free(((CItem *)g_ptr_array_index(i->cell->items, k))->text); g_ptr_array_unref(i->cell->items); g_free(i->cell); } g_free(i); }
@@ -237,7 +238,17 @@ GtkWidget *p_buttons(const char *const *labels, int n, GCallback *cbs, void *d)
 }
 void p_block(GtkWidget *w, double mt, double mb) { Item *i = add_item(I_BLOCK, NULL, mt, mb); i->wg = w; gtk_fixed_put(GTK_FIXED(FX), w, 0, 0); }
 void p_space(double mt) { add_item(I_SPACE, NULL, mt, 0); }
+GtkWidget *p_msg_m(const char *t, int grey, double mt, double mb) { GtkWidget *w = p_msg(t, grey); Item *i = g_object_get_data(G_OBJECT(w), "set-item"); i->mt = mt; i->mb = mb; return w; }
+GtkWidget *p_check(const char *t, int on, void (*cb)(int, void *), void *d) { Item *i = add_item(I_CHECK, t, 0, 0); i->wg = rui_check(t, on, cb, d); gtk_fixed_put(GTK_FIXED(FX), i->wg, 0, 0); return i->wg; }
+GtkWidget *p_buttons_h(const char *const *labels, int n, GCallback *cbs, void *d, double minh) { GtkWidget *b = p_buttons(labels, n, cbs, d); Item *i = g_ptr_array_index(ITEMS, ITEMS->len - 1); i->minh = minh; return b; }
+void p_custom(double (*lay)(void *d, double x, double y, double w), void *d, double mt, double mb) { Item *i = add_item(I_CUSTOM, NULL, mt, mb); i->lay = lay; i->ld = d; }
+void p_put(GtkWidget *w) { gtk_fixed_put(GTK_FIXED(FX), w, 0, 0); gtk_widget_show_all(w); }
+void p_place(GtkWidget *w, double x, double y, double wd, double h) { if (wd > 0 || h > 0) gtk_widget_set_size_request(w, wd > 0 ? R(wd) : -1, h > 0 ? R(h) : -1); gtk_fixed_move(GTK_FIXED(FX), w, R(x), R(y)); }
+double p_nat_w(GtkWidget *w);
+double p_nat_h(GtkWidget *w);
 static double nat_w(GtkWidget *w) { int m, n; gtk_widget_get_preferred_width(w, &m, &n); return n / Z(); }
+double p_nat_w(GtkWidget *w) { int m, n; gtk_widget_get_preferred_width(w, &m, &n); return n / Z(); }
+double p_nat_h(GtkWidget *w) { int m, n; gtk_widget_get_preferred_height(w, &m, &n); return n / Z(); }
 static double nat_h(GtkWidget *w, double wd) { int m, n; if (wd > 0) gtk_widget_get_preferred_height_for_width(w, R(wd), &m, &n); else gtk_widget_get_preferred_height(w, &m, &n); return n / Z(); }
 static void place(GtkWidget *w, double x, double y, double wd, double h)
 {
@@ -291,8 +302,10 @@ static void lay_all(void)
 			double ch = cell_lay(c, x0 + lw + gap, y, W - lw - gap); double h = fmax(c->lh, ch);
 			if (ch < h) { /* (align-items: center: the cell in the middle of a taller label) */ double dy = (h - ch) / 2; for (guint q = 0; q < c->items->len; q++) { CItem *it = g_ptr_array_index(c->items, q); if (it->w && it->k != 1) { it->y += dy; gtk_fixed_move(GTK_FIXED(FX), it->w, R(it->x), R(it->y)); } } }
 			c->lx = x0; c->ly = y + (h - c->lh) / 2; c->lw = lw; c->y = y; c->h = h; i->h = h; i->mb = c->more ? gap : LK->r2_mb[0]; break; }
-		case I_BTNS: { double bx = x0, bh = 0; for (int b = 0; b < i->nb; b++) { double bw = nat_w(i->btn[b]), h = nat_h(i->btn[b], bw); place(i->btn[b], bx, y, 0, 0); bx += bw + LK->rmrow_gap[0]; bh = fmax(bh, h); } i->h = bh; break; }
+		case I_BTNS: { double bx = x0, bh = 0; for (int b = 0; b < i->nb; b++) { double bw = nat_w(i->btn[b]), h = fmax(i->minh, nat_h(i->btn[b], bw)); if (i->minh > 0) { int ow, oh; gtk_widget_get_size_request(i->btn[b], &ow, &oh); gtk_widget_set_size_request(i->btn[b], ow, R(h)); } place(i->btn[b], bx, y, 0, 0); bx += bw + LK->rmrow_gap[0]; bh = fmax(bh, h); } i->h = bh; break; }
 		case I_BLOCK: { double h = nat_h(i->wg, W); place(i->wg, x0, y, W, 0); i->h = h; break; }
+		case I_CUSTOM: i->h = i->lay(i->ld, x0, y, W); break;
+		case I_CHECK: { double lh, h = ck_lines(i->text, W, &lh); i->h = fmax(19, h); rui_check_wrap(i->wg, W, i->h); place(i->wg, x0, y, 0, 0); break; }
 		default: i->h = 0;
 		}
 		y += i->h; pmb = i->mb;
@@ -507,7 +520,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "sys", page_sys }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "sys", page_sys }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;
@@ -746,6 +759,7 @@ static void harvest(void)
 	GPtrArray *o = g_ptr_array_new_with_free_func(harv_free); GHashTable *seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL); char *sec = g_strdup("");
 	for (guint k = 0; k < ITEMS->len; k++) { Item *i = g_ptr_array_index(ITEMS, k);
 		if (i->k == I_H4 || i->k == I_SGRP) { const char *orig = g_object_get_data(G_OBJECT(FX), "x") ? NULL : NULL; (void)orig; char *o2 = harv_clean(i->text ? i->text : ""); g_free(sec); sec = o2; if (!*sec) continue; harv_add(o, seen, i->text, "", 1); }
+		if (i->k == I_CHECK) harv_add(o, seen, i->text, sec, 0);
 		if (i->k == I_R2) { harv_add(o, seen, i->cell->label, sec, 0); for (guint q = 0; q < i->cell->items->len; q++) { CItem *it = g_ptr_array_index(i->cell->items, q); if (it->k == 4 || (it->k == 3 && it->weight == 1)) harv_add(o, seen, it->text, sec, 0); else if (it->k == 0 && g_object_get_data(G_OBJECT(it->w), "set-label")) harv_add(o, seen, g_object_get_data(G_OBJECT(it->w), "set-label"), sec, 0); } } }
 	g_free(sec); g_hash_table_unref(seen); if (LIVE[pi]) g_ptr_array_unref(LIVE[pi]); LIVE[pi] = o; set_state_soon();
 }
@@ -832,7 +846,7 @@ static gboolean win_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 }
 static void state_more(GString *s)
 {
-	g_string_append_printf(s, "page %s\nnative %d\ndirty %d\n", CUR, page_fn(CUR) != NULL, FDIRTY && FDIRTY());
+	g_string_append_printf(s, "page %s\nnative %d\ndirty %d\nscroll %.0f\n", CUR, page_fn(CUR) != NULL, FDIRTY && FDIRTY(), FX ? gtk_adjustment_get_value(fx_adj()) / Z() : 0);
 	if (FOOTST) g_string_append_printf(s, "foot %s\n", gtk_label_get_text(GTK_LABEL(FOOTST)));
 	if (FOOT) g_string_append_printf(s, "footen %d %d\n", gtk_widget_is_sensitive(FOOTB[0]), gtk_widget_is_sensitive(FOOTB[1]));
 	rect_line(s, "body", SW->body); rect_line(s, "search", SQ); rect_line(s, "side", SIDE); rect_line(s, "page", FX); if (DD && gtk_widget_get_visible(DD)) rect_line(s, "dd", DD);
@@ -847,6 +861,7 @@ static void state_more(GString *s)
 		for (guint k = 0; k < ITEMS->len; k++) { Item *i = g_ptr_array_index(ITEMS, k); if (i->k == I_R2) g_string_append_printf(s, "row %s|%d %d %d %d\n", i->cell->label, ox + x + R(i->x), oy + y + R(i->cell->y), R(i->w), R(i->cell->h)); } }
 	{ GtkWidget *f = gtk_window_get_focus(GTK_WINDOW(SW->win)); g_string_append_printf(s, "focus %s\n", f ? (f == SQ ? "search" : f == SIDE ? "side" : gtk_widget_get_name(f)) : "-"); if (SIDE_FOC >= 0) g_string_append_printf(s, "sidefoc %d\n", SIDE_FOC); }
 }
+static gboolean state_tick(gpointer d) { (void)d; set_state_soon(); return G_SOURCE_CONTINUE; }
 int main(int argc, char **argv)
 {
 	const char *start = argc > 1 && argv[1][0] != '-' ? argv[1] : "disp";
@@ -889,6 +904,7 @@ int main(int argc, char **argv)
 	snprintf(CUR, sizeof CUR, "%s", page_i(start) >= 0 ? start : "disp");
 	gtk_widget_show_all(SW->win); gtk_window_set_focus(GTK_WINDOW(SW->win), NULL);
 	page_build(); set_state_soon();
+	if (getenv("RUDOLF_SET_STATE")) g_timeout_add(400, state_tick, NULL);   /* (the tests: what shows written again often, a menu closed included) */
 	gtk_main(); return 0;
 }
 
@@ -963,3 +979,19 @@ void s_table2_add(GtkWidget *w, const char *a, const char *b)
 	Tab2 *t = g_object_get_data(G_OBJECT(w), "set-tab2"); g_ptr_array_add(t->a, g_strdup(a)); g_ptr_array_add(t->b, g_strdup(b ? b : ""));
 	double W = FX_W; tab2_cols(t, W); double h = 0; for (guint i = 0; i < t->a->len; i++) h += tab2_rowh(t, i, W); gtk_widget_set_size_request(w, -1, R(h));
 }
+
+/* ================================================================== drawing helpers for the pages' own blocks */
+void s_text(cairo_t *cr, const char *t, double x, double y, double px, int wt, double w, double lh) { text_draw(cr, t, x, y, px, wt, w, 0, lh > 0 ? lh : lh_of(px, wt)); }
+int s_lines(const char *t, double px, int wt, double w, double *tw) { return text_lines(t, px, wt, w, 0, tw); }
+double s_lh(double px, int wt) { return lh_of(px, wt); }
+void s_rrect(cairo_t *cr, double x, double y, double w, double h, double r) { rrect(cr, x, y, w, h, r); }
+/* the page's colours by name: fg (the writing), msg (a .msg's: grey in dark), grey (#6b7280), bd, bg2, th (.tmt th's), acr (.acr's line) */
+void s_col(cairo_t *cr, const char *w, double a)
+{
+	if (!strcmp(w, "fg")) fgc(cr, a); else if (!strcmp(w, "msg")) { if (RUI.dark) setc(cr, LK->msg_dark, a); else fgc(cr, a); }
+	else if (!strcmp(w, "grey")) { if (RUI.dark) setc(cr, LK->msg_dark, a); else cairo_set_source_rgba(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0, a); }
+	else if (!strcmp(w, "acr")) { if (RUI.dark) rui_color(cr, "bd", a); else cairo_set_source_rgba(cr, 0xee / 255.0, 0xf0 / 255.0, 0xf3 / 255.0, a); }
+	else if (!strcmp(w, "th")) { if (RUI.dark) cairo_set_source_rgba(cr, 0x1e / 255.0, 0x29 / 255.0, 0x3b / 255.0, a); else rui_color(cr, "bg2", a); }
+	else rui_color(cr, w, a);
+}
+double s_z(void) { return RUI.z; }

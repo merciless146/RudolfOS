@@ -116,6 +116,22 @@ B env RD_CELLULAR=/dev/null RD_TEST_ROOT=1 $T/rudolf-duel serve --port 8852 --co
 w8 "grep -q ok $T/b.log"
 o=$(run d6 GET "/api/duel/find?game=ember-reach" desk); o2=$(run x3 GET "/api/duel/find?game=ember-reach" no)
 ok "15. duel/find (as the account's user): the other computer's game, its address, code and version; refused to another program" "$([ "$(code "$o")" = 200 ] && echo "$o" | grep -q '"name":"Other PC","url":"ws://192.168.77.2:8852/","code":"XYZ789","ver":"0.5.2"' && [ "$(code "$o2")" = 403 ] && echo 1)" "$o / $o2"
+# (the Library's protocol 2) a co-op wing through the relay: the host's room of three, two guests seated, a third turned
+# away; the host's message to seat 2 reaches seat 2 only, and each guest's reaches the host marked with its seat
+B env RD_CELLULAR=/dev/null RD_TEST_ROOT=1 $T/rudolf-duel serve --port 8853 --code WNGHAN --v 0.6.0 --game ember-reach --name "Wing PC" --addr 192.168.77.2 --wait 30 > $T/w.log 2>&1 & PWS=$!; PIDS="$PIDS $PWS"
+w8 "grep -q ok $T/w.log"
+B env WS_PROTO=2 WS_SIZE=3 python3 $HERE/fixtures/wsduel.py ws://192.168.77.2:8853/ host - 0.6.0 $T/wh '{"t":"g","to":2,"k":"dm"}' & PWH=$!; PIDS="$PIDS $PWH"
+w8 "grep -q '\"t\":\"room\"' $T/wh 2>/dev/null"
+B env WS_PROTO=2 python3 $HERE/fixtures/wsduel.py ws://192.168.77.2:8853/ join WNGHAN 0.6.0 $T/w1 '{"t":"g","k":"in","x":"one"}' & PW1=$!; PIDS="$PIDS $PW1"
+w8 "grep -q '\"id\":1' $T/w1 2>/dev/null"
+B env WS_PROTO=2 python3 $HERE/fixtures/wsduel.py ws://192.168.77.2:8853/ join WNGHAN 0.6.0 $T/w2 '{"t":"g","k":"in","x":"two"}' & PW2=$!; PIDS="$PIDS $PW2"
+w8 "grep -q '\"id\":2' $T/w2 2>/dev/null"
+B env WS_PROTO=2 python3 $HERE/fixtures/wsduel.py ws://192.168.77.2:8853/ join WNGHAN 0.6.0 $T/w3 & PW3=$!; PIDS="$PIDS $PW3"
+w8 "grep -q '\"f\":1' $T/wh 2>/dev/null && grep -q '\"f\":2' $T/wh 2>/dev/null && grep -q '\"k\":\"dm\"' $T/w2 2>/dev/null && grep -q '\"why\":\"full\"' $T/w3 2>/dev/null"
+ok "15b. a co-op wing (protocol 2) through it: the host's room of three; two guests seated (1, 2) and the host told; a third turned away (full); the host's message to seat 2 reaches seat 2 only; each guest's reaches the host with its seat" "$(grep -q '"t":"room","code":"WNGHAN"' $T/wh && grep -q '"t":"joined","id":1' $T/wh && grep -q '"t":"joined","id":2' $T/wh && grep -q '"role":"guest","id":1,"size":3' $T/w1 && grep -q '"why":"full"' $T/w3 && grep -q '"k":"dm"' $T/w2 && ! grep -q '"k":"dm"' $T/w1 && grep -q '"f":1,"k":"in","x":"one"' $T/wh && grep -q '"f":2,"k":"in","x":"two"' $T/wh && echo 1)" "$(cat $T/wh | head -8) / $(head -3 $T/w1) / $(head -3 $T/w2) / $(cat $T/w3)"
+touch $T/w1.stop; w8 "grep -q '\"t\":\"left\",\"id\":1' $T/wh 2>/dev/null"
+touch $T/wh.stop; w8 "grep -q '\"t\":\"left\"}' $T/w2 2>/dev/null"
+ok "15c. ...a guest leaving: the host told which (1), the wing goes on; the host leaving: the others told, and the relay's work done" "$(grep -q '"t":"left","id":1' $T/wh && grep -q '"t":"left"}' $T/w2 && echo 1)" "$(tail -3 $T/wh) / $(tail -3 $T/w2)"
 o=$(run d7 POST "/api/duel/host?ver=%3Cb%3E&game=ember-reach" desk); o2=$(run d8 POST "/api/duel/host?ver=0.5.2" desk); o3=$(run d9 GET "/api/duel/host?ver=0.5.2&game=x" desk); o4=$(run d10 GET "/api/duel/find?game=..%2Fx" desk)
 ok "16. a version or package that is not one, a missing package, a GET to host: refused" "$([ "$(code "$o")" = 400 ] && [ "$(code "$o2")" = 400 ] && [ "$(code "$o3")" = 405 ] && [ "$(code "$o4")" = 400 ] && echo 1)" "$o / $o2 / $o3 / $o4"
 echo "$((N-F))/$N passed"; [ $F = 0 ]
