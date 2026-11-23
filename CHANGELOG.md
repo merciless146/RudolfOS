@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- New: Library games' LAN relay holds co-op games of up to four players (Ember Reach's co-op wing), beside two-player
+  duels, which work as before.
 - Faster start-up: the system's images are packed with zstd instead of xz, so Rudolf OS unpacks them about ten times faster.
   Measured in QEMU on all three desktop engines: the desktop is ready in 8-9 s instead of 16-25 s from a fast disk and in
   11-15 s instead of 17-24 s from a USB stick, and Oracle's first window opens in about 1 s instead of 8 s on Native and Lite.

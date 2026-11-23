@@ -550,6 +550,11 @@ hosts, Rudolf OS runs a small relay on that computer, and the other computer fin
   docs/duel-protocol.md, tools/duel-relay/protocol.mjs), with one room, as `relay.mjs --lan CODE` has it.
   - The room has the code rudolfd chose, for that game and version. Another version is refused with a message.
   - The games' messages are passed to the other as sent, never with an address.
+  - **Co-op wings (added on 2026-11-23, the Library's protocol 2 for Ember Reach's co-op, rudolfos-library
+    docs/plan-ember-reach-pilots.md P5):** a host may make a room of two to four; each guest is given a seat (1-3) and
+    the host is told. The host's messages go to every guest, or to one seat; a guest's go to the host, marked with its
+    seat. A guest leaving frees the seat and the wing goes on; the host leaving ends it. Duels (protocol 1) are
+    unchanged. Up to 6 connections (four players, and room to turn away more cleanly). duel162_t.sh 15b and 15c.
   - Limits (protocol.mjs's): 8 KB a message, 90 a second, 10 s to say hello, 60 s silent once paired; 4 connections.
     Text that isn't UTF-8 is refused.
 - **Who and where:**
