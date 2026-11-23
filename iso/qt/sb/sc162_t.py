@@ -145,12 +145,12 @@ if up:
         "$IP -4 addr show eth0 | grep -q 'inet ' || { $IP addr add 10.0.2.15/24 dev eth0; $IP link set eth0 up; }; $IP -4 addr show eth0 | grep inet; $IP route")
     o = run("FX=; for d in /dev/nvme*n1; do blkid $d 2>/dev/null | grep -q R161FIX && FX=$d; done; mkdir -p /tmp/fx /run/s162x /run/s162l/sane; mount -o ro $FX /tmp/fx; mount -t tmpfs -o exec,mode=755 none /run/s162x; "
         "cp /tmp/fx/rudolf-scan /tmp/fx/firewall /run/s162x/; chmod 755 /run/s162x/*; cp /tmp/fx/libsane.so.1 /run/s162l/; cp /tmp/fx/libsane-airscan.so.1 /run/s162l/sane/; "
-        "M=/usr/lib/x86_64-linux-gnu; [ -e $M/libsane.so.1 ] && echo RELEASE-HAS-LIBSANE; mount -t overlay overlay -o lowerdir=/run/s162l:$M $M && echo OVERLAY-OK; "
+        "M=/usr/lib/x86_64-linux-gnu; [ -e $M/libsane.so.1 ] && echo RELEASE-HAS-LIBSANE; { mkdir -p $M/sane 2>/dev/null && cp /run/s162l/libsane.so.1 $M/ 2>/dev/null && cp /run/s162l/sane/libsane-airscan.so.1 $M/sane/ 2>/dev/null && echo LIBS-COPIED; } || { mount -t overlay overlay -o lowerdir=/run/s162l:$M $M && echo OVERLAY-OK; }; "
         "touch /usr/bin/rudolf-scan 2>/dev/null; [ -e /usr/bin/rudolf-scan ] && mount --bind /run/s162x/rudolf-scan /usr/bin/rudolf-scan || { mkdir -p /run/s162b; cp /run/s162x/rudolf-scan /run/s162b/; echo BIN-IN-RUN; }; "
         "mount --bind /run/s162x/firewall /usr/lib/rudolf/firewall; mount --bind /tmp/fx/listeners /usr/share/rudolf/listeners; "
         "/usr/lib/rudolf/firewall on; /usr/lib/rudolf/firewall status; nft list chain inet rudolf wsd; ls -la $M/libsane.so.1 $M/sane/")
     BIN = '/run/s162b/rudolf-scan' if 'BIN-IN-RUN' in o else '/usr/bin/rudolf-scan'
-    ok("F. this tree's rudolf-scan, firewall (its wsd chain) and listeners in place; libsane and sane-airscan laid over the library folder", 'OVERLAY-OK' in o and 'udp dport @wsdopen accept' in o and 'libsane-airscan.so.1' in o, o)
+    ok("F. this tree's rudolf-scan, firewall (its wsd chain) and listeners in place; libsane and sane-airscan put in the library folder", ('OVERLAY-OK' in o or 'LIBS-COPIED' in o) and 'udp dport @wsdopen accept' in o and 'libsane-airscan.so.1' in o, o)
     run("mkdir -p /tmp/sc && chown rudolf:rudolf /tmp/sc && chmod 700 /tmp/sc")
     b0 = run('/usr/lib/rudolf/firewall status'); run('/usr/lib/rudolf/firewall wsd open')
     o = run(f"{AS} '{BIN} find'", 60); b1 = run('/usr/lib/rudolf/firewall status')
