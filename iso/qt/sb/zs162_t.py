@@ -45,7 +45,9 @@ def make_drive(v):
     d = f'{T}/os/system/a'; os.makedirs(d)
     shutil.copy(f'{KER}/vmlinuz', f'{d}/vmlinuz')
     for n in ('base', 'chromium', 'desktop', 'modules'): shutil.copy(f'{LD}/{v}/{n}.sfs', f'{d}/{n}.sfs')
-    for n in ('manifest.txt', 'manifest.sig'): shutil.copy(f'{LD}/{n}', f'{d}/{n}')
+    # (no signed release list in the slot: its dm-verity hashes are the release's own layers', which these are not, and a
+    #  layer that does not match them is not started by the start-up: "Device or resource busy", the dm-verity mapping
+    #  holding the loop device. Without a list every variant starts unchecked alike, without dm-verity)
     open(f'{d}/RELEASE', 'w').write(f"serial {mv('serial')}\nversion {mv('version')}\nreleased {mv('released')}\nchromium {mv('chromium')}\nkernel {mv('kernel')}\nnotes zs162 {v}\n")
     open(f'{d}/complete', 'w').write('1\n')
     open(f'{T}/os/system/state', 'w').write('good=a\nprev=\nnext=\ntries=0\nfailed=\n')
