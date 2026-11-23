@@ -20,12 +20,15 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq xserver-xorg-core xserver-xorg-video-dummy x11-xserver-utils xdotool imagemagick python3-pil libwebkit2gtk-4.1-dev libxtst-dev libxrandr-dev libxfixes-dev fonts-dejavu-core >/dev/null
           npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          # (what draws: WebKitGTK's and the fonts' versions, Playwright's Chromium, the fonts the page's names come to)
+          dpkg-query -W -f '${Package} ${Version}\n' libwebkit2gtk-4.1-0 libfreetype6 libharfbuzz0b libfontconfig1 libcairo2 fonts-dejavu-core fonts-liberation 2>/dev/null; ls ~/.cache/ms-playwright; fc-match Tahoma; fc-match sans-serif
       - name: rudolf-display and screenctl
         run: sh iso/qt/host/monitors161_t.sh
+      # (the desktop in dark mode at 100 % and light at 125 %: chosen, not by the hour the check runs at, monbeh_t.js MON_DM)
       - name: Two monitors, Standard and Native
-        run: mkdir -p out && sh iso/qt/native/monbeh_t.sh $PWD/out/100
+        run: mkdir -p out && MON_DM=dark sh iso/qt/native/monbeh_t.sh $PWD/out/100
       - name: The same at 125 %
-        run: MON_SCALE=125 SAME_DSP=:85 SAME_PORT=8613 sh iso/qt/native/monbeh_t.sh $PWD/out/125
+        run: MON_DM=light MON_SCALE=125 SAME_DSP=:85 SAME_PORT=8613 sh iso/qt/native/monbeh_t.sh $PWD/out/125
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: monitors, retention-days: 7, path: out}

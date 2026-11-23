@@ -20,6 +20,10 @@
  *   network firewall remote on|off      /usr/lib/rudolf/firewall remote on|off (remote access's port)
  *   network firewall duel on PORT|off   /usr/lib/rudolf/firewall duel on PORT|off (1.6.2 Part 30: the LAN game relay's port,
  *                                       1024-65535, from the local network while a game is hosted)
+ *   network firewall wsd open           /usr/lib/rudolf/firewall wsd open (1.6.2 Part 34: WS-Discovery's answers to Find
+ *                                       scanners let in for ten seconds)
+ *   network usbscan allow|done UID      /usr/lib/rudolf/usbprint scanner allow|done UID (1.6.2 Part 34: an account's user,
+ *                                       1001-59999, reaches ipp-usb's ports while it scans a USB scanner)
  *   network hotspot status|stop         /usr/lib/rudolf/hotspot status|stop
  *   network hotspot start               the request (name, password, band: one a line, at most 200 bytes) on standard
  *                                       input, written to a file of root's for /usr/lib/rudolf/hotspot start FILE
@@ -212,7 +216,12 @@ int main(int argc, char **argv)
 		if (n == 2 && !strcmp(a[0], "remote") && (!strcmp(a[1], "on") || !strcmp(a[1], "off"))) { char *s[] = { "remote", a[1], NULL }; return exec_lib("firewall", s); }
 		if (n == 2 && !strcmp(a[0], "duel") && !strcmp(a[1], "off")) { char *s[] = { "duel", "off", NULL }; return exec_lib("firewall", s); }
 		if (n == 3 && !strcmp(a[0], "duel") && !strcmp(a[1], "on") && chars_ok(a[2], 5, "0123456789") && atoi(a[2]) >= 1024 && atoi(a[2]) <= 65535) { char *s[] = { "duel", "on", a[2], NULL }; return exec_lib("firewall", s); }
+		if (n == 2 && !strcmp(a[0], "wsd") && !strcmp(a[1], "open")) { char *s[] = { "wsd", "open", NULL }; return exec_lib("firewall", s); }
 		return refuse("a firewall action that is not one", n ? a[0] : "");
+	}
+	if (!strcmp(op, "usbscan")) {
+		if (n == 2 && (!strcmp(a[0], "allow") || !strcmp(a[0], "done")) && *a[1] && chars_ok(a[1], 5, "0123456789") && atoi(a[1]) >= 1001 && atoi(a[1]) <= 59999) { char *s[] = { "scanner", a[0], a[1], NULL }; return exec_lib("usbprint", s); }
+		return refuse("a USB scanner action that is not one", n ? a[0] : "");
 	}
 	if (!strcmp(op, "hotspot")) {
 		if (n == 1 && (!strcmp(a[0], "status") || !strcmp(a[0], "stop"))) { char *s[] = { a[0], NULL }; return exec_lib("hotspot", s); }
