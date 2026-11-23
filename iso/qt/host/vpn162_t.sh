@@ -11,12 +11,12 @@
 #   root's only, its key in no answer, log or page; connected (a handshake with the server); the whole computer's
 #   traffic and its name lookups through the tunnel, a capture on wlan0 showing only the tunnel's packets; the local
 #   network still reached directly; IPv6 not around it; disconnected: the network as it was; set up again by itself
-#   when its interface goes; "Administrators only",
+#   when its interface goes; the kill switch (nothing out while it is down, back by itself); "Administrators only",
 #   "Always on", a child account, another account's VPN; Always on again at rudolfd's start; removed.
 # Needs root, unshare, nsenter, ip, wg (wireguard-tools), tcpdump, python3, gcc, node and a kernel with WireGuard.
 # Ports 8631 and 8632 in the test's namespaces only; rudolfd's 8080 inside its own.   sh vpn162_t.sh
 HERE=$(cd "$(dirname "$0")" && pwd); SYS=$HERE/../../sys
-for c in unshare ip wg tcpdump python3 gcc nsenter node; do command -v $c >/dev/null || { echo "SKIP: needs $c"; exit 0; }; done
+for c in unshare ip wg tcpdump python3 gcc nsenter node nft; do command -v $c >/dev/null || { echo "SKIP: needs $c"; exit 0; }; done
 [ "$(id -u)" = 0 ] || { echo "SKIP: needs root"; exit 0; }
 [ -z "$V162_INNER" ] && exec env V162_INNER=1 unshare -m -n sh "$0" "$@"
 T=$(mktemp -d /tmp/vpn162.XXXXXX); chmod 755 $T; PIDS=""; RDP=""
@@ -151,6 +151,20 @@ o=$(api POST "/api/vpn/on?id=$ID"); ip link del rvpn0
 w8 "ip link show rvpn0 >/dev/null 2>&1" 450
 ok "17b. its interface gone while it is on: set up again by itself (within a minute), connected" "$([ "$(code "$o")" = 200 ] && ip link show rvpn0 >/dev/null 2>&1 && w8 "[ \"\$(who 203.0.113.5:8631)\" = 10.66.0.2 ]" 50 && echo 1)" "$o $(tail -3 $T/rd.log)"
 o=$(api POST /api/vpn/off)
+# ---- the kill switch (an administrator's, off at first)
+o=$(api POST /api/vpn/set "{\"n\":\"Bob\",\"p\":\"pw-bob\",\"id\":\"$ID\",\"kill\":true}"); o2=$(api POST /api/vpn/set "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\",\"kill\":true}")
+o3=$(api POST "/api/vpn/on?id=$ID"); KT=$(nft list table inet rudolf_vpnkill 2>&1)
+ok "K1. the kill switch: set with an administrator's password (not Bob's); on: connected, through the tunnel, the table there (the server's address and port let out)" "$([ "$(code "$o")" = 403 ] && [ "$(code "$o2")" = 200 ] && [ "$(code "$o3")" = 200 ] && [ "$(who 203.0.113.5:8631)" = 10.66.0.2 ] && echo "$KT" | grep -q 'ip daddr 192.168.77.2 udp dport 51820 accept' && echo "$KT" | grep -q 'oifname "rvpn0" accept' && echo 1)" "$o / $o2 / $o3 / $KT"
+ip link del rvpn0   # (the tunnel down while it is meant to be on)
+a=$(who 203.0.113.5:8631 2); b=$(who 192.168.77.2:8632 2); c=$(look who.test); d=$(nft list counter inet rudolf_vpnkill dropped 2>&1 | sed -n 's/.*packets \([0-9]*\).*/\1/p')
+ok "K2. while it is down nothing goes out: not to the internet, not to the local network, no name lookups (the kill switch's counter)" "$([ "$a" = none ] && [ "$b" = none ] && [ "$c" = none ] && [ "${d:-0}" -gt 0 ] && echo 1)" "$a / $b / $c / $d"
+w8 "ip link show rvpn0 >/dev/null 2>&1" 900
+ok "K3. ...until it is back by itself (its server's name not found through the kill switch: its addresses from last time), connected" "$(ip link show rvpn0 >/dev/null 2>&1 && w8 "[ \"\$(who 203.0.113.5:8631)\" = 10.66.0.2 ]" 80 && echo 1)" "$(tail -3 $T/rd.log) $(cat /run/rudolf/health.log 2>/dev/null | tail -2)"
+o=$(api POST /api/vpn/off)
+ok "K4. turned off: the kill switch's table gone, the network direct again" "$([ "$(code "$o")" = 200 ] && ! nft list table inet rudolf_vpnkill >/dev/null 2>&1 && [ "$(who 203.0.113.5:8631)" = 192.168.77.1 ] && echo 1)" "$o $(nft list tables 2>&1)"
+o=$(api POST /api/vpn/set "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\",\"kill\":false}"); o2=$(api POST "/api/vpn/on?id=$ID"); KT=$(nft list table inet rudolf_vpnkill 2>&1); o3=$(api POST /api/vpn/off)
+ok "K5. with the kill switch off, no table while it is on" "$([ "$(code "$o")" = 200 ] && [ "$(code "$o2")" = 200 ] && ! echo "$KT" | grep -q 'chain output' && echo 1)" "$KT"
+
 # ---- who may do what
 o=$(api POST /api/vpn/set "{\"n\":\"Bob\",\"p\":\"pw-bob\",\"id\":\"$ID\",\"policy\":\"admins\"}")
 o2=$(api POST /api/vpn/set "{\"n\":\"Ann\",\"p\":\"pw-ann\",\"id\":\"$ID\",\"policy\":\"admins\"}")

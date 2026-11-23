@@ -21,14 +21,14 @@ const api = (a, q, method, body) => {
   const J = (() => { try { return JSON.parse(body || '{}') } catch (e) { return {} } })();
   if (a == 'vpn') return [200, list()];
   if (a == 'vpn/add') { if (J.n != 'Ann' || J.p != 'pw-ann') return [403, {ok: false, error: 'Wrong password.'}];
-    const id = 'v0000000' + (++M.n); M.vpns.push({id, name: J.name, type: 'wireguard', policy: 'everyone', server: 'vpn.example.com:51820', addresses: ['10.66.0.2/32'], dns: ['10.66.0.1'], whole: true, by: ''}); return [200, {ok: true, id, notes: []}] }
+    const id = 'v0000000' + (++M.n); M.vpns.push({id, name: J.name, type: 'wireguard', policy: 'everyone', kill: false, server: 'vpn.example.com:51820', addresses: ['10.66.0.2/32'], dns: ['10.66.0.1'], whole: true, by: ''}); return [200, {ok: true, id, notes: []}] }
   if (a == 'vpn/on') { const id = new URLSearchParams(q).get('id'), v = M.vpns.find(x => x.id == id); const cur = M.vpns.find(x => x.id == M.active && x.id != id);
     const adm = J.n == 'Ann' && J.p == 'pw-ann'; const no = may(v, 0) && !(adm && v.policy == 'admins') ? may(v, 0) : cur && may(cur, 1) && !(adm && cur.policy == 'admins') ? may(cur, 1) : null;
     if (no) return [403, {ok: false, needAdmin: /Only an administrator/.test(no), error: no}];
     M.active = id; v.by = M.me.name; return [200, {ok: true, state: 'connected', message: "Connected: this computer's traffic goes through the VPN."}] }
   if (a == 'vpn/off') { const v = M.vpns.find(x => x.id == M.active); if (!v) return [200, {ok: true}]; const adm = J.n == 'Ann' && J.p == 'pw-ann';
     const no = may(v, 1); if (no && !(adm && v.policy == 'admins')) return [403, {ok: false, needAdmin: /Only an administrator/.test(no), error: no}]; M.active = null; v.by = ''; return [200, {ok: true}] }
-  if (a == 'vpn/set') { if (J.n != 'Ann' || J.p != 'pw-ann') return [403, {ok: false, error: 'Wrong password.'}]; const v = M.vpns.find(x => x.id == J.id); if (J.name) v.name = J.name; if (J.policy) v.policy = J.policy; return [200, {ok: true}] }
+  if (a == 'vpn/set') { if (J.n != 'Ann' || J.p != 'pw-ann') return [403, {ok: false, error: 'Wrong password.'}]; const v = M.vpns.find(x => x.id == J.id); if (J.name) v.name = J.name; if (J.policy) v.policy = J.policy; if ('kill' in J) v.kill = J.kill; return [200, {ok: true}] }
   if (a == 'vpn/remove') { if (J.n != 'Ann' || J.p != 'pw-ann') return [403, {ok: false, error: 'Wrong password.'}]; M.vpns = M.vpns.filter(x => x.id != J.id); if (M.active == J.id) M.active = null; return [200, {ok: true}] }
   if (a == 'net') return [200, {ok: true, interfaces: [{name: 'wlan0', state: 'up', ip: '192.168.1.20/24', default: true, wireless: true, ssid: 'Home', rssi: -50}], gateway: '192.168.1.1', dns: '192.168.1.1', wifiTools: false}];
   if (a == 'events') return [200, {ok: true, events: ''}];
@@ -102,6 +102,8 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   M.me = {name: 'Ann', admin: true, child: false, signedIn: true}; await q("USER.r='admin';USER.n='Ann';vpnGet()"); await wait(500); M.posts = [];
   await p.selectOption('.vpnp', 'admins'); await wait(800);
   ok('18. who may turn it on and off: set by an administrator (POST vpn/set with the password)', M.posts.includes('vpn/set') && JSON.parse(M.bodies[M.bodies.length - 1]).policy == 'admins' && M.vpns[0].policy == 'admins', M.posts);
+  M.posts = []; await p.click('.vpnk'); await wait(800);
+  ok('18b. the kill switch: off at first, turned on by an administrator (POST vpn/set kill with the password)', M.posts.includes('vpn/set') && JSON.parse(M.bodies[M.bodies.length - 1]).kill === true && M.vpns[0].kill === true && await q("document.querySelector('.vpnk').checked"), M.posts);
   await p.click('.vpnr'); await p.waitForSelector('.rmodal .t'); await p.fill('.rmodal .t', 'Work'); await p.click('.rmodal .ok'); await wait(800);
   ok('19. renamed', M.vpns[0].name == 'Work' && /Work/.test(await q("document.querySelector('.vpnc .vpnnm').textContent")));
   await p.click('.vpnx'); await p.waitForSelector('.vpnatx'); await p.click('.rmbox .y'); await wait(1000);

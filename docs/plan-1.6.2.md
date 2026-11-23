@@ -758,7 +758,14 @@ Tor windows, or for calls and games) and what the best VPN would be: "Yes. That 
   another account turned on asks first ("Ann's VPN is on for everyone on this computer"); the pop-up (both engines)
   opens Settings › Network for anything that needs a password or a question. Tests: vpn162_t.sh 18-25 (the policies,
   the child, Always on at rudolfd's start), vpn62_t.js 11-18.
-- Steps 3-5 (OpenVPN, the kill switch, the Oracle line): their own PRs, after these.
+- **Step 4, the kill switch (PR "VPN 4", after VPN 2; OpenVPN, step 3, comes last: it is the largest):** built. Per VPN,
+  an administrator's (its password), off at first. While a VPN with it is meant to be on, the table inet rudolf_vpnkill
+  (the VPN helper's, beside the firewall's own, so it holds whether that one is on or off) lets out only the tunnel, the
+  VPN's server (WireGuard's marked packets, and the server's addresses as last found: its name cannot be looked up through
+  it) and DHCP and IPv6's neighbour discovery (so the computer keeps its network); nothing is forwarded but into the
+  tunnel. Gone when the VPN is turned off or its kill switch is. Tests: vpn162_t.sh K1-K5 (nothing out while the tunnel
+  is down, back by itself with the remembered address), vpn62_t.js 18b.
+- Steps 3 and 5 (OpenVPN, the Oracle line): their own PRs.
 
 ### 34. Scanners (added on 2026-11-22)
 The owner, 2026-11-22: scanners and network shares are what is left to add from what Mint and Ubuntu have (a phone link,

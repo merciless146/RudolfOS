@@ -13,6 +13,8 @@ Summary: In progress.
 - New: who may turn each VPN on and off, an administrator's choice: Everyone (the default), Administrators only, or Always
   on (it comes back at every start and nobody can turn it off). Accounts with parental controls cannot turn a VPN off,
   and turning off a VPN another account turned on says so first ("Ann's VPN is on for everyone on this computer").
+- New: a VPN's kill switch (an administrator's, off at first): while a VPN with it is meant to be on and its tunnel is
+  down, nothing goes out but the VPN's own server, until it is back or turned off.
 - Fixed: on the native desktop the taskbar's pinned apps and workspace buttons kept their light grey edge in dark mode, where
   Chromium mode draws a dim one, and a pinned app had no line under it while its window was open (grey, or the accent colour
   while that window is the active one). Both now look as in Chromium mode, on every monitor's taskbar. The "Several monitors"
