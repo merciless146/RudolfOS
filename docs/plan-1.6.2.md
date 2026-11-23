@@ -861,6 +861,12 @@ its one page.
   Task Manager's own 190 / 131, rudolf-native 145 / 95, the network process 33 / 22; memory used 1.4 GB of 3.4.
 - What each kind of window adds (the owner closing and opening Task Manager, Calculator and Notepad, read after each): below,
   as they come.
+- On the host (Chrome 153's renderer, 2026-11-22, private / PSS MB): a blank page 26 / 50; the desktop page signed in 106 / 134;
+  as an app window (#app=taskmgr) 101 / 129; the same page with its scripts taken out 31 / 55 (its styles and markup cost about
+  5 MB). So nearly all of a window's cost is the page's 3.5 MB of script being loaded, compiled and kept (about 75 MB here),
+  while the scripts' live objects are small (a JS heap of 4 MB after collecting). A small page with a tenth of the script
+  should bring a window from about 100 MB to about 35 MB in Chrome; WebKit's figures (JavaScriptCore) are to be measured the
+  same way on the Vivobook before and after.
 **Steps (each kept only if the numbers say so):**
 1. **Measured on the Vivobook** (above), and on the host: each window kind's cost in the shared process and in its own; a web
    process's floor with a near-empty page; what of the page a window really runs (Chromium's precise coverage of a Task Manager,
