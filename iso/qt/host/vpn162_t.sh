@@ -19,7 +19,7 @@ for c in unshare ip wg tcpdump python3 gcc nsenter node; do command -v $c >/dev/
 [ "$(id -u)" = 0 ] || { echo "SKIP: needs root"; exit 0; }
 [ -z "$V162_INNER" ] && exec env V162_INNER=1 unshare -m -n sh "$0" "$@"
 T=$(mktemp -d /tmp/vpn162.XXXXXX); chmod 755 $T; PIDS=""; RDP=""
-cleanup() { for p in $RDP $PIDS; do kill $p 2>/dev/null; done; umount /home/rudolf /persist /run /etc 2>/dev/null; rm -rf "$T"; }   # (only what this test started)
+cleanup() { for p in $RDP $PIDS; do kill $p 2>/dev/null; done; umount /usr/share/rudolf/www /home/rudolf /persist /run /etc 2>/dev/null; rm -rf "$T"; }   # (only what this test started)
 trap cleanup EXIT INT TERM
 N=0; F=0; ok() { N=$((N+1)); if [ "$2" = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 1500)"; F=$((F+1)); fi; }
 w8() { i=0; while [ $i -lt ${2:-50} ]; do eval "$1" && return 0; timeout 0.1 tail -f /dev/null; i=$((i+1)); done; return 1; }
@@ -33,7 +33,8 @@ gcc -O2 -w -DRD_ROOT_DIR="\"$T/root\"" -o $T/rudolfd $SYS/rudolfd.c -lz 2>$T/cc 
 # ---- this computer: its folders (a copy of /etc: rudolfd writes the accounts' users into it), its name servers, its network
 cp -a /etc $T/etc && mount --bind $T/etc /etc || { echo "SKIP: /etc cannot be copied here"; exit 0; }
 RES=$(readlink -f /etc/resolv.conf)
-mount -t tmpfs none /run; mkdir -p /run/rudolf/dns /home/rudolf /persist; mount -t tmpfs none /home/rudolf; mount -t tmpfs none /persist
+mount -t tmpfs none /run; mkdir -p /run/rudolf/dns /home/rudolf /persist /usr/share/rudolf/www; mount -t tmpfs none /home/rudolf; mount -t tmpfs none /persist
+mount --bind $HERE/../../www /usr/share/rudolf/www   # (the page rudolfd serves, with its token)
 case "$RES" in /etc/*) ;; *) rm -f /etc/resolv.conf; RES=/etc/resolv.conf;; esac
 echo "nameserver 192.168.77.2" > "$RES"
 cp /etc/resolv.conf /run/rudolf/dns/wlan0   # (as udhcpc.sh keeps a connection's own)
