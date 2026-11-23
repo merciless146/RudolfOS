@@ -8,6 +8,9 @@
  *   POST desktop/logout        locks the home folder, ends the session
  *   POST desktop/lock          the lock screen is up: desktop/session answers 423 until desktop/unlock
  *   POST desktop/unlock        body {"p":PASSWORD}, the session's account's
+ *   POST desktop/admin         (1.6.2 Part 39) body {"n":NAME,"p":PASSWORD}: an administrator's permission for a native app (the
+ *                              page's elevate, which checks the password in the page: a native app holds no hash); 403 when NAME is
+ *                              no administrator or the password is wrong, counted with the lock screen's (429 while waiting)
  *   GET/POST desktop/owenc     (1.6.0 Part 22) the account's "Keep my websites encrypted" choice, in its encrypted home folder
  *   GET  desktop/session       {"id","n","r","pk","fk"} for the one-app pages (oneapp59.js); 404 without a session; (1.6.0 Part 22) "web":
  *                              the account's encrypted folder for Oracle's websites (/persist/oracle/ID), when open; also in login's answer
@@ -739,12 +742,33 @@ static int dput(const char *path, const char *b, size_t n)
 	return 0;
 }
 
+/* 1.6.2 (docs/plan-1.6.2.md Part 39): an administrator's permission for a native app (Task Manager's End process, a service's
+   Restart): the page's elevate (core25.js) checks an administrator's password against the account's hash in the page; a native app
+   is given no hash, as the native shell is given none, so it asks here. Only while an account is signed in on the native desktop;
+   wrong passwords counted with the lock screen's (five: 15 s of waiting) and noted in System health. */
+static void api_desktop_admin(struct req *r)
+{
+	int wt = dfail_wait(); if (wt) { char m[120]; snprintf(m, sizeof m, "Too many failed attempts. Please wait %d seconds and try again.", wt); reply_err(r->fd, 429, m); return; }
+	dsess s; if (!dsess_read(&s)) { reply_err(r->fd, 404, "no native session"); return; }
+	explicit_bzero(&s, sizeof s);
+	char *n = dbody_field(r, "n"), *pw = dbody_field(r, "p"); int okk = 0, found = 0;
+	dls l; dls_open(&l); char *list = dls_accounts(&l);
+	for (int i = 0; list && n && pw; i++) { const char *a = dj_at(list, i); if (!a) break;
+		char *an = dj_str(dj_get(a, "n")), *role = dj_str(dj_get(a, "r"));
+		if (an && !strcmp(an, n) && role && !strcmp(role, "admin")) { char *h = dj_str(dj_get(a, "h")); found = 1; okk = dpw_check(h, pw) == 0; dfree_secret(h); }
+		free(an); free(role); if (found) break; }
+	dfree_secret(pw); free(list); dls_close(&l);
+	if (!okk) { dfail_note(0); health_add("signin", "a wrong administrator's password in a native app%s", found ? "" : " (not an administrator's account)"); free(n); reply_err(r->fd, 403, "Wrong password."); return; }
+	dfail_note(1); free(n); reply_ok(r->fd, "allowed");
+}
+
 /* desktop/...: 1 when handled (engine and priority are rudolfd.c's) */
 static int api_desktop(struct req *r, const char *w, int post)
 {
 	if (!strcmp(w, "accounts")) { api_desktop_accounts(r); return 1; }
 	if (!strcmp(w, "settings")) { api_desktop_settings(r); return 1; }
 	if (!strcmp(w, "login")) { if (!post) reply_err(r->fd, 405, "POST"); else api_desktop_login(r); return 1; }
+	if (!strcmp(w, "admin")) { if (!post) reply_err(r->fd, 405, "POST"); else api_desktop_admin(r); return 1; }   /* (1.6.2 Part 39) */
 	if (!strcmp(w, "session")) {
 		dsess s; char lp[300]; dpath(lp, sizeof lp, "native-locked");
 		if (!dsess_read(&s)) { reply_err(r->fd, 404, "no native session"); return 1; }

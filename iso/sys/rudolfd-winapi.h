@@ -445,3 +445,14 @@ static const char *const WINAPI_SHELL[] = {   /* the native shell, rudolf-native
 	"vpn/on",
 	NULL
 };
+static const char *const WINAPI_APPS[] = {   /* (1.6.2 Part 39) the native apps (iso/sys/apps) with librudolf-ui (iso/sys/ui) */
+	"desktop/accounts",
+	"desktop/admin",
+	"desktop/session",
+	"desktop/settings",
+	NULL
+};
+static const char *const WINAPI_APPS_EXE[] = {   /* their programs (/usr/bin/rudolf-NAME) */
+
+	NULL
+};

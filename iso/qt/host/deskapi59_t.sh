@@ -51,6 +51,12 @@ ok "15. locked: the session is not given to new app windows" "$(echo "$o" | sed 
 body '{"p":"nope"}'; o=$(t "POST unlock <$T/b"); ok "16. unlock with a wrong password: refused" "$(has "$o" 403)" "$o"
 body '{"p":"pw-ann ü"}'; o=$(t "POST unlock <$T/b" "GET session")
 ok "17. ...with the right one: unlocked" "$(echo "$o" | sed -n 2p | grep -c '"pk"')" "$o"
+# 1.6.2 (Part 39) an administrator's permission for a native app (librudolf-ui's rui_elevate): checked here, as the page checks it
+body '{"n":"Ann","p":"pw-ann ü"}'; o=$(t "POST admin <$T/b"); ok "17b. desktop/admin: an administrator's right password allows" "$(has "$o" '"allowed"')" "$o"
+body '{"n":"Ann","p":"nope"}'; o=$(t "POST admin <$T/b"); ok "17c. ...a wrong one is refused (403)" "$(has "$o" 403)" "$o"
+body '{"n":"Bob","p":"bob-pass"}'; o=$(t "POST admin <$T/b"); ok "17d. ...and an account that is not an administrator, with its right password" "$(has "$o" 403)" "$o"
+body '{"n":"Ann","p":"pw-ann ü"}'; o=$(t "GET admin"); ok "17e. ...only POST" "$(has "$o" 405)" "$o"
+rm -f $RUNX/native-login-fails
 o=$(t "POST logout" "GET session" "GET settings")
 ok "18. logout ends the session; settings are the last ones again (bd95set)" "$(echo "$o" | sed -n 2p | grep -q ' 404 ' && echo "$o" | sed -n 3p | grep -q '"b1":"#445566"' && echo 1)" "$o"
 # five failures
@@ -58,6 +64,7 @@ body '{"n":"Ann","p":"x"}'; o=$(t "POST login <$T/b" "POST login <$T/b" "POST lo
 ok "19. five wrong passwords: then a wait, as the page's sign-in screen" "$(echo "$o" | sed -n 6p | grep -c '429.*wait')" "$o"
 body '{"n":"Ann","p":"pw-ann ü"}'; ok "20. ...even with the right password, until it is over" "$(has "$(t "POST login <$T/b")" 429)"
 rm -f $RUNX/native-login-fails
+body '{"n":"Ann","p":"pw-ann ü"}'; ok "20b. desktop/admin without anyone signed in on the native desktop: refused" "$(has "$(t "POST admin <$T/b")" 404)"
 # refused accounts
 body '{"n":"Old","p":"x"}'; ok "21. a password from before 1.4: use Standard once" "$(has "$(t "POST login <$T/b")" 'older Rudolf OS')"
 body '{"n":"Keyed","p":"k"}'; ok "22. an account with a security key: use Standard" "$(has "$(t "POST login <$T/b")" 'security key')"
