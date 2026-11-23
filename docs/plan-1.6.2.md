@@ -1012,6 +1012,28 @@ against the web version, its memory at idle against the web version, the Start m
 **The owner's checks:** each native app on the Vivobook against its web version (Chromium mode), every action, and its memory
 in Task Manager.
 
+### The checks made green (added on 2026-11-23)
+
+The owner's item of 2026-11-22: the seven checks that had been red for days, each case found to be the test or a real bug,
+and fixed. Only one real bug was found, in Native's taskbar, shown by the monitors check; every other case was a test out of
+date with a deliberate change, or a test that did not fit the release it tested. No check was weakened and no limit raised.
+
+| Check | Case | Test or bug | Evidence | Fix | PR |
+|---|---|---|---|---|---|
+| svc-check (host) | svc60_t.js 8, Oracle's window | test: stale since #504 | Oracle's window now runs a second tabs26.js timer, which clears the websites listed while Oracle was closed | the case expects and names both timers | #632 |
+| svc-check (QEMU) | N2, N3, N5, N6, N9 | test: stale since 1.6.1 (the shell's hidden pages made one) | each alarm, reminder and timer rang once, from `do-bg`, not `do-svc` | expects `do-bg`; N1 also checks it has no window | #632 |
+| portal-check (QEMU) | N6, N11, N12 | test: stale since #537 (one hidden page for the shell) | the dialog came once, above the apps; the page was hidden as `do-bg`, the test looked for `do-portal` | looks for `do-bg`; its "page on top" wait (N3, N5, N7, N9) checks again too | #631 |
+| webkey-check (QEMU) | 3, 6, 7 ("the key store did not start") | test: the release's session starts its own key store since #533 (r2026112111) | TPM present (`/dev/tpmrm0`, family 2.0); this tree's `webkey_start` started a second store beside the release's | the test ends the release's store first and restores the sealed file; "no TPM 2.0" is case 9's deliberate no-TPM boot | #638 |
+| roothelpers-check, confine-check (r161) | 24, 27 | test: since they were added (2026-11-21) | the release has no curl and busybox wget hides a refusal's code and body | requests go through `busybox nc` when there is no curl | #654 |
+| same | 29 | test | busybox `pgrep` has no `-u` | the user's process found through `/proc/PID/status` | #654 |
+| confine-check (t160, built kernel) | 11, 12, 14, 15, 16 (why it never passed) | test: the premise could not hold | the built kernel replaced the release's, so slot a no longer matched its signed list and `rudolf-update` rightly refused to make an official recovery system from it | the official recovery system is made from the release's own kernel (checked against the signed SHA-256); the lock to the official stable release is now checked directly | #654 |
+| monitors-check | the taskbars differ (2.743 %, 2.006 %) | **bug in Native**, shown after 17:43 UTC | not the runner: the same image and packages pass before 17:30 UTC and fail after 20:00, when "auto" is dark; Native drew the pin and workspace edges #d1d5db where Chromium draws #334155 in dark | Native's edge follows the dark look; Native also draws the line under a pinned app as Chromium does | #641 |
+| monitors-check | the result depended on the hour | test | the look was left on "auto" | the test sets dark at 100 % and light at 125 % | #641 |
+| bootentry-check | "no release list for 2026111503" | test | gh-pages fetched with `--depth 1`: beta/ and stable/ hold only the newest release and there is no files/ folder | the whole gh-pages history fetched; the list and its signature taken from the commit that published that release | this PR |
+
+Found, not fixed (a follow-up): on "auto" with no latitude set, Native's `is_dark()` uses 07:00 to 19:00 while the page works
+out sunrise and sunset from the time zone's city, so the two engines disagree around dawn and dusk. No check depends on it now.
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
