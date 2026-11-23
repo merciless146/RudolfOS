@@ -23,7 +23,7 @@ function exactly as it does in Chromium mode."
 ## Parts
 **Moved to docs/plan-2.0.md on 2026-11-22:** Parts 4, 5, 6, 7 and 8 (the phone, eSIM and 5G, closing the gap with
 Android, T-Mobile prepaid, mobile data and the SIM), 9b (the first ARM64 release) and 19b (gaming measured). The owner
-decided on 2026-11-22 that Rudolf OS 1.6.x is the home and office edition and Rudolf Kryptonite (2.0) the gaming and
+decided on 2026-11-22 that Rudolf OS 1.6.x is the home and office edition and WendigOS (2.0) the gaming and
 mobile edition ("Two editions, one repository" in docs/plan-2.0.md), then said "Yes" to moving them. Their numbers are
 kept so references still point the right way.
 
@@ -599,7 +599,7 @@ and then kept in memory. The kernel reads xz and zlib only (iso/kconfig.sh line 
 **Kept only if measured:** as Part 12, a change is kept only if it helps on at least one of the Vivobook and the Asus
 desktop and hurts on neither.
 1. **The kernel first:** SQUASHFS_ZSTD (and ZSTD_DECOMPRESS) built in, on x86-64 and ARM64 (iso/kconfig.sh,
-   iso/kconfig-arm64.sh; Kryptonite's kconfig on its branch too); the images unchanged. This goes out in a release
+   iso/kconfig-arm64.sh; WendigOS's kconfig on its branch too); the images unchanged. This goes out in a release
    before any image changes, so every system that updates already runs a kernel that can read the new images, and an
    older kernel never meets a zstd image (the updater checks it too: it refuses an image whose compression the running
    or next kernel cannot read, and says so).
@@ -627,6 +627,32 @@ desktop and hurts on neither.
    times on each build, write down Settings › System health › Last starts, Chromium's and Oracle's first start (a
    stopwatch is enough), and Settings › System health's memory at idle, on each of Native, Chromium and Lite, in a table:
    machine, engine, build (xz/zstd), start, first Oracle, memory.
+
+**Status (2026-11-23, item 1: the kernel first; the PR "zstd for the system's images, step 1").** iso/kconfig.sh and
+iso/kconfig-arm64.sh build SQUASHFS_ZSTD in (it selects ZSTD_DECOMPRESS, built in already for the start-up image and
+zram), and kconfig-required.txt requires it; the images are unchanged (xz). How the updater knows what a kernel reads:
+the release list says it, signed: make_release.py writes "squashfs xz zstd zlib" from the kernel's own build
+configuration (--kernel-config: ci_release.sh's and build_iso.sh's .config; a kernel kept from the previous release
+keeps that release's line, --squashfs), and a row "C NAME COMPRESSION BLOCKSIZE" per layer from its squashfs superblock
+(the compression's number in the 16 bits at byte 20). A list without the line is from before 1.6.2, whose kernels read
+xz and zlib only. The kernel that reads a slot's layers is that slot's own (the start-up hands over to it with kexec
+before mounting them), so rudolf-update checks each release against its own kernel: when checking (the signed rows: the
+release is not offered), once downloaded (each layer's own superblock, which must also match its row), for the
+recovery system and for a stick; and the running kernel for the one layer it mounts itself (a stick's base layer, for
+its keys). make_release.py refuses to write such a release in the first place. Tested by iso/qt/host/sqcomp162_t.sh
+(17 checks; the workflow sqcomp-check.yml, with real mksquashfs images). **This must be in a released beta before any
+image switches** (item 3's PR says so).
+
+**Status (2026-11-23, item 4: updates; the PR "zstd for the system's images, step 4").** What Settings › Update showed before:
+"Download (only the changes)" on an ordinary connection (no size), and "up to N MB" (every file's size) on a metered one.
+The first update after the switch downloads the changed images whole (deltas find no block in common between an xz and a
+zstd image, or between two block sizes), so that was wrong. Now rudolf-update's status says what comes whole ("whole",
+its bytes, "wholeLayers", "packed": each new layer's signed row C against the compression and block size in this
+computer's own layer's superblock), and Settings says it on the button on every connection ("Download (about 530 MB)",
+"Download over mobile data: about 530 MB") and why in the card, once; the download goes straight to the whole file for such
+a layer (no delta scan first). An ordinary update is as before. Tested by iso/qt/host/updsize162_t.sh (8/8) and
+iso/qt/shell2/updsize162_t.js (7/7), in sqcomp-check.yml. It needs item 1's rows (built on its PR) and must be in a
+release before the switch too, so the first switched update already shows its size.
 
 ### 32. Emu's Nintendo 64 and Dreamcast games, played for real (added on 2026-11-22)
 The owner: "Create a scheduled task to test run the Dreamcast and N64 emulators for Emu, making test games specifically for
@@ -726,6 +752,24 @@ fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, a
    page scanned and checked; a USB stand-in where QEMU allows. **The owner's check:** the Canon (if it scans) over USB and,
    if it has it, over Wi-Fi; one page and three pages into a PDF.
 
+**Status (2026-11-23, the scheduled task):** step 1 built, **PR scan-driverless** (one PR per step, in order: 1 driverless
+scanning, 2 the Scan app, 3 older USB scanners, 4 Linux apps). `rudolf-scan` (iso/sys/rudolf-scan.c, GPL-2.0-or-later)
+finds eSCL scanners by multicast DNS (_uscan/_uscans, as rudolf-print finds printers: from port 5353, the firewall's mdns
+chain), WSD ones by WS-Discovery (from port 3702; the firewall's new wsd chain lets port 3702 in from private addresses
+only for ten seconds after `firewall wsd open`, and only ProbeMatches for its own random MessageID are read) and USB ones
+that speak eSCL through ipp-usb's address; it scans with libsane (opened with dlopen) and sane-airscan, each scan with its
+own SANE configuration naming just that scanner (sane-airscan's own discovery, which needs Avahi, off), and keeps pages as
+PNG; `save` makes one PDF of several pages (JPEG for colour and grey, 1-bit for black and white: its own encoder), PNG or
+JPEG, never over another file. usbprint's guard gains `scanner allow|done UID` (an account's user reaches ipp-usb's port
+only while it scans; the set's element times out in 15 minutes). The base layer gains libsane.so.1 (SANE's dll backend:
+GPL-2.0-or-later with SANE's exception) and libsane-airscan.so.1 (GPL-2.0-or-later with its linking exception) from
+Ubuntu 24.04's libsane1 1.2.1 and sane-airscan 0.99.29; every library they need is in the base already. Measured: 495 KB
+on the disk (rudolf-scan 149 KB, libsane 94 KB, sane-airscan 251 KB); nothing in memory while idle (no process), about 62
+MB at most scanning A4 at 300 dpi in colour, about 28 MB making its PDF. Tests: qt/host/scan162_t.sh 30/30,
+qt/sb/sc162_t.py (QEMU, the release with this tree's files; the USB path only on the host: QEMU has no emulated IPP over
+USB device), .github/workflows/scan-check.yml. Not testable here: scanning over WSD itself (the stand-in answers
+discovery and metadata, not WS-Scan's jobs): the owner's check.
+
 ### 35. Network shares in File Explorer (added on 2026-11-22)
 1. **Windows and NAS shares (SMB):** File Explorer's Network lists the shares found on the home network (WS-Discovery and
    mDNS, with the firewall on), and a share's address typed (\\server\share or smb://server/share). Signing in with a name
@@ -761,6 +805,18 @@ under 0.05 % of pixels differ); stopped when not seen, in power saver, half the 
 **The owner's check:** Display Properties › Dynamic Backgrounds › Desert Camp on the Vivobook, light and dark, on Native,
 Chromium and Lite.
 
+### 37. The taskbar at the left or the right: its pop-ups and menus (added on 2026-11-22)
+The owner, 2026-11-22: "Some of the taskbar menus and visuals when set to the left and right side options need correction."
+Found on the page (screenshots of every menu with the taskbar at each side) and in rudolf-native.c, the same on both:
+Quick settings, the notifications and the calendar opened in the bottom-right corner (as for a taskbar at the bottom: over a
+taskbar at the right, across the screen from one at the left); a right-click menu opened at the pointer over the taskbar; the
+desktop's inset (--bw) followed the taskbar's width only at the clock's next minute, so a growing taskbar covered the icons.
+**Done (PR "The taskbar at the left or the right"):** desktop/tbside62.js (beside their buttons as flyPlace places the network's
+and the sound's; menus kept off the taskbar; --bw following the taskbar's width); rudolf-native.c the same (fl_place_over for
+quick settings, the notifications and the calendar; cm_open off a side taskbar). tbside62_t.js 8/8; the native desktop built
+in tbside-check.yml. **The owner's check:** the taskbar at the left and at the right on the Vivobook, on Native and Chromium:
+each pop-up and menu, and anything else that still looks wrong (with a screenshot).
+
 ## Steps
 1. Part 14 first (Discord and Steam on Native on the Vivobook, then the owner's decision on the default).
 2. Part 12's checklist with the owner.
@@ -779,3 +835,4 @@ Chromium and Lite.
 12. Part 34 (scanners): driverless eSCL first with the Scan app, then the older USB backends; the owner's check on the Canon.
 13. Part 35 (network shares): SMB in File Explorer in one PR; the owner's check on a share at home if there is one.
 14. Part 36 (Desert Camp): one PR; the owner's look on the Vivobook in light and dark on each engine.
+15. Part 37 (the side taskbar's pop-ups and menus): one PR; the owner's look on the Vivobook.
