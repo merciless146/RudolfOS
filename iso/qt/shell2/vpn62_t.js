@@ -52,7 +52,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await q("(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});wins.slice().forEach(w=>w.close());USER=USER||ACCTS[0]||{n:'Ann',r:'admin'};USER.r='admin';USER.n='Ann';window.__el=[];window.elevate=async(r,o)=>{__el.push(r);return o&&o.cred?{n:'Ann',p:'pw-ann'}:true};window.__n=[];const o=notify;notify=function(t,m,op){__n.push([t,m]);return o.apply(this,arguments)};return 1})()");
   await q("settings('net')"); await p.waitForSelector('.vpn62 h4', {timeout: 8000});
   let t = await q("document.querySelector('.vpn62').innerText");
-  ok('1. Settings › Network › VPN: what it is, none yet, Add a VPN for an administrator', /A VPN for the whole computer/.test(t) && /No VPN yet/.test(t) && !(await q("document.querySelector('.vpna').disabled")), t);
+  ok('1. Settings › Network › VPN: what it is (and that Oracle\'s Tor windows then run inside it), none yet, Add a VPN for an administrator', /A VPN for the whole computer/.test(t) && /Oracle's Tor windows then run inside the VPN/.test(t) && /No VPN yet/.test(t) && !(await q("document.querySelector('.vpna').disabled")), t);
   // the add dialog: a file that is not WireGuard's, then the real one from a file
   await p.click('.vpna'); await p.waitForSelector('.vpnf');
   await q("document.querySelector('.vpnpd').open=true"); await p.fill('.vpnt', 'client\nremote vpn.example.com 1194\n'); await p.fill('.vpnn', 'X'); M.posts = [];
