@@ -5,6 +5,14 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: a Windows program installed before 1.5.9 (Starport GE on the owner's Vivobook) did nothing when its icon was clicked. Since
+  1.5.9 Wine runs as the account's own Linux user, with a Wine folder of its own, and the programs in the folder every account
+  shared before were never carried into it. Rudolf OS now offers to bring them in (once after sign-in, in Settings › Apps › Linux,
+  and in System health while it waits): a copy owned by the account, made in the background with its progress, room checked first,
+  the old folder left as it was, the account's own folder kept (renamed, or the copy beside it), Wine's Start menu entries and icons
+  too; on a computer with several accounts only an administrator may (docs/plan-1.6.2.md Part 40).
+- Fixed: a Linux or Windows program that ends within a few seconds with an error no longer fails silently: a message names it and
+  shows the last lines of its log, on Native, Chromium and Lite alike, and offers the programs from before when its folder is there.
 - Added: the native Settings' first pages (docs/plan-1.6.2.md Part 39): /usr/bin/rudolf-settings with its window, sidebar, Search in
   Settings, System and About, looking and saving as the web one; the native desktop keeps opening the web Settings until every page is done.
 - Changed: the plan (docs/plan-1.6.2.md Part 39): a native Settings comes in 1.6.2, not 1.6.3; the native desktop opens it

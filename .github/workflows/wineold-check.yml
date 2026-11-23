@@ -1,0 +1,50 @@
+# 1.6.2 (docs/plan-1.6.2.md Part 40, the owner's Vivobook on 2026-11-23: Starport GE did not start, its folder being in the Wine prefix
+# every account shared before 1.5.9). Checks only, nothing published.
+#   host: rudolfd's offer to bring the Windows programs from before into the account (rudolfd-wineold.inc, fixtures/wineoldapi.c) on an
+#         ext4 drive with made-up prefixes: one account, several (an administrator decides), too little room, a copy cut off, a running
+#         Windows program, links on either side; rudolf-debian's message of a program that ended at once (fixtures/debreport.c). Its
+#         test users are uids 1001 and 1002 in a private mount namespace; it stops only the processes it started itself
+#         (users59_t.sh is not run here: its sign-out stops every program of uid 1001, the runner's own user).
+#   page: the message and the offer on Chromium's and Lite's desktop page and the native desktop's hidden page (wineold162_t.js).
+name: Windows programs from before check
+on:
+  workflow_dispatch:
+  push:
+    branches: ['wine-old-prefix*']
+  pull_request:
+    paths: ['iso/sys/rudolfd-wineold.inc', 'iso/sys/rudolf-debian.c', 'iso/sys/rudolfd-users.inc', 'desktop/wineold62.js', 'desktop/linux26.js',
+      'desktop/term26.js', 'desktop/sec50.js', 'desktop/oneapp59.js', 'iso/qt/host/wineold162_t.sh', 'iso/qt/host/fixtures/wineoldapi.c',
+      'iso/qt/host/fixtures/debreport.c', 'iso/qt/shell2/wineold162_t.js', '.github/workflows/wineold-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libssl-dev zlib1g-dev >/dev/null
+      - name: The offer and the message (root for a private /run, loop drives and two test users)
+        run: sudo -E env PATH="$PATH" sh iso/qt/host/wineold162_t.sh
+      - name: rudolfd and rudolf-debian build (the release's flags)
+        run: |
+          . iso/systools/hardflags.sh
+          gcc -O2 $HARD -o /tmp/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic && python3 iso/systools/hardcheck.py /tmp/rudolfd
+          gcc -O2 $HARD -o /tmp/rudolf-debian iso/sys/rudolf-debian.c -lcrypto && python3 iso/systools/hardcheck.py /tmp/rudolf-debian
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with: {node-version: 22}
+      - name: Chromium (Playwright's)
+        run: npm install --no-save playwright@1 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page built
+        run: cd desktop && python3 build19.py ../iso/www/index.html
+      - name: The message and the offer on each engine
+        run: node iso/qt/shell2/wineold162_t.js
+      - name: Wine from Settings and a program's message as before
+        run: node iso/qt/shell2/wine49_t.js
