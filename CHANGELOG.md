@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: with the taskbar at the left or the right, Quick settings, the notifications and the calendar open beside their
+  buttons (they opened in the screen's bottom-right corner, over a taskbar at the right); a right-click menu no longer lies over
+  the taskbar; and the desktop's icons move at once when the taskbar grows instead of sitting under it. The same on Native.
 - Kernel: the system's images can be packed with zstd (squashfs reads zstd as well as xz, on x86-64 and ARM64). The images
   themselves are unchanged in this version; a later one moves them to zstd once every updated computer can read them.
 - Updates: an update whose system images its own kernel could not read is refused with a message saying so (when it is
