@@ -176,6 +176,7 @@ PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null |
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-webkey.c sys/rudolfd-webkey.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the website data's key)
 BSRC=$( (echo "$BSRC"; cat sys/rudolfd-confine.inc sys/rudolf-confine.h sys/rudolfd-confine-tables.h sys/rudolfd-confine-narrow.h sys/rudolfd-confine-pure.h sys/rudolfd-winapi.h sys/rudolf-rootd-confine.h) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the confinement)
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-secrets.h sys/rudolfd-guard.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 26: Blitzen's guards, the secret detector)
+BSRC=$( (echo "$BSRC"; cat sys/ui/*.c sys/ui/*.h sys/ui/*.py sys/ui/*.sh $(ls sys/apps/*.c 2>/dev/null); python3 sys/ui/mkui.py /dev/stdout) | sha256sum | cut -c1-16)   # (1.6.2 Part 39: librudolf-ui and the native apps, with what they take from the page)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
 	B=$W/bbin; mkdir -p "$B"
@@ -412,6 +413,14 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# 1.5.9 (plan Part 12): the native desktop engine's prototype, with WebKit
 	gcc -O2 $HARD -Wno-deprecated-declarations -o "$B/rudolf-native" sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm || { echo "rudolf-native did not build"; exit 1; }
 	python3 systools/hardcheck.py "$B/rudolf-webkit" "$B/rudolf-native" || { echo "rudolf-webkit or rudolf-native was built without the hardening flags (plan 15.5)"; exit 1; }
+	# 1.6.2 (docs/plan-1.6.2.md Part 39): librudolf-ui, linked into each native app (sys/ui; its theme and translations made from the
+	# page by sys/ui/mkui.py, with rudolf-native's own JSON reader and accent colour rules): built hardened, with its sample window
+	# (the test's: not shipped) as the program that proves it; what it adds to each app said, in a budget of 512 KB
+	RUI_WERROR=1 sh sys/ui/build.sh "$W/ui" "$B/rudolf-uisample" ui-sample $HARD || { echo "librudolf-ui did not build (sys/ui/build.sh)"; exit 1; }
+	python3 systools/hardcheck.py "$B/rudolf-uisample" || { echo "librudolf-ui was built without the hardening flags (plan 15.5)"; exit 1; }
+	RUIB=$(size -B "$W/ui/rudolf-ui.o" | awk 'NR==2{print $1+$2+$3}'); rm -f "$B/rudolf-uisample"
+	[ "$RUIB" -lt 524288 ] || { echo "librudolf-ui adds $((RUIB / 1024)) KB to each native app: over its 512 KB budget (docs/plan-1.6.2.md Part 39)"; exit 1; }
+	echo "::notice title=librudolf-ui::$((RUIB / 1024)) KB in each native app (its theme and translations from the page included)"
 	systools/addwebkit.sh "$W/broot" "$B/rudolf-webkit" "$B/rudolf-native"
 	# 1.6.0 (plan Part 14): the keyring for Linux apps, gnome-keyring-daemon's secrets part (/usr/lib/rudolf/keyring starts
 	# it at sign-in, as the account's user), with what it needs that the base layer lacks, in a budget of its own, 3 MB.

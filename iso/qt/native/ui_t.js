@@ -21,6 +21,7 @@ const CASES = [
   {n: 'light-pink', set: {dm: 'light', darkui: true, accent: '#db2777'}},
   {n: 'dark-amber', set: {dm: 'dark', darkui: true, accent: '#f59e0b'}},
   {n: 'light-font', set: {dm: 'light', darkui: true, accent: '#2563eb', ff: 'Liberation Sans', fs: 14}},
+  {n: 'light-de', set: {dm: 'light', darkui: true, accent: '#2563eb', lang: 'de'}},   /* (the page's language tables: Cancel, Abbrechen) */
 ];
 const PARTS = ['tabs', 'field', 'fieldv', 'btn', 'btnd', 'pri', 'check', 'h4', 'table', 'msg', 'scroll', 'menu', 'dlg'];
 let BR;
@@ -102,6 +103,21 @@ const px = (a, b, ra, rb, out) => JSON.parse(cp.execSync(`python3 ${path.join(__
       const at = Math.abs(a[0] - b[0]) <= 2 && Math.abs(a[1] - b[1]) <= 2;
       ok(`${c.n} ${k}: ${d.pct}% of its pixels differ (page ${a.join(',')}, native ${b.join(',')})`, d.pct < PART_LIMIT && size && at, d.pct >= PART_LIMIT ? {box: d.box, map: d.map} : !size ? 'size' : 'place');
     }
+  }
+  /* the settings followed live: the sample running, the account's accent colour and dark theme changed (as Settings saves them: the
+     page's settings' "gen" moves); within 5 s the primary button is the new accent colour and the window the dark theme's */
+  if (!ONLY || ONLY.split(',').includes('live')) {
+    ST.state(D, {dm: 'light', darkui: true, accent: '#2563eb'}, {});
+    const rf = path.join(OUT, 'live.nat.json'); try { fs.unlinkSync(rf) } catch (e) {}
+    const env = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, RUI_SAMPLE_RECTS: rf}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete env[k];
+    const pr = cp.spawn(BIN, ['--at=100,100', '--size=640x486', '--show=none'], {env, stdio: 'ignore'});
+    const t = Date.now(); while (Date.now() - t < 20000 && !fs.existsSync(rf)) await wait(100); await wait(500);
+    const j = JSON.parse(fs.readFileSync(rf)), b = j.rects.pri, at = [j.body[0] + b[0] + 4, j.body[1] + b[1] + 3], bg = [j.body[0] + 300, j.body[1] + 470];
+    const pix = (x, y) => cp.execSync(`import -window root -crop 1x1+${x}+${y} -depth 8 txt:- | tail -1`, {env}).toString().match(/#([0-9A-F]{6})/i)[1].toLowerCase();
+    const before = [pix(...at), pix(...bg)];
+    ST.state(D, {dm: 'dark', darkui: true, accent: '#db2777'}, {}); await wait(5000);
+    const after = [pix(...at), pix(...bg)]; pr.kill();
+    ok(`live: the settings followed while the app runs (the primary button ${before[0]} -> ${after[0]}, the window ${before[1]} -> ${after[1]})`, before[0] == '2563eb' && after[0] == 'db2777' && before[1] == 'ffffff' && after[1] == '0f172a');
   }
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');
   await BR.close();

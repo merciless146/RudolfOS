@@ -380,7 +380,7 @@ GtkWidget *rui_scroller(GtkWidget *child)
 	g_signal_connect(s->bar, "draw", G_CALLBACK(sb_draw), s); g_signal_connect(s->bar, "button-press-event", G_CALLBACK(sb_press), s);
 	g_signal_connect(s->bar, "motion-notify-event", G_CALLBACK(sb_motion), s); g_signal_connect(s->bar, "button-release-event", G_CALLBACK(sb_release), s);
 	g_signal_connect(s->adj, "changed", G_CALLBACK(sb_changed), s); g_signal_connect(s->adj, "value-changed", G_CALLBACK(sb_changed), s);
-	gtk_box_pack_start(GTK_BOX(box), s->bar, FALSE, FALSE, 0); gtk_widget_set_no_show_all(s->bar, TRUE); rui_on_settings(sb_width, s);
+	gtk_box_pack_start(GTK_BOX(box), s->bar, FALSE, FALSE, 0); rui_on_settings(sb_width, s);
 	return box;
 }
 
