@@ -6,10 +6,11 @@ name: Native apps check
 on:
   workflow_dispatch:
   push:
-    branches: ['native-ui', 'native-taskmgr']
-    paths: ['iso/sys/ui/**', 'iso/sys/apps/**', 'iso/qt/native/ui_*', 'iso/qt/native/pxdiff.py', 'iso/qt/native/taskmgr*', '.github/workflows/native-apps-check.yml']
+    branches: ['native-ui', 'native-taskmgr', 'native-settings*']
+    paths: ['iso/sys/ui/**', 'iso/sys/apps/**', 'iso/qt/native/ui_*', 'iso/qt/native/pxdiff.py', 'iso/qt/native/taskmgr*', 'iso/qt/native/settings*', 'iso/qt/native/fonts-test.conf', '.github/workflows/native-apps-check.yml']
   pull_request:
-    paths: ['iso/sys/ui/**', 'iso/sys/apps/**', 'iso/qt/native/ui_*', 'iso/qt/native/pxdiff.py', 'iso/qt/native/taskmgr*', 'iso/qt/native/same_rd.py',
+    paths: ['iso/sys/ui/**', 'iso/sys/apps/**', 'iso/qt/native/ui_*', 'iso/qt/native/pxdiff.py', 'iso/qt/native/taskmgr*', 'iso/qt/native/settings*', 'iso/qt/native/fonts-test.conf', 'iso/qt/native/same_rd.py',
+      'desktop/settings25.js', 'desktop/settings31.js', 'desktop/setsearch59.js', 'desktop/settings-index.json', 'desktop/engine57.js', 'desktop/rest61.js', 'desktop/devmode59.js',
       'iso/sys/rudolfd-desktop.inc', 'iso/sys/rudolfd-confine.inc', 'iso/sys/rudolf-native.c', 'desktop/oneapp59.js', 'iso/qt/host/fixtures/tmdata.js', 'iso/sys/rudolfd-winapi.h', 'iso/systools/winapi.py', 'desktop/tm26.js', 'desktop/tmtop57.js',
       'desktop/styles25.css', 'desktop/base_v24.html', '.github/workflows/native-apps-check.yml']
 permissions: {contents: read}
@@ -68,6 +69,28 @@ jobs:
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: native-taskmgr, retention-days: 7, path: out}
+  settings:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc libgtk-3-dev libwebkit2gtk-4.1-dev libxrandr-dev libxcomposite-dev libxi-dev xvfb x11-utils xdotool xclip imagemagick python3-pil fonts-dejavu-core fonts-liberation fonts-noto-color-emoji >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: rudolf-settings built as the release builds it (hardened, no warning; its size)
+        run: |
+          cd iso && . systools/hardflags.sh && RUI_WERROR=1 sh sys/ui/build.sh $RUNNER_TEMP/ui $RUNNER_TEMP/rudolf-settings settings $HARD
+          python3 systools/hardcheck.py $RUNNER_TEMP/rudolf-settings && cp $RUNNER_TEMP/rudolf-settings $RUNNER_TEMP/s && strip $RUNNER_TEMP/s
+          echo "::notice title=rudolf-settings::$(($(stat -c %s $RUNNER_TEMP/s) / 1024)) KB stripped (budget 1 MB)"
+      - name: "settings_t.sh: each native page against the web one (light, dark, two other accents), Search in Settings, the checklist, the memory"
+        run: mkdir -p out && NODE_PATH=$PWD/node_modules SET_PORT=8693 SET_DSP=:93 sh iso/qt/native/settings_t.sh $PWD/out "" $RUNNER_TEMP/rudolf-settings
+      - if: always()
+        run: cat out/memory.txt 2>/dev/null | sed 's/^/::notice title=Settings memory::/' || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: native-settings, retention-days: 7, path: out}
   host:
     runs-on: ubuntu-24.04
     timeout-minutes: 25

@@ -1108,6 +1108,38 @@ in Task Manager.
 - **Known differences, said so:** the Apps tab's own row shows "—" for Task Manager's memory (the web one estimates its page's);
   System › "Runs in" says the native desktop; Copy system report leaves out what only the page knows (the shell's notes, the
   Linux apps' check, the health log's latest; the hardware check's summary says "not run" until read from the page's storage).
+- **Step 3, the native Settings** (`/usr/bin/rudolf-settings`, `iso/sys/apps/settings.c` with its pages `settings_PAGE.c` and
+  `mksettings.py`, which reads the pages' list, Search in Settings' index and keywords, Settings' own styles, the time zones, the
+  languages and the logo from the page at build time). **In progress, one PR per group of pages; the native desktop keeps opening the
+  web Settings until every page and the search pass (the last PR switches it).**
+  - **PR 1 (2026-11-23, scheduled task; branch `native-settings-1`): the window, the sidebar, Search in Settings, System, About.**
+    The window as the page's (the search bar, the sidebar of the 22 pages scrolled with the page when taller than the window, the
+    page scrolling on its own, the sticky footer), laid out block by block as the page's CSS lays it out (the margins collapsing, the
+    .r2 grid, the table's automatic columns). System: Clock, 24-hour, Time zone (tzList's cities for each hour now), Date (the
+    administrator's; doff), Use current date, Date format, Preview, Language (the window itself in the language chosen, before Apply,
+    as the page's), Share my language with apps, Set the clock from the internet (time/sync, time/status), Desktop engine (the
+    administrator's permission, desktop/engine?engine=), Idle windows (saved at once), Apply, Revert, Reset to defaults (each
+    confirmed), the unapplied changes asked about when another page is chosen or the window closed. About: the rows (info,
+    sys/status, the screen, the account, the language), Official or Custom (devmode59.js), Licences and Help (the shell opens Help,
+    at its Licences: rudolf-native's `open help licences`), Copy details, For developers (the page from a file, Roll back, Restart
+    the desktop: the administrator's permission where the page asks for it), Shutting down's log. Search in Settings: setsearch59.js
+    in C (the same words, scores, order, bold marks), the native pages harvested as the page harvests its own.
+    Against the web one (`qt/native/settings_t.sh`): **every view under 2 %: 0.32 to 0.70 %** (System and About, top and end, light,
+    dark, green and pink accents); Search in Settings the same rows (System 16, About 3) and the same results for 10 searches; the
+    checklist 23/23; **memory at idle with System open (host): 15.9 MB RssAnon, 35 to 59 MB PSS, against the web one's 73.4 MB RssAnon,
+    124.5 to 126.2 MB PSS** (Chromium's renderer for `#app=settings`; Display is measured when its page is native). 366 KB stripped, in the
+    release build (a native app's 1 MB budget) with librudolf-ui.
+  - **Left for the next PRs:** Update and recovery (it was in group 1's plan; moved to its own PR: install, recovery, system
+    extensions, boot menu, Bring your files), then Display, Sound, Multimedia, Keyboard, Mouse, Accessibility; Network, Mobile,
+    Bluetooth, Oracle, Remote; Devices, Storage, Apps, Notifications; Privacy, Security, Health, Users; then the switch in
+    rudolf-native (the start menu, pins, the taskbar, the desktop's right-click, Display Properties and every place that opens a
+    Settings page) and the memory with Display open.
+  - **Known differences (PR 1), each fixed or said why not:** About's Graphics is the system's GL renderer (the page asks its engine's
+    WebGL, which names it through ANGLE: the test gives both the page's name so the rows line up); About's Storage used is the disk
+    the account's files are on (dl/space; the page's is its browser storage, which a program has none of); Update the page from a
+    file… picks the file in the account's folders with GTK's chooser (the page picks it from its own drive C:); changes before Apply
+    show in the Settings window only (the page also shows them on its own desktop at once; the desktop follows on Apply, as both
+    save then); the drop-downs open as the page's menus, not Chromium's list (their closed look is the page's).
 **The owner's checklist (Vivobook, after #662 and #660 are in a beta):**
 1. Native desktop: Ctrl+Shift+Esc, Ctrl+Alt+Del, the start menu, a pin and the taskbar's right-click each open the native Task
    Manager (one window, above the others for Ctrl+Alt+Del), titled and iconed as Task Manager in the taskbar.
@@ -1117,6 +1149,15 @@ in Task Manager.
 4. Startup: Reopen my apps and Remove, then sign out and in.
 5. Copy system report (paste it in Notepad), Report a problem…, Developer Console.
 6. The memory: Task Manager's own row in its Processes tab (rudolf-taskmgr) against the web one's WebKit process before (~130 MB).
+**The owner's checklist for the native Settings (Vivobook; once the last Settings PR switches Native to it; until then run
+`rudolf-settings sys` from a terminal on the native desktop to look):**
+1. Each page against Chromium mode's Settings, light and dark: the same rows, controls and places; the sidebar and its keyboard.
+2. Search in Settings: the same results as Chromium's for a few words; Enter opens the row, lit.
+3. System: change the clock, 24-hour, the time zone, the date format and Apply: the taskbar's clock follows as with the web Settings;
+   Revert and Reset to defaults; the date (an administrator); Set the clock from the internet; Desktop engine (the administrator's
+   password; a wrong one refused); Idle windows.
+4. About: the rows (Graphics names the GPU), Licences, Help, Copy details (paste it), Roll back (the administrator's password).
+5. The memory: rudolf-settings in Task Manager's Processes tab against the web Settings' WebKit process (~170 MB, Part 38).
 
 ### The checks made green (added on 2026-11-23)
 
