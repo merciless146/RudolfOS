@@ -15,9 +15,10 @@ on:
       disks: {description: 'Disks (nvme,emmc,usb)', required: false, default: 'nvme,emmc,usb'}
       engines: {description: 'Engines (chromium,native,lite)', required: false, default: 'chromium,native,lite'}
       starts: {description: 'Counted starts of each', required: false, default: '5'}
+      reuse: {description: 'The test kernel and layers of this earlier run (its id): only the measurements run', required: false, default: ''}
   pull_request:
     paths: ['.github/workflows/zstd-measure.yml', '.github/zs162-run.txt', 'iso/qt/sb/zs162_t.py', 'iso/qt/sb/zs162_layers.sh', 'iso/qt/sb/zs162_table.py']
-permissions: {contents: read}
+permissions: {contents: read, actions: read}
 concurrency: {group: 'zstd-measure-${{ github.ref }}', cancel-in-progress: true}
 jobs:
   setup:
@@ -45,6 +46,7 @@ jobs:
           cat $GITHUB_OUTPUT
   kernel:
     needs: setup
+    if: inputs.reuse == '' || inputs.reuse == null
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
@@ -61,6 +63,7 @@ jobs:
         with: {name: zs-kernel, retention-days: 5, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt"}
   layers:
     needs: [setup, kernel]
+    if: inputs.reuse == '' || inputs.reuse == null
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy: {fail-fast: false, matrix: {v: '${{ fromJSON(needs.setup.outputs.variants) }}'}}
@@ -82,7 +85,7 @@ jobs:
         with: {name: 'zs-info-${{ matrix.v }}', retention-days: 90, path: 'out/*/info.json'}
   measure:
     needs: [setup, kernel, layers]
-    if: always() && needs.kernel.result == 'success'
+    if: always() && (needs.kernel.result == 'success' || inputs.reuse != '' && inputs.reuse != null)
     runs-on: ubuntu-24.04
     timeout-minutes: 345
     strategy: {fail-fast: false, matrix: {c: '${{ fromJSON(needs.setup.outputs.cells) }}'}}
@@ -100,19 +103,19 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/.ghcup || true
           sudo mkdir -p /mnt/zs && sudo chown $(id -u) /mnt/zs; df -h / /mnt | tail -2; nproc; free -m
       - uses: actions/download-artifact@v4
-        with: {name: zs-kernel, path: /mnt/zs/K}
+        with: {name: zs-kernel, path: /mnt/zs/K, run-id: '${{ inputs.reuse || github.run_id }}', github-token: '${{ github.token }}'}
       - uses: actions/download-artifact@v4
-        with: {pattern: 'zs-layers-*', path: /mnt/zs/L, merge-multiple: true}
+        with: {pattern: 'zs-layers-*', path: /mnt/zs/L, merge-multiple: true, run-id: '${{ inputs.reuse || github.run_id }}', github-token: '${{ github.token }}'}
       - name: The release's list
         run: |
           git fetch -q --depth 1 origin gh-pages; S='${{ needs.setup.outputs.serial }}'
           for c in beta stable files/$S; do git show origin/gh-pages:$c/manifest.txt > /mnt/zs/L/manifest.txt 2>/dev/null && grep -q "^serial $S$" /mnt/zs/L/manifest.txt && { git show origin/gh-pages:$c/manifest.sig > /mnt/zs/L/manifest.sig; break; }; done
           ls -la /mnt/zs/L /mnt/zs/L/*/ | head -60
       - name: ${{ matrix.c.disk }}, ${{ matrix.c.engine }}
-        env: {STARTS: '${{ needs.setup.outputs.starts }}'}
+        env: {STARTS: '${{ needs.setup.outputs.starts }}', VARIANTS: "${{ join(fromJSON(needs.setup.outputs.variants), ',') }}"}
         run: |
           mkdir -p /mnt/zs/run && cd /mnt/zs/run
-          sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} STARTS=$STARTS \
+          sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} STARTS=$STARTS VARIANTS=$VARIANTS \
             timeout 20000 python3 $GITHUB_WORKSPACE/iso/qt/sb/zs162_t.py /mnt/zs/L /mnt/zs/K '${{ matrix.c.disk }}' '${{ matrix.c.engine }}' 2>&1 | tee job.log; RC=${PIPESTATUS[0]}
           { echo '```'; sed -n '/^==== SUMMARY/,$p' job.log; echo '```'; } >> $GITHUB_STEP_SUMMARY || true
           sudo chown -R $(id -u) /mnt/zs/run; exit $RC
@@ -128,7 +131,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with: {pattern: 'zs162-*', path: r}
       - uses: actions/download-artifact@v4
-        with: {pattern: 'zs-info-*', path: r/layers}
+        with: {pattern: 'zs-info-*', path: r/layers, run-id: '${{ inputs.reuse || github.run_id }}', github-token: '${{ github.token }}'}
       - name: The tables and the choice
         run: |
           python3 iso/qt/sb/zs162_table.py r | tee zs162-table.md >> $GITHUB_STEP_SUMMARY
