@@ -1,2 +1,2 @@
 serial=
-# 2026-11-23T01:48:36Z step 2, guests and SMB 1's hang-up
+# 2026-11-23T01:48:43Z step 3 with step 2's fixes
