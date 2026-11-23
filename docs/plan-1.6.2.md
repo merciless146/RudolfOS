@@ -769,6 +769,14 @@ MB at most scanning A4 at 300 dpi in colour, about 28 MB making its PDF. Tests: 
 qt/sb/sc162_t.py (QEMU, the release with this tree's files; the USB path only on the host: QEMU has no emulated IPP over
 USB device), .github/workflows/scan-check.yml. Not testable here: scanning over WSD itself (the stand-in answers
 discovery and metadata, not WS-Scan's jobs): the owner's check.
+Step 2 built, **PR scan-app** (after scan-driverless): desktop/scan62.js (the app; File Explorer's "📠 Scan", the Print
+dialog's "📠 Scan…", Settings › Devices' Scanners section) and rudolfd's scan/* requests (iso/sys/rudolfd-scan.inc: find
+as the desktop's user after the firewall's WSD window; caps, start, page, save, drop as the account's own Linux user, no
+new privileges, its session's pages in ~/.cache/rudolf-scan/S; a USB scanner reached by that user only while it scans
+through the network helper's new `usbscan allow|done UID`; save with to= writes the file into the account's own folder as
+that user, without it answers the file for C:). Tests: qt/shell2/scan62_t.js 17/17 (end to end with rudolf-scan and the
+stand-in), qt/native/same_t.sh's scan cases (Native against Chromium), qt/sb/sc162_t.py's phase A (the release in QEMU
+with this tree's rudolfd and page: an account signed in, the app driven, the PDF in Documents its user's, 0644).
 
 ### 35. Network shares in File Explorer (added on 2026-11-22)
 1. **Windows and NAS shares (SMB):** File Explorer's Network lists the shares found on the home network (WS-Discovery and
