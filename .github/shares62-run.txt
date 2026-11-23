@@ -1,3 +1,3 @@
 serial=
 kernel_run=45139387769
-# 2026-11-23T09:25:09Z follow-up: the module signature read in the guest, the keyring asked why
+# 2026-11-23T09:43:56Z follow-up: the locked login keyring unlocked
