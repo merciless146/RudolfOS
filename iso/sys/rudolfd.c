@@ -234,9 +234,10 @@ static int shared_path(const char *p)
 	for (int i = 0; R[i]; i++) { size_t l = strlen(R[i]); if (!strncmp(p, R[i], l) && (!p[l] || p[l] == '/')) return 1; }
 	return 0;
 }
+static int shares_path_ok(const char *p);   /* rudolfd-shares.inc (1.6.2 Part 35): the signed-in account's open network shares */
 static int safe_media_path(const char *p)
 {
-	if (!p || (strncmp(p, "/media/", 7) && !shared_path(p)) || strstr(p, "/../") || strstr(p, "/./") || strlen(p) > 1024) return 0;
+	if (!p || (strncmp(p, "/media/", 7) && !shared_path(p) && !shares_path_ok(p)) || strstr(p, "/../") || strstr(p, "/./") || strlen(p) > 1024) return 0;
 	size_t n = strlen(p);
 	if (n >= 3 && !strcmp(p + n - 3, "/..")) return 0;
 	return 1;
@@ -4162,7 +4163,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", "modem", "boot", NULL };   /* (1.6.0: "boot", the start-up files and the firmware's entries: espcheck's and bootfiles.sh's reports were refused here, so nothing of theirs ever reached System health) */
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", "modem", "boot", "vpn", NULL };   /* (1.6.0: "boot", the start-up files and the firmware's entries: espcheck's and bootfiles.sh's reports were refused here, so nothing of theirs ever reached System health) */
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }
@@ -4571,9 +4572,11 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-lxprog.inc"    /* 1.6.2: Linux apps' progress on their taskbar buttons (plan-1.6.2 Part 25b) */
 #include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */
 #include "rudolfd-duel.inc"      /* 1.6.2: the LAN game relay for two-player Library games (plan-1.6.2 Part 30) */
+#include "rudolfd-vpn.inc"       /* 1.6.2: a VPN for the whole computer (plan-1.6.2 Part 33) */
 #include "rudolfd-scan.inc"      /* 1.6.2: scanning, the Scan app's requests (plan-1.6.2 Part 34) */
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
 #include "rudolfd-bring.inc"     /* 1.6.2: Bring your files, the installer's step (plan-1.6.2 Part 27) */
+#include "rudolfd-shares.inc"    /* 1.6.2: network shares in File Explorer (plan-1.6.2 Part 35) */
 /* 1.5.6: the downloads store at RUN/dl at start, then the account's binds again if rudolfd restarted during a session */
 static void dl_home_boot(void)
 {
@@ -4779,6 +4782,8 @@ static void api(struct req *r)
 		str j = {0}; sadd(&j, "{\"ok\":false,\"locked\":true,\"error\":\"Your Linux programs are in the encrypted folder. Sign in to an account with its password to unlock it.\"}"); reply(r->fd, 423, "application/json", j.b, j.n, NULL); free(j.b); return;
 	}
 	if (!strcmp(p, "net")) { api_net(r); return; }
+	if (!strcmp(p, "vpn")) { api_vpn(r, "", post); return; }   /* 1.6.2 (plan-1.6.2 Part 33: rudolfd-vpn.inc) */
+	if (!strncmp(p, "vpn/", 4)) { api_vpn(r, p + 4, post); return; }
 	/* 1.5.8 (plan 6.3): metered connections (/usr/lib/rudolf/netplug). GET: the connection in use, metered or not and
 	   why, this month's data on it. POST if=IF&v=on|off|auto: metered by hand for that network, or automatic again */
 	/* 1.5.9 (plan Part 4): Share this connection. GET net/hotspot: the state; POST net/hotspot?on=0: off; POST with a
@@ -5010,6 +5015,8 @@ static void api(struct req *r)
 	   the destination not inside a source. */
 	/* 1.6.2 (plan-1.6.2 Part 27): Bring your files (rudolfd-bring.inc) */
 	if (!strncmp(p, "bring/", 6)) { api_bring(r, p + 6, post); return; }
+	/* 1.6.2 (plan-1.6.2 Part 35): network shares (rudolfd-shares.inc) */
+	if (!strncmp(p, "shares/", 7)) { shares_api(r, p + 7, post); return; }
 	if (!strcmp(p, "fs/xcopy")) {
 		if (!post || !r->body || r->blen > 65536) { reply_err(r->fd, 400, "use POST, with what to copy"); return; }
 		if (job_running()) { reply_err(r->fd, 409, "busy: another job is running, try again when it ends"); return; }
@@ -5832,6 +5839,7 @@ int main(int argc, char **argv)
 		if (root_have("power")) { pid_t pp = fork(); if (pp == 0) { const char *av[] = { "power", "apply", NULL }; int nul = root_null(); if (root_call(av, nul, nul, nul) < 0 && system("/usr/lib/rudolf/power apply >/dev/null 2>&1") != 0) {} _exit(0); } }   /* (1.6.1 Part 11) */
 		else if (system("/usr/lib/rudolf/power apply >/dev/null 2>&1 &") != 0) {}
 	}
+	vpn_boot();   /* 1.6.2 (plan-1.6.2 Part 33): an "Always on" VPN */
 	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0), one = 1;
 	setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one);
 	struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(8080), .sin_addr.s_addr = htonl(INADDR_LOOPBACK) };
@@ -5845,6 +5853,7 @@ int main(int argc, char **argv)
 		tor_tick();
 		know_tick();
 		confine_tick();   /* 1.6.1 (plan Part 20) */
+		vpn_tick();   /* 1.6.2 (plan-1.6.2 Part 33) */
 		if (poll(&pf, 1, 1000) <= 0) continue;
 		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) continue;

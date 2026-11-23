@@ -5,6 +5,19 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- New: a VPN for the whole computer (Settings › Network › VPN). Add your VPN provider's or your home router's WireGuard file
+  (an administrator's password), then connect and disconnect there or from the taskbar's network pop-up, which shows its
+  state. While it is on, every app's traffic and its name lookups go through it, the local network is still reached
+  directly, and nothing goes round it by IPv6. Its key is kept where only the system reads it. The same on Native,
+  Chromium and Lite.
+- New: who may turn each VPN on and off, an administrator's choice: Everyone (the default), Administrators only, or Always
+  on (it comes back at every start and nobody can turn it off). Accounts with parental controls cannot turn a VPN off,
+  and turning off a VPN another account turned on says so first ("Ann's VPN is on for everyone on this computer").
+- New: a VPN's kill switch (an administrator's, off at first): while a VPN with it is meant to be on and its tunnel is
+  down, nothing goes out but the VPN's own server, until it is back or turned off.
+- New: Settings › Network › VPN says that Oracle's Tor windows then run inside the VPN.
+- New: OpenVPN VPNs: add a provider's .ovpn file the same way (with its username and password when it asks for them).
+  Rudolf OS runs OpenVPN only while that VPN is on; files that would run scripts or plugins are refused.
 - Fixed: on the native desktop the taskbar's pinned apps and workspace buttons kept their light grey edge in dark mode, where
   Chromium mode draws a dim one, and a pinned app had no line under it while its window was open (grey, or the accent colour
   while that window is the active one). Both now look as in Chromium mode, on every monitor's taskbar. The "Several monitors"
@@ -12,6 +25,14 @@ Summary: In progress.
 - Kernel: the SMB client for network shares (Windows computers and NAS boxes, 1.6.2 Part 35) is built in as a signed module, loaded
   only when a share is opened. It speaks SMB 3 (and SMB 2.1 when asked for a share), never the old SMB 1 or 2.0, and Rudolf OS
   serves no share.
+- New (for File Explorer's network shares, Part 35): Rudolf OS can open a shared folder of a Windows computer or a NAS box for the
+  account signed in. Its files are that account's alone (other accounts cannot see it), the server is asked to encrypt where it
+  can, the password is kept in the account's keyring only if asked, and every share closes at sign-out. A wrong password, a
+  missing share or a server that speaks only the old SMB 1 is said plainly.
+- New: Network in File Explorer. It lists the Windows computers and NAS boxes found on your home network (with the firewall on)
+  and opens their shared folders as folders of your own: browse, open, copy to and from, drag onto the desktop. You can also type a
+  share's address (\\server\share or smb://server/share). Your recent shares are listed and reconnect only when you open them,
+  never at start-up, so a server that is off never slows the start. Disconnect closes a share. The same on Native, Chromium and Lite.
 - New: scanners (step 1 of 4: driverless scanning, without the Scan app yet). Rudolf OS finds the scanners and
   printer-scanners on the home network that speak eSCL (AirScan) or WSD, as most made since about 2015 do, with the
   firewall on, and USB ones that speak eSCL through IPP over USB; it scans with sane-airscan (pages in colour, grey or black

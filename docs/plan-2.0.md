@@ -542,3 +542,77 @@ default if "on" is never slower than "off" on either computer (within the runs' 
 slowing behind a game ever makes the game itself stutter (a launcher or overlay in the desktop's group), say so: the
 weight (20) is one line in /usr/lib/rudolf/gamemode.
 
+
+## Game Mode: WendigOS's own console mode (added on 2026-11-22)
+The owner, 2026-11-22, after comparing WendigOS with SteamOS, Bazzite, CachyOS, Nobara and ChimeraOS (all of which but CachyOS
+and Nobara start into Steam's Game Mode under gamescope) and asking for gamescope's Game Mode to be described: of the two ways
+offered (gamescope's Steam session as a separate session, or Rudolf's own console mode in its compositor), the owner asked to
+see the second as a concept, then its cost, and answered "Alright, sounds good". The concept's three screens (home, the
+in-game Quick menu, a game's page) are on the owner's design canvas "WendigOS Game Mode — concept".
+- **The look: Version 2** (the owner, 2026-11-22: "Version 2 is ideal"), the canvas's "Home, version 2" artboard: the
+  WendigOS brand leaned into (the wordmark set wide in capitals with "OS" in a glowing green, "Wayland-Enhanced ·
+  Driver-Integrated · Gaming" beneath it, a carbon-fibre off-black ground, one green accent used throughout, a frost and
+  night key art with aurora bands, no creature drawn) and what current game dashboards do: a full-bleed cinematic hero
+  with the game's title in large capitals, its progress and Resume on A; shoulder-button tabs (LB/RB: Home, Library,
+  Steam, Emu, Media); a shelf of cover-shaped cards with their source on each, the focused one larger, ringed and
+  glowing; glass side cards for the performance profile (and the play time left on battery) and downloads; the
+  controller, Wi-Fi, battery, the time and the account at the top; the controller's buttons along the bottom. The
+  Quick menu and the game's page are to be redone in the same look when Game Mode is built. Type: Space Grotesk and
+  Inter (both SIL Open Font License) unless fonts already in the system will do; the wordmark stays type until
+  WendigOS's logo is made in its own step.
+- **Its colours follow Display Properties** (the owner, 2026-11-22: "Have it so that the game-mode's color theme (the green
+  highlights and artwork at the top of the screen) follows the color theme selected in display properties"): the
+  account's Settings › Display › Colours and theme › Accent colour (`S.accent`: its eight swatches or any colour) sets every
+  highlight (the tab underline, Resume, the progress bar, the focused card's ring and glow, the status dots, the account's
+  ring, the Library's source chips) and tints the key art at the top (the aurora bands and the night sky). Text on a
+  highlight turns dark or light by the accent's luminance; the accent used as text on the dark ground is lightened until
+  it reaches 7:1, so every accent stays readable (slate and the dark blues included). Changing the accent in Display
+  Properties changes Game Mode at once, as it changes the desktop. Steam's and Emu's chips keep their own colours (blue,
+  amber) so the source stays recognisable. WendigOS's default accent is Version 2's green (#4ff0a0); Rudolf OS 1.6.x
+  keeps its own default (blue). The canvas's Version 2 shows it with the accent as a tweak.
+- **What it is:** a full-screen, controller-first session of WendigOS's compositor (not gamescope, not a web page): one
+  launcher for the Library's games, Steam's (through Proton) and Emu's, with source tabs (All, Library, Steam, Emu,
+  Recent), a game's page (continue, its save's state, its own settings) and "Switch to desktop" back to the WendigOS desktop.
+- **The Quick menu** (one button, over the running game): a small performance overlay (FPS, frame time, temperatures, a
+  frame-time graph), the power limit (TDP, per game, where the hardware allows it: AMD's and Intel's processor drivers),
+  the frame limit, scaling (FSR 1, integer, off), the refresh rate and variable refresh, HDR where the display and the
+  compositor can, screenshot, suspend and quit. Game mode (rudolfd's, docs/plan-1.6.1.md Part 19) is on for the game.
+- **How it is built, lean:** native C and GTK (layer-shell surfaces of the compositor, as the shell's), never the desktop's
+  web page; the compositor itself does the frame limit, scaling and direct scan-out. While a game runs the launcher sleeps
+  and only the Quick menu stays ready. Steam is started only for Steam's games. Rudolf's own small overlay rather than
+  MangoHud if it is smaller. Fonts already in the system where they will do.
+- **Its cost, estimated on 2026-11-22 (to be measured, as everything here):** disk about 2-8 MB (the program under 1 MB, the
+  compositor's part under 1 MB, fonts about 1 MB if new ones are needed, MangoHud 2-5 MB only if used; per-game artwork
+  kept in the account's folder). Memory about 15-40 MB on the home screen, 5-15 MB during a game (plus 5-10 MB with an
+  overlay). Steam's client, several hundred MB, only while a Steam game runs, as on every system that runs Steam. Against
+  gamescope's Steam session, which keeps Steam's interface running throughout, it saves most of that when no Steam game is
+  open.
+- **Order:** after W3 (the apps on Wayland), with the handheld controls (the Steam Controller and handhelds' drivers in the
+  7.x kernel; fan and TDP where the hardware allows) and the phone build's touch work. Not started.
+- **Tests:** the compositor's headless backend with a stand-in game (full screen, the frame limit and scaling measured),
+  controller-only navigation, the Quick menu over a game, suspend and resume, the switch to the desktop and back; memory
+  and disk measured against the estimates above; on the owner's Vivobook and the Asus desktop (19b's games).
+
+## Following 1.6.x's trimming (added on 2026-11-22)
+The owner, 2026-11-22: "Keep track of the trimming work that the main session is doing for the 1.6.x versions of native and
+apply whatever is beneficial to performance here as well." WendigOS is built from main, so most of 1.6.x's trimming
+reaches it by itself; this section is where each trimming part is checked for what WendigOS needs beyond that.
+- **The rule:** when a 1.6.x part that trims memory, disk or start-up time is planned or merged (on main), its entry is
+  added below the same day: what reaches WendigOS by itself, and what WendigOS needs on top (measured again on Wayland,
+  done in the compositor, or carried to the `kryptonite` branch while that branch exists). A trim that only helps X11,
+  Chromium mode's page or 1.6.x's older computers is noted and not carried. The handoff (rudolfos-devlink) keeps the list
+  of what is waiting.
+- **The kernel:** while the 7.3 kernel lives on the `kryptonite` branch, every change to main's iso/kconfig.sh (options
+  added, removed or made modules) is carried to that branch's kconfig.sh in a PR based on `kryptonite`, unless it is
+  6.18-only.
+- **1.6.2 Part 38, smaller pages for the native desktop's app windows** (planned 2026-11-22, branch plan-lean-pages: each
+  Native app window loads the whole desktop page, about 3.5 MB of script and about 100 MB a window; a small page per app,
+  about 35 MB): reaches WendigOS by itself (the same build19.py pages and the same native shell). On top: measured again
+  with WebKitGTK on Wayland (W3) before and after, since its process floor may differ from X11's; the small pages are
+  WendigOS's way until each app is native (this plan's waves), and a wave's native app replaces its small page, never both.
+  Step 5 (Oracle's Chromium memory) applies as it is: Oracle runs in Rudolf's Chromium on both editions.
+- **Already in 1.6.x and carried by main:** the native shell's memory work (1.5.9-1.6.1: lean61.js, the apps moved to files
+  loaded when opened), zstd for the images (1.6.2 Part 31: measured per engine; its kernel side, SQUASHFS_ZSTD, is on the
+  `kryptonite` branch since #617), game mode (1.6.1 Part 19).
+- **Waiting to carry to the `kryptonite` branch:** 1.6.2 Part 35's SMB client (CIFS as a signed module, the legacy dialects
+  and SMB server off), in main's kconfig.sh since #636.

@@ -735,6 +735,55 @@ Tor windows, or for calls and games) and what the best VPN would be: "Yes. That 
    refused off), import of malformed files refused. **The owner's checks:** a real VPN (a provider's or a home router's
    WireGuard) on the Vivobook: connect, browse, a call, sleep and wake, change Wi-Fi.
 
+#### Status (2026-11-23, scheduled task)
+- **Step 1, WireGuard (PR "VPN 1"):** built. The VPN helper (iso/sys/rudolf-vpn.c, /usr/lib/rudolf/root/vpn, run by
+  rudolf-rootd: CAP_NET_ADMIN and the file capabilities only, no mount) sets the kernel's WireGuard up through netlink
+  itself (rvpn0: key, peers, addresses, MTU; the whole computer's routes in a table of its own behind WireGuard's fwmark,
+  as wg-quick does, so the server's own route stays outside the tunnel on any network; IPv6 made unreachable when the
+  file has none; the file's DNS servers in /etc/resolv.conf and RUN/dns-vpn, which udhcpc.sh and the modem script keep
+  while it is on). rudolfd's vpn requests (rudolfd-vpn.inc): add, rename, remove with an administrator's password checked
+  by rudolfd; on and off by any account. The files root's 0600 in /persist/etc/vpn (0700); the key is never in an answer,
+  a log or the page. Settings › Network › VPN (desktop/vpn62.js) and the taskbar's network pop-up (the page's and
+  rudolf-native.c's fl_net: the VPNs' rows after the adapters). Not done: the QR code from the camera (Rudolf OS has a QR
+  encoder, qr61.js, but no decoder; a decoder of its own is a part of its own).
+  Tests (vpn-check.yml): qt/host/vpn162_t.sh (the real rudolfd and helper in namespaces of their own against the kernel's
+  WireGuard as the server, a capture on the outside link), the parser's fuzz test, qt/shell2/vpn62_t.js, and the network
+  pop-up on both engines (same_t.sh fly-net-vpn, fly-net-vpn-off).
+- **Step 2, who may do what (PR "VPN 2", after VPN 1):** built. Per VPN, set by an administrator (its password, checked
+  by rudolfd): "Everyone can turn it on and off" (the default), "Administrators only" (a standard account is asked for an
+  administrator's password, checked by rudolfd; a signed-in administrator is not), "Always on: nobody can turn it off"
+  (turned on at every start, vpn boot; off refused to everyone, an administrator's password included, until an
+  administrator changes the setting). An account under parental controls (the page's a.pc) never turns a VPN off. The
+  account is rudolfd's own record of who is signed in (HOME_SESSION), never one the request names. Turning off a VPN
+  another account turned on asks first ("Ann's VPN is on for everyone on this computer"); the pop-up (both engines)
+  opens Settings › Network for anything that needs a password or a question. Tests: vpn162_t.sh 18-25 (the policies,
+  the child, Always on at rudolfd's start), vpn62_t.js 11-18.
+- **Step 4, the kill switch (PR "VPN 4", after VPN 2; OpenVPN, step 3, comes last: it is the largest):** built. Per VPN,
+  an administrator's (its password), off at first. While a VPN with it is meant to be on, the table inet rudolf_vpnkill
+  (the VPN helper's, beside the firewall's own, so it holds whether that one is on or off) lets out only the tunnel, the
+  VPN's server (WireGuard's marked packets, and the server's addresses as last found: its name cannot be looked up through
+  it) and DHCP and IPv6's neighbour discovery (so the computer keeps its network); nothing is forwarded but into the
+  tunnel. Gone when the VPN is turned off or its kill switch is. Tests: vpn162_t.sh K1-K5 (nothing out while the tunnel
+  is down, back by itself with the remembered address), vpn62_t.js 18b.
+- **Step 5, Oracle (PR "VPN 5", after VPN 4):** Settings › Network › VPN says in a line that Oracle's Tor windows then run
+  inside the VPN (Tor connects through it; the VPN sees only that Tor is used). Tor itself unchanged. vpn62_t.js 1.
+- **Step 3, OpenVPN 2.6 (PR "VPN 3", the last: after VPN 5):** built. A .ovpn file imported the same way, checked line by
+  line against what a client's file may say (scripts, script-security, plugins, the management port, log and pid files,
+  another config, a user, a folder, files of its own: refused with the line; certificates and keys only inside the file;
+  a tap VPN refused; a provider's username and password asked for in the add dialog, kept root's 0600 beside it). The
+  VPN helper runs OpenVPN (/usr/sbin/openvpn, Ubuntu 24.04's 2.6 with OpenSSL, which the base layer has) only while the
+  VPN is on, as a daemon of its own outside the Linux apps' sandbox, from a run file it writes (the checked lines, the
+  servers as found now so the kill switch knows them, rvpn0, nobody once connected) with itself as OpenVPN's route-up
+  hook (the server's DNS servers; IPv6 unreachable when the server gives none). **DCO:** not used. OpenVPN 2.6 talks to
+  the out-of-tree ovpn-dco module; Linux 6.16 and later (Rudolf OS's 6.18 included) have their own in-tree ovpn module
+  instead, which needs OpenVPN 2.7 (not in Ubuntu 24.04, whose packages the base layer is made from). So OpenVPN runs with --disable-dco: its data in its
+  own process (measured in the test: about 9 MB of memory while connected, nothing while off). The way to DCO later:
+  CONFIG_OVPN in kconfig.sh (built in, signed with the kernel) and OpenVPN 2.7. Disk: the check workflow says what the
+  base layer lacks of it (the program is about 0.9 MB; ci_release.sh says the total at each build; the aim is about 3 MB).
+  Tests: qt/host/vpnovpn162_t.sh (an OpenVPN server of the test's in a namespace: refused files, connected as nobody,
+  traffic and DNS through it, a capture outside, the kill switch, started again by itself, off with nothing left, a
+  login), the fuzz test of both parsers, vpn62_t.js 2b-2c.
+
 ### 34. Scanners (added on 2026-11-22)
 The owner, 2026-11-22: scanners and network shares are what is left to add from what Mint and Ubuntu have (a phone link,
 fingerprint sign-in, firmware updates and remote access not needed: Bluetooth, already handled, or already there).
@@ -819,6 +868,27 @@ them. Tests: qt/host/debscan162_t.sh 6/6, debhome_t.sh 6/6 unchanged.
 (SMB 2.1 and 3 only: CIFS_ALLOW_INSECURE_LEGACY off, so the kernel itself has no SMB 1 or 2.0; no upcalls, RDMA, cache or key
 dump; no SMB server), in iso/kconfig-required.txt; .github/workflows/shares-check.yml builds this tree's kernel and checks the
 module (iso/qt/host/cifsmod62_t.sh: signed, SHA-256, no device alias, so it is loaded only when a share is mounted).
+Step 2 (PR "Network shares, step 2"): rudolfd's shares/ requests (iso/sys/rudolfd-shares.inc: open, close, the open ones,
+list, found, kept, forget); the drives helper's share-mount, share-umount, share-umount-all (rudolf-drives.c: the kernel's SMB
+client through fsopen/fsconfig, one option at a time, so nothing in a name or password is read as an option; for the signed-in
+account's own Linux user only, at /run/rudolf/shares/UID/ID, 0700, files 0600, nosuid, nodev, noexec; SMB 3 with "seal" first,
+without it only where the server has no encryption; 2.1 only when asked; a guest anonymously, then as "guest"); rudolf-shares
+(iso/sys/rudolf-shares.c, run as nobody: resolve by DNS or multicast DNS, probe, list by its own small SMB 2.1/3 client with
+NTLMv2 and signing, find); the password in the account's keyring only when asked (rudolf-portal --keyring-store share-ID);
+fs/ reaches only the signed-in account's open shares, links followed must stay inside the share (shares_path_ok); every share
+closed at sign-out (au_session_stop). Tests: iso/qt/host/shares62_t.sh (Samba in network namespaces, the runner's kernel) and
+iso/qt/sb/shares62_q.py (the newest beta with this tree's kernel and programs, two accounts) in shares-check.yml.
+Step 3 (PR "Network shares, step 3"): File Explorer's Network (desktop/shares62.js; five one-line hooks in files25.js: the places,
+the Network view, the address bar, a share's Disconnect, and the window's xNetApi): the computers and NAS boxes found, signing
+in (name, password, guest, "Remember the password", More options: domain and SMB 2.1), a server's shared folders, a share opened
+as a drive pane (so copying, opening and dragging onto the desktop are the drives' own: xfer61.js, deskxfer61.js), the open
+shares in the places, the account's recent shares (its own settings, no password; reconnected only when clicked), \\server\share
+and smb:// in the address bar, Disconnect. The firewall's wsd chain lets in WS-Discovery's answers only (3702 from 3702, private
+addresses, not cellular; nothing listens on 3702 but rudolf-shares find for its two seconds). Tests: iso/qt/shell2/shares62_t.js
+(Standard's page in Chromium and Native's app window in WebKit, Native's engine, compared), shares62_t.sh's firewall checks,
+shares62_q.py's found checks (20-22).
+**Left:** NFS (only SMB is built: NFS for NAS boxes that offer only NFS, later, if asked; the kernel's NFS client is there, the
+mount and its user mapping, root squash and Kerberos-less security, are not quick to make safe). Real hardware: the owner's checks.
 
 ### 36. Desert Camp, the third moving background (added on 2026-11-22)
 The owner, 2026-11-22: a third dynamic background in Display Properties: an open desert with sparse dry foliage and a few tents

@@ -1,0 +1,80 @@
+# 1.6.2 (docs/plan-1.6.2.md Part 33): a VPN for the whole computer. Checks only, nothing published.
+#   host: qt/host/vpn162_t.sh (the real rudolfd and its VPN helper in namespaces of their own, as root, against the
+#         kernel's WireGuard set up as a server with wg in another namespace: importing, malformed files, the key root's
+#         only, connected, all traffic and DNS through the tunnel and a capture outside it, disconnected, who may do what,
+#         Always on at the start), the helper's fuzz test, the release's build flags for it and rudolfd
+#   page: qt/shell2/vpn62_t.js (Settings › Network › VPN and the taskbar's network pop-up, in Playwright's Chromium,
+#         against a stand-in rudolfd)
+#   native: the network pop-up with its VPNs drawn by both engines, compared (qt/native/same_t.sh fly-net-vpn...)
+# Run by a pull request that changes these files, or by a push that changes .github/vpn-run.txt.
+name: VPN check
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/vpn-run.txt']
+  pull_request:
+    paths: ['iso/sys/rudolf-vpn.c', 'iso/sys/rudolfd-vpn.inc', 'iso/qt/host/vpn162_t.sh', 'iso/qt/host/vpnovpn162_t.sh', 'iso/qt/host/fixtures/vpn*', 'iso/qt/host/fuzz/vpn_fuzz.c',
+      'desktop/vpn62.js', 'iso/qt/shell2/vpn62_t.js', 'iso/qt/native/same_t.js', 'iso/qt/native/same_rd.py', 'iso/sys/rudolf-native.c', 'iso/sys/root/usr/lib/rudolf/udhcpc.sh', '.github/workflows/vpn-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: "Tools (wg only for the test server: Rudolf OS ships none)"
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq wireguard-tools tcpdump iproute2 nftables python3 gcc zlib1g-dev >/dev/null
+          sudo modprobe wireguard && echo "WireGuard: $(cat /sys/module/wireguard/version 2>/dev/null)"
+      - name: "vpn162_t.sh (as root: its own mount and network namespaces)"
+        run: sudo sh iso/qt/host/vpn162_t.sh
+      - name: "vpnovpn162_t.sh: OpenVPN (as root: its own namespaces, an OpenVPN server of the test's)"
+        run: sudo apt-get install -y -qq openvpn >/dev/null && sudo systemctl stop openvpn 2>/dev/null; sudo sh iso/qt/host/vpnovpn162_t.sh
+      - name: "OpenVPN's disk: what the base layer of the newest release lacks of it"
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          sudo apt-get install -y -qq squashfs-tools >/dev/null
+          git fetch -q --depth 1 origin gh-pages; S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          gh release download "r$S" -p base.sfs -D /tmp/rel && sudo unsquashfs -q -d /tmp/broot /tmp/rel/base.sfs >/dev/null
+          T=$(stat -c %s /usr/sbin/openvpn); echo "openvpn $T"
+          for l in $(ldd /usr/sbin/openvpn | awk '/=>/{print $3}'); do if [ -e /tmp/broot$l ] || [ -e /tmp/broot/usr$l ]; then echo "  in the base layer: $l"; else s=$(stat -L -c %s $l); T=$((T + s)); echo "  added: $l $s"; fi; done
+          echo "::notice title=OpenVPN's disk::$((T / 1024)) KB added to the base layer (release $S)"
+      - name: The helper's parsing, fuzzed (ASan, UBSan)
+        run: gcc -g -O1 -fsanitize=address,undefined -fno-sanitize-recover=all -o /tmp/vpn_fuzz iso/qt/host/fuzz/vpn_fuzz.c && /tmp/vpn_fuzz 30
+      - name: The release's flags
+        run: |
+          . iso/systools/hardflags.sh
+          gcc -O2 $HARD -Wall -Wno-misleading-indentation -Werror -o /tmp/vpn iso/sys/rudolf-vpn.c && python3 iso/systools/hardcheck.py /tmp/vpn
+          gcc -O2 $HARD -Wall -o /tmp/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic && python3 iso/systools/hardcheck.py /tmp/rudolfd
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page as built is this tree's
+        run: cp iso/www/index.html /tmp/built.html && cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cmp ../iso/www/index.html /tmp/built.html
+      - name: Settings › Network › VPN and the network pop-up
+        run: node iso/qt/shell2/vpn62_t.js
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb xdotool imagemagick python3-pil libwebkit2gtk-4.1-dev libxtst-dev libxrandr-dev libxfixes-dev fonts-dejavu-core faketime >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: "The network pop-up with its VPNs: Native drawn as Standard (same_t.sh)"
+        run: mkdir -p out && SAME_PORT=8631 SAME_DSP=:87 sh iso/qt/native/same_t.sh $PWD/out fly-net,fly-net-vpn,fly-net-vpn-off
+      - if: always()
+        name: "For comparison: main's own network pop-up (fly-net) on this runner"
+        run: git fetch -q --depth 1 origin main && git worktree add -q /tmp/main FETCH_HEAD && cd /tmp/main && SAME_PORT=8632 SAME_DSP=:88 sh iso/qt/native/same_t.sh $GITHUB_WORKSPACE/out/main fly-net || true
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: vpn-native, retention-days: 7, path: out}
+      - if: always()
+        name: The pictures, into the log (base64; for sessions that cannot download artifacts)
+        run: cd out && find . -type f | sort | head -60 && for f in $(find . -name '*.png' | sort | head -12); do echo "=== $f"; base64 -w0 "$f"; echo; done

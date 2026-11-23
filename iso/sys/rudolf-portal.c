@@ -920,11 +920,14 @@ static int keyring_fingerprints(void)
    rudolf-portal --keyring-clear KEY         removes it
    KEY: github or devlink. Attributes application=rudolf-blitzen, key=KEY (Settings › Privacy › Saved passwords for apps
    lists them as Blitzen's). The Secret Service's plain session: the secret goes over the account's own session bus only. */
-static int blz_key_ok(const char *k) { return k && (!strcmp(k, "github") || !strcmp(k, "devlink")); }
+/* 1.6.2 (docs/plan-1.6.2.md Part 35): and a network share's password, KEY share-ID (ID: rudolfd's 16 hex digits for the server,
+   share, name and version), application=rudolf-shares, only when the person asked for it to be kept */
+static int share_key_ok(const char *k) { if (!k || strncmp(k, "share-", 6) || strlen(k) != 22) return 0; for (const char *c = k + 6; *c; c++) if (!((*c >= '0' && *c <= '9') || (*c >= 'a' && *c <= 'f'))) return 0; return 1; }
+static int blz_key_ok(const char *k) { return k && (!strcmp(k, "github") || !strcmp(k, "devlink") || share_key_ok(k)); }
 static GVariant *blz_attrs(const char *k)
 {
 	GVariantBuilder a; g_variant_builder_init(&a, G_VARIANT_TYPE("a{ss}"));
-	g_variant_builder_add(&a, "{ss}", "application", "rudolf-blitzen"); g_variant_builder_add(&a, "{ss}", "key", k); return g_variant_builder_end(&a);
+	g_variant_builder_add(&a, "{ss}", "application", share_key_ok(k) ? "rudolf-shares" : "rudolf-blitzen"); g_variant_builder_add(&a, "{ss}", "key", k); return g_variant_builder_end(&a);
 }
 static const char *blz_session(GDBusConnection *b, char *out, size_t n)
 {
@@ -935,7 +938,7 @@ static const char *blz_session(GDBusConnection *b, char *out, size_t n)
 }
 static int keyring_blz(const char *op, const char *k, const char *label)
 {
-	if (!blz_key_ok(k)) { fprintf(stderr, "KEY: github or devlink\n"); return 2; }
+	if (!blz_key_ok(k)) { fprintf(stderr, "KEY: github, devlink or share-ID\n"); return 2; }
 	GDBusConnection *b = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL); if (!b) { fprintf(stderr, "no session bus\n"); return 1; }
 	GError *e = NULL;
 	/* what is there now */
@@ -972,7 +975,7 @@ static int keyring_blz(const char *op, const char *k, const char *label)
 	if (!al) { fprintf(stderr, "%s\n", e ? e->message : "no default keyring"); goto out; }
 	const char *col; g_variant_get(al, "(&o)", &col); if (!strcmp(col, "/")) { fprintf(stderr, "no default keyring\n"); g_variant_unref(al); goto out; }
 	GVariantBuilder pr; g_variant_builder_init(&pr, G_VARIANT_TYPE("a{sv}"));
-	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Label", g_variant_new_string(label && *label ? label : "Blitzen"));
+	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Label", g_variant_new_string(label && *label ? label : share_key_ok(k) ? "Network share" : "Blitzen"));
 	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Attributes", blz_attrs(k));
 	GVariant *secret = g_variant_new("(o@ay@ays)", ses, g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, "", 0, 1),
 		g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, line, strlen(line), 1), "text/plain");
