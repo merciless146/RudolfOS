@@ -21,7 +21,8 @@ on:
       'iso/qt/host/scan162_t.sh', 'iso/qt/host/fixtures/esclsrv.py', 'iso/qt/host/fixtures/scancheck.py', 'iso/qt/host/fuzz/scan_fuzz.c',
       'iso/qt/sb/sc162_t.py', '.github/workflows/scan-check.yml', 'desktop/scan62.js', 'iso/sys/rudolfd-scan.inc', 'iso/qt/shell2/scan62_t.js',
       'iso/qt/native/same_t.js', 'iso/qt/native/same_rd.py',
-      'iso/sys/root/usr/lib/rudolf/scanusb', 'iso/systools/mkscan.sh', 'iso/sys/rudolf-devices.c', 'iso/qt/host/scanusb162_t.sh']
+      'iso/sys/root/usr/lib/rudolf/scanusb', 'iso/systools/mkscan.sh', 'iso/sys/rudolf-devices.c', 'iso/qt/host/scanusb162_t.sh',
+      'iso/sys/rudolf-scanconf.h', 'iso/sys/rudolf-debian.c', 'iso/qt/host/debscan162_t.sh']
 permissions: {contents: read}
 jobs:
   host:
@@ -35,6 +36,10 @@ jobs:
         run: sudo sh iso/qt/host/scan162_t.sh
       - name: "scanusb162_t.sh (step 3: SANE's drivers, against scanimage; the USB scanners given and given back: as root)"
         run: sudo sh iso/qt/host/scanusb162_t.sh
+      - name: "debscan162_t.sh (step 4: Linux apps and the scanners found; as root: a mount namespace of its own)"
+        run: sudo sh iso/qt/host/debscan162_t.sh
+      - name: debhome_t.sh (the Debian sandbox's homes, unchanged)
+        run: sudo sh iso/qt/host/debhome_t.sh
       - name: listeners59_t.sh
         run: sh iso/qt/host/listeners59_t.sh
       - name: "mdns161_t.sh (the printers' discovery: the same firewall)"

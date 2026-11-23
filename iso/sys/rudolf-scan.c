@@ -25,6 +25,8 @@
  *                                       1-bit pages), at their resolutions' paper size
  *   rudolf-scan save png|jpeg OUT PAGE  one page as PNG or JPEG
  *                                       (OUT is never overwritten: a file there already is an error, "exists")
+ *   rudolf-scan conf                    (step 4) find's JSON on standard input: the network scanners in it as
+ *                                       sane-airscan's settings for Linux apps (rudolf-scanconf.h)
  * ID: escl:URL (http://ADDR:PORT/PATH or https://...) or wsd:URL (the scan service's address) for sane-airscan, or
  * sane:usb:VVVV:PPPP for a USB scanner that needs one of SANE's drivers (Part 34 step 3: the backends listed in
  * /usr/share/rudolf/scan-backends, each with its USB-only settings from /usr/share/rudolf/sane.d; found by its ids in
@@ -64,6 +66,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <zlib.h>
+#include "rudolf-scanconf.h"
 
 #define MAX_PIXELS (120u * 1000 * 1000)   /* (600 dpi, 8.5 x 14 inches is 43 million) */
 
@@ -1082,6 +1085,8 @@ int main(int argc, char **argv)
 	setvbuf(stdout, NULL, _IOFBF, 1 << 16); signal(SIGPIPE, SIG_IGN); umask(022);
 	alarm(1800);   /* (nothing here takes half an hour: a scanner that hangs does not keep this running) */
 	if (argc >= 2 && !strcmp(argv[1], "find")) return cmd_find();
+	if (argc >= 2 && !strcmp(argv[1], "conf")) {   /* (step 4, for the tests: find's JSON on standard input, sane-airscan's settings out) */
+		static char in[1 << 18], out[1 << 16]; size_t n = fread(in, 1, sizeof in - 1, stdin); in[n] = 0; scanconf_make(in, out, sizeof out); fputs(out, stdout); return 0; }
 	if (argc >= 3 && !strcmp(argv[1], "caps")) return cmd_caps(argv[2]);
 	if (argc >= 4 && !strcmp(argv[1], "scan")) return cmd_scan(argc, argv);
 	if (argc >= 5 && !strcmp(argv[1], "save")) return cmd_save(argc, argv);

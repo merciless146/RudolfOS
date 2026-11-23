@@ -22,6 +22,7 @@ static void one_xml(const unsigned char *p, size_t n)
 	for (const char *q = c; q < e && xml_block(q, e, "Hosted", &bs, &be) == 1; q = be + 1) xml_text(bs, be, "Address", t, sizeof t, NULL);
 	arm(0); free(c); N++;
 }
+static void one_conf(const unsigned char *p, size_t n) { char *c = malloc(n + 1); memcpy(c, p, n); c[n] = 0; static char o[4096]; arm(1); scanconf_make(c, o, sizeof o); arm(0); free(c); N++; }   /* (step 4) */
 static void one_png(const unsigned char *p, size_t n) { unsigned char *c = malloc(n ? n : 1); memcpy(c, p, n); img m; arm(1); if (!png_decode(c, n, &m)) free(m.px); arm(0); free(c); N++; }
 static size_t lbl(unsigned char *o, const char *s) { size_t k = 0; for (const char *p = s; *p;) { const char *d = strchr(p, '.'); size_t l = d ? (size_t)(d - p) : strlen(p); o[k++] = l; memcpy(o + k, p, l); k += l; p += l; if (*p) p++; } o[k++] = 0; return k; }
 static size_t real(unsigned char *m)
@@ -81,6 +82,8 @@ int main(int argc, char **argv)
 		mutate(m, rn, q, &qn, 9000); one_mdns(q, qn);
 		mutate((const unsigned char *)PM, sizeof PM - 1, q, &qn, sizeof q); one_xml(q, qn);
 		mutate(pb.b, pb.n, q, &qn, sizeof q); one_png(q, qn);
+		{ static const char JS[] = "{\"ok\":true,\"scanners\":[{\"id\":\"escl:http://192.168.1.30:80/eSCL\",\"name\":\"Of\\\"fice\\u0001\",\"model\":\"X\",\"via\":\"network\",\"proto\":\"eSCL\"}]}";
+		  mutate((const unsigned char *)JS, sizeof JS - 1, q, &qn, sizeof q); one_conf(q, qn); }
 	}
 	free(pb.b); free(pi.px);
 	printf("ok %ld (seed %u)\n", N, seed); return 0;

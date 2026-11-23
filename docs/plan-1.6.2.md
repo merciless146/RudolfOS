@@ -778,6 +778,15 @@ drivers 2.4 MB). Tests: qt/host/scanusb162_t.sh 13/13 (rudolf-scan through SANE'
 scanimage: colour, three-pass, 16-bit, grey, 1-bit; the feeder; cancel; find from a stand-in sysfs; no internet socket
 from the drivers; scanusb on stand-in device nodes; the devices helper). QEMU cannot stand in for a USB scanner (no
 emulated device speaks a scanner's protocol; usb-host passes a real one through): the owner's check.
+Step 4 built, **PR scan-linux** (after scan-usb): **network scanners yes, USB scanners no.** After each Find scanners,
+rudolfd writes the network ones (eSCL and WSD, by address; names and addresses kept to safe characters) as sane-airscan's
+settings, its own discovery off, to /persist/etc/rudolf/scanners.conf (iso/sys/rudolf-scanconf.h; rewritten in place, kept
+when nothing was found); rudolf-debian binds it read only over Debian's /etc/sane.d/airscan.conf when Debian has SANE
+(Simple Scan brings libsane1 and sane-airscan). Safe: Simple Scan reaches those scanners as any program of the account
+reaches the network (outgoing connections only); nothing new listens; discovery stays Rudolf's (WS-Discovery's answers
+would not pass the firewall in Debian, and Debian has no Avahi). USB scanners are not given: a Linux app would need the
+raw USB device for its whole session, and Debian's drivers are not Rudolf's checked set; Scan stays the way to scan
+them. Tests: qt/host/debscan162_t.sh 6/6, debhome_t.sh 6/6 unchanged.
 
 ### 35. Network shares in File Explorer (added on 2026-11-22)
 1. **Windows and NAS shares (SMB):** File Explorer's Network lists the shares found on the home network (WS-Discovery and
