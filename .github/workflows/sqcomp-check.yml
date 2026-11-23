@@ -15,7 +15,6 @@ jobs:
   host:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
-    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
       - uses: actions/checkout@v5
       - name: Tools
