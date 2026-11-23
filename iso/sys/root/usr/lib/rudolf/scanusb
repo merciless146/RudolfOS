@@ -1,0 +1,49 @@
+#!/bin/sh
+# Rudolf OS 1.6.2 (docs/plan-1.6.2.md Part 34, step 3): USB scanners that need one of SANE's drivers (rudolf-scan's
+# backends: /usr/share/rudolf/scan-backends) are given to the account's own Linux user only while it scans. A scanner
+# is a USB device whose vendor and product are in /usr/share/rudolf/scan-usb-ids (SANE's own list of the USB scanners
+# its drivers know, sane-backends' 20-sane.hwdb, taken at the build). rudolfd runs it through the devices helper:
+#   scanusb allow UID   every such device plugged in: its node (/dev/bus/usb/BBB/DDD) given to UID (owner UID, 0600),
+#                       its owner and mode before kept in /run/rudolf/scanusb/BBB-DDD; prints the nodes given
+#   scanusb done UID    those of UID given back as they were (a node gone or since given to another left alone)
+#   scanusb list        the scanners plugged in (VVVV:PPPP BUS DEV, one a line)
+# Only accounts' users (1001-59999) and the desktop's (1000, with nobody signed in): never root or a system user. A scan
+# that ends any way (stopped, cut off) is followed by done; a computer restarted has none given (/run is in memory).
+# For the host test: RUDOLF_SCANUSB_SYS (sysfs), RUDOLF_SCANUSB_DEV (where the nodes are), RUDOLF_SCANUSB_IDS (the
+# list), RUDOLF_RUN.
+# GPL-2.0-or-later.
+export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+SYS=${RUDOLF_SCANUSB_SYS:-/sys}; DEV=${RUDOLF_SCANUSB_DEV:-/dev/bus/usb}; IDS=${RUDOLF_SCANUSB_IDS:-/usr/share/rudolf/scan-usb-ids}
+R=${RUDOLF_RUN:-/run/rudolf}/scanusb
+uid_ok() { case "$1" in ""|*[!0-9]*) return 1;; esac; [ ${#1} -le 5 ] && [ "$1" -ge 1000 ] && [ "$1" -le 59999 ]; }
+# the scanners plugged in: VVVV:PPPP BUS DEV
+list() {
+	[ -r "$IDS" ] || return 0
+	for d in "$SYS"/bus/usb/devices/*; do
+		[ -f "$d/idVendor" ] && [ -f "$d/busnum" ] && [ -f "$d/devnum" ] || continue
+		v=$(tr 'a-f' 'A-F' < "$d/idVendor" | head -c 4); p=$(tr 'a-f' 'A-F' < "$d/idProduct" | head -c 4); b=$(head -c 4 "$d/busnum"); n=$(head -c 4 "$d/devnum")
+		case "$v$p$b$n" in *[!0-9A-F]*|"") continue;; esac
+		grep -qx "$v:$p" "$IDS" && echo "$v:$p $b $n"
+	done
+}
+case "$1" in
+list) list ;;
+allow)
+	uid_ok "$2" || { echo "only an account's user or the desktop's (1000-59999)" >&2; exit 2; }
+	mkdir -p "$R"; chmod 700 "$R"
+	list | while read -r id b n; do
+		node=$(printf '%s/%03d/%03d' "$DEV" "$b" "$n"); key=$(printf '%03d-%03d' "$b" "$n")
+		[ -c "$node" ] && [ ! -L "$node" ] || continue
+		[ -f "$R/$key" ] || echo "$(stat -c '%u:%g %a' "$node") $2" > "$R/$key"
+		chown "$2:$2" "$node" && chmod 600 "$node" && echo "$node"
+	done ;;
+done)
+	uid_ok "$2" || { echo "only an account's user or the desktop's (1000-59999)" >&2; exit 2; }
+	for f in "$R"/*; do
+		[ -f "$f" ] || continue; read -r own mode who < "$f"; [ "$who" = "$2" ] || continue
+		k=${f##*/}; node="$DEV/${k%-*}/${k#*-}"
+		if [ -c "$node" ] && [ ! -L "$node" ] && [ "$(stat -c %u "$node")" = "$2" ]; then chown "$own" "$node"; chmod "$mode" "$node"; fi
+		rm -f "$f"
+	done ;;
+*) echo "usage: scanusb allow UID | done UID | list" >&2; exit 2 ;;
+esac

@@ -39,9 +39,11 @@ guard_rules() {
 table inet rudolfprint
 delete table inet rudolfprint
 table inet rudolfprint {
+	set scanuids { type uid; flags timeout; }
 	chain output {
 		type filter hook output priority filter; policy accept;
 		oif "lo" tcp dport 60000-60099 meta skuid { 0, 952, 1000 } accept
+		oif "lo" tcp dport 60000-60099 meta skuid @scanuids accept
 		oif "lo" tcp dport 60000-60099 ct state new counter reject with tcp reset
 	}
 }
@@ -96,10 +98,23 @@ scan() {
 	[ $ipp = 0 ] && running && { pkill -x ipp-usb; echo "$(date) ipp-usb stopped (no IPP over USB printer left)" >> $LOG; }
 	return 0
 }
+# 1.6.2 (docs/plan-1.6.2.md Part 34): a USB scanner that speaks eSCL is reached through ipp-usb's port too. A scan runs as
+# the signed-in account's own Linux user (rudolfd): "scanner allow UID" lets that user's new connections to ipp-usb's
+# ports through while it scans (an element of the set scanuids, which times out by itself after 15 minutes), "scanner
+# done UID" takes it away when the scan ends. Only accounts' users (1001-59999).
+scanner() {
+	case "$2" in ""|*[!0-9]*) echo "a user's number" >&2; return 2;; esac
+	[ "$2" -ge 1001 ] && [ "$2" -le 59999 ] || { echo "only an account's user (1001-59999)" >&2; return 2; }
+	case "$1" in allow) e="add element inet rudolfprint scanuids { $2 timeout 15m }";; done) e="destroy element inet rudolfprint scanuids { $2 }";; *) echo "allow or done" >&2; return 2;; esac
+	if [ -n "$RUDOLF_USBPRINT_NFT" ]; then echo "$e" >> "$RUDOLF_USBPRINT_NFT"; return 0; fi
+	command -v nft >/dev/null 2>&1 && nft list table inet rudolfprint >/dev/null 2>&1 || return 0
+	echo "$e" > $R/usbprint-scan.nft.$$ && nft -f $R/usbprint-scan.nft.$$; r=$?; rm -f $R/usbprint-scan.nft.$$; return $r
+}
 case "$1" in
 hotplug|scan)
 	mkdir -p $R; [ "$1" = hotplug ] && sleep 0.3   # (the interfaces of one printer come together)
 	if command -v flock >/dev/null; then ( flock 9; scan ) 9>$R/usbprint.lock; else scan; fi ;;
 list) cat $OUT 2>/dev/null ;;
-*) echo "usage: usbprint hotplug | scan | list"; exit 2 ;;
+scanner) scanner "$2" "$3" ;;
+*) echo "usage: usbprint hotplug | scan | list | scanner allow|done UID"; exit 2 ;;
 esac

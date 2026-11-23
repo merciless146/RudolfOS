@@ -203,7 +203,8 @@
 ["Opening items","Buttons and clicks"],
 ["Open files and folders with a single click","Buttons and clicks"]],"devs":
 [["Printers plugged in by USB","",1],
-["Print queue","",1]],"acc":
+["Print queue","",1],
+["Scanners","",1]],"acc":
 [["Pointer and cursor","",1],
 ["Cursor size","Pointer and cursor"],
 ["Cursor color","Pointer and cursor"],

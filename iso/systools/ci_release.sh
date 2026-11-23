@@ -36,7 +36,7 @@ MA=$(gcc -print-multiarch); [ -n "$MA" ] || MA=x86_64-linux-gnu
 # programs (systools/hardcheck.py)
 . systools/hardflags.sh
 MK="mksquashfs"; SQ="-comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress"
-NOTES=(); CH=$(pv chromium); KV=$(pv kernel)
+NOTES=(); CH=$(pv chromium); KV=$(pv kernel); KCFG=""
 for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cp "$PREV/$f" "$W/new/$f"; done
 
 # ---- Chromium
@@ -151,6 +151,9 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	# signed with the Rudolf OS Secure Boot key: the disc's boot menu starts it (inside the kernel bundle), and a
 	# Rudolf OS kernel under Secure Boot hands over (kexec) only to a kernel with this signature
 	"$SBSIGN" --key "$SB_KEY" --cert "$SB_CERT" --output "$W/new/vmlinuz" "$W/linux/arch/x86/boot/bzImage"
+	# 1.6.2 (docs/plan-1.6.2.md Part 31): what this kernel reads system layers in, for its signed release list
+	# (make_release.py --kernel-config); a kernel kept from the previous release keeps that release's line
+	KCFG=$W/kernel.config; cp "$W/linux/.config" "$KCFG"
 	[ "$KR" = "$KV" ] && NOTES+=("Linux $KERNEL_VERSION with new drivers") || NOTES+=("Linux $KERNEL_VERSION"); KV=$KR
 fi
 
@@ -168,7 +171,7 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
 # (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-bring.inc sys/rudolfd-shares.inc sys/rudolf-shares.c sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-dlzip.inc sys/rudolfd-root.inc sys/rudolfd-roothome.inc sys/rudolfd-rootpower.inc sys/rudolfd-rootnet.inc sys/rudolfd-rootdev.inc sys/rudolfd-rootother.inc sys/rudolfd-rootscreen.inc sys/rudolfd-boottime.inc sys/rudolfd-game.inc sys/rudolfd-lxprog.inc sys/rudolfd-gpu.inc sys/rudolfd-duel.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-drives-home.c sys/rudolf-accounts.c sys/rudolf-power.c sys/rudolf-network.c sys/rudolf-devices.c sys/rudolf-procs.c sys/rudolf-logs.c sys/rudolf-screen.c sys/rudolf-sound.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rudolf-steamquit.h sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-duel.c sys/rudolf-printq.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-bring.inc sys/rudolfd-shares.inc sys/rudolf-shares.c sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-dlzip.inc sys/rudolfd-root.inc sys/rudolfd-roothome.inc sys/rudolfd-rootpower.inc sys/rudolfd-rootnet.inc sys/rudolfd-rootdev.inc sys/rudolfd-rootother.inc sys/rudolfd-rootscreen.inc sys/rudolfd-boottime.inc sys/rudolfd-game.inc sys/rudolfd-lxprog.inc sys/rudolfd-gpu.inc sys/rudolfd-duel.inc sys/rudolfd-scan.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-drives-home.c sys/rudolf-accounts.c sys/rudolf-power.c sys/rudolf-network.c sys/rudolf-devices.c sys/rudolf-procs.c sys/rudolf-logs.c sys/rudolf-screen.c sys/rudolf-sound.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rudolf-steamquit.h sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-scan.c sys/rudolf-scanconf.h systools/mkscan.sh sys/rudolf-duel.c sys/rudolf-printq.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-webkey.c sys/rudolfd-webkey.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the website data's key)
 BSRC=$( (echo "$BSRC"; cat sys/rudolfd-confine.inc sys/rudolf-confine.h sys/rudolfd-confine-tables.h sys/rudolfd-confine-narrow.h sys/rudolfd-confine-pure.h sys/rudolfd-winapi.h sys/rudolf-rootd-confine.h) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the confinement)
@@ -220,12 +223,14 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolf-shares" sys/rudolf-shares.c -lcrypto   # (1.6.2 Part 35: network shares, the network's side)
 	# 1.6.2 (docs/plan-1.6.2.md Part 30): the LAN game relay
 	gcc -O2 $HARD -o "$B/rudolf-duel" sys/rudolf-duel.c
+	# 1.6.2 (docs/plan-1.6.2.md Part 34): scanning (libsane opened with dlopen; zlib linked in, as the print queue's)
+	gcc -O2 $HARD -o "$B/rudolf-scan" sys/rudolf-scan.c -ldl -lm -Wl,-Bstatic -lz -Wl,-Bdynamic
 	# 1.6.1 (docs/plan-1.6.1.md Part 9): the print queue (zlib linked in: the base layer's programs do not share it)
 	gcc -O2 $HARD -o "$B/rudolf-printq" sys/rudolf-printq.c -Wl,-Bstatic -lz -Wl,-Bdynamic
 	# 1.4.0: the development link
 	gcc -O2 $HARD -o "$B/rudolf-devlink" sys/rudolf-devlink.c -lcrypto -ldl
-	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-webkey" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-know" "$B/rudolf-dev" "$B/rudolf-print" "$B/rudolf-shares" "$B/rudolf-duel" "$B/rudolf-printq" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP $RINNER; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
-	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-webkey rudolf-apps rpk rudolf-ai rudolf-know rudolf-dev rudolf-print rudolf-shares rudolf-duel rudolf-printq rudolf-devlink rudolf-rootd; do
+	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-webkey" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-know" "$B/rudolf-dev" "$B/rudolf-print" "$B/rudolf-shares" "$B/rudolf-scan" "$B/rudolf-duel" "$B/rudolf-printq" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP $RINNER; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-webkey rudolf-apps rpk rudolf-ai rudolf-know rudolf-dev rudolf-print rudolf-shares rudolf-scan rudolf-duel rudolf-printq rudolf-devlink rudolf-rootd; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done
@@ -290,6 +295,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	[ -n "$FXL" ] || { echo "libfido2-1 is missing on the build machine (apt-get install libfido2-1)"; exit 1; }
 	FXB=0; for x in $FXL $(ldd "$FXL" | awk '/=>/{print $3}'); do [ -e "$W/broot$x" ] || [ -e "$W/broot/usr$x" ] || [ -e "$W/broot/usr/lib/$MA/$(basename "$x")" ] || { sudo cp -L "$x" "$W/broot/usr/lib/$MA/"; FXB=$((FXB + $(stat -L -c %s "$x"))); }; done
 	echo "  Security keys (libfido2): $((FXB / 1024)) KB"; echo "::notice title=Security keys::$((FXB / 1024)) KB added to the base layer"
+	# 1.6.2 (docs/plan-1.6.2.md Part 34): scanning: libsane (SANE's dll, which rudolf-scan opens with dlopen, so ldd does not
+	# see it), sane-airscan (eSCL and WSD scanners) and, from step 3, a small set of SANE's drivers for older USB scanners
+	# with their USB-only settings and SANE's list of USB scanners (systools/mkscan.sh says which and why), from the build
+	# machine's libsane1 and sane-airscan; every library they need must be in the base layer already (it is, on Ubuntu 24.04)
+	SNO=$(sudo sh systools/mkscan.sh "$W/broot") || { echo "$SNO"; exit 1; }
+	echo "  Scanning: $SNO"; echo "::notice title=Scanning::$SNO added to the base layer"
 	# 1.5.9 (plan Part 1): ModemManager (read only in 1.5.9: /usr/lib/rudolf/modem) with libqmi, libmbim and libqrtr,
 	# its plug-ins and the operators' database (mobile-broadband-provider-info, for 1.6.0's APNs). Its udev rules too:
 	# with no udev, ModemManager applies them itself (/usr/lib/rudolf/modem runs it with --test-no-udev).
@@ -474,5 +485,6 @@ NOTE=$(printf '%s' "$NOTE" | tr -d '\n\r' | cut -c1-290)
 # 1.6.0 (plan Part 18): this release's source and documents, which Blitzen looks things up in (rudolf-know build --source)
 git -C .. archive --format=tar --prefix="rudolf-os-$SERIAL/" HEAD desktop iso libs docs LICENSE README.md CHANGELOG.md | xz -9 -T0 > "$W/source.tar.xz"
 python3 systools/make_release.py --layers "$W/new" --kernel "$W/new/vmlinuz" --out "$OUT" --key "$KEYFILE" --serial "$SERIAL" \
+	--kernel-config "$KCFG" --squashfs "$(pv squashfs)" \
 	--version "$(cat VERSION).$(date -u +%y%m%d)" --chromium "$CH" --kernel-version "$KV" --notes "$NOTE" --file-base "$FILE_BASE" ${URGENT:+--urgent} --source "$W/source.tar.xz"
 echo "released=1" >> "${GITHUB_OUTPUT:-/dev/null}"; echo "notes=$NOTE" >> "${GITHUB_OUTPUT:-/dev/null}"
