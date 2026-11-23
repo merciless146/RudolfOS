@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- New: a VPN for the whole computer (Settings › Network › VPN). Add your VPN provider's or your home router's WireGuard file
+  (an administrator's password), then connect and disconnect there or from the taskbar's network pop-up, which shows its
+  state. While it is on, every app's traffic and its name lookups go through it, the local network is still reached
+  directly, and nothing goes round it by IPv6. Its key is kept where only the system reads it. The same on Native,
+  Chromium and Lite.
 - Fixed: on the native desktop the taskbar's pinned apps and workspace buttons kept their light grey edge in dark mode, where
   Chromium mode draws a dim one, and a pinned app had no line under it while its window was open (grey, or the accent colour
   while that window is the active one). Both now look as in Chromium mode, on every monitor's taskbar. The "Several monitors"

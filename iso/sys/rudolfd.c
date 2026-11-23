@@ -4163,7 +4163,7 @@ static void api_devlink(struct req *r, const char *what, int post)
 static void health_path(char *o, size_t n) { snprintf(o, n, "%s", access(RUN "/persistent", F_OK) ? RUN "/health.log" : PERSIST "/var/log/health.log"); }
 static int health_kind_ok(const char *k)
 {
-	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", "modem", "boot", NULL };   /* (1.6.0: "boot", the start-up files and the firmware's entries: espcheck's and bootfiles.sh's reports were refused here, so nothing of theirs ever reached System health) */
+	static const char *K[] = { "start", "ready", "fallback", "memory", "crash", "browser", "signin", "disk", "heat", "firewall", "remote", "vault", "update", "account", "bluetooth", "hardware", "library", "security", "tor", "extension", "modem", "boot", "vpn", NULL };   /* (1.6.0: "boot", the start-up files and the firmware's entries: espcheck's and bootfiles.sh's reports were refused here, so nothing of theirs ever reached System health) */
 	for (int i = 0; K[i]; i++) if (k && !strcmp(k, K[i])) return 1;
 	return 0;
 }
@@ -4572,6 +4572,7 @@ static unsigned au_uid(const char *id);
 #include "rudolfd-lxprog.inc"    /* 1.6.2: Linux apps' progress on their taskbar buttons (plan-1.6.2 Part 25b) */
 #include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */
 #include "rudolfd-duel.inc"      /* 1.6.2: the LAN game relay for two-player Library games (plan-1.6.2 Part 30) */
+#include "rudolfd-vpn.inc"       /* 1.6.2: a VPN for the whole computer (plan-1.6.2 Part 33) */
 #include "rudolfd-scan.inc"      /* 1.6.2: scanning, the Scan app's requests (plan-1.6.2 Part 34) */
 #include "rudolfd-confine.inc"   /* 1.6.1: rudolfd confined (plan-1.6.1 Part 20) */
 #include "rudolfd-bring.inc"     /* 1.6.2: Bring your files, the installer's step (plan-1.6.2 Part 27) */
@@ -4781,6 +4782,8 @@ static void api(struct req *r)
 		str j = {0}; sadd(&j, "{\"ok\":false,\"locked\":true,\"error\":\"Your Linux programs are in the encrypted folder. Sign in to an account with its password to unlock it.\"}"); reply(r->fd, 423, "application/json", j.b, j.n, NULL); free(j.b); return;
 	}
 	if (!strcmp(p, "net")) { api_net(r); return; }
+	if (!strcmp(p, "vpn")) { api_vpn(r, "", post); return; }   /* 1.6.2 (plan-1.6.2 Part 33: rudolfd-vpn.inc) */
+	if (!strncmp(p, "vpn/", 4)) { api_vpn(r, p + 4, post); return; }
 	/* 1.5.8 (plan 6.3): metered connections (/usr/lib/rudolf/netplug). GET: the connection in use, metered or not and
 	   why, this month's data on it. POST if=IF&v=on|off|auto: metered by hand for that network, or automatic again */
 	/* 1.5.9 (plan Part 4): Share this connection. GET net/hotspot: the state; POST net/hotspot?on=0: off; POST with a
@@ -5849,6 +5852,7 @@ int main(int argc, char **argv)
 		tor_tick();
 		know_tick();
 		confine_tick();   /* 1.6.1 (plan Part 20) */
+		vpn_tick();   /* 1.6.2 (plan-1.6.2 Part 33) */
 		if (poll(&pf, 1, 1000) <= 0) continue;
 		int c = accept4(s, NULL, NULL, SOCK_CLOEXEC);
 		if (c < 0) continue;

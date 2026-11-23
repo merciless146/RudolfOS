@@ -148,6 +148,8 @@ static const char *const CONFINE_START[] = {
 	"vault",
 	"vault/*",
 	"volume",
+	"vpn",
+	"vpn/*",
 	"web/*",
 	"web/status",
 	"wifi/*",

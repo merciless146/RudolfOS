@@ -358,6 +358,12 @@ static const char *const WINAPI_PAGE[] = {   /* the desktop's page: Standard, Li
 	"vault/store",
 	"vault/unlock",
 	"volume",
+	"vpn",
+	"vpn/add",
+	"vpn/off",
+	"vpn/on",
+	"vpn/remove",
+	"vpn/set",
 	"web/close",
 	"web/fedcm",
 	"web/hide",
@@ -434,5 +440,8 @@ static const char *const WINAPI_SHELL[] = {   /* the native shell, rudolf-native
 	"power/status",
 	"stats",
 	"volume",
+	"vpn",
+	"vpn/off",
+	"vpn/on",
 	NULL
 };
