@@ -30,6 +30,8 @@
 #                      the cellular notices (mobile/notes, those after since); DIR/mic.json: the apps using a microphone (mic)
 #   DIR/hotkey         (when there) the path of Rudolf OS's hotkey script: mic and volume answered through it as rudolfd does
 #                      (the sound server: pactl, PULSE_SERVER from the environment)
+#   DIR/tm.json        (when there, 1.6.2 Part 38) Task Manager's answers (fixtures/tm62.json: a made-up laptop): system, processes,
+#                      stats, net, info, memory/breakdown; proc/end, service/restart and memory/dropcache answered as done
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
 import http.server, json, os, re, sys, threading
 PORT = int(sys.argv[1]); D = sys.argv[2]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../www')
