@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Added: the native Settings' Update and recovery page (docs/plan-1.6.2.md Part 39), as the web one: updates, system extensions,
+  installing, recovery, the drive's start-up files and the boot menu; bringing in an old computer's files follows.
 - Faster start-up: the system's images are packed with zstd instead of xz, so Rudolf OS unpacks them about ten times faster.
   Measured in QEMU on all three desktop engines: the desktop is ready in 8-9 s instead of 16-25 s from a fast disk and in
   11-15 s instead of 17-24 s from a USB stick, and Oracle's first window opens in about 1 s instead of 8 s on Native and Lite.

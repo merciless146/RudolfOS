@@ -49,7 +49,8 @@ static void job_follow(void (*done)(int, void *), void *d) { Job *j = g_new0(Job
 static void job_redraw(int st, void *d) { (void)st; (void)d; g_idle_add(redraw_idle, NULL); }
 static void sys_job(const char *what, const char *body)
 {
-	char p[80]; snprintf(p, sizeof p, "/api/sys/%s", what); char m[300]; int c = post(p, body, m, sizeof m);
+	/* (each path written out: the confinement lists exactly these) */
+	const char *p = !strcmp(what, "check") ? "/api/sys/check" : !strcmp(what, "download") ? "/api/sys/download" : NULL; if (!p) return; char m[300]; int c = post(p, body, m, sizeof m);
 	if (c != 200) { set_notify("Updates", m, 1); redraw(); return; } job_follow(job_redraw, NULL); redraw();
 }
 
@@ -320,7 +321,9 @@ static void sx_done(int st, void *d)
 }
 static void sx_cred(const char *n, const char *p, void *d)
 {
-	SxJob *j = d; if (!n) { g_free(j); return; } char *e = g_uri_escape_string(j->name, NULL, TRUE), path[300]; snprintf(path, sizeof path, "/api/sysext/%s%s%s", j->what, *j->name ? "?name=" : "", *j->name ? e : ""); g_free(e);
+	SxJob *j = d; if (!n) { g_free(j); return; } char *e = g_uri_escape_string(j->name, NULL, TRUE), path[300];
+	if (!strcmp(j->what, "install")) snprintf(path, sizeof path, "/api/sysext/install?name=%s", e); else if (!strcmp(j->what, "remove")) snprintf(path, sizeof path, "/api/sysext/remove?name=%s", e);
+	else if (!strcmp(j->what, "retry")) snprintf(path, sizeof path, "/api/sysext/retry?name=%s", e); else snprintf(path, sizeof path, "/api/sysext/skip-once"); g_free(e);
 	char *b = cred_body(n, p), m[300]; int c = post(path, b, m, sizeof m); explicit_bzero(b, strlen(b)); g_free(b);
 	if (c != 200) { g_free(SXSAID); SXSAID = g_strdup(m); g_free(j); redraw(); return; }
 	if (!strcmp(j->what, "skip-once")) { g_free(SXSAID); SXSAID = g_strdup("The next start is without system extensions; the one after uses them again."); g_free(j); rui_jfree(SX); SX = rui_get("/api/sysext/status"); redraw(); return; }

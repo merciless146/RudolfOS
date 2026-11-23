@@ -181,7 +181,7 @@ static gboolean state_write(gpointer d)
 {
 	(void)d; const char *f = getenv("RUDOLF_SET_STATE"); if (!f || !SW) return G_SOURCE_REMOVE;
 	GString *s = g_string_new(NULL); state_more(s);
-	if (NAMED) { GHashTableIter it; gpointer k, v; g_hash_table_iter_init(&it, NAMED); while (g_hash_table_iter_next(&it, &k, &v)) rect_line(s, k, v); }
+	if (NAMED) { GHashTableIter it; gpointer k, v; g_hash_table_iter_init(&it, NAMED); while (g_hash_table_iter_next(&it, &k, &v)) { rect_line(s, k, v); if (g_object_get_data(G_OBJECT(v), "set-sel")) g_string_append_printf(s, "sel %s %s\n", (char *)k, s_select_get(v)); } }
 	GtkWidget *m = rui_menu_window(); if (m && gtk_widget_get_mapped(m)) { int x, y; gdk_window_get_origin(gtk_widget_get_window(m), &x, &y); g_string_append_printf(s, "menu %d %d %d %d\n", x, y, gtk_widget_get_allocated_width(m), gtk_widget_get_allocated_height(m)); }
 	GtkWidget *dl = rui_dialog_box(); if (dl) rect_line(s, "dialog", dl);
 	if (NOTES) g_string_append(s, NOTES->str);
@@ -861,6 +861,7 @@ static void state_more(GString *s)
 		for (guint k = 0; k < ITEMS->len; k++) { Item *i = g_ptr_array_index(ITEMS, k); if (i->k == I_R2) g_string_append_printf(s, "row %s|%d %d %d %d\n", i->cell->label, ox + x + R(i->x), oy + y + R(i->cell->y), R(i->w), R(i->cell->h)); } }
 	{ GtkWidget *f = gtk_window_get_focus(GTK_WINDOW(SW->win)); g_string_append_printf(s, "focus %s\n", f ? (f == SQ ? "search" : f == SIDE ? "side" : gtk_widget_get_name(f)) : "-"); if (SIDE_FOC >= 0) g_string_append_printf(s, "sidefoc %d\n", SIDE_FOC); }
 }
+static gboolean state_tick(gpointer d) { (void)d; set_state_soon(); return G_SOURCE_CONTINUE; }
 int main(int argc, char **argv)
 {
 	const char *start = argc > 1 && argv[1][0] != '-' ? argv[1] : "disp";
@@ -903,6 +904,7 @@ int main(int argc, char **argv)
 	snprintf(CUR, sizeof CUR, "%s", page_i(start) >= 0 ? start : "disp");
 	gtk_widget_show_all(SW->win); gtk_window_set_focus(GTK_WINDOW(SW->win), NULL);
 	page_build(); set_state_soon();
+	if (getenv("RUDOLF_SET_STATE")) g_timeout_add(400, state_tick, NULL);   /* (the tests: what shows written again often, a menu closed included) */
 	gtk_main(); return 0;
 }
 
