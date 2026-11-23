@@ -36,7 +36,7 @@ MA=$(gcc -print-multiarch); [ -n "$MA" ] || MA=x86_64-linux-gnu
 # programs (systools/hardcheck.py)
 . systools/hardflags.sh
 MK="mksquashfs"; SQ="-comp xz -Xbcj x86 -b 1M -noappend -all-root -quiet -no-progress"
-NOTES=(); CH=$(pv chromium); KV=$(pv kernel)
+NOTES=(); CH=$(pv chromium); KV=$(pv kernel); KCFG=""
 for f in vmlinuz base.sfs chromium.sfs desktop.sfs modules.sfs; do cp "$PREV/$f" "$W/new/$f"; done
 
 # ---- Chromium
@@ -151,6 +151,9 @@ if [ "$KERNEL_VERSION-rudolf" != "$KV" ] || [ "$KSRC" != "$PKSRC" ]; then
 	# signed with the Rudolf OS Secure Boot key: the disc's boot menu starts it (inside the kernel bundle), and a
 	# Rudolf OS kernel under Secure Boot hands over (kexec) only to a kernel with this signature
 	"$SBSIGN" --key "$SB_KEY" --cert "$SB_CERT" --output "$W/new/vmlinuz" "$W/linux/arch/x86/boot/bzImage"
+	# 1.6.2 (docs/plan-1.6.2.md Part 31): what this kernel reads system layers in, for its signed release list
+	# (make_release.py --kernel-config); a kernel kept from the previous release keeps that release's line
+	KCFG=$W/kernel.config; cp "$W/linux/.config" "$KCFG"
 	[ "$KR" = "$KV" ] && NOTES+=("Linux $KERNEL_VERSION with new drivers") || NOTES+=("Linux $KERNEL_VERSION"); KV=$KR
 fi
 
@@ -473,5 +476,6 @@ NOTE=$(printf '%s' "$NOTE" | tr -d '\n\r' | cut -c1-290)
 # 1.6.0 (plan Part 18): this release's source and documents, which Blitzen looks things up in (rudolf-know build --source)
 git -C .. archive --format=tar --prefix="rudolf-os-$SERIAL/" HEAD desktop iso libs docs LICENSE README.md CHANGELOG.md | xz -9 -T0 > "$W/source.tar.xz"
 python3 systools/make_release.py --layers "$W/new" --kernel "$W/new/vmlinuz" --out "$OUT" --key "$KEYFILE" --serial "$SERIAL" \
+	--kernel-config "$KCFG" --squashfs "$(pv squashfs)" \
 	--version "$(cat VERSION).$(date -u +%y%m%d)" --chromium "$CH" --kernel-version "$KV" --notes "$NOTE" --file-base "$FILE_BASE" ${URGENT:+--urgent} --source "$W/source.tar.xz"
 echo "released=1" >> "${GITHUB_OUTPUT:-/dev/null}"; echo "notes=$NOTE" >> "${GITHUB_OUTPUT:-/dev/null}"
