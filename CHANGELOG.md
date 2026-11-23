@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: "Remember the password" for a network share, and Blitzen's developer tokens, kept nothing when the account's keyring was
+  locked, though it has no password of its own. Rudolf OS now unlocks such a keyring itself before keeping the secret.
 - Changed: the plan (docs/plan-1.6.2.md Part 38): the app windows' memory on the native desktop measured; a small page for
   Task Manager built and measured (about 3 % less in WebKit) and not kept; Settings' panels measured and left as they are.
 - Added: native apps for Rudolf OS (docs/plan-1.6.2.md Part 39): librudolf-ui, the shared library that draws a native app as

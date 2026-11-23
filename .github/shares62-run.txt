@@ -1,2 +1,2 @@
 serial=
-# 2026-11-23T05:59:41Z follow-up: the kernel artifact's path
+# 2026-11-23T09:55:01Z follow-up done: the kernel built again in each run

@@ -8,7 +8,8 @@
 # Step 3, File Explorer's Network: the page job (iso/qt/shell2/shares62_t.js: Standard's page in Chromium and Native's app
 # window in WebKit, the engine Native draws with, compared), the host job's firewall checks (WS-Discovery's answers let in), and
 # the qemu job's found checks (this tree's firewall put in place).
-# Run by a push that changes .github/shares62-run.txt or this workflow; the host and page jobs also by pull requests. Nothing is published.
+# Run by a push that changes .github/shares62-run.txt (serial=SERIAL: the release; kernel_run=RUN_ID: an earlier run's kernel
+# instead of building one) or this workflow; the host and page jobs also by pull requests. Nothing is published.
 name: Network shares check
 on:
   push:
@@ -16,7 +17,7 @@ on:
   pull_request:
     paths: ['iso/sys/rudolf-shares.c', 'iso/sys/rudolf-drives.c', 'iso/sys/rudolfd-shares.inc', 'iso/qt/host/shares62_t.sh', 'iso/sys/root/usr/lib/rudolf/firewall',
       'desktop/shares62.js', 'desktop/files25.js', 'iso/qt/shell2/shares62_t.js', '.github/workflows/shares-check.yml']
-permissions: {contents: read}
+permissions: {contents: read, actions: read}
 jobs:
   module:
     if: github.event_name != 'pull_request'
@@ -25,18 +26,24 @@ jobs:
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
       - uses: actions/checkout@v5
+      # (.github/shares62-run.txt's kernel_run=RUN_ID: that run's kernel artifact is used, and none is built here)
+      - name: The run's settings
+        run: echo "N_krun=$(sed -n 's/^kernel_run=//p' .github/shares62-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV
       - name: Tools
+        if: env.N_krun == ''
         run: sudo apt-get update -qq && sudo apt-get install -y -qq bc flex bison libelf-dev libssl-dev squashfs-tools kmod >/dev/null
       - name: This tree's kernel (the release's Linux 6.18.y, kconfig.sh as it is; an artifact of this run only)
+        if: env.N_krun == ''
         run: |
           git fetch -q --depth 1 origin gh-pages
           KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
           S=$(date +%s); cd iso && OUT=$PWD/../kout bash systools/testkernel.sh; echo "built in $(( $(date +%s) - S )) s"
       - name: The SMB client (cifsmod62_t.sh)
+        if: env.N_krun == ''
         run: |
           M=$(ls -d iso/work-test/mods/lib/modules/*); sh iso/qt/host/cifsmod62_t.sh kout/config.txt "$M" | tee cifsmod62.txt
           echo "::notice title=SMB client::$(tail -1 cifsmod62.txt), $(du -k $(find "$M" -name 'cifs.ko*') | cut -f1) KB"
-      - if: always()
+      - if: always() && env.N_krun == ''
         uses: actions/upload-artifact@v4
         with: {name: shares62-kernel, retention-days: 7, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\ncifsmod62.txt"}
   host:
@@ -68,7 +75,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - name: The run's settings
-        run: echo "N_serial=$(sed -n 's/^serial=//p' .github/shares62-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV
+        run: for k in serial kernel_run; do echo "N_${k%_run}=$(sed -n "s/^$k=//p" .github/shares62-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV; done
       - name: Tools
         run: |
           sudo apt-get update -qq
@@ -80,8 +87,12 @@ jobs:
           bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
           echo "QEMU=$Q" >> $GITHUB_ENV
           mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
-      - uses: actions/download-artifact@v4
+      - if: env.N_kernel == ''
+        uses: actions/download-artifact@v4
         with: {name: shares62-kernel, path: .}   # (the artifact holds kout/... and cifsmod62.txt: their common folder is the workspace)
+      - if: env.N_kernel != ''
+        uses: actions/download-artifact@v4
+        with: {name: shares62-kernel, path: ., run-id: '${{ env.N_kernel }}', github-token: '${{ github.token }}'}
       - name: The release
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |

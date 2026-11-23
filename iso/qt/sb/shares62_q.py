@@ -33,7 +33,9 @@ T160 = open(os.path.join(HERE, 't160_t.py')).read()
 exec(re.search(r'^INIT_JS = .*$', T160, re.M).group(0)); exec(re.search(r'^INIT2_JS = .*$', T160, re.M).group(0))
 
 # ---- the home network: a bridge, dnsmasq's addresses, the two servers
-SH = os.path.join(W, 'srv'); PIDS = []; U1, U2 = 'ann62q', 'bob62q'
+import tempfile
+SV = tempfile.mkdtemp(prefix='shares62srv.', dir='/tmp'); os.chmod(SV, 0o755)   # (the servers' folders under /tmp, as the host test's: Samba did not start under the runner's workspace, run 45135531718)
+SH = os.path.join(SV, 'srv'); PIDS = []; U1, U2 = 'ann62q', 'bob62q'
 P1 = base64.b32encode(os.urandom(10)).decode().lower() + ',x=1'   # (made for this run; a comma, as an option would have)
 def net_up():
     q_('ip link del br62 2>/dev/null; ip link del tap62 2>/dev/null; for n in nas62 old62 win62; do ip netns del $n 2>/dev/null; ip link del v$n 2>/dev/null; done')
@@ -48,7 +50,7 @@ def net_up():
     sh_('chown', U1, f'{SH}/docs'); os.chmod(f'{SH}/pub', 0o777); os.chmod(f'{SH}/old', 0o777)
     open(f'{SH}/docs/onserver.txt', 'w').write('from the NAS\n'); sh_('chown', U1, f'{SH}/docs/onserver.txt')
     for n, addr, lo, hi in (('nas', '192.168.62.2', 'SMB2_10', 'SMB3'), ('old', '192.168.62.3', 'NT1', 'NT1')):
-        b = f'{W}/{n}'
+        b = f'{SV}/{n}'
         for d in ('priv', 'lock', 'state', 'cache', 'pid', 'ncalrpc', 'log'): os.makedirs(f'{b}/{d}', exist_ok=True)
         open(f'{b}/smb.conf', 'w').write(f'''[global]
  workgroup = HOME62
@@ -81,19 +83,20 @@ def net_up():
  guest ok = yes
 ''')
     os.makedirs('/run/samba', exist_ok=True)
-    subprocess.run(['smbpasswd', '-c', f'{W}/nas/smb.conf', '-s', '-a', U1], input=f'{P1}\n{P1}\n', text=True, capture_output=True)
-    for c in ([ 'setsid', 'ip', 'netns', 'exec', 'nas62', 'smbd', '-s', f'{W}/nas/smb.conf', '-F', '--no-process-group'],
-              [ 'setsid', 'ip', 'netns', 'exec', 'old62', 'smbd', '-s', f'{W}/old/smb.conf', '-F', '--no-process-group'],
+    subprocess.run(['smbpasswd', '-c', f'{SV}/nas/smb.conf', '-s', '-a', U1], input=f'{P1}\n{P1}\n', text=True, capture_output=True)
+    for c in ([ 'setsid', 'ip', 'netns', 'exec', 'nas62', 'smbd', '-s', f'{SV}/nas/smb.conf', '-F', '--no-process-group', '--debug-stdout', '-d', '3'],
+              [ 'setsid', 'ip', 'netns', 'exec', 'old62', 'smbd', '-s', f'{SV}/old/smb.conf', '-F', '--no-process-group', '--debug-stdout', '-d', '3'],
               [ 'setsid', 'ip', 'netns', 'exec', 'win62', 'wsdd', '-i', 'ewin62', '-n', 'WIN62', '-w', 'HOME62'],
               [ 'setsid', 'ip', 'netns', 'exec', 'nas62', sys.executable, os.path.join(QT, 'host', 'fixtures', 'smbmdns.py'), 'Nas62', '192.168.62.2'],
               [ 'dnsmasq', '--no-daemon', '--interface=br62', '--bind-interfaces', '--port=0', '--dhcp-range=192.168.62.100,192.168.62.150,12h', '--dhcp-leasefile=' + W + '/leases']):
-        PIDS.append(subprocess.Popen(c, stdout=open(f'{W}/{c[4] if len(c) > 4 else c[0]}-{len(PIDS)}.log', 'w'), stderr=subprocess.STDOUT))
+        PIDS.append(subprocess.Popen(['env', '-i', 'PATH=/usr/sbin:/usr/bin:/sbin:/bin', 'LANG=C.UTF-8'] + c, stdin=subprocess.DEVNULL, stdout=open(f'{W}/{c[4] if len(c) > 4 else c[0]}-{len(PIDS)}.log', 'w'), stderr=subprocess.STDOUT))   # (stdin /dev/null, as a shell's background job has it: smbd -F watches its standard input)
 def net_down():
     for p in PIDS:
         try: p.terminate(); p.wait(10)
         except Exception: pass
     q_('ip link del tap62; ip link del br62; ip netns del nas62; ip netns del old62; ip netns del win62')
     for u in (U1, U2): q_(f'userdel {u}')
+    shutil.rmtree(SV, ignore_errors=True)
 def make_drive(path):
     with open(path, 'wb') as f: f.truncate((2048 + DMB * 2048 + 2048) * 512)
     T = path + '.tree'; shutil.rmtree(T, ignore_errors=True); os.makedirs(f'{T}/home/rudolf'); os.makedirs(f'{T}/etc')
@@ -173,6 +176,25 @@ def api(g, p, post=False, body=None, t=90):
     except ValueError: return {}, int(m.group(1)) if m else 0
 def raw(g, p): return run(g, f"T={TOK}; printf 'GET /api/{p} HTTP/1.0\\r\\nX-Rudolf-Token: %s\\r\\n\\r\\n' \"$T\" | busybox nc 127.0.0.1 8080", 60, False)
 net_up(); make_drive(DRV); vm = None
+# the servers listening (port 445 of each, asked from the host's side of the bridge); what they said when not
+def srv_up():
+    import socket
+    r = {}
+    for a in ('192.168.62.2', '192.168.62.3'):
+        for _ in range(60):
+            try: socket.create_connection((a, 445), 1).close(); r[a] = True; break
+            except OSError: time.sleep(1)
+        else: r[a] = False
+    return r
+SU = srv_up(); out('the servers listening on 445:', SU)
+if not all(SU.values()):
+    out(q_('ip netns exec nas62 ss -ltnp; ip netns exec old62 ss -ltnp; ip -br addr; bridge link'))
+    for f in sorted(os.listdir(W)):
+        if f.endswith('.log'): out('--', f, open(os.path.join(W, f), errors='replace').read()[-1500:])
+    for n in ('nas', 'old'):
+        L = f'{SV}/{n}/log'
+        for f in sorted(os.listdir(L)) if os.path.isdir(L) else []:
+            if os.path.isfile(f'{L}/{f}'): out('--', n, f, open(f'{L}/{f}', errors='replace').read()[-1500:])
 try:
     vm, g, up, js = boot('a'); sh = lambda c, t=60, show=True: run(g, c, t, show)
     ok('0. the release starts (this tree\'s kernel)' if KERN else '0. the release starts', up)
@@ -187,6 +209,8 @@ try:
     ok('1. the SMB client is not loaded at start (no cifs module, no cifs file system); the firewall on', re.search(r'^0\n0$', o, re.M) and re.search(r'^on ', o, re.M), o)
     o = sh(f"for i in $(seq 1 60); do ip -4 addr show {NIC} | grep -q 'inet 192.168.62.' && break; [ $i = 20 ] && (udhcpc -i {NIC} -q -n -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1 &); sleep 2; done; ip -4 addr show {NIC} | grep inet", 200)
     ok(f'2. on the home network ({NIC}: an address from the router, 192.168.62.100-150)', re.search(r'inet 192\.168\.62\.1[0-5]\d', o), o)
+    o = sh("for a in 192.168.62.2 192.168.62.3; do busybox nc -w 3 $a 445 </dev/null >/dev/null 2>&1; echo \"tcp $a: $?\"; done", 60)
+    ok('2c. the servers reached from the guest over TCP (port 445; the firewall lets the answers in as replies)', 'tcp 192.168.62.2: 0' in o, o)
     ok('2b. the page settled', settle(g, js))
     r = js("(async()=>{ACCTS.length=0;const a=await acctNew('ann','a1','admin');ACCTS.push(a);const b=await acctNew('bob','b1','user');ACCTS.push(b);saveUser();return a.id+' '+b.id})()", 120)
     out('accounts:', r); ANN, BOB = str(r).split()
@@ -205,9 +229,11 @@ try:
     ok('7. a share the server does not have: 404, named', c == 404 and j.get('why') == 'noshare' and 'nothere' in j.get('error', ''), [c, j])
     # Ann's share
     j, c = api(g, 'shares/open?server=nas62&share=docs&keep=1', True, f'{U1}\n{P1}\n\n'); ID = j.get('id', 'x'); MP = j.get('path', '/x')
-    o = sh(f"grep ' {MP} ' /proc/mounts; stat -c '%u %a' /run/rudolf/shares/{UA} {MP}; lsmod | grep '^cifs '; modinfo -F signer cifs; modinfo -F sig_hashalgo cifs")
-    ok('8. Ann\'s share opened (nas62 by multicast DNS), encrypted, kept in her keyring as asked; the SMB client loaded only now, its module signed (SHA-256)',
-       c == 200 and j.get('encrypted') is True and j.get('kept') is True and re.search(r'^cifs ', o, re.M) and 'sha256' in o, [c, j, o])
+    o = sh(f"grep ' {MP} ' /proc/mounts; stat -c '%u %a' /run/rudolf/shares/{UA} {MP}; lsmod | grep '^cifs '; K=$(find /lib/modules/$(uname -r) -name 'cifs.ko*' | head -1); echo module $K; tail -c 28 $K; echo")
+    ok('8. Ann\'s share opened (nas62 by multicast DNS), encrypted, kept in her keyring as asked; the SMB client loaded only now, its module signed (the kernel\'s appended signature: MODULE_SIG_FORCE refuses one without)',
+       c == 200 and j.get('encrypted') is True and j.get('kept') is True and re.search(r'^cifs ', o, re.M) and '~Module signature appended~' in o, [c, j, o])
+    if not j.get('kept'):
+        out('(the keyring did not keep it:)', sh(f"su -s /bin/sh acct{UA} -c 'set -a; . /run/rudolf/acct-session.env; set +a; echo t | /usr/bin/rudolf-portal --keyring-store share-0000000000000000 t; echo rc=$?; /usr/bin/rudolf-portal --keyring-clear share-0000000000000000; ps -o user,args | grep -i [k]eyring' 2>&1; tail -8 /run/rudolf/keyring-{UA}.log; ls -la /run/rudolf/acct-session.env", 60))
     ok(f'9. mounted for Ann\'s own Linux user {UA} only: nosuid, nodev, noexec, its folders {UA}\'s, 0700', re.search(rf'cifs rw,nosuid,nodev,noexec.*uid={UA},forceuid,gid={UA},forcegid', o) and re.search(rf'^{UA} 700\n{UA} 700$', o, re.M), o)
     o2 = sh(f"stat -c '%u %a' {MP}/onserver.txt"); r1 = raw(g, f'fs/read?path={MP}/onserver.txt')
     j, c = api(g, f'fs/write?path={MP}/fromrudolf.txt', True, 'from Rudolf\n')

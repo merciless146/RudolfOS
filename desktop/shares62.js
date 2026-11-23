@@ -54,7 +54,7 @@ async function netOpen(api,r,a){r=Object.assign({ver:'3'},r);
   try{const j=await netRd('shares/open?'+netQ(r)+'&share='+netEnc(r.share)+(a.pass?'&keep='+(a.keep?1:0):''),netBody(a));a.pass='';
    netRecentAdd(Object.assign({},r,{ip:j.ip||r.ip}));
    const rem={dev:'share:'+j.id,root:j.path,path:j.path,label:netLabel(r),share:{id:j.id,server:r.server,share:r.share,encrypted:!!j.encrypted}};
-   api.openRemote(rem);api.say('Connected to '+netLabel(r)+(j.encrypted?' (encrypted).':'.'));netOpenList().then(()=>api.redraw());return rem}
+   api.openRemote(rem);api.say('Connected to '+netLabel(r)+(j.encrypted?' (encrypted).':'.'));netOpenList().then(()=>api.side?api.side():api.redraw());return rem}   /* (the places only: the share's pane is not loaded again) */
   catch(e){a.pass='';const why=e.why;
    if(why=='password'&&!r.guest){a=await netAsk(r,e.message);continue}
    if(why=='smb21'&&r.ver!='2.1'){a=await netAsk(Object.assign({},r,{ver:'2.1'}),e.message);continue}
@@ -81,7 +81,7 @@ async function netClose(api,rem){try{await netRd('shares/close?id='+netEnc(rem.s
 /* the places: Network, then the account's open shares */
 function xNetSide(sec,item,pn,api){if(!RD||!api)return;sec('Network');item('🌐','Network',pn.special=='network',()=>api.network());
  NET.open.forEach(s=>{const lab='\\\\'+s.server+'\\'+s.share;const d=item(s.encrypted?'🔒':'🗂️',lab,pn.remote&&pn.remote.dev=='share:'+s.id,()=>api.openRemote({dev:'share:'+s.id,root:s.path,path:s.path,label:lab,share:{id:s.id,server:s.server,share:s.share,encrypted:s.encrypted}}));d.title=lab+(s.encrypted?' (encrypted)':'')+(s.guest?' (as a guest)':s.user&&s.user!='-'?' as '+s.user:'')});
- if(!NET.t0){NET.t0=1;netOpenList().then(l=>{if(l.length)api.redraw()})}}
+ if(!NET.t0){NET.t0=1;netOpenList().then(l=>{if(l.length)api.side?api.side():api.redraw()})}}
 /* the Network view */
 function xNetPane(pn,box,api){box.innerHTML='';const h=(t,txt)=>{const e=document.createElement(t);if(txt!=null)e.textContent=txt;return e};
  const wrap=h('div');wrap.className='xnet';wrap.style.cssText='padding:12px;display:flex;flex-direction:column;gap:10px';box.appendChild(wrap);

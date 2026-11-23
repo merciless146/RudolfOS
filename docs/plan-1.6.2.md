@@ -887,6 +887,15 @@ and smb:// in the address bar, Disconnect. The firewall's wsd chain lets in WS-D
 addresses, not cellular; nothing listens on 3702 but rudolf-shares find for its two seconds). Tests: iso/qt/shell2/shares62_t.js
 (Standard's page in Chromium and Native's app window in WebKit, Native's engine, compared), shares62_t.sh's firewall checks,
 shares62_q.py's found checks (20-22).
+**Follow-up (PR "Network shares: the page check's Native window in WebKit…", after #636, #642, #643 were merged):** found by
+the checks' first full runs: rudolfd's shares_body kept the third line's newline in the domain (every open and list refused);
+the account's login keyring, though without a password, could be locked, so nothing was kept (rudolf-portal now unlocks it when
+that needs no prompt; Blitzen's tokens had the same); after a share opened only the places are drawn again (files25.js
+xNetApi.side); the checks themselves (WebKit's own account for Native's window, the kernel artifact's path, the stand-in servers
+in a clean environment, 1d). Results (shares-check.yml run 45149746135): QEMU 27/27 on the newest beta with this tree's kernel,
+host 21/21 (real mounts through the runner's kernel), page 38/38 (Standard in Chromium, Native's window in WebKit, compared),
+module 10/10. **Known difference, from before Part 35:** File Explorer's "Folders on this device" (Import a folder…, Export
+selection…) is Chromium's File System Access API, so Native (WebKitGTK) does not show it.
 **Left:** NFS (only SMB is built: NFS for NAS boxes that offer only NFS, later, if asked; the kernel's NFS client is there, the
 mount and its user mapping, root squash and Kerberos-less security, are not quick to make safe). Real hardware: the owner's checks.
 
