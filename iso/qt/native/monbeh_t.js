@@ -10,7 +10,8 @@
 // Run by monbeh_t.sh.   node monbeh_t.js RUDOLF-NATIVE DIR OUT PORT DISPLAY
 const {chromium} = require('playwright'); const fs = require('fs'), path = require('path'), cp = require('child_process');
 const [BIN, D, OUT, PORT, DSP] = process.argv.slice(2);
-const SC = +(process.env.MON_SCALE || 100), BH = Math.round(46 * SC / 100), SET = SC != 100 ? {scale: SC} : {};   // (MON_SCALE=125: Display scaling)
+const SC = +(process.env.MON_SCALE || 100), BH = Math.round(46 * SC / 100), SET = Object.assign(SC != 100 ? {scale: SC} : {}, {dm: process.env.MON_DM || 'light'});   // (MON_SCALE=125: Display scaling)
+// (MON_DM=dark|light: the desktop's light or dark mode, chosen, not "auto": by the sun, it changed with the hour the check ran at)
 const W = 3200, H = 1080, BASE = 'http://127.0.0.1:' + PORT, M = [[0, 0, 1920, 1080], [1920, 0, 1280, 800]];
 const KEYS = JSON.parse(fs.readFileSync(path.join(D, 'keys.json'))), PW = KEYS.Ann.pw;
 const ST = require('./same_state.js'), ACCT = ST.ACCT;
@@ -93,7 +94,8 @@ async function native() {
   const mhit = (k, kind, arg) => { const l = nlines('mhit').find(x => x.startsWith('mhit ' + k + ' ' + kind + ' ' + arg + ' ')); if (!l) return null; const a = l.split(' ').slice(4).map(Number); return [a[0] + a[2] / 2, a[1] + a[3] / 2] };
   const click = (q, b) => { if (q) xdo('mousemove ' + q.map(Math.round).join(' ') + ' click ' + (b || 1)) };
   // (the notepad as Standard's: opened from the main taskbar's pin)
-  { const l = nlines('hit').find(x => x.startsWith('hit pin notepad ')); if (l) { const a = l.split(' ').slice(3).map(Number); click([a[0] + a[2] / 2, a[1] + a[3] / 2]) } await until(() => clients().length > 0, 20000); await wait(2500) }
+  { const l = nlines('hit').find(x => x.startsWith('hit pin notepad ')); if (l) { const a = l.split(' ').slice(3).map(Number); click([a[0] + a[2] / 2, a[1] + a[3] / 2]) } await until(() => clients().length > 0, 20000);
+    xdo('mousemove 1000 500'); await wait(2500) }   // (the pointer off the pin, as Standard's, whose notepad launch() opened: its pin not hovered)
   const winQ = k => { const c = clients().find(x => x.app == k); return c ? [c.rect[0] + 70, c.rect[1] + 17] : null };
   const e = {
     pin2: async k => { const n0 = clients().length; click(mhit(1, 'pin', k)); await until(() => clients().length > n0, 20000); await wait(2500) },
@@ -137,7 +139,7 @@ async function settingsCheck() {
 }
 function cmp(name, ra, rb) {
   const o = path.join(OUT, 'cmp.' + name.replace(/:/g, '-'));   // (1.6.2: no ':' in a file name: upload-artifact refuses it)
-  try { return JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), path.join(OUT, (name.split(':')[0]) + '.std.png'), path.join(OUT, (name.split(':')[0]) + '.nat.png'), ra.join(','), (rb || ra).join(','), '40', o]).toString()) } catch (x) { return {pct: 100, err: String(x).slice(0, 200)} }
+  try { return JSON.parse(cp.execFileSync('python3', [path.join(__dirname, 'pxdiff.py'), path.join(OUT, (name.split(':')[0]) + '.std.png'), path.join(OUT, (name.split(':')[0]) + '.nat.png'), ra.join(','), (rb || ra).join(','), '40', o], {env: Object.assign({}, process.env, {PXDIFF_MAP: '1'})}).toString()) } catch (x) { return {pct: 100, err: String(x).slice(0, 200)} }
 }
 (async () => {
   if (process.env.MON_ONLY != 'nat') try { await standard() } catch (x) { console.log('FAIL standard: ' + x.stack) }
@@ -159,10 +161,11 @@ function cmp(name, ra, rb) {
   const b2 = cmp('start:bar2', [1920, 800 - BH, 1280 - 160, BH]), wp2 = cmp('start:wall2', [1920, 0, 1280, 800 - BH - 60]), b1 = cmp('start:bar1', [0, 1080 - BH, 1920 - 160, BH]), lk = cmp('lock:cover2', [1920, 0, 1280, 800]), mx = cmp('max:max2', [1920, 0, 1280 - 120, 800]);
   // (at another scale the engines' text differs by half pixels, the main taskbar's as much: the second one no further apart than it)
   const lim = SC == 100 ? 2 : Math.max(2, b1.pct + 1);
-  ok('the second taskbar looks the same (' + b2.pct + ' %)', b2.pct <= lim, b2); ok('the second wallpaper looks the same (' + wp2.pct + ' %)', wp2.pct <= 2, wp2);
-  ok('the main taskbar looks the same (' + b1.pct + ' %)', b1.pct <= (SC == 100 ? 2 : 6), b1); ok('the second monitor covered alike when locked (' + lk.pct + ' %)', lk.pct <= 2, lk);
-  ok('a window maximised on the second monitor looks the same, its taskbar too (' + mx.pct + ' %)', mx.pct <= lim, mx);
-  for (const [n, c] of [['bar2', b2], ['bar1', b1], ['max2', mx]]) if (c.map) console.log('the diff of ' + n + ' (' + c.pct + ' %), box ' + JSON.stringify(c.box) + ':\n  ' + c.map.join('\n  '));
-  if (process.env.MON_DUMP) for (const n of ['start-bar2', 'start-bar1']) for (const k of ['std', 'nat']) { try { console.log('DUMP ' + n + '.' + k + ' ' + fs.readFileSync(path.join(OUT, 'cmp.' + n + '.' + k + '.png')).toString('base64')) } catch (x) {} }
+  const brief = c => ({pct: c.pct, px: c.px, box: c.box, err: c.err});
+  ok('the second taskbar looks the same (' + b2.pct + ' %)', b2.pct <= lim, brief(b2)); ok('the second wallpaper looks the same (' + wp2.pct + ' %)', wp2.pct <= 2, brief(wp2));
+  ok('the main taskbar looks the same (' + b1.pct + ' %)', b1.pct <= (SC == 100 ? 2 : 6), brief(b1)); ok('the second monitor covered alike when locked (' + lk.pct + ' %)', lk.pct <= 2, brief(lk));
+  ok('a window maximised on the second monitor looks the same, its taskbar too (' + mx.pct + ' %)', mx.pct <= lim, brief(mx));
+  // (where the compared parts differ, printed: the box round the differing pixels and a coarse map, 16x8 pixels a character)
+  for (const [n, c] of [['the second taskbar', b2], ['the main taskbar', b1], ['the maximised window', mx]]) if (c.map) console.log('where ' + n + ' differs (' + c.pct + ' %), box ' + JSON.stringify(c.box) + ':\n  ' + c.map.join('\n  '));
   const f = R.filter(x => !x).length; console.log(f ? 'FAIL ' + f + ' of ' + R.length : 'PASS all ' + R.length); process.exit(f ? 1 : 0);
 })();

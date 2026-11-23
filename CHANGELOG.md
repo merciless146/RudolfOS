@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Fixed: on the native desktop the taskbar's pinned apps and workspace buttons kept their light grey edge in dark mode, where
+  Chromium mode draws a dim one, and a pinned app had no line under it while its window was open (grey, or the accent colour
+  while that window is the active one). Both now look as in Chromium mode, on every monitor's taskbar. The "Several monitors"
+  check compares both looks, light and dark, whatever the hour it runs at.
 - New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
   tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
   night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same

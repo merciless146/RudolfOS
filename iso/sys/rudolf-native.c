@@ -2261,7 +2261,9 @@ static TbbVars tbb_vars(void)
 /* a part of the taskbar: K, hovered, pressed (retro's :active) */
 static Box tb_box(int k, int hover, int press)
 {
-	TbVars V = tb_vars(); TbbVars B = tbb_vars(); RGBA ac = ca(accent(), 1), grey = cx("#d1d5db", 1);
+	/* (the pinned apps' and the workspaces' edge: base_v24.html's button border, var(--bd): #d1d5db, and #334155 in dark mode
+	   (styles25.css html.dark), as the page's themeApply sets it: S.darkui!==false and dark) */
+	TbVars V = tb_vars(); TbbVars B = tbb_vars(); RGBA ac = ca(accent(), 1), grey = cx(S.darkui && is_dark() ? "#334155" : "#d1d5db", 1);
 	Box b; memset(&b, 0, sizeof b); b.fg = cx("#ffffff", 1);
 	int isbtn = k != TB_BAR && k != TB_TRAY;   /* (#bar button: everything but the bar and the tray) */
 	int bx = k == TB_TASK || k == TB_TASKON || k == TB_WS || k == TB_NET || k == TB_TRAY;   /* accent56's BX (#tasks button, #wsw button:not(.on), #net, #vol, #tray) */
@@ -2487,6 +2489,18 @@ static void tbp_paint(cairo_t *cr, Client *c, double x, double y, double w, doub
 	double iw = (w - 2 * b->bw - 6) * fmin(100, f) / 100, ih = h - 2 * b->bw - 6; if (iw <= 0 || ih <= 0) return;
 	cairo_save(cr); rrect(cr, x + b->bw + 3, y + b->bw + 3, iw, ih, 3); src(cr, tbp_colour(), (S.hc ? .65 : .5) * al); cairo_fill(cr); cairo_restore(cr);
 }
+/* (a pinned app's line under its picture, as the page's pinDraw and styles25.css: .run when it has a window (on any workspace,
+   minimized too): 3 px high, 12 px in from each side, 2 px above the bottom, #94a3b8; .on when one of them is the active window
+   and not minimized: the accent colour, 8 px in. Inside the 1 px edge: the button's padding box holds it) */
+static void pin_line(cairo_t *cr, const char *k, double x, double y, double w, double h)
+{
+	int run = 0, on = 0;
+	if (WM_OK) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->trans || !c->app || c->app->hidden || strcmp(c->app->k, k)) continue; run = 1; if (c == FOCUS && !c->min) on = 1; } }
+	else for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a->hidden || strcmp(a->k, k)) continue; run = 1; if (a == ACTIVE) on = 1; }
+	if (!run) return;
+	Box b; memset(&b, 0, sizeof b); b.bg = on ? ca(accent(), 1) : cx("#94a3b8", 1); b.rad = 2; double in = on ? 8 : 12;
+	box_paint(cr, x + 1 + in, y + h - 1 - 2 - 3, w - 2 - 2 * in, 3, &b);
+}
 static void bar_paint_v(cairo_t *cr, double W, double H);
 static void bar_paint(cairo_t *cr, double W, double H, int top)
 {
@@ -2514,6 +2528,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 			Box b = tb_box(TB_PIN, HV("pin", S.pins[p]), PR("pin", S.pins[p])); double y = mid - 17; box_paint(cr, x, y, 34, 34, &b); hit_add(x, y, 34, 34, "pin", S.pins[p]);
 			const App *ap = app_find(S.pins[p]); GdkPixbuf *px = app_pix(ap);
 			if (px) pix_at(cr, px, x + 5, mid - 12, 24, b.filt); else css_text(cr, ap ? ap->icon : "▫", UIFAM, 400, 18, x + 5, y, 34, b.fg, 0);
+			pin_line(cr, S.pins[p], x, y, 34, 34);
 			x += 34 + (p + 1 < S.npins ? 2 : 0); }
 		x += 4; }
 	double tasks_x = x;
@@ -2634,6 +2649,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 			Box b = tb_box(TB_PIN, HV("pin", S.pins[p]), PR("pin", S.pins[p])); box_paint(cr, px0, y, 34, 34, &b); hit_add(px0, y, 34, 34, "pin", S.pins[p]);
 			const App *ap = app_find(S.pins[p]); GdkPixbuf *px = app_pix(ap);
 			if (px) pix_at(cr, px, px0 + 5, y + 5, 24, b.filt); else css_text(cr, ap ? ap->icon : "▫", UIFAM, 400, 18, px0 + 5, y, 34, b.fg, 0);
+			pin_line(cr, S.pins[p], px0, y, 34, 34);
 			px0 += 36; }
 		y += 34 + 4; }
 	double tasks_y = y;
