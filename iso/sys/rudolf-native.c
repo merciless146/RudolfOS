@@ -349,6 +349,7 @@ static void fl_open(int kind); static void cal_events_load(JV *v); static void n
 enum { FL_NONE, FL_CAL, FL_VOL, FL_QS, FL_NC, FL_NET, FL_BRI };   /* (the tray's pop-ups: the calendar, the volume, quick settings, the notifications' centre, the network; 1.6.0: the brightness, osd31.js briPop) */
 static double NETB[4];   /* (as drawn: the network's button, for its pop-up's place) */
 static int nt_unread(void);
+static double QSBB[4], NCBB[4], CLKBB[4]; static void fl_place_over(const double *B, int top);   /* (1.6.2, tbside62.js: on a taskbar at the left or the right, quick settings', the notifications' and the clock's buttons as drawn, for their pop-ups' places) */
 static double VOLB[4], CLKD[2];   /* (as drawn, the page's units from the bar's corner: the volume's button; the clock's date, its <small>) */
 /* (1.6.0) the screen's brightness (0-100, -1: unknown) and whether it has a backlight (the taskbar's #bri, as drawn: BRIB); the on-screen
    keyboard shown (#vkb; its ⌨ on the taskbar: VKTB); the magnifier as saved and its zoom; Ctrl+Alt+Del's Task Manager asked for (its
@@ -2261,7 +2262,9 @@ static TbbVars tbb_vars(void)
 /* a part of the taskbar: K, hovered, pressed (retro's :active) */
 static Box tb_box(int k, int hover, int press)
 {
-	TbVars V = tb_vars(); TbbVars B = tbb_vars(); RGBA ac = ca(accent(), 1), grey = cx("#d1d5db", 1);
+	/* (the pinned apps' and the workspaces' edge: base_v24.html's button border, var(--bd): #d1d5db, and #334155 in dark mode
+	   (styles25.css html.dark), as the page's themeApply sets it: S.darkui!==false and dark) */
+	TbVars V = tb_vars(); TbbVars B = tbb_vars(); RGBA ac = ca(accent(), 1), grey = cx(S.darkui && is_dark() ? "#334155" : "#d1d5db", 1);
 	Box b; memset(&b, 0, sizeof b); b.fg = cx("#ffffff", 1);
 	int isbtn = k != TB_BAR && k != TB_TRAY;   /* (#bar button: everything but the bar and the tray) */
 	int bx = k == TB_TASK || k == TB_TASKON || k == TB_WS || k == TB_NET || k == TB_TRAY;   /* accent56's BX (#tasks button, #wsw button:not(.on), #net, #vol, #tray) */
@@ -2487,6 +2490,18 @@ static void tbp_paint(cairo_t *cr, Client *c, double x, double y, double w, doub
 	double iw = (w - 2 * b->bw - 6) * fmin(100, f) / 100, ih = h - 2 * b->bw - 6; if (iw <= 0 || ih <= 0) return;
 	cairo_save(cr); rrect(cr, x + b->bw + 3, y + b->bw + 3, iw, ih, 3); src(cr, tbp_colour(), (S.hc ? .65 : .5) * al); cairo_fill(cr); cairo_restore(cr);
 }
+/* (a pinned app's line under its picture, as the page's pinDraw and styles25.css: .run when it has a window (on any workspace,
+   minimized too): 3 px high, 12 px in from each side, 2 px above the bottom, #94a3b8; .on when one of them is the active window
+   and not minimized: the accent colour, 8 px in. Inside the 1 px edge: the button's padding box holds it) */
+static void pin_line(cairo_t *cr, const char *k, double x, double y, double w, double h)
+{
+	int run = 0, on = 0;
+	if (WM_OK) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->trans || !c->app || c->app->hidden || strcmp(c->app->k, k)) continue; run = 1; if (c == FOCUS && !c->min) on = 1; } }
+	else for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a->hidden || strcmp(a->k, k)) continue; run = 1; if (a == ACTIVE) on = 1; }
+	if (!run) return;
+	Box b; memset(&b, 0, sizeof b); b.bg = on ? ca(accent(), 1) : cx("#94a3b8", 1); b.rad = 2; double in = on ? 8 : 12;
+	box_paint(cr, x + 1 + in, y + h - 1 - 2 - 3, w - 2 - 2 * in, 3, &b);
+}
 static void bar_paint_v(cairo_t *cr, double W, double H);
 static void bar_paint(cairo_t *cr, double W, double H, int top)
 {
@@ -2514,6 +2529,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 			Box b = tb_box(TB_PIN, HV("pin", S.pins[p]), PR("pin", S.pins[p])); double y = mid - 17; box_paint(cr, x, y, 34, 34, &b); hit_add(x, y, 34, 34, "pin", S.pins[p]);
 			const App *ap = app_find(S.pins[p]); GdkPixbuf *px = app_pix(ap);
 			if (px) pix_at(cr, px, x + 5, mid - 12, 24, b.filt); else css_text(cr, ap ? ap->icon : "▫", UIFAM, 400, 18, x + 5, y, 34, b.fg, 0);
+			pin_line(cr, S.pins[p], x, y, 34, 34);
 			x += 34 + (p + 1 < S.npins ? 2 : 0); }
 		x += 4; }
 	double tasks_x = x;
@@ -2634,6 +2650,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 			Box b = tb_box(TB_PIN, HV("pin", S.pins[p]), PR("pin", S.pins[p])); box_paint(cr, px0, y, 34, 34, &b); hit_add(px0, y, 34, 34, "pin", S.pins[p]);
 			const App *ap = app_find(S.pins[p]); GdkPixbuf *px = app_pix(ap);
 			if (px) pix_at(cr, px, px0 + 5, y + 5, 24, b.filt); else css_text(cr, ap ? ap->icon : "▫", UIFAM, 400, 18, px0 + 5, y, 34, b.fg, 0);
+			pin_line(cr, S.pins[p], px0, y, 34, 34);
 			px0 += 36; }
 		y += 34 + 4; }
 	double tasks_y = y;
@@ -2641,12 +2658,13 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 	   the network, the workspaces, the battery */
 	double by = H - 3;
 	{ Box b = tb_box(TB_TRAY, HV("clock", ""), 0); clock_text(); double h = 2 * b.bw + 32; by -= h;
-		box_paint(cr, x, by, cw, h, &b); hit_add(x, by, cw, h, "clock", NULL); CLKD[0] = CLKD[1] = -1;
+		box_paint(cr, x, by, cw, h, &b); hit_add(x, by, cw, h, "clock", NULL); CLKD[0] = CLKD[1] = -1; CLKBB[0] = x; CLKBB[1] = by; CLKBB[2] = cw; CLKBB[3] = h;
 		css_text(cr, CLOCK_T, UIFAM, 400, 13, x + b.bw + 10, by + b.bw + 3, 26, b.fg, cw - 2 * b.bw - 20); by -= 4; }
 	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd ? "🔕" : "🔔", "☰"};
 	for (int q = 0; q < 2 && !MONK_CUR; q++) {
 		Box b = tb_box(TB_QSB, HV(QK[q], ""), PR(QK[q], "")); double tw = css_width(cr, QT[q], UIFAM, 400, 15); by -= 30;
 		box_paint(cr, x, by, cw, 30, &b); hit_add(x, by, cw, 30, QK[q], NULL); css_text(cr, QT[q], UIFAM, 400, 15, x + (cw - tw) / 2, by + b.bw, 30 - 2 * b.bw, b.fg, 0);
+		{ double *bb = q ? QSBB : NCBB; bb[0] = x; bb[1] = by; bb[2] = cw; bb[3] = 30; }
 		if (q == 0 && nt_unread() > 0) { char n[16]; snprintf(n, sizeof n, "%d", nt_unread()); double nw = css_width(cr, n, UIFAM, 400, 9) + 8; Box bd; memset(&bd, 0, sizeof bd); bd.bg = cx("#ef4444", 1); bd.rad = 7;
 			box_paint(cr, x + cw - nw, by + 1, nw, 13, &bd); css_text(cr, n, UIFAM, 400, 9, x + cw - nw + 4, by + 1, 13, cx("#ffffff", 1), 0); }
 		by -= 4; }
@@ -3882,7 +3900,8 @@ static void cm_open(double px, double py, const char *title, const CMI *items, i
 	int cox = ck ? MON[ck].x : 0, coy = ck ? MON[ck].y : 0; px -= cox; py -= coy;
 	double vw = (ck ? MON[ck].w : SW) / Z, vh = (ck ? MON[ck].h : SH) / Z; CMX = px / Z; CMY = py / Z;
 	double ph = CMBH - CM_LATE * 25; CM_LATE = 0;   /* (a window's menu: placed by the page before its Print row was added, apps25b.js) */
-	ph = round(ph); CMX = fmax(2, fmin(CMX, vw - round(CMBW) - 4)); CMY = fmax(2, CMY + ph > vh - 4 ? CMY - ph : CMY);   /* (offsetWidth and offsetHeight: whole pixels) */   /* (the page's cmenu: kept on the screen, above the pointer when it would not fit below) */
+	ph = round(ph); CMX = fmax(2, fmin(CMX, vw - round(CMBW) - 4)); CMY = fmax(2, CMY + ph > vh - 4 ? CMY - ph : CMY);
+	if (tb_side() == 1 && CMX < BARW / Z + 4) CMX = BARW / Z + 4; else if (tb_side() == 2 && CMX + round(CMBW) > vw - BARW / Z - 4) CMX = fmax(2, vw - BARW / Z - 4 - round(CMBW));   /* (1.6.2, tbside62.js: off a taskbar at the left or the right) */   /* (offsetWidth and offsetHeight: whole pixels) */   /* (the page's cmenu: kept on the screen, above the pointer when it would not fit below) */
 	if (!CMWIN) { CMWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(CMWIN), "Menu"); CMAREA = gtk_drawing_area_new(); gtk_widget_set_can_focus(CMAREA, TRUE);
 		gtk_widget_add_events(CMAREA, GDK_BUTTON_PRESS_MASK | GDK_POINTER_MOTION_MASK | GDK_KEY_PRESS_MASK); gtk_container_add(GTK_CONTAINER(CMWIN), CMAREA);
 		g_signal_connect(CMAREA, "draw", G_CALLBACK(cm_draw), NULL); g_signal_connect(CMAREA, "motion-notify-event", G_CALLBACK(cm_motion), NULL);
@@ -5735,6 +5754,7 @@ static void qs_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 	double l12 = fl_lh(cr, 400, 12), bh = 3 + 3 + 2 + fl_line(cr, "🔒 Lock", 400, 13);
 	double ch = rh[0] + rh[1] + rh[2] + rh[3] + (NR - 3) * 6 + 12 + 8 + l12 + 10 + bh;
 	FLW = W + 22; FLH = ch + 22; FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
+	if (tb_side()) fl_place_over(QSBB, top);   /* (1.6.2, tbside62.js: beside its button on a taskbar at the left or the right) */
 	if (!draw) return;
 	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); hc_edge(&b); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 	double x = FLX + 11, y = FLY + 11;
@@ -5762,6 +5782,7 @@ static void nc_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 	for (int i = 0; i < NNT; i++) { ih[i] = 2 + 16 + lb + 2 + (nt_why(&NT[i]) ? fmax(l12, 2 + fl_lh(cr, 400, 11)) : l12); list += ih[i] + 6; }
 	if (!NNT) list = 28 + l13;
 	double ch = bh + 8 + list; FLW = W + 22; FLH = fmin(ch + 22, vh * .7); FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
+	if (tb_side()) fl_place_over(NCBB, top);   /* (1.6.2, tbside62.js) */
 	double maxs = fmax(0, ch + 22 - FLH); if (FLSCROLL > maxs) FLSCROLL = maxs; if (FLSCROLL < 0) FLSCROLL = 0;
 	if (!draw) return;
 	Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = bd; b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); hc_edge(&b); box_paint(cr, FLX, FLY, FLW, FLH, &b);
@@ -5911,6 +5932,7 @@ static void fl_layout(cairo_t *cr, int draw)
 		double l30 = fl_lh(cr, 300, 30), l13 = fl_lh(cr, 400, 13), l12 = fl_lh(cr, 400, 12), bh = 3 + l13 + 3 + 2, rh = 8 + l12;
 		double ch = l30 + l13 + 8 + bh + 8 + (1 + rows) * rh + 8 + (nu ? nu : 1) * l12 + 8 + bh;
 		FLW = 300 + 20 + 2; FLH = ch + 20 + 2; FLX = vw - 8 - FLW; FLY = top ? 52 + TOPRES / Z : vh - 52 - FLH;
+		if (tb_side()) fl_place_over(CLKBB, top);   /* (1.6.2, tbside62.js) */
 		if (!draw) return;
 		Box b; memset(&b, 0, sizeof b); b.bg = cx(dark ? "#0f172a" : "#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 12; shd_add(&b, 0, 14, 36, cx("#000000", .35), 0); hc_edge(&b); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 		double x = FLX + 11, y = FLY + 11, W = 300;

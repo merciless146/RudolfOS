@@ -1,6 +1,6 @@
-# Rudolf Kryptonite's logo (2.0)
+# Rudolf Kryptonite's logo (2.0, now WendigOS)
 
-Rudolf Kryptonite is Rudolf OS 2.0 on the newest kernel with Wayland (docs/plan-2.0.md). Its logo is Rudolf's logo with
+Rudolf Kryptonite (renamed WendigOS on 2026-11-22; a new logo comes in a step of its own) was Rudolf OS 2.0 on the newest kernel with Wayland (docs/plan-2.0.md). Its logo is Rudolf's logo with
 two changes (the owner, 2026-11-20): carbon-fibre off-black instead of white, and the glowing nose green instead of red.
 
 - `kryptonite_logo.py ../backgrounds59/rudolf-logo.json OUT [SIZE]`: draws it from the logo's own traced paths

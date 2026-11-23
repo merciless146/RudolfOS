@@ -47,7 +47,10 @@ y DRM_AMDGPU_SI DRM_AMDGPU_CIK DRM_AMD_DC DRM_NOUVEAU_SVM
 # 1.6.1 (plan-1.6.1.md Part 12, the required features): FUSE, for Flatpak's document portal and AppImages (on in the ARM64
 # kernel since 1.5.9, missing here until the list below found it)
 y FUSE_FS
-y SQUASHFS SQUASHFS_XZ SQUASHFS_ZLIB SQUASHFS_FILE_DIRECT ISO9660_FS JOLIET ZISOFS OVERLAY_FS EXT4_FS VFAT_FS MSDOS_FS EXFAT_FS NTFS3_FS TMPFS DEVTMPFS DEVTMPFS_MOUNT NLS_CODEPAGE_437 NLS_ISO8859_1 NLS_UTF8 FAT_DEFAULT_UTF8 UDF_FS
+# 1.6.2 (docs/plan-1.6.2.md Part 31, item 1): squashfs reads zstd as well as xz, shipped in a release before any image
+# changes, so every system that updates already runs a kernel that can read the zstd images that follow (it selects
+# ZSTD_DECOMPRESS, built in already for the start-up image and zram)
+y SQUASHFS SQUASHFS_XZ SQUASHFS_ZSTD SQUASHFS_ZLIB SQUASHFS_FILE_DIRECT ISO9660_FS JOLIET ZISOFS OVERLAY_FS EXT4_FS VFAT_FS MSDOS_FS EXFAT_FS NTFS3_FS TMPFS DEVTMPFS DEVTMPFS_MOUNT NLS_CODEPAGE_437 NLS_ISO8859_1 NLS_UTF8 FAT_DEFAULT_UTF8 UDF_FS
 # 1.6.2 (docs/plan-1.6.2.md Part 35): File Explorer's network shares (Windows computers, NAS boxes): the kernel's SMB client
 # (CIFS) as a module, signed as every module is (MODULE_SIG_ALL, MODULE_SIG_FORCE), loaded by the kernel itself only when a
 # share is opened (the mount of type cifs asks modprobe for fs-cifs), never at start. SMB 3 by default, SMB 2.1 when asked

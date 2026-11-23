@@ -175,6 +175,9 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'desktop/engine' and m == 'GET' and rd('engine'): return self.j(dict({'ok': True}, **json.loads(rd('engine'))[self.engine()]))   # (DIR/engine: rudolfd's answer for each engine's page)
         if w == 'stats': return self.j({'ok': True, 'cpu': 12.3, 'load': 0.2, 'memTotal': 8589934592, 'memFree': 4294967296, 'memAvailable': 5368709120})
         if w == 'devlink': return self.j({'ok': True, 'available': True, 'on': False})
+        # (1.6.2 Part 34: the Scan app's case: one scanner found, what it can do)
+        if w == 'scan/find': return self.j({'ok': True, 'scanners': [{'id': 'escl:http://192.168.1.30:80/eSCL', 'name': 'Office Scanner', 'model': 'Office Scanner', 'via': 'network', 'proto': 'eSCL'}]})
+        if w == 'scan/caps': return self.j({'ok': True, 'sources': [{'source': 'flatbed', 'width': 215.9, 'height': 296.9, 'resolutions': [75, 100, 150, 200, 300]}, {'source': 'adf', 'width': 215.9, 'height': 296.9, 'resolutions': [75, 100, 150, 200, 300]}], 'modes': ['color', 'grey', 'bw']})
         if w == 'mic':   # (DIR/mic: the apps using a microphone, a JSON list; muted=0|1 kept, as rudolfd's)
             if m == 'POST': ST['micmuted'] = q == 'muted=1'
             return self.j({'ok': True, 'users': json.loads(rd('mic', b'[]')), 'muted': ST.get('micmuted', False)})
