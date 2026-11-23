@@ -9,6 +9,21 @@ Summary: In progress.
   Chromium mode draws a dim one, and a pinned app had no line under it while its window was open (grey, or the accent colour
   while that window is the active one). Both now look as in Chromium mode, on every monitor's taskbar. The "Several monitors"
   check compares both looks, light and dark, whatever the hour it runs at.
+- New: scanners (step 1 of 4: driverless scanning, without the Scan app yet). Rudolf OS finds the scanners and
+  printer-scanners on the home network that speak eSCL (AirScan) or WSD, as most made since about 2015 do, with the
+  firewall on, and USB ones that speak eSCL through IPP over USB; it scans with sane-airscan (pages in colour, grey or black
+  and white, an area, the resolution, the document feeder's pages) and saves PDF, PNG or JPEG. Scanning runs as the
+  account's own user. 495 KB more on the disk; nothing runs until a scan.
+- Fixed: with the taskbar at the left or the right, Quick settings, the notifications and the calendar open beside their
+  buttons (they opened in the screen's bottom-right corner, over a taskbar at the right); a right-click menu no longer lies over
+  the taskbar; and the desktop's icons move at once when the taskbar grows instead of sitting under it. The same on Native.
+- Kernel: the system's images can be packed with zstd (squashfs reads zstd as well as xz, on x86-64 and ARM64). The images
+  themselves are unchanged in this version; a later one moves them to zstd once every updated computer can read them.
+- Updates: an update whose system images its own kernel could not read is refused with a message saying so (when it is
+  checked, and again once downloaded), as are the recovery system and Make a stick; nothing on the computer is changed.
+- Updates: when an update packs the system's images in a new way (as the move to zstd does), Settings › Update says before
+  downloading that they come whole this once, and how much ("Download (about 530 MB)"), on every connection; later updates
+  download only the changes again. The download no longer tries the changes first for such an image.
 - New: Desert Camp, a third moving background (Display Properties › Dynamic Backgrounds): an open desert with clusters of
   tents round their campfires. At sunrise the sun comes up as a shimmering mirage on the horizon and the campfires smoke; at
   night the tents glow from inside, the fires flicker, the stars twinkle under a nebula and shooting stars streak by. The same
