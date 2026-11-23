@@ -139,9 +139,12 @@ async function flow(pg, tag) {
   const wk = process.env.SHARES62_WEBKIT != '0' ? await pw.webkit.launch().catch(e => { console.log('NOTE: no WebKit here: ' + e.message.split('\n')[0]); return null }) : null;
   const ctx2 = wk ? await wk.newContext({viewport: {width: 1200, height: 820}}) : ctx;
   p = await ctx2.newPage(); watch(p);
-  reset(); if (wk) { await p.goto(URL0); await setup(p); await p.goto('about:blank') }
+  /* (WebKit has its own storage: its own account, and the native session the shell hands its app windows is that one's) */
+  reset(); if (wk) { await p.goto(URL0); const a2 = await setup(p); M.session = {ok: true, id: a2.id, n: 'Ann', r: 'admin', pk: a2.pk, fk: a2.fk}; await p.goto('about:blank') }
   await p.goto(URL0 + '#app=explorer'); await p.waitForFunction(() => typeof explorer == 'function' && typeof ONEAPP != 'undefined' && ONEAPP && USER, null, {timeout: 30000});
-  await p.waitForSelector('.win.oamain', {timeout: 20000});
+  if (!(await p.waitForSelector('.win.oamain', {timeout: 30000}).catch(() => null))) {
+    console.log('NOTE: no app window:', JSON.stringify(await p.evaluate(`({user:!!USER,oneapp:typeof ONEAPP!='undefined'&&JSON.stringify(ONEAPP),wins:[...document.querySelectorAll('.win')].map(w=>w.className),hash:location.hash})`).catch(e => e.message)), errs.slice(-5));
+    throw new Error('Native\'s app window did not open') }
   vn = await flow(p, wk ? 'Native (WebKit)' : 'Native');
   // Native against Standard: the Network view part by part
   const same = vs && vn && JSON.stringify(vs.cards) == JSON.stringify(vn.cards) && JSON.stringify(vs.side) == JSON.stringify(vn.side) && vs.sizes.length == vn.sizes.length &&
