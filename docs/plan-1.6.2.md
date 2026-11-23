@@ -936,8 +936,15 @@ its one page.
   - Task Manager reopened: its own web process 132 again (110-132 as WebKit tidies it): **about 130 MB**, all of it its own;
   - Settings: the shared process 294 -> 331 at once and 466 a minute later as its panels came in: **about 170 MB**;
   - Xorg 92, rudolf-native 96, the network process 22-40 (unchanged by the windows).
-  So: Task Manager (its own process, the whole page loaded fresh) and Settings (most of the page used) are where the memory
-  goes; a small app in the shared process costs little, below this part's 40 MB bar: Calculator, Notepad and the like are
+- After a restart, 2026-11-22 21:28-21:36 CST (devlink 000574-000577; the kernel now refuses even root the processes'
+  smaps after the restart, so these are /proc/PID/status's RssAnon, the processes' own memory): signed in, nothing open, the
+  system used 650 MB (the hidden page 85, rudolf-native 69, Xorg 77, the network process 16); **WordPro +131 MB**;
+  **SpreadsheetPro +41 MB more** at first (both Office apps 85 -> 257 MB), settling to 216 a minute later (WebKit's tidying,
+  rudolf-native.c's memory-pressure settings); the rest of "used" rising with them was the kernel's caches (slab about 270 MB),
+  given back under pressure, not a program's.
+  The owner, 2026-11-22: "It feels like Rudolf should actually be running a lot leaner than it currently does."
+  So: Task Manager (its own process, the whole page loaded fresh), Settings and the Office apps (WordPro, SpreadsheetPro,
+  PresentPro) are where the memory goes; a small app in the shared process costs little, below this part's 40 MB bar: Calculator, Notepad and the like are
   not moved (step 3 kept only for an app measured above the bar).
 - On the host (Chrome 153's renderer, 2026-11-22, private / PSS MB): a blank page 26 / 50; the desktop page signed in 106 / 134;
   as an app window (#app=taskmgr) 101 / 129; the same page with its scripts taken out 31 / 55 (its styles and markup cost about
@@ -957,10 +964,17 @@ its one page.
 3. **(By the readings: only apps measured above 40 MB; Calculator and Notepad are not.) Then the simple apps, one at a time** (Calculator, Notepad, the media player; not the shell's hidden
    page, File Explorer, Blitzen or the Office apps, which use most of the page), each kept only with a measured saving worth it
    (aim: 40 MB or more per window) and its own comparison test.
+3b. **The Office apps** (WordPro, SpreadsheetPro, PresentPro), right after Task Manager: a small page each from the same
+   sources (their groups are already files loaded when opened; what remains is the whole page under them), with their
+   comparison tests; measured before and after.
+3c. **The shell's hidden page** (rudolf-native's do-bg page: the catalogue, the settings, the services): it too loads the
+   whole page; what it needs measured by coverage, and trimmed where that lowers the baseline without slowing the shell.
 4. **Settings, panel by panel** (the owner names it with Task Manager as the main concern): Settings reaches into most of the
    page, so a small page per panel (Sound, Display, Network...) rather than one for all of it, each with its comparison test.
 5. **Oracle's Chromium apart:** on Native, Oracle runs in Rudolf's own Chromium (one for every Oracle window), not in these pages;
    its memory (how Chromium splits and keeps its tab processes) is measured and worked on as its own item.
+5b. **Longer term (WendigOS, docs/plan-2.0.md):** the core apps rewritten natively (GTK, 10 to 40 MB a window instead of a
+   whole page each): the lean end of this, too large for 1.6.x; the owner's WendigOS session reads this part.
 6. **The sign-in screen's flash:** each app window loading the whole page showed the desktop's sign-in screen for a moment
    before its app (the owner saw it early in Native's work; it was hidden since); a small page has no sign-in screen at all.
 7. **Nothing weakened, nothing drifting:** a module missing from a small page is a test failure, never a quiet gap (each small page
