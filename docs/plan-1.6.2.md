@@ -777,6 +777,18 @@ through the network helper's new `usbscan allow|done UID`; save with to= writes 
 that user, without it answers the file for C:). Tests: qt/shell2/scan62_t.js 17/17 (end to end with rudolf-scan and the
 stand-in), qt/native/same_t.sh's scan cases (Native against Chromium), qt/sb/sc162_t.py's phase A (the release in QEMU
 with this tree's rudolfd and page: an account signed in, the app driven, the PDF in Documents its user's, 0644).
+Step 3 built, **PR scan-usb** (after scan-app): systools/mkscan.sh puts SANE's pixma, genesys, epson2, epsonds, plustek,
+canon_lide70, xerox_mfp and fujitsu drivers in the base layer (every one GPL-2.0-or-later with SANE's exception; no
+firmware; no library the base does not have), each with sane-backends' settings for USB only (no net, tcp or scsi lines;
+pixma's networking off), their list (/usr/share/rudolf/scan-backends) and SANE's USB scanners' ids (scan-usb-ids, 1114
+from its 20-sane.hwdb). rudolf-scan find lists the USB scanners on that list (not one ipp-usb already serves as eSCL);
+a scan of one (sane:usb:VVVV:PPPP) loads the drivers and takes the device at its bus and number. /usr/lib/rudolf/scanusb
+(through the devices helper's new `scanusb allow|done UID`) gives the scanners' device nodes to the scanning user (its
+own, 0600) for the scan and gives them back as they were. Measured: 2870 KB for all of scanning (steps 1 and 3; the
+drivers 2.4 MB). Tests: qt/host/scanusb162_t.sh 13/13 (rudolf-scan through SANE's test driver pixel for pixel against
+scanimage: colour, three-pass, 16-bit, grey, 1-bit; the feeder; cancel; find from a stand-in sysfs; no internet socket
+from the drivers; scanusb on stand-in device nodes; the devices helper). QEMU cannot stand in for a USB scanner (no
+emulated device speaks a scanner's protocol; usb-host passes a real one through): the owner's check.
 
 ### 35. Network shares in File Explorer (added on 2026-11-22)
 1. **Windows and NAS shares (SMB):** File Explorer's Network lists the shares found on the home network (WS-Discovery and

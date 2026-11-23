@@ -137,9 +137,7 @@ gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-duel "$SYS/rudolf-duel.c"
 # 1.6.2 (docs/plan-1.6.2.md Part 34): scanning: rudolf-scan, libsane (opened with dlopen) and sane-airscan (eSCL, WSD)
 gcc -O2 $HARD -o usr/bin/rudolf-scan "$SYS/rudolf-scan.c" -ldl -lm -Wl,-Bstatic -lz -Wl,-Bdynamic
-SNL=$(dpkg -L libsane1 2>/dev/null | grep -E '/libsane\.so\.1$' | head -1); SNA=$(dpkg -L sane-airscan 2>/dev/null | grep -E '/sane/libsane-airscan\.so\.1$' | head -1)
-if [ -n "$SNL" ] && [ -n "$SNA" ]; then mkdir -p usr/lib/$MA/sane; cp -L "$SNL" usr/lib/$MA/libsane.so.1; cp -L "$SNA" usr/lib/$MA/sane/libsane-airscan.so.1; copy_deps "$SNL" "$SNA"
-else echo "mkrootfs: libsane1 or sane-airscan is not installed: no scanning (apt-get install libsane1 sane-airscan)"; fi
+sh "$HERE/systools/mkscan.sh" "$OUT" || echo "mkrootfs: no scanning (apt-get install libsane1 sane-airscan)"
 # 1.6.1 (docs/plan-1.6.1.md Part 9): the print queue, for the desktop and the Linux apps (CUPS's clients)
 gcc -O2 $HARD -o usr/bin/rudolf-printq "$SYS/rudolf-printq.c" -Wl,-Bstatic -lz -Wl,-Bdynamic
 gcc -O2 $HARD -o usr/bin/rudolf-devlink "$SYS/rudolf-devlink.c" -lcrypto -ldl
