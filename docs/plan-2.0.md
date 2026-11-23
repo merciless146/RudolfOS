@@ -560,6 +560,16 @@ in-game Quick menu, a game's page) are on the owner's design canvas "WendigOS Ga
   Quick menu and the game's page are to be redone in the same look when Game Mode is built. Type: Space Grotesk and
   Inter (both SIL Open Font License) unless fonts already in the system will do; the wordmark stays type until
   WendigOS's logo is made in its own step.
+- **Its colours follow Display Properties** (the owner, 2026-11-22: "Have it so that the game-mode's color theme (the green
+  highlights and artwork at the top of the screen) follows the color theme selected in display properties"): the
+  account's Settings › Display › Colours and theme › Accent colour (`S.accent`: its eight swatches or any colour) sets every
+  highlight (the tab underline, Resume, the progress bar, the focused card's ring and glow, the status dots, the account's
+  ring, the Library's source chips) and tints the key art at the top (the aurora bands and the night sky). Text on a
+  highlight turns dark or light by the accent's luminance; the accent used as text on the dark ground is lightened until
+  it reaches 7:1, so every accent stays readable (slate and the dark blues included). Changing the accent in Display
+  Properties changes Game Mode at once, as it changes the desktop. Steam's and Emu's chips keep their own colours (blue,
+  amber) so the source stays recognisable. WendigOS's default accent is Version 2's green (#4ff0a0); Rudolf OS 1.6.x
+  keeps its own default (blue). The canvas's Version 2 shows it with the accent as a tweak.
 - **What it is:** a full-screen, controller-first session of WendigOS's compositor (not gamescope, not a web page): one
   launcher for the Library's games, Steam's (through Proton) and Emu's, with source tabs (All, Library, Steam, Emu,
   Recent), a game's page (continue, its save's state, its own settings) and "Switch to desktop" back to the WendigOS desktop.
