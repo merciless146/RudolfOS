@@ -21,7 +21,7 @@ echo "== packages"; bash pkgtools/build_repo.sh
 for n in base chromium desktop modules; do python3 systools/verity.py add layers/$n.sfs $n >/dev/null; cp layers/$n.sfs $T/RUDOLF/$(echo $n | tr a-z A-Z).SFS; done
 # the signed release list the start-up checks the layers against (1.2.2); RELEASE_KEY: the release signing key
 # (raw base64, as the workflow uses). Without it the layers start unchecked, and not at all with Secure Boot on.
-if [ -n "$RELEASE_KEY" ]; then mkdir -p "$OUT/rl"; python3 systools/make_release.py --layers layers --kernel src/linux/arch/x86/boot/bzImage --out "$OUT/rl" --key "$RELEASE_KEY" --serial "${SERIAL:-$(date -u +%Y%m%d%H)}" --version "$VER" >/dev/null; cp "$OUT/rl/channel/manifest.txt" $T/RUDOLF/MANIFEST.TXT; cp "$OUT/rl/channel/manifest.sig" $T/RUDOLF/MANIFEST.SIG; rm -rf "$OUT/rl"; else echo "warning: no RELEASE_KEY, the layers cannot be checked at start-up"; fi
+if [ -n "$RELEASE_KEY" ]; then mkdir -p "$OUT/rl"; python3 systools/make_release.py --layers layers --kernel src/linux/arch/x86/boot/bzImage --kernel-config src/linux/.config --out "$OUT/rl" --key "$RELEASE_KEY" --serial "${SERIAL:-$(date -u +%Y%m%d%H)}" --version "$VER" >/dev/null; cp "$OUT/rl/channel/manifest.txt" $T/RUDOLF/MANIFEST.TXT; cp "$OUT/rl/channel/manifest.sig" $T/RUDOLF/MANIFEST.SIG; rm -rf "$OUT/rl"; else echo "warning: no RELEASE_KEY, the layers cannot be checked at start-up"; fi
 cp initramfs/etc/rudolf-id $T/RUDOLF/ID   # must match the ID built into the kernel's initramfs (rudolf-1.1 for every 1.1.x)
 # which release this disc is: updates must be newer (serial) to install
 CHROMV=$(rootfs/opt/chromium/chrome --version 2>/dev/null | awk '{print $2}')
