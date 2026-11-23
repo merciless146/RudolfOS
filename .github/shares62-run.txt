@@ -1,2 +1,2 @@
 serial=
-# 2026-11-23T06:53:25Z follow-up: the request body's last line
+# 2026-11-23T08:02:58Z follow-up: the servers' TCP checked and told

@@ -173,6 +173,23 @@ def api(g, p, post=False, body=None, t=90):
     except ValueError: return {}, int(m.group(1)) if m else 0
 def raw(g, p): return run(g, f"T={TOK}; printf 'GET /api/{p} HTTP/1.0\\r\\nX-Rudolf-Token: %s\\r\\n\\r\\n' \"$T\" | busybox nc 127.0.0.1 8080", 60, False)
 net_up(); make_drive(DRV); vm = None
+# the servers listening (port 445 of each, asked from the host's side of the bridge); what they said when not
+def srv_up():
+    import socket
+    r = {}
+    for a in ('192.168.62.2', '192.168.62.3'):
+        for _ in range(30):
+            try: socket.create_connection((a, 445), 1).close(); r[a] = True; break
+            except OSError: time.sleep(1)
+        else: r[a] = False
+    return r
+SU = srv_up(); out('the servers listening on 445:', SU)
+if not all(SU.values()):
+    out(q_('ip netns exec nas62 ss -ltnp; ip netns exec old62 ss -ltnp; ip -br addr; bridge link'))
+    for f in sorted(os.listdir(W)):
+        if f.endswith('.log'): out('--', f, open(os.path.join(W, f), errors='replace').read()[-1500:])
+    for n in ('nas', 'old'):
+        for f in sorted(os.listdir(f'{W}/{n}/log')) if os.path.isdir(f'{W}/{n}/log') else []: out('--', n, f, open(f'{W}/{n}/log/{f}', errors='replace').read()[-1500:])
 try:
     vm, g, up, js = boot('a'); sh = lambda c, t=60, show=True: run(g, c, t, show)
     ok('0. the release starts (this tree\'s kernel)' if KERN else '0. the release starts', up)
@@ -187,6 +204,8 @@ try:
     ok('1. the SMB client is not loaded at start (no cifs module, no cifs file system); the firewall on', re.search(r'^0\n0$', o, re.M) and re.search(r'^on ', o, re.M), o)
     o = sh(f"for i in $(seq 1 60); do ip -4 addr show {NIC} | grep -q 'inet 192.168.62.' && break; [ $i = 20 ] && (udhcpc -i {NIC} -q -n -s /usr/lib/rudolf/udhcpc.sh >/dev/null 2>&1 &); sleep 2; done; ip -4 addr show {NIC} | grep inet", 200)
     ok(f'2. on the home network ({NIC}: an address from the router, 192.168.62.100-150)', re.search(r'inet 192\.168\.62\.1[0-5]\d', o), o)
+    o = sh("for a in 192.168.62.2 192.168.62.3; do busybox nc -w 3 $a 445 </dev/null >/dev/null 2>&1; echo \"tcp $a: $?\"; done", 60)
+    ok('2c. the servers reached from the guest over TCP (port 445; the firewall lets the answers in as replies)', 'tcp 192.168.62.2: 0' in o, o)
     ok('2b. the page settled', settle(g, js))
     r = js("(async()=>{ACCTS.length=0;const a=await acctNew('ann','a1','admin');ACCTS.push(a);const b=await acctNew('bob','b1','user');ACCTS.push(b);saveUser();return a.id+' '+b.id})()", 120)
     out('accounts:', r); ANN, BOB = str(r).split()
