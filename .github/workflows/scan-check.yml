@@ -3,8 +3,11 @@
 # a cellular-marked interface; the pages checked by their pixels, three pages into one PDF, the errors eSCL tells, a USB
 # scanner through ipp-usb's address with usbprint's guard, an account's own user and its Documents; the fuzz test of
 # what rudolf-scan parses), the list of listeners' test and the printer discovery test (the firewall is shared).
+# page (step 2): the Scan app in Playwright's Chromium end to end against the stand-in scanner (qt/shell2/scan62_t.js), and
+# Native (rudolf-native, WebKit) against Chromium (qt/native/same_t.sh, its scan cases).
 # qemu: the newest beta release (or serial=) with this tree's rudolf-scan, firewall and listeners and the build machine's
-# libsane and sane-airscan put in place (qt/sb/sc162_t.py), two stand-in scanners behind QEMU's user network.
+# libsane and sane-airscan put in place (qt/sb/sc162_t.py), two stand-in scanners behind QEMU's user network; then this
+# tree's rudolfd, root helpers and page, an account signed in, and the Scan app driven in the release's Chromium (phase A).
 # Nothing is published.
 name: Scanning check
 on:
@@ -14,7 +17,8 @@ on:
   pull_request:
     paths: ['iso/sys/rudolf-scan.c', 'iso/sys/root/usr/lib/rudolf/firewall', 'iso/sys/root/usr/lib/rudolf/usbprint', 'iso/sys/root/usr/share/rudolf/listeners',
       'iso/qt/host/scan162_t.sh', 'iso/qt/host/fixtures/esclsrv.py', 'iso/qt/host/fixtures/scancheck.py', 'iso/qt/host/fuzz/scan_fuzz.c',
-      'iso/qt/sb/sc162_t.py', '.github/workflows/scan-check.yml']
+      'iso/qt/sb/sc162_t.py', '.github/workflows/scan-check.yml', 'desktop/scan62.js', 'iso/sys/rudolfd-scan.inc', 'iso/qt/shell2/scan62_t.js',
+      'iso/qt/native/same_t.js', 'iso/qt/native/same_rd.py']
 permissions: {contents: read}
 jobs:
   host:
@@ -30,9 +34,30 @@ jobs:
         run: sh iso/qt/host/listeners59_t.sh
       - name: "mdns161_t.sh (the printers' discovery: the same firewall)"
         run: sudo sh iso/qt/host/mdns161_t.sh
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil poppler-utils gcc zlib1g-dev libsane1 sane-airscan xserver-xorg-core xserver-xorg-video-dummy x11-xserver-utils xvfb xdotool imagemagick libwebkit2gtk-4.1-dev libxtst-dev libxrandr-dev libxfixes-dev fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page and rudolf-scan
+        run: |
+          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..
+          . iso/systools/hardflags.sh; gcc -O2 $HARD -o $RUNNER_TEMP/rudolf-scan iso/sys/rudolf-scan.c -ldl -lm -Wl,-Bstatic -lz -Wl,-Bdynamic
+      - name: scan62_t.js (the Scan app in Chromium)
+        run: RS_BIN=$RUNNER_TEMP/rudolf-scan NODE_PATH=$PWD/node_modules node iso/qt/shell2/scan62_t.js
+      - name: "same_t.sh: the Scan app on Native and Chromium"
+        run: mkdir -p out && NODE_PATH=$PWD/node_modules SAME_PORT=8645 SAME_DSP=:86 sh iso/qt/native/same_t.sh $PWD/out scan,scan-dark
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: scan-page, retention-days: 7, path: out}
   qemu:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v5
       - name: Tools
@@ -62,6 +87,13 @@ jobs:
           cp iso/sys/root/usr/lib/rudolf/firewall iso/sys/root/usr/share/rudolf/listeners fix/
           cp -L "$(dpkg -L libsane1 | grep -E '/libsane\.so\.1$' | head -1)" fix/libsane.so.1
           cp -L "$(dpkg -L sane-airscan | grep -E '/sane/libsane-airscan\.so\.1$' | head -1)" fix/libsane-airscan.so.1
+          # (step 2's phase A: rudolfd, rudolf-rootd and the root helpers as the release builds them, and the page)
+          gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/rudolf-rootd iso/sys/rudolf-rootd.c
+          mkdir -p fix/root; for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c -Wl,-Bstatic -lz -Wl,-Bdynamic; done
+          gcc -O2 $HARD -o fix/root/drives-home iso/sys/rudolf-drives-home.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          python3 iso/systools/hardcheck.py fix/rudolfd fix/rudolf-rootd fix/root/*
+          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..; cp iso/www/index.html fix/; mkdir -p fix/a; cp iso/www/a/* fix/a/
           ls -la fix
       - name: sc162
         run: |

@@ -10,6 +10,12 @@ Summary: In progress.
   firewall on, and USB ones that speak eSCL through IPP over USB; it scans with sane-airscan (pages in colour, grey or black
   and white, an area, the resolution, the document feeder's pages) and saves PDF, PNG or JPEG. Scanning runs as the
   account's own user. 495 KB more on the disk; nothing runs until a scan.
+- New: Scan, an app of Rudolf's own for those scanners (step 2 of 4), in the Start menu, in File Explorer (Scan into this
+  folder), in the Print dialog and in Settings › Devices: the scanners found, a preview, the area drawn on it or a paper
+  size, colour, grey or black and white, the resolution, the glass or the document feeder; pages added one scan after
+  another, put in order or taken out, then saved as one PDF, or each page as PNG or JPEG, in Documents or where you choose.
+  A paper jam, the cover open, an empty feeder, a busy scanner or none found are said plainly. Scanning runs as your
+  account's own user, which also writes the file. The same on Native, Chromium and Lite.
 - Fixed: with the taskbar at the left or the right, Quick settings, the notifications and the calendar open beside their
   buttons (they opened in the screen's bottom-right corner, over a taskbar at the right); a right-click menu no longer lies over
   the taskbar; and the desktop's icons move at once when the taskbar grows instead of sitting under it. The same on Native.
