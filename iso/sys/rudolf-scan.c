@@ -25,20 +25,26 @@
  *                                       1-bit pages), at their resolutions' paper size
  *   rudolf-scan save png|jpeg OUT PAGE  one page as PNG or JPEG
  *                                       (OUT is never overwritten: a file there already is an error, "exists")
+ *   rudolf-scan conf                    (step 4) find's JSON on standard input: the network scanners in it as
+ *                                       sane-airscan's settings for Linux apps (rudolf-scanconf.h)
  * ID: escl:URL (http://ADDR:PORT/PATH or https://...) or wsd:URL (the scan service's address) for sane-airscan, or
- * sane:DEVICE for a USB scanner of the backends in /usr/share/rudolf/scan-backends (Part 34 step 3).
+ * sane:usb:VVVV:PPPP for a USB scanner that needs one of SANE's drivers (Part 34 step 3: the backends listed in
+ * /usr/share/rudolf/scan-backends, each with its USB-only settings from /usr/share/rudolf/sane.d; found by its ids in
+ * /usr/share/rudolf/scan-usb-ids, SANE's own list), or sane:BACKEND:DEVICE (a backend on that list, by SANE's name).
  * Every answer is one line of JSON: {"ok":true,...}, or {"ok":false,"code":CODE,"error":TEXT} with CODE one of
  * noscanner, busy, jam, open, nodocs, io, denied, cancelled, nosane, args, exists, write, memory, unsupported.
  * Pages are kept as PNG (lossless) with their resolution (pHYs); this program reads only the PNG it writes.
  * For the tests: RS_MDNS=ADDR:PORT (the mDNS question there instead of the group), RS_WSD=ADDR:PORT (the Probe there),
  * RS_USB (the USB printers' list), RS_CELLULAR (the cellular interfaces' list), RS_SANE (libsane's path),
- * RS_BACKENDS (the backends' list), RS_WAIT (milliseconds each discovery listens, 1500 by default).
+ * RS_BACKENDS (the backends' list), RS_SANECONF (their settings' folder), RS_IDS (the USB ids), RS_SYS (sysfs), RS_WAIT
+ * (milliseconds each discovery listens, 1500 by default).
  * The JPEG encoder is this program's own (baseline, the tables of ITU-T T.81 Annex K); PNG through zlib.
  *
  * Copyright (C) 2026 the Rudolf OS authors. SPDX-License-Identifier: GPL-2.0-or-later */
 #define _GNU_SOURCE
 #include <arpa/inet.h>
 #include <ctype.h>
+#include <dirent.h>
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -60,6 +66,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <zlib.h>
+#include "rudolf-scanconf.h"
 
 #define MAX_PIXELS (120u * 1000 * 1000)   /* (600 dpi, 8.5 x 14 inches is 43 million) */
 
@@ -654,6 +661,7 @@ static void find_wsd(void)
 }
 
 /* ---------------------------------------------------------------- USB scanners that speak eSCL through ipp-usb */
+static char ESCL_SYS[16][64]; static int NESCL_SYS;
 static void find_usb_escl(void)
 {
 	const char *p = getenv("RS_USB"); FILE *f = fopen(p ? p : "/run/rudolf/usb-printers", "r"); if (!f) return;
@@ -668,6 +676,7 @@ static void find_usb_escl(void)
 			xml_text((char *)r.b, (char *)r.b + r.n, "MakeAndModel", model, sizeof model, NULL); xml_text((char *)r.b, (char *)r.b + r.n, "UUID", uuid, sizeof uuid, NULL);
 			snprintf(url, sizeof url, "http://127.0.0.1:%d/eSCL", port); snprintf(name, sizeof name, "USB: %s", *fld[1] ? fld[1] : *model ? model : "scanner");
 			add_scanner("escl", url, name, model, "usb", "127.0.0.1", uuid);
+			if (k >= 5 && NESCL_SYS < 16) snprintf(ESCL_SYS[NESCL_SYS++], sizeof ESCL_SYS[0], "%s", fld[4]);
 		}
 		free(r.b);
 	}
@@ -700,8 +709,10 @@ static volatile sig_atomic_t STOP;
 static void on_stop(int s) { (void)s; STOP = 1; }
 static void cfg_cleanup(void)
 {
-	if (!*CFG) return; const char *f[] = {"dll.conf", "airscan.conf", NULL}; char p[128];
-	for (int i = 0; f[i]; i++) { snprintf(p, sizeof p, "%s/%s", CFG, f[i]); unlink(p); }
+	if (!*CFG) return; char p[400];
+	DIR *d = opendir(CFG); struct dirent *e;
+	while (d && (e = readdir(d))) { if (e->d_name[0] == '.') continue; snprintf(p, sizeof p, "%s/%s", CFG, e->d_name); unlink(p); }
+	if (d) closedir(d);
 	rmdir(CFG); *CFG = 0;
 }
 static int backend_allowed(const char *be)
@@ -711,6 +722,60 @@ static int backend_allowed(const char *be)
 	while (!ok && fgets(l, sizeof l, f)) { l[strcspn(l, " \t\r\n#")] = 0; if (*l && !strcmp(l, be)) ok = 1; }
 	fclose(f); return ok;
 }
+/* step 3: the backends' own settings for USB only (/usr/share/rudolf/sane.d, made at the build from sane-backends' with
+   their network and SCSI lines left out: none of them looks on the network) copied into the scan's configuration */
+static void conf_copy(const char *be)
+{
+	const char *dir = getenv("RS_SANECONF"); char src[300], dst[200]; snprintf(src, sizeof src, "%s/%s.conf", dir ? dir : "/usr/share/rudolf/sane.d", be);
+	size_t n; unsigned char *d = slurp(src, &n, 1 << 20); if (!d) return;
+	snprintf(dst, sizeof dst, "%s/%s.conf", CFG, be); FILE *f = fopen(dst, "w"); if (f) { if (fwrite(d, 1, n, f) != n) {} fclose(f); } free(d);
+}
+/* the USB scanners plugged in that SANE's drivers know (/usr/share/rudolf/scan-usb-ids, VVVV:PPPP a line): their
+   sysfs names, ids, bus and device numbers, makers and products */
+typedef struct { char sys[64], id[10], maker[80], product[100]; int bus, dev; } usbdev;
+static int usb_ids_has(const char *id)
+{
+	const char *p = getenv("RS_IDS"); FILE *f = fopen(p ? p : "/usr/share/rudolf/scan-usb-ids", "r"); char l[64]; int ok = 0;
+	if (!f) return 0;
+	while (!ok && fgets(l, sizeof l, f)) { l[strcspn(l, "\r\n")] = 0; if (!strcasecmp(l, id)) ok = 1; }
+	fclose(f); return ok;
+}
+static void sysattr(const char *dir, const char *a, char *out, size_t on)
+{
+	char p[400]; snprintf(p, sizeof p, "%s/%s", dir, a); out[0] = 0; FILE *f = fopen(p, "r"); if (!f) return;
+	if (!fgets(out, on, f)) out[0] = 0; fclose(f); out[strcspn(out, "\r\n")] = 0;
+	for (char *c = out; *c; c++) if ((unsigned char)*c < 32 || *c == '"' || *c == '\\') *c = ' ';
+}
+static int usb_scanners(usbdev *u, int max)
+{
+	const char *sys = getenv("RS_SYS"); char base[300]; snprintf(base, sizeof base, "%s/bus/usb/devices", sys ? sys : "/sys");
+	DIR *d = opendir(base); struct dirent *e; int n = 0; if (!d) return 0;
+	while ((e = readdir(d)) && n < max) {
+		if (e->d_name[0] == '.' || strchr(e->d_name, ':') || strlen(e->d_name) > 60) continue;
+		char dir[400], v[16], p[16], b[16], dv[16]; snprintf(dir, sizeof dir, "%s/%s", base, e->d_name);
+		sysattr(dir, "idVendor", v, sizeof v); sysattr(dir, "idProduct", p, sizeof p); sysattr(dir, "busnum", b, sizeof b); sysattr(dir, "devnum", dv, sizeof dv);
+		if (strlen(v) != 4 || strlen(p) != 4 || !*b || !*dv) continue;
+		char id[10]; snprintf(id, sizeof id, "%s:%s", v, p); for (char *c = id; *c; c++) *c = toupper((unsigned char)*c);
+		if (strspn(id, "0123456789ABCDEF:") != 9 || !usb_ids_has(id)) continue;
+		usbdev *x = &u[n++]; memset(x, 0, sizeof *x); snprintf(x->sys, sizeof x->sys, "%s", e->d_name); snprintf(x->id, sizeof x->id, "%s", id);
+		x->bus = atoi(b); x->dev = atoi(dv); sysattr(dir, "manufacturer", x->maker, sizeof x->maker); sysattr(dir, "product", x->product, sizeof x->product);
+	}
+	closedir(d); return n;
+}
+/* (step 3) the USB scanners SANE's drivers know, except those already found as eSCL through ipp-usb (the same device) */
+static void find_sane_usb(void)
+{
+	usbdev u[16]; int n = usb_scanners(u, 16);
+	for (int i = 0; i < n && NSC < 64; i++) {
+		int dup = 0; for (int k = 0; k < NESCL_SYS; k++) if (!strncmp(ESCL_SYS[k], u[i].sys, strlen(u[i].sys)) && ESCL_SYS[k][strlen(u[i].sys)] == ':') dup = 1;
+		if (dup) continue;
+		scanner *s = &SC[NSC++]; memset(s, 0, sizeof *s); snprintf(s->id, sizeof s->id, "sane:usb:%s", u[i].id);
+		char nm[200]; snprintf(nm, sizeof nm, "%s%s%s", u[i].maker, *u[i].maker && *u[i].product ? " " : "", u[i].product);
+		if (*u[i].product && *u[i].maker && !strncasecmp(u[i].product, u[i].maker, strlen(u[i].maker))) snprintf(nm, sizeof nm, "%s", u[i].product);
+		snprintf(s->name, sizeof s->name, "USB: %s", *nm ? nm : u[i].id); snprintf(s->model, sizeof s->model, "%s", nm); snprintf(s->via, sizeof s->via, "usb"); snprintf(s->proto, sizeof s->proto, "sane");
+	}
+}
+
 static int sane_dev_ok(const char *d)
 {
 	size_t n = strlen(d); if (!n || n > 200 || strstr(d, "..")) return 0;
@@ -730,13 +795,25 @@ static int sane_setup(const char *id, char *dev, size_t dn)
 	if (!tmp || stat(tmp, &st) || !S_ISDIR(st.st_mode) || st.st_uid != getuid() || strlen(tmp) > 40) tmp = "/tmp";
 	snprintf(CFG, sizeof CFG, "%s/rscan-XXXXXX", tmp); if (!mkdtemp(CFG)) { *CFG = 0; return fail("write", "No room for the scanner's settings."); }
 	atexit(cfg_cleanup);
-	char p[128]; FILE *f; char be[40] = "airscan";
-	if (!strncmp(id, "sane:", 5)) {
+	char p[128]; FILE *f; char be[40] = "airscan"; int usb = 0; usbdev want = {0};
+	if (!strncmp(id, "sane:usb:", 9)) {
+		/* (step 3) a USB scanner by its ids: every driver on the list asked, the device at its bus and number taken */
+		char vp[16]; snprintf(vp, sizeof vp, "%s", id + 9); for (char *c = vp; *c; c++) *c = toupper((unsigned char)*c);
+		if (strlen(vp) != 9 || strspn(vp, "0123456789ABCDEF:") != 9 || vp[4] != ':') return fail("args", "Not a scanner's name.");
+		usbdev u[16]; int n = usb_scanners(u, 16); for (int i = 0; i < n && !usb; i++) if (!strcmp(u[i].id, vp)) { want = u[i]; usb = 1; }
+		if (!usb) return fail("noscanner", "The scanner is not plugged in any more.");
+	} else if (!strncmp(id, "sane:", 5)) {
 		const char *d = id + 5; size_t bl = strcspn(d, ":"); if (!sane_dev_ok(d) || !bl || bl >= sizeof be) return fail("args", "Not a scanner's name.");
 		memcpy(be, d, bl); be[bl] = 0; if (!strcmp(be, "airscan") || !strcmp(be, "net") || !backend_allowed(be)) return fail("args", "This Rudolf OS has no driver called %s.", be);
 		snprintf(dev, dn, "%s", d);
 	}
-	snprintf(p, sizeof p, "%s/dll.conf", CFG); if (!(f = fopen(p, "w"))) return fail("write", "No room for the scanner's settings."); fprintf(f, "%s\n", be); fclose(f);
+	snprintf(p, sizeof p, "%s/dll.conf", CFG); if (!(f = fopen(p, "w"))) return fail("write", "No room for the scanner's settings.");
+	if (usb) {
+		const char *bp = getenv("RS_BACKENDS"); FILE *b = fopen(bp ? bp : "/usr/share/rudolf/scan-backends", "r"); char l[64];
+		while (b && fgets(l, sizeof l, b)) { l[strcspn(l, " \t\r\n#")] = 0; if (!*l || !sane_dev_ok(l) || !strcmp(l, "airscan") || !strcmp(l, "net")) continue; fprintf(f, "%s\n", l); conf_copy(l); }
+		if (b) fclose(b);
+	} else { fprintf(f, "%s\n", be); if (strcmp(be, "airscan")) conf_copy(be); }
+	fclose(f);
 	snprintf(p, sizeof p, "%s/airscan.conf", CFG); if (!(f = fopen(p, "w"))) return fail("write", "No room for the scanner's settings.");
 	fprintf(f, "[options]\ndiscovery = disable\nmodel = network\n[devices]\n");
 	if (!strncmp(id, "escl:", 5) || !strncmp(id, "wsd:", 4)) {
@@ -746,7 +823,11 @@ static int sane_setup(const char *id, char *dev, size_t dn)
 	fclose(f);
 	setenv("SANE_CONFIG_DIR", CFG, 1); unsetenv("SANE_DEBUG_DLL");
 	SANE_Int v = 0; if (SN.init(&v, NULL) != ST_GOOD) return fail("nosane", "The scanning library did not start.");
-	if (strncmp(id, "sane:", 5)) {   /* (sane-airscan's name for it: airscan:e0:Rudolf scanner, airscan:w0:...) */
+	if (usb) {   /* (the drivers' name for it: pixma:04A91909_..., genesys:libusb:001:005, ...) */
+		const SANE_Device **dl = NULL; *dev = 0; char bd[24], vp[12]; snprintf(bd, sizeof bd, "libusb:%03d:%03d", want.bus, want.dev); snprintf(vp, sizeof vp, "%.4s%.4s", want.id, want.id + 5);
+		if (SN.get_devices(&dl, 1) == ST_GOOD && dl) for (int i = 0; dl[i] && !*dev; i++) if (dl[i]->name && (strstr(dl[i]->name, bd) || strcasestr(dl[i]->name, vp))) snprintf(dev, dn, "%s", dl[i]->name);
+		if (!*dev) return fail("noscanner", "No driver of this Rudolf OS answers for this scanner (%s). If it scans over the network, connect it to the Wi-Fi.", want.id);
+	} else if (strncmp(id, "sane:", 5)) {   /* (sane-airscan's name for it: airscan:e0:Rudolf scanner, airscan:w0:...) */
 		const SANE_Device **dl = NULL; *dev = 0;
 		if (SN.get_devices(&dl, 0) == ST_GOOD && dl) for (int i = 0; dl[i] && !*dev; i++) if (dl[i]->name && !strncmp(dl[i]->name, "airscan:", 8)) snprintf(dev, dn, "%s", dl[i]->name);
 		if (!*dev) return fail("noscanner", "The scanner could not be set up.");
@@ -865,7 +946,7 @@ static SANE_Status read_page(img *m, int want_grey)
 		/* the frame's bytes (lines -1: not known before the end) */
 		buf raw = {0}; unsigned char t[65536]; SANE_Int got;
 		while (!STOP) {
-			s = SN.read(H, t, sizeof t, &got); if (s == ST_EOF) break; if (s != ST_GOOD) { free(raw.b); return s; }
+			s = SN.read(H, t, sizeof t, &got); if (s == ST_EOF) break; if (s != ST_GOOD) { free(raw.b); if (STOP) { SN.cancel(H); return ST_CANCELLED; } return s; }
 			if (raw.n + got > (size_t)MAX_PIXELS * 3 || put(&raw, t, got)) { free(raw.b); SN.cancel(H); return ST_NO_MEM; }
 		}
 		if (STOP) { free(raw.b); SN.cancel(H); return ST_CANCELLED; }
@@ -927,10 +1008,15 @@ static int cmd_scan(int argc, char **argv)
 		double l = fmin(area[0], mw - 1), t = fmin(area[1], mh - 1), rr = fmin(area[0] + area[2], mw), b = fmin(area[1] + area[3], mh);
 		opt_set_num("tl-x", 0); opt_set_num("tl-y", 0); opt_set_num("br-x", rr); opt_set_num("br-y", b); opt_set_num("tl-x", l); opt_set_num("tl-y", t);
 	} else if (mw > 0 && mh > 0) { opt_set_num("tl-x", 0); opt_set_num("tl-y", 0); opt_set_num("br-x", mw); opt_set_num("br-y", mh); }
+	/* (the tests' own settings for SANE's test backend: RS_OPTS="name=value;...", strings, whole numbers and yes/no) */
+	if (getenv("RS_OPTS")) { char o[512]; snprintf(o, sizeof o, "%s", getenv("RS_OPTS"));
+		for (char *t = strtok(o, ";"); t; t = strtok(NULL, ";")) { char *eq = strchr(t, '='); if (!eq) continue; *eq++ = 0; int i; const SANE_Option_Descriptor *d = optd(t, &i);
+			if (d && d->type == T_BOOL) { SANE_Word w = !strcmp(eq, "1") || !strcmp(eq, "yes"); SN.control(H, i, 1, &w, NULL); } else if (d && d->type == T_STRING) opt_set_str(t, eq); else if (d) opt_set_num(t, atof(eq)); } }
 	int dpi = (int)lround(opt_get_num("resolution", best ? best : 300));
 	int adf = !strcmp(source, "adf") && !preview, n = 0; char names[64][32]; SANE_Status s = ST_GOOD; int ws = 0, hs = 0;
 	for (;;) {
 		s = SN.start(H);
+		sigaction(SIGTERM, &sa, NULL); sigaction(SIGINT, &sa, NULL); sigaction(SIGHUP, &sa, NULL);   /* (again: a driver's reader may set its own) */
 		if (s != ST_GOOD) { if (n && s == ST_NO_DOCS) s = ST_GOOD; break; }   /* (the feeder emptied: done) */
 		img m = {0}; s = read_page(&m, grey_here || bw_here);
 		if (s != ST_GOOD) { free(m.px); break; }
@@ -946,7 +1032,7 @@ static int cmd_scan(int argc, char **argv)
 		if (!adf || n >= 60 || STOP) break;
 	}
 	SN.cancel(H); SN.close(H); SN.exit();
-	if (STOP && s == ST_GOOD) s = ST_CANCELLED;
+	if (STOP) s = ST_CANCELLED;
 	if (!n) return sane_fail(s == ST_GOOD ? ST_IO_ERROR : s);
 	printf("{\"ok\":true,\"pages\":["); for (int i = 0; i < n; i++) { printf("%s", i ? "," : ""); js(names[i]); }
 	printf("],\"width\":%d,\"height\":%d,\"dpi\":%d,\"mode\":\"%s\",\"peakKB\":%ld", ws, hs, dpi, mode, peak_kb());
@@ -985,11 +1071,11 @@ static int cmd_find(void)
 	find_ifs();
 	if (!getenv("RS_ONLY") || strstr(getenv("RS_ONLY"), "mdns")) find_mdns();
 	if (!getenv("RS_ONLY") || strstr(getenv("RS_ONLY"), "wsd")) find_wsd();
-	if (!getenv("RS_ONLY") || strstr(getenv("RS_ONLY"), "usb")) find_usb_escl();
+	if (!getenv("RS_ONLY") || strstr(getenv("RS_ONLY"), "usb")) { find_usb_escl(); find_sane_usb(); }
 	printf("{\"ok\":true,\"scanners\":[");
 	for (int i = 0; i < NSC; i++) {
 		printf("%s{\"id\":", i ? "," : ""); js(SC[i].id); printf(",\"name\":"); js(SC[i].name); printf(",\"model\":"); js(SC[i].model);
-		printf(",\"via\":"); js(SC[i].via); printf(",\"proto\":\"%s\"}", !strcmp(SC[i].proto, "wsd") ? "WSD" : "eSCL");
+		printf(",\"via\":"); js(SC[i].via); printf(",\"proto\":\"%s\"}", !strcmp(SC[i].proto, "wsd") ? "WSD" : !strcmp(SC[i].proto, "sane") ? "driver" : "eSCL");
 	}
 	printf("]}\n"); return 0;
 }
@@ -999,6 +1085,8 @@ int main(int argc, char **argv)
 	setvbuf(stdout, NULL, _IOFBF, 1 << 16); signal(SIGPIPE, SIG_IGN); umask(022);
 	alarm(1800);   /* (nothing here takes half an hour: a scanner that hangs does not keep this running) */
 	if (argc >= 2 && !strcmp(argv[1], "find")) return cmd_find();
+	if (argc >= 2 && !strcmp(argv[1], "conf")) {   /* (step 4, for the tests: find's JSON on standard input, sane-airscan's settings out) */
+		static char in[1 << 18], out[1 << 16]; size_t n = fread(in, 1, sizeof in - 1, stdin); in[n] = 0; scanconf_make(in, out, sizeof out); fputs(out, stdout); return 0; }
 	if (argc >= 3 && !strcmp(argv[1], "caps")) return cmd_caps(argv[2]);
 	if (argc >= 4 && !strcmp(argv[1], "scan")) return cmd_scan(argc, argv);
 	if (argc >= 5 && !strcmp(argv[1], "save")) return cmd_save(argc, argv);

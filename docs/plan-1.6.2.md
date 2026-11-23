@@ -769,6 +769,35 @@ MB at most scanning A4 at 300 dpi in colour, about 28 MB making its PDF. Tests: 
 qt/sb/sc162_t.py (QEMU, the release with this tree's files; the USB path only on the host: QEMU has no emulated IPP over
 USB device), .github/workflows/scan-check.yml. Not testable here: scanning over WSD itself (the stand-in answers
 discovery and metadata, not WS-Scan's jobs): the owner's check.
+Step 2 built, **PR scan-app** (after scan-driverless): desktop/scan62.js (the app; File Explorer's "📠 Scan", the Print
+dialog's "📠 Scan…", Settings › Devices' Scanners section) and rudolfd's scan/* requests (iso/sys/rudolfd-scan.inc: find
+as the desktop's user after the firewall's WSD window; caps, start, page, save, drop as the account's own Linux user, no
+new privileges, its session's pages in ~/.cache/rudolf-scan/S; a USB scanner reached by that user only while it scans
+through the network helper's new `usbscan allow|done UID`; save with to= writes the file into the account's own folder as
+that user, without it answers the file for C:). Tests: qt/shell2/scan62_t.js 17/17 (end to end with rudolf-scan and the
+stand-in), qt/native/same_t.sh's scan cases (Native against Chromium), qt/sb/sc162_t.py's phase A (the release in QEMU
+with this tree's rudolfd and page: an account signed in, the app driven, the PDF in Documents its user's, 0644).
+Step 3 built, **PR scan-usb** (after scan-app): systools/mkscan.sh puts SANE's pixma, genesys, epson2, epsonds, plustek,
+canon_lide70, xerox_mfp and fujitsu drivers in the base layer (every one GPL-2.0-or-later with SANE's exception; no
+firmware; no library the base does not have), each with sane-backends' settings for USB only (no net, tcp or scsi lines;
+pixma's networking off), their list (/usr/share/rudolf/scan-backends) and SANE's USB scanners' ids (scan-usb-ids, 1114
+from its 20-sane.hwdb). rudolf-scan find lists the USB scanners on that list (not one ipp-usb already serves as eSCL);
+a scan of one (sane:usb:VVVV:PPPP) loads the drivers and takes the device at its bus and number. /usr/lib/rudolf/scanusb
+(through the devices helper's new `scanusb allow|done UID`) gives the scanners' device nodes to the scanning user (its
+own, 0600) for the scan and gives them back as they were. Measured: 2870 KB for all of scanning (steps 1 and 3; the
+drivers 2.4 MB). Tests: qt/host/scanusb162_t.sh 13/13 (rudolf-scan through SANE's test driver pixel for pixel against
+scanimage: colour, three-pass, 16-bit, grey, 1-bit; the feeder; cancel; find from a stand-in sysfs; no internet socket
+from the drivers; scanusb on stand-in device nodes; the devices helper). QEMU cannot stand in for a USB scanner (no
+emulated device speaks a scanner's protocol; usb-host passes a real one through): the owner's check.
+Step 4 built, **PR scan-linux** (after scan-usb): **network scanners yes, USB scanners no.** After each Find scanners,
+rudolfd writes the network ones (eSCL and WSD, by address; names and addresses kept to safe characters) as sane-airscan's
+settings, its own discovery off, to /persist/etc/rudolf/scanners.conf (iso/sys/rudolf-scanconf.h; rewritten in place, kept
+when nothing was found); rudolf-debian binds it read only over Debian's /etc/sane.d/airscan.conf when Debian has SANE
+(Simple Scan brings libsane1 and sane-airscan). Safe: Simple Scan reaches those scanners as any program of the account
+reaches the network (outgoing connections only); nothing new listens; discovery stays Rudolf's (WS-Discovery's answers
+would not pass the firewall in Debian, and Debian has no Avahi). USB scanners are not given: a Linux app would need the
+raw USB device for its whole session, and Debian's drivers are not Rudolf's checked set; Scan stays the way to scan
+them. Tests: qt/host/debscan162_t.sh 6/6, debhome_t.sh 6/6 unchanged.
 
 ### 35. Network shares in File Explorer (added on 2026-11-22)
 1. **Windows and NAS shares (SMB):** File Explorer's Network lists the shares found on the home network (WS-Discovery and
@@ -785,6 +814,11 @@ discovery and metadata, not WS-Scan's jobs): the owner's check.
 5. **Tests:** a Samba server in a network namespace or second QEMU guest: found, signed in, a file copied each way, a guest
    share, a wrong password, a share of another account not seen. **The owner's check:** a share on a Windows computer or a
    NAS at home, if there is one.
+
+**Status (2026-11-23, the scheduled task):** step 1 (PR "Network shares, step 1"): CIFS a signed module in iso/kconfig.sh
+(SMB 2.1 and 3 only: CIFS_ALLOW_INSECURE_LEGACY off, so the kernel itself has no SMB 1 or 2.0; no upcalls, RDMA, cache or key
+dump; no SMB server), in iso/kconfig-required.txt; .github/workflows/shares-check.yml builds this tree's kernel and checks the
+module (iso/qt/host/cifsmod62_t.sh: signed, SHA-256, no device alias, so it is loaded only when a share is mounted).
 
 ### 36. Desert Camp, the third moving background (added on 2026-11-22)
 The owner, 2026-11-22: a third dynamic background in Display Properties: an open desert with sparse dry foliage and a few tents

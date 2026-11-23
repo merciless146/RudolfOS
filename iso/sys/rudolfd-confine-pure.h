@@ -120,6 +120,7 @@ static const char *const CONFINE_START[] = {
 	"restart-browser",
 	"say",
 	"sc/*",
+	"scan/*",
 	"screen*",
 	"screenshot",
 	"secureboot/*",

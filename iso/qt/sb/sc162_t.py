@@ -2,7 +2,7 @@
 # or REL-DIR) with this tree's rudolf-scan, firewall and list of listeners put in place, and libsane and sane-airscan from
 # the build machine (the same Ubuntu 24.04 packages the base layer takes them from), laid over the release's library
 # folder (SC162_FIX: a folder with rudolf-scan, firewall, listeners, libsane.so.1 and libsane-airscan.so.1, on an extra
-# disk labelled SC162FIX). Two stand-in scanners (qt/host/fixtures/esclsrv.py) on this computer, reached by the guest at
+# disk labelled R161FIX; with rudolfd, rudolf-rootd, root/ and index.html too, step 2's phase A below). Two stand-in scanners (qt/host/fixtures/esclsrv.py) on this computer, reached by the guest at
 # 10.0.2.100 (eSCL) and 10.0.2.101 (WSD only) through QEMU's user network (guestfwd; restrict=on: nothing else); this
 # script plays their multicast DNS and WS-Discovery answers on QEMU's hub at the Ethernet level, as m161_t.py plays
 # printers (the mDNS answer to the group 224.0.0.251:5353; the ProbeMatches by unicast to the Probe's port 3702, for its
@@ -15,7 +15,7 @@
 # A USB stand-in: QEMU has no USB device that speaks IPP over USB (usb-host passes a real one through; there is no
 # emulated printer-scanner), so the USB path (ipp-usb's address) is tested on the host (qt/host/scan162_t.sh, 28-29).
 #   python3 sc162_t.py REL-DIR    (SB_PARTS, QEMU, QEMU_ACCEL as for p161_t.py; root)
-import os, sys, time, re, subprocess, shutil, struct, socket, threading, base64, urllib.request
+import os, sys, time, re, subprocess, shutil, struct, socket, threading, base64, urllib.request, json
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
 import sbvm
@@ -110,7 +110,7 @@ def make_drive(path):
     os.remove(D)
 make_drive(DRV)
 FIXIMG = os.path.abspath('sc162fix.img'); subprocess.run(['truncate', '-s', '64M', FIXIMG], check=True)
-subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'SC162FIX', '-d', FIX, FIXIMG], check=True)
+subprocess.run(['truncate', '-s', '256M', FIXIMG], check=True); subprocess.run(['mkfs.ext4', '-q', '-F', '-L', 'R161FIX', '-d', FIX, FIXIMG], check=True)
 NET = ['-netdev', f'user,id=u0,restrict=on,guestfwd=tcp:10.0.2.100:8641-tcp:127.0.0.1:{P1},guestfwd=tcp:10.0.2.101:8642-tcp:127.0.0.1:{P2}',
        '-netdev', 'hubport,id=hp1,hubid=0,netdev=u0',
        '-netdev', f'socket,id=s0,udp=127.0.0.1:{HPORT},localaddr=127.0.0.1:{QPORT}', '-netdev', 'hubport,id=hp2,hubid=0,netdev=s0']
@@ -143,14 +143,14 @@ AS = "su -s /bin/sh rudolf -c"
 if up:
     run("IP=ip; command -v ip >/dev/null || IP='busybox ip'; for i in $(seq 1 30); do $IP -4 addr show eth0 | grep -q 'inet ' && break; sleep 2; done; "
         "$IP -4 addr show eth0 | grep -q 'inet ' || { $IP addr add 10.0.2.15/24 dev eth0; $IP link set eth0 up; }; $IP -4 addr show eth0 | grep inet; $IP route")
-    o = run("FX=; for d in /dev/nvme*n1; do blkid $d 2>/dev/null | grep -q SC162FIX && FX=$d; done; mkdir -p /tmp/fx /run/s162x /run/s162l/sane; mount -o ro $FX /tmp/fx; mount -t tmpfs -o exec,mode=755 none /run/s162x; "
+    o = run("FX=; for d in /dev/nvme*n1; do blkid $d 2>/dev/null | grep -q R161FIX && FX=$d; done; mkdir -p /tmp/fx /run/s162x /run/s162l/sane; mount -o ro $FX /tmp/fx; mount -t tmpfs -o exec,mode=755 none /run/s162x; "
         "cp /tmp/fx/rudolf-scan /tmp/fx/firewall /run/s162x/; chmod 755 /run/s162x/*; cp /tmp/fx/libsane.so.1 /run/s162l/; cp /tmp/fx/libsane-airscan.so.1 /run/s162l/sane/; "
-        "M=/usr/lib/x86_64-linux-gnu; [ -e $M/libsane.so.1 ] && echo RELEASE-HAS-LIBSANE; mount -t overlay overlay -o lowerdir=/run/s162l:$M $M && echo OVERLAY-OK; "
+        "M=/usr/lib/x86_64-linux-gnu; [ -e $M/libsane.so.1 ] && echo RELEASE-HAS-LIBSANE; { mkdir -p $M/sane 2>/dev/null && cp /run/s162l/libsane.so.1 $M/ 2>/dev/null && cp /run/s162l/sane/libsane-airscan.so.1 $M/sane/ 2>/dev/null && echo LIBS-COPIED; } || { mount -t overlay overlay -o lowerdir=/run/s162l:$M $M && echo OVERLAY-OK; }; "
         "touch /usr/bin/rudolf-scan 2>/dev/null; [ -e /usr/bin/rudolf-scan ] && mount --bind /run/s162x/rudolf-scan /usr/bin/rudolf-scan || { mkdir -p /run/s162b; cp /run/s162x/rudolf-scan /run/s162b/; echo BIN-IN-RUN; }; "
         "mount --bind /run/s162x/firewall /usr/lib/rudolf/firewall; mount --bind /tmp/fx/listeners /usr/share/rudolf/listeners; "
         "/usr/lib/rudolf/firewall on; /usr/lib/rudolf/firewall status; nft list chain inet rudolf wsd; ls -la $M/libsane.so.1 $M/sane/")
     BIN = '/run/s162b/rudolf-scan' if 'BIN-IN-RUN' in o else '/usr/bin/rudolf-scan'
-    ok("F. this tree's rudolf-scan, firewall (its wsd chain) and listeners in place; libsane and sane-airscan laid over the library folder", 'OVERLAY-OK' in o and 'udp dport @wsdopen accept' in o and 'libsane-airscan.so.1' in o, o)
+    ok("F. this tree's rudolf-scan, firewall (its wsd chain) and listeners in place; libsane and sane-airscan put in the library folder", ('OVERLAY-OK' in o or 'LIBS-COPIED' in o) and 'udp dport @wsdopen accept' in o and 'libsane-airscan.so.1' in o, o)
     run("mkdir -p /tmp/sc && chown rudolf:rudolf /tmp/sc && chmod 700 /tmp/sc")
     b0 = run('/usr/lib/rudolf/firewall status'); run('/usr/lib/rudolf/firewall wsd open')
     o = run(f"{AS} '{BIN} find'", 60); b1 = run('/usr/lib/rudolf/firewall status')
@@ -181,6 +181,67 @@ if up:
     pk = re.search(r'"peakKB":(\d+)', o)
     ok('8. A4 at 300 dpi in colour: at most 80 MB while scanning; nothing running afterwards (nothing while idle)', pk is not None and int(pk.group(1)) < 81920 and 'NONE-RUNNING' in o, o)
     if pk: print(f"::notice title=Scanning in QEMU (Part 34)::{pk.group(1)} KB at most scanning A4 at 300 dpi in colour; nothing running while idle")
+# ---------------------------------------------------------------- A. the Scan app (step 2): this tree's rudolfd, root helpers and page
+INIT_JS = "(()=>{const o=document.getElementById('oobe');if(o)o.remove();try{svj('bd95setup',1)}catch(e){};return 1})()"
+def js(e, t=90):
+    for _ in range(5):
+        r = g.js(e, t)
+        if not (isinstance(r, tuple) and (r[0] == 'ERR' or (r[0] == 'EXC' and 'ReferenceError' in str(r[1])))): return r
+        time.sleep(10)
+    return r
+def wait_for(expr, secs, every=2):
+    end = time.time() + secs; r = None
+    while time.time() < end:
+        r = js(expr, 60)
+        if r is True: return True
+        time.sleep(every)
+    return r
+if up and FIX and os.path.exists(os.path.join(FIX, 'rudolfd')):
+    g.put(os.path.join(HERE, 'fix161.sh'), '/tmp/fix161.sh', '644')
+    o = run("WWW=/usr/share/rudolf/www; [ -f /persist/os/current/index.html ] && WWW=/persist/os/current; cp /tmp/fx/index.html /tmp/page.html && chmod 644 /tmp/page.html; "
+            "mountpoint -q $WWW/index.html || mount --bind /tmp/page.html $WWW/index.html; for f in /tmp/fx/a/*; do [ -e $WWW/a/${f##*/} ] || cp $f $WWW/a/ 2>/dev/null; done; "
+            "mountpoint -q /usr/bin/rudolf-scan || { [ -e /usr/bin/rudolf-scan ] && mount --bind /run/s162x/rudolf-scan /usr/bin/rudolf-scan; }; ls -la /usr/bin/rudolf-scan; sh /tmp/fix161.sh reload", 300)
+    ok("A0. this tree's rudolfd (through rudolf-rootd, with its root helpers) and page in place", 'rudolfd ' in o and 'reloaded' in o, o)
+    for attempt in range(3):
+        end = time.time() + 600
+        while time.time() < end and js("typeof acctNew=='function'&&typeof userLogin=='function'&&typeof scanApp=='function'&&typeof ACCTS=='object'", 20) is not True: time.sleep(5)
+        time.sleep(20); js(INIT_JS)
+        r = js("(async()=>{ACCTS.length=0;const b=await acctNew('boss','b1','admin');ACCTS.push(b);saveUser();return b.id})()", 120); out('account', r)
+        r = js("(async()=>{try{const a=ACCTS.find(x=>x.n=='boss');if(USER)userLogout();USER=a;await userLogin(a,'b1');lastInput=Date.now();"
+               "const L=document.getElementById('login');if(L)L.style.display='none';return 'in '+USER.n}catch(e){return 'ERR '+e.message}})()", 300)
+        out('sign-in:', r)
+        if str(r).startswith('ERR'): continue
+        if wait_for("!!(USER&&USER.disk&&hdOn())", 300) is True: break
+    time.sleep(8)
+    AU = run("sed -n 's/^USER=//p' /run/rudolf/acct-session.env", 30).strip().split('\n')[-1]; AUID = run(f"id -u {AU}", 20).strip().split('\n')[-1]
+    ok('A1. an account signed in, its files on the disk, its own Linux user', AU.startswith('acct') and AUID.isdigit(), (AU, AUID))
+    W_ = "wins.find(w=>w.app=='scan')"; q_ = lambda s: f"{W_}.body.querySelector({json.dumps(s)})"
+    ctl('set?adf=loaded&pages=3&busy=0&fail=0'); run('/usr/lib/rudolf/firewall on')
+    js("(()=>{wins.slice().forEach(w=>w.close());launch('scan');return 1})()")
+    r = wait_for(f"!!{W_}&&{q_('.scres')}.options.length>0", 120, 3)
+    dv = js(f"[...{q_('.scdev')}.options].map(o=>o.textContent).join('|')")
+    ok('A2. Scan (Start menu): rudolfd\'s scan/find lists the eSCL and the WSD scanner (the firewall on), scan/caps fills its settings', r is True and 'QEMU Scanner (eSCL)' in str(dv) and 'QEMU WSD Scanner (WSD)' in str(dv), (r, dv, js(f"{q_('.scm')}.textContent")))
+    js(f"(()=>{{const d={q_('.scdev')};d.value='{ID}';d.dispatchEvent(new Event('change'));return 1}})()"); wait_for(f"{q_('.scres')}.options.length>0&&!{W_}.scan.busy", 60)
+    js(f"(()=>{{{q_('.scres')}.value='75';{q_('.scgo')}.click();return 1}})()"); r = wait_for(f"{W_}.scan.pages.length==1&&!{W_}.scan.busy", 240, 3)
+    js(f"(()=>{{const s={q_('.scsrc')};s.value='adf';s.dispatchEvent(new Event('change'));{q_('.scres')}.value='75';{q_('.scgo')}.click();return 1}})()"); r2 = wait_for(f"{W_}.scan.pages.length==4&&!{W_}.scan.busy", 300, 3)
+    ps = run(f"ls -lan /home/{AU}/.cache/rudolf-scan/*/ 2>&1; ps -o user,comm 2>/dev/null | grep rudolf-scan", 30)
+    ok('A3. a page from the glass, then the feeder\'s three: four pages listed; scanned as the account\'s own user (its session\'s folder, its own, 0700)', r is True and r2 is True and f' {AUID} {AUID} ' in ps and 'page-4.png' in ps, (r, r2, ps, js(f"{q_('.scm')}.textContent")))
+    js(f"(()=>{{{q_('.scl')}.querySelectorAll('button[title=\"Remove\"]')[0].click();{q_('.scsave')}.click();return 1}})()")
+    wait_for("!!document.querySelector('.fdlg .fdok')", 30)
+    js("(()=>{const d=document.querySelector('.fdlg');d.querySelector('.fdname').value='QEMU scan.pdf';d.querySelector('.fdname').dispatchEvent(new Event('input'));d.querySelector('.fdok').click();return 1})()")
+    r = wait_for(f"!{W_}.scan.busy&&/saved/.test({q_('.scm')}.textContent)", 240, 3)
+    o = run(f"ls -ln /home/{AU}/Documents/; stat -c '%u %a %s' '/home/{AU}/Documents/QEMU scan.pdf'", 30)
+    fetch(f"'/home/{AU}/Documents/QEMU scan.pdf'", f'{W}/app.pdf'); pi = subprocess.run(['pdfinfo', f'{W}/app.pdf'], capture_output=True, text=True).stdout
+    cs = [check(f'{W}/app.pdf', f'pdfpage={k}', f'page={k}', 'dpi=75', 'tol=10') for k in (1, 2, 3)]
+    ok('A4. saved as one PDF in Documents through the Save dialog: written by the account\'s own user (its owner, 0644, as the account\'s other files), the feeder\'s three pages in it, each checked',
+       r is True and re.search(rf'^{AUID} 644 \d+', o, re.M) is not None and re.search(r'Pages:\s+3', pi) is not None and all(x.startswith('ok') for x in cs), (r, o, pi, cs, js(f"{q_('.scm')}.textContent")))
+    r = wait_for("!!Object.keys(node(homePath('DOCUMENTS'))||{}).find(k=>/^QEMU scan\\.pdf$/i.test(k))", 60, 3)
+    ok('A5. ...and File Explorer\'s Documents shows it (the account\'s folder read again)', r is True, r)
+    ctl('set?adf=jam'); js(f"(()=>{{{q_('.scgo')}.click();return 1}})()"); r = wait_for(f"!{W_}.scan.busy&&/jammed/.test({q_('.scm')}.textContent)", 120, 3)
+    m = js(f"[{q_('.scm')}.textContent,{q_('.scm')}.getAttribute('role')].join(' | ')"); ctl('set?adf=loaded')
+    ok('A6. a paper jam in the feeder: said plainly in Scan, as an alert', r is True and 'alert' in str(m), m)
+    js(f"{W_}.close()"); time.sleep(3); o = run(f"ls -R /home/{AU}/.cache/rudolf-scan 2>&1", 20)
+    ok('A7. Scan closed: its session\'s pages removed (scan/drop, by the account\'s user)', 'page-' not in o, o)
 vm.stop()
 for p in SRV: p.kill()
 out(f'{sum(R)}/{len(R)} passed'); sys.exit(0 if all(R) else 1)
