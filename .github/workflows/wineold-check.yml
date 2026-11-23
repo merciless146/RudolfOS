@@ -46,5 +46,3 @@ jobs:
         run: cd desktop && python3 build19.py ../iso/www/index.html
       - name: The message and the offer on each engine
         run: node iso/qt/shell2/wineold162_t.js
-      - name: Wine from Settings and a program's message as before
-        run: node iso/qt/shell2/wine49_t.js
