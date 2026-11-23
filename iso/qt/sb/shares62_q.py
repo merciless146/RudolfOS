@@ -229,9 +229,11 @@ try:
     ok('7. a share the server does not have: 404, named', c == 404 and j.get('why') == 'noshare' and 'nothere' in j.get('error', ''), [c, j])
     # Ann's share
     j, c = api(g, 'shares/open?server=nas62&share=docs&keep=1', True, f'{U1}\n{P1}\n\n'); ID = j.get('id', 'x'); MP = j.get('path', '/x')
-    o = sh(f"grep ' {MP} ' /proc/mounts; stat -c '%u %a' /run/rudolf/shares/{UA} {MP}; lsmod | grep '^cifs '; modinfo -F signer cifs; modinfo -F sig_hashalgo cifs")
-    ok('8. Ann\'s share opened (nas62 by multicast DNS), encrypted, kept in her keyring as asked; the SMB client loaded only now, its module signed (SHA-256)',
-       c == 200 and j.get('encrypted') is True and j.get('kept') is True and re.search(r'^cifs ', o, re.M) and 'sha256' in o, [c, j, o])
+    o = sh(f"grep ' {MP} ' /proc/mounts; stat -c '%u %a' /run/rudolf/shares/{UA} {MP}; lsmod | grep '^cifs '; K=$(find /lib/modules/$(uname -r) -name 'cifs.ko*' | head -1); echo module $K; tail -c 28 $K; echo")
+    ok('8. Ann\'s share opened (nas62 by multicast DNS), encrypted, kept in her keyring as asked; the SMB client loaded only now, its module signed (the kernel\'s appended signature: MODULE_SIG_FORCE refuses one without)',
+       c == 200 and j.get('encrypted') is True and j.get('kept') is True and re.search(r'^cifs ', o, re.M) and '~Module signature appended~' in o, [c, j, o])
+    if not j.get('kept'):
+        out('(the keyring did not keep it:)', sh(f"su -s /bin/sh acct{UA} -c 'set -a; . /run/rudolf/acct-session.env; set +a; echo t | /usr/bin/rudolf-portal --keyring-store share-0000000000000000 t; echo rc=$?; /usr/bin/rudolf-portal --keyring-clear share-0000000000000000; ps -o user,args | grep -i [k]eyring' 2>&1; tail -8 /run/rudolf/keyring-{UA}.log; ls -la /run/rudolf/acct-session.env", 60))
     ok(f'9. mounted for Ann\'s own Linux user {UA} only: nosuid, nodev, noexec, its folders {UA}\'s, 0700', re.search(rf'cifs rw,nosuid,nodev,noexec.*uid={UA},forceuid,gid={UA},forcegid', o) and re.search(rf'^{UA} 700\n{UA} 700$', o, re.M), o)
     o2 = sh(f"stat -c '%u %a' {MP}/onserver.txt"); r1 = raw(g, f'fs/read?path={MP}/onserver.txt')
     j, c = api(g, f'fs/write?path={MP}/fromrudolf.txt', True, 'from Rudolf\n')
