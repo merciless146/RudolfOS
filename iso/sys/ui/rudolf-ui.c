@@ -190,22 +190,21 @@ static gboolean settings_tick(gpointer d)
 		if (l) g_array_unref(l); } }
 	return G_SOURCE_CONTINUE;
 }
-/* the writing as Chromium's: antialiased and hinted as fontconfig has it for the page's font at its size (Chromium asks fontconfig for
-   each font; GTK's own defaults would differ from it), and the font's own line height (metrics not rounded up to whole pixels each:
-   Pango's 17 px lines for DejaVu Sans at 13 px against the page's 15) */
+/* the writing as Chromium writes the page: antialiased in grey, not hinted (measured against Chromium with fontconfig saying slight
+   hinting and subpixel colours, as on GitHub's runner, and saying neither, as here: Chromium's letters were the same, grey and
+   unhinted, both times; GTK's own defaults, or fontconfig's, made them 4 to 10 % different), antialiasing off only where fontconfig
+   turns it off for the font; and the font's own line height (metrics not rounded up to whole pixels each: Pango's 17 px lines for
+   DejaVu Sans at 13 px against the page's 15) */
 static void font_options(void)
 {
 	FcPattern *p = FcPatternCreate(); char fam[96]; snprintf(fam, sizeof fam, "%.*s", (int)strcspn(RUI.family, ","), RUI.family);
 	FcPatternAddString(p, FC_FAMILY, (const FcChar8 *)fam); FcPatternAddDouble(p, FC_PIXEL_SIZE, RUI.fs * RUI.z);
 	FcConfigSubstitute(NULL, p, FcMatchPattern); FcDefaultSubstitute(p); FcResult r; FcPattern *m = FcFontMatch(NULL, p, &r);
-	FcBool aa = FcTrue, hint = FcTrue; int hs = FC_HINT_SLIGHT, rgba = FC_RGBA_NONE;
-	if (m) { FcPatternGetBool(m, FC_ANTIALIAS, 0, &aa); FcPatternGetBool(m, FC_HINTING, 0, &hint); FcPatternGetInteger(m, FC_HINT_STYLE, 0, &hs); FcPatternGetInteger(m, FC_RGBA, 0, &rgba); FcPatternDestroy(m); }
-	FcPatternDestroy(p);
-	static const char *const HS[] = { "hintnone", "hintslight", "hintmedium", "hintfull" };
-	GtkSettings *gs = gtk_settings_get_default(); g_object_set(gs, "gtk-xft-antialias", aa ? 1 : 0, "gtk-xft-hinting", hint ? 1 : 0, "gtk-xft-hintstyle", HS[hint ? (hs >= 0 && hs <= 3 ? hs : 1) : 0], "gtk-xft-rgba", "none", NULL);
+	FcBool aa = FcTrue; if (m) { FcPatternGetBool(m, FC_ANTIALIAS, 0, &aa); FcPatternDestroy(m); } FcPatternDestroy(p);
+	GtkSettings *gs = gtk_settings_get_default(); g_object_set(gs, "gtk-xft-antialias", aa ? 1 : 0, "gtk-xft-hinting", 0, "gtk-xft-hintstyle", "hintnone", "gtk-xft-rgba", "none", NULL);
 	cairo_font_options_t *fo = cairo_font_options_create(); cairo_font_options_set_antialias(fo, aa ? CAIRO_ANTIALIAS_GRAY : CAIRO_ANTIALIAS_NONE);
-	cairo_font_options_set_hint_style(fo, !hint ? CAIRO_HINT_STYLE_NONE : hs == FC_HINT_FULL ? CAIRO_HINT_STYLE_FULL : hs == FC_HINT_MEDIUM ? CAIRO_HINT_STYLE_MEDIUM : hs == FC_HINT_NONE ? CAIRO_HINT_STYLE_NONE : CAIRO_HINT_STYLE_SLIGHT);
-	cairo_font_options_set_hint_metrics(fo, CAIRO_HINT_METRICS_OFF); gdk_screen_set_font_options(gdk_screen_get_default(), fo); cairo_font_options_destroy(fo); (void)rgba;
+	cairo_font_options_set_hint_style(fo, CAIRO_HINT_STYLE_NONE); cairo_font_options_set_hint_metrics(fo, CAIRO_HINT_METRICS_OFF);
+	gdk_screen_set_font_options(gdk_screen_get_default(), fo); cairo_font_options_destroy(fo);
 }
 int rui_init(int *argc, char ***argv, const char *app)
 {
