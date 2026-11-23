@@ -33,7 +33,9 @@ T160 = open(os.path.join(HERE, 't160_t.py')).read()
 exec(re.search(r'^INIT_JS = .*$', T160, re.M).group(0)); exec(re.search(r'^INIT2_JS = .*$', T160, re.M).group(0))
 
 # ---- the home network: a bridge, dnsmasq's addresses, the two servers
-SH = os.path.join(W, 'srv'); PIDS = []; U1, U2 = 'ann62q', 'bob62q'
+import tempfile
+SV = tempfile.mkdtemp(prefix='shares62srv.', dir='/tmp'); os.chmod(SV, 0o755)   # (the servers' folders under /tmp, as the host test's: Samba did not start under the runner's workspace, run 45135531718)
+SH = os.path.join(SV, 'srv'); PIDS = []; U1, U2 = 'ann62q', 'bob62q'
 P1 = base64.b32encode(os.urandom(10)).decode().lower() + ',x=1'   # (made for this run; a comma, as an option would have)
 def net_up():
     q_('ip link del br62 2>/dev/null; ip link del tap62 2>/dev/null; for n in nas62 old62 win62; do ip netns del $n 2>/dev/null; ip link del v$n 2>/dev/null; done')
@@ -48,7 +50,7 @@ def net_up():
     sh_('chown', U1, f'{SH}/docs'); os.chmod(f'{SH}/pub', 0o777); os.chmod(f'{SH}/old', 0o777)
     open(f'{SH}/docs/onserver.txt', 'w').write('from the NAS\n'); sh_('chown', U1, f'{SH}/docs/onserver.txt')
     for n, addr, lo, hi in (('nas', '192.168.62.2', 'SMB2_10', 'SMB3'), ('old', '192.168.62.3', 'NT1', 'NT1')):
-        b = f'{W}/{n}'
+        b = f'{SV}/{n}'
         for d in ('priv', 'lock', 'state', 'cache', 'pid', 'ncalrpc', 'log'): os.makedirs(f'{b}/{d}', exist_ok=True)
         open(f'{b}/smb.conf', 'w').write(f'''[global]
  workgroup = HOME62
@@ -81,9 +83,9 @@ def net_up():
  guest ok = yes
 ''')
     os.makedirs('/run/samba', exist_ok=True)
-    subprocess.run(['smbpasswd', '-c', f'{W}/nas/smb.conf', '-s', '-a', U1], input=f'{P1}\n{P1}\n', text=True, capture_output=True)
-    for c in ([ 'setsid', 'ip', 'netns', 'exec', 'nas62', 'smbd', '-s', f'{W}/nas/smb.conf', '-F', '--no-process-group'],
-              [ 'setsid', 'ip', 'netns', 'exec', 'old62', 'smbd', '-s', f'{W}/old/smb.conf', '-F', '--no-process-group'],
+    subprocess.run(['smbpasswd', '-c', f'{SV}/nas/smb.conf', '-s', '-a', U1], input=f'{P1}\n{P1}\n', text=True, capture_output=True)
+    for c in ([ 'setsid', 'ip', 'netns', 'exec', 'nas62', 'smbd', '-s', f'{SV}/nas/smb.conf', '-F', '--no-process-group', '--debug-stdout', '-d', '1'],
+              [ 'setsid', 'ip', 'netns', 'exec', 'old62', 'smbd', '-s', f'{SV}/old/smb.conf', '-F', '--no-process-group', '--debug-stdout', '-d', '1'],
               [ 'setsid', 'ip', 'netns', 'exec', 'win62', 'wsdd', '-i', 'ewin62', '-n', 'WIN62', '-w', 'HOME62'],
               [ 'setsid', 'ip', 'netns', 'exec', 'nas62', sys.executable, os.path.join(QT, 'host', 'fixtures', 'smbmdns.py'), 'Nas62', '192.168.62.2'],
               [ 'dnsmasq', '--no-daemon', '--interface=br62', '--bind-interfaces', '--port=0', '--dhcp-range=192.168.62.100,192.168.62.150,12h', '--dhcp-leasefile=' + W + '/leases']):
@@ -94,6 +96,7 @@ def net_down():
         except Exception: pass
     q_('ip link del tap62; ip link del br62; ip netns del nas62; ip netns del old62; ip netns del win62')
     for u in (U1, U2): q_(f'userdel {u}')
+    shutil.rmtree(SV, ignore_errors=True)
 def make_drive(path):
     with open(path, 'wb') as f: f.truncate((2048 + DMB * 2048 + 2048) * 512)
     T = path + '.tree'; shutil.rmtree(T, ignore_errors=True); os.makedirs(f'{T}/home/rudolf'); os.makedirs(f'{T}/etc')
@@ -189,7 +192,9 @@ if not all(SU.values()):
     for f in sorted(os.listdir(W)):
         if f.endswith('.log'): out('--', f, open(os.path.join(W, f), errors='replace').read()[-1500:])
     for n in ('nas', 'old'):
-        for f in sorted(os.listdir(f'{W}/{n}/log')) if os.path.isdir(f'{W}/{n}/log') else []: out('--', n, f, open(f'{W}/{n}/log/{f}', errors='replace').read()[-1500:])
+        L = f'{SV}/{n}/log'
+        for f in sorted(os.listdir(L)) if os.path.isdir(L) else []:
+            if os.path.isfile(f'{L}/{f}'): out('--', n, f, open(f'{L}/{f}', errors='replace').read()[-1500:])
 try:
     vm, g, up, js = boot('a'); sh = lambda c, t=60, show=True: run(g, c, t, show)
     ok('0. the release starts (this tree\'s kernel)' if KERN else '0. the release starts', up)

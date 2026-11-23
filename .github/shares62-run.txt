@@ -1,2 +1,2 @@
 serial=
-# 2026-11-23T08:02:58Z follow-up: the servers' TCP checked and told
+# 2026-11-23T08:31:59Z follow-up: the servers under /tmp
