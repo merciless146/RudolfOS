@@ -32,6 +32,8 @@ static const char *const CONFINE_PURE[] = {
 	"sleep",
 	"time/status",
 	"webkey",
+	"wine/decline",
+	"wine/old",
 	NULL
 };
 static const char *const CONFINE_ROOTD[] = {
@@ -120,11 +122,13 @@ static const char *const CONFINE_START[] = {
 	"restart-browser",
 	"say",
 	"sc/*",
+	"scan/*",
 	"screen*",
 	"screenshot",
 	"secureboot/*",
 	"selftest",
 	"service/restart",
+	"shares/*",
 	"shell",
 	"shell/*",
 	"shutdown/log",
@@ -146,10 +150,13 @@ static const char *const CONFINE_START[] = {
 	"vault",
 	"vault/*",
 	"volume",
+	"vpn",
+	"vpn/*",
 	"web/*",
 	"web/status",
 	"wifi/*",
 	"wifi/status",
+	"wine/bring",
 	NULL
 };
 #define CONFINE_STATIC 1   /* the page and its files (/, /index.html, /dlf/, /pkg/): narrow */

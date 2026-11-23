@@ -171,11 +171,12 @@ mkdir -p sys/root/usr/share/rudolf && cp "$SB_CERT" sys/root/usr/share/rudolf/ru
 XREV=f6f1ab56f7350b63cb52dd944e53ceb3db80a5c2
 XSRC=$( (cat xshim.sh xbuild.sh systools/xfetch.sh; echo "$XREV") | sha256sum | cut -c1-16)
 # (1.5.9: and this script itself: a program it adds to the base layer, such as iw, rebuilds the layer)
-BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-bring.inc sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-dlzip.inc sys/rudolfd-root.inc sys/rudolfd-roothome.inc sys/rudolfd-rootpower.inc sys/rudolfd-rootnet.inc sys/rudolfd-rootdev.inc sys/rudolfd-rootother.inc sys/rudolfd-rootscreen.inc sys/rudolfd-boottime.inc sys/rudolfd-game.inc sys/rudolfd-lxprog.inc sys/rudolfd-gpu.inc sys/rudolfd-duel.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-drives-home.c sys/rudolf-accounts.c sys/rudolf-power.c sys/rudolf-network.c sys/rudolf-devices.c sys/rudolf-procs.c sys/rudolf-logs.c sys/rudolf-screen.c sys/rudolf-sound.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rudolf-steamquit.h sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-duel.c sys/rudolf-printq.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
+BSRC=$( (cat sys/rudolf-display.c sys/rrcompat.h sys/rudolf-launch.c sys/rudolf-memguard.c sys/rudolf-shellfix.c sys/rudolf-remote.c sys/rudolfd.c sys/rudolfd-home.inc sys/rudolfd-bring.inc sys/rudolfd-shares.inc sys/rudolf-shares.c sys/rudolfd-desktop.inc sys/rudolfd-peer.inc sys/rudolfd-users.inc sys/rudolfd-know.inc sys/rudolfd-dev.inc sys/rudolfd-mobile.inc sys/rudolfd-smartcard.inc sys/rudolfd-drop.inc sys/rudolfd-dlzip.inc sys/rudolfd-root.inc sys/rudolfd-roothome.inc sys/rudolfd-rootpower.inc sys/rudolfd-rootnet.inc sys/rudolfd-rootdev.inc sys/rudolfd-rootother.inc sys/rudolfd-rootscreen.inc sys/rudolfd-boottime.inc sys/rudolfd-game.inc sys/rudolfd-lxprog.inc sys/rudolfd-gpu.inc sys/rudolfd-duel.inc sys/rudolfd-vpn.inc sys/rudolfd-scan.inc sys/rudolfd-wineold.inc sys/rudolf-root.h sys/rudolf-rootd.c sys/rudolf-drives.c sys/rudolf-drives-home.c sys/rudolf-accounts.c sys/rudolf-power.c sys/rudolf-network.c sys/rudolf-devices.c sys/rudolf-procs.c sys/rudolf-logs.c sys/rudolf-screen.c sys/rudolf-sound.c sys/rudolf-vpn.c sys/rudolf-updates.c sys/rudolf-update.c sys/cdp-eval.c sys/rudolf-debian.c sys/rudolf-fscheck.c sys/rudolf-portal.c sys/rudolf-open.c sys/rudolf-apps.c sys/rudolf-steamquit.h sys/rpk.c sys/rudolf-ai.c sys/origin.h systools/origin.sh sys/rudolf-know.c sys/rudolf-dev.c sys/rudolf-print.c sys/rudolf-scan.c sys/rudolf-scanconf.h systools/mkscan.sh sys/rudolf-duel.c sys/rudolf-printq.c sys/rudolf-devlink.c sys/rudolf-webkit.c sys/rudolf-native.c sys/litepoint.h sys/rsynth.h trusted-keys.txt systools/addnvk.sh systools/addwebkit.sh VERSION xshim.sh xbuild.sh systools/xfetch.sh systools/base-remove.txt systools/ci_release.sh systools/hardflags.sh systools/baseabi.sh; echo "$XREV"; echo "${GITHUB_REPOSITORY:-}"; cd sys/root && find . -type f | sort | xargs sha256sum) | sha256sum | cut -c1-16)
 PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null || true)
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-webkey.c sys/rudolfd-webkey.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the website data's key)
 BSRC=$( (echo "$BSRC"; cat sys/rudolfd-confine.inc sys/rudolf-confine.h sys/rudolfd-confine-tables.h sys/rudolfd-confine-narrow.h sys/rudolfd-confine-pure.h sys/rudolfd-winapi.h sys/rudolf-rootd-confine.h) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the confinement)
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-secrets.h sys/rudolfd-guard.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 26: Blitzen's guards, the secret detector)
+BSRC=$( (echo "$BSRC"; cat sys/ui/*.c sys/ui/*.h sys/ui/*.py sys/ui/*.sh $(ls sys/apps/*.c sys/apps/*.h sys/apps/*.py 2>/dev/null); python3 sys/ui/mkui.py /dev/stdout) | sha256sum | cut -c1-16)   # (1.6.2 Part 39: librudolf-ui and the native apps, with what they take from the page)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
 	B=$W/bbin; mkdir -p "$B"
@@ -184,7 +185,7 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolfd" sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
 	gcc -O2 $HARD -o "$B/rudolf-update" sys/rudolf-update.c -lcrypto -ldl
 	# 1.6.1 (docs/plan-1.6.1.md Part 11): rudolf-rootd and the root helpers (installed below: root's only, 0700)
-	RHELP="drives updates accounts power network devices procs logs screen sound"
+	RHELP="drives updates accounts power network devices procs logs screen sound vpn"
 	RINNER="drives-home"   # (run by a helper only, not by rudolf-rootd: the drives helper's drives-home, drives part 2)
 	gcc -O2 $HARD -o "$B/rudolf-rootd" sys/rudolf-rootd.c
 	# (each named: the check below wants every sys/*.c in a gcc line of its own)
@@ -199,6 +200,7 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/root-logs" sys/rudolf-logs.c   # (1.6.1 Part 11: the kernel's messages)
 	gcc -O2 $HARD -o "$B/root-screen" sys/rudolf-screen.c   # (1.6.1 Part 11: the display's settings)
 	gcc -O2 $HARD -o "$B/root-sound" sys/rudolf-sound.c   # (1.6.1 Part 11: sound)
+	gcc -O2 $HARD -o "$B/root-vpn" sys/rudolf-vpn.c   # (1.6.2 Part 33: the VPN)
 	gcc -O2 $HARD -o "$B/rudolf-launch" sys/rudolf-launch.c
 	gcc -O2 $HARD -o "$B/rudolf-memguard" sys/rudolf-memguard.c   # 1.4.7: the memory guard
 	gcc -O2 $HARD -o "$B/rudolf-shellfix" sys/rudolf-shellfix.c   # 1.5.8: the shell put into the profile when it changed
@@ -220,14 +222,17 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -o "$B/rudolf-know" sys/rudolf-know.c -lcrypto -ldl -lm
 	gcc -O2 $HARD -o "$B/rudolf-dev" sys/rudolf-dev.c -lcrypto -ldl
 	gcc -O2 $HARD -o "$B/rudolf-print" sys/rudolf-print.c -ldl
+	gcc -O2 $HARD -o "$B/rudolf-shares" sys/rudolf-shares.c -lcrypto   # (1.6.2 Part 35: network shares, the network's side)
 	# 1.6.2 (docs/plan-1.6.2.md Part 30): the LAN game relay
 	gcc -O2 $HARD -o "$B/rudolf-duel" sys/rudolf-duel.c
+	# 1.6.2 (docs/plan-1.6.2.md Part 34): scanning (libsane opened with dlopen; zlib linked in, as the print queue's)
+	gcc -O2 $HARD -o "$B/rudolf-scan" sys/rudolf-scan.c -ldl -lm -Wl,-Bstatic -lz -Wl,-Bdynamic
 	# 1.6.1 (docs/plan-1.6.1.md Part 9): the print queue (zlib linked in: the base layer's programs do not share it)
 	gcc -O2 $HARD -o "$B/rudolf-printq" sys/rudolf-printq.c -Wl,-Bstatic -lz -Wl,-Bdynamic
 	# 1.4.0: the development link
 	gcc -O2 $HARD -o "$B/rudolf-devlink" sys/rudolf-devlink.c -lcrypto -ldl
-	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-webkey" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-know" "$B/rudolf-dev" "$B/rudolf-print" "$B/rudolf-duel" "$B/rudolf-printq" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP $RINNER; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
-	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-webkey rudolf-apps rpk rudolf-ai rudolf-know rudolf-dev rudolf-print rudolf-duel rudolf-printq rudolf-devlink rudolf-rootd; do
+	python3 systools/hardcheck.py "$B/rudolf-display" "$B/rudolfd" "$B/rudolf-update" "$B/rudolf-launch" "$B/rudolf-memguard" "$B/rudolf-shellfix" "$B/rudolf-remote" "$B/cdp-eval" "$B/rudolf-debian" "$B/rudolf-fscheck" "$B/rudolf-portal" "$B/rudolf-webkey" "$B/rudolf-open" "$B/rudolf-apps" "$B/rpk" "$B/rudolf-ai" "$B/rudolf-know" "$B/rudolf-dev" "$B/rudolf-print" "$B/rudolf-shares" "$B/rudolf-scan" "$B/rudolf-duel" "$B/rudolf-printq" "$B/rudolf-devlink" "$B/rudolf-rootd" $(for h in $RHELP $RINNER; do echo "$B/root-$h"; done) || { echo "a system program was built without the hardening flags (plan 15.5)"; exit 1; }
+	for b in rudolf-display rudolfd rudolf-update rudolf-launch rudolf-memguard rudolf-shellfix rudolf-remote cdp-eval rudolf-debian rudolf-fscheck rudolf-portal rudolf-webkey rudolf-apps rpk rudolf-ai rudolf-know rudolf-dev rudolf-print rudolf-shares rudolf-scan rudolf-duel rudolf-printq rudolf-devlink rudolf-rootd; do
 		for l in $(ldd "$B/$b" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "$b needs $l, which the base layer does not have"; exit 1; }; done
 		sudo install -m 0755 "$B/$b" "$W/broot/usr/bin/$b"
 	done
@@ -292,6 +297,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	[ -n "$FXL" ] || { echo "libfido2-1 is missing on the build machine (apt-get install libfido2-1)"; exit 1; }
 	FXB=0; for x in $FXL $(ldd "$FXL" | awk '/=>/{print $3}'); do [ -e "$W/broot$x" ] || [ -e "$W/broot/usr$x" ] || [ -e "$W/broot/usr/lib/$MA/$(basename "$x")" ] || { sudo cp -L "$x" "$W/broot/usr/lib/$MA/"; FXB=$((FXB + $(stat -L -c %s "$x"))); }; done
 	echo "  Security keys (libfido2): $((FXB / 1024)) KB"; echo "::notice title=Security keys::$((FXB / 1024)) KB added to the base layer"
+	# 1.6.2 (docs/plan-1.6.2.md Part 34): scanning: libsane (SANE's dll, which rudolf-scan opens with dlopen, so ldd does not
+	# see it), sane-airscan (eSCL and WSD scanners) and, from step 3, a small set of SANE's drivers for older USB scanners
+	# with their USB-only settings and SANE's list of USB scanners (systools/mkscan.sh says which and why), from the build
+	# machine's libsane1 and sane-airscan; every library they need must be in the base layer already (it is, on Ubuntu 24.04)
+	SNO=$(sudo sh systools/mkscan.sh "$W/broot") || { echo "$SNO"; exit 1; }
+	echo "  Scanning: $SNO"; echo "::notice title=Scanning::$SNO added to the base layer"
 	# 1.5.9 (plan Part 1): ModemManager (read only in 1.5.9: /usr/lib/rudolf/modem) with libqmi, libmbim and libqrtr,
 	# its plug-ins and the operators' database (mobile-broadband-provider-info, for 1.6.0's APNs). Its udev rules too:
 	# with no udev, ModemManager applies them itself (/usr/lib/rudolf/modem runs it with --test-no-udev).
@@ -381,6 +392,12 @@ if [ "$BSRC" != "$PBSRC" ]; then
 		sudo install -m 0755 "$x" "$W/broot/usr/sbin/${x##*/}"
 		for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; done
 	done
+	# 1.6.2 (docs/plan-1.6.2.md Part 33 step 3): OpenVPN 2.6, Ubuntu 24.04's (with OpenSSL, which the base layer has
+	# already), run by the VPN helper (root/vpn) only while an OpenVPN VPN is on; the disk it adds is said here
+	x=/usr/sbin/openvpn; [ -x "$x" ] || { echo "$x is missing on the build machine (apt-get install openvpn)"; exit 1; }
+	sudo install -m 0755 "$x" "$W/broot/usr/sbin/openvpn"; OVA=$(stat -c %s "$x")
+	for l in $(ldd "$x" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { sudo cp -L "$l" "$W/broot/usr/lib/$MA/"; OVA=$((OVA + $(stat -L -c %s "$l"))); echo "  openvpn needs $l"; }; done
+	echo "  openvpn: $((OVA / 1024)) KB added to the base layer (the program and the libraries it lacked)"
 	# 1.5.4: ALSA's use case files (alsa-ucm-conf), how PulseAudio sets up the speakers, headphones and microphones of
 	# sound processors (Intel SOF, AMD ACP) and USB sound cards (/usr/lib/rudolf/sound)
 	[ -f /usr/share/alsa/ucm2/ucm.conf ] || { echo "alsa-ucm-conf is missing on the build machine (apt-get install alsa-ucm-conf)"; exit 1; }
@@ -397,6 +414,28 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	gcc -O2 $HARD -Wno-deprecated-declarations -o "$B/rudolf-native" sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm || { echo "rudolf-native did not build"; exit 1; }
 	python3 systools/hardcheck.py "$B/rudolf-webkit" "$B/rudolf-native" || { echo "rudolf-webkit or rudolf-native was built without the hardening flags (plan 15.5)"; exit 1; }
 	systools/addwebkit.sh "$W/broot" "$B/rudolf-webkit" "$B/rudolf-native"
+	# 1.6.2 (docs/plan-1.6.2.md Part 39): librudolf-ui, linked into each native app (sys/ui; its theme and translations made from the
+	# page by sys/ui/mkui.py, with rudolf-native's own JSON reader and accent colour rules): built hardened, with its sample window
+	# (the test's: not shipped) as the program that proves it; what it adds to each app said, in a budget of 512 KB
+	RUI_WERROR=1 sh sys/ui/build.sh "$W/ui" "$B/rudolf-uisample" ui-sample $HARD || { echo "librudolf-ui did not build (sys/ui/build.sh)"; exit 1; }
+	python3 systools/hardcheck.py "$B/rudolf-uisample" || { echo "librudolf-ui was built without the hardening flags (plan 15.5)"; exit 1; }
+	RUIB=$(size -B "$W/ui/rudolf-ui.o" | awk 'NR==2{print $1+$2+$3}'); rm -f "$B/rudolf-uisample"
+	[ "$RUIB" -lt 524288 ] || { echo "librudolf-ui adds $((RUIB / 1024)) KB to each native app: over its 512 KB budget (docs/plan-1.6.2.md Part 39)"; exit 1; }
+	echo "::notice title=librudolf-ui::$((RUIB / 1024)) KB in each native app (its theme and translations from the page included)"
+	# (Part 39 step 2) the native apps (sys/apps/NAME.c: /usr/bin/rudolf-NAME, started by rudolf-native for its app on the native desktop),
+	# each built hardened with librudolf-ui, checked, put in the base layer; the release fails when one is missing or over its 1 MB budget
+	# (GTK 3, cairo and Pango, which they use, are WebKitGTK's, already there: addwebkit.sh)
+	for a in sys/apps/*.c; do n=$(basename "$a" .c); case "$n" in *_*) continue;; esac   # (NAME_PART.c: a part of the app NAME, built with it)
+		RUI_WERROR=1 sh sys/ui/build.sh "$W/ui" "$B/rudolf-$n" "$n" $HARD || { echo "rudolf-$n did not build (sys/ui/build.sh)"; exit 1; }
+		python3 systools/hardcheck.py "$B/rudolf-$n" || { echo "rudolf-$n was built without the hardening flags (plan 15.5)"; exit 1; }
+		strip "$B/rudolf-$n"; NAB=$(stat -c %s "$B/rudolf-$n")
+		[ "$NAB" -lt 1048576 ] || { echo "rudolf-$n is $((NAB / 1024)) KB: over a native app's 1 MB budget (docs/plan-1.6.2.md Part 39)"; exit 1; }
+		sudo install -m 0755 "$B/rudolf-$n" "$W/broot/usr/bin/rudolf-$n"
+		for l in $(ldd "$B/rudolf-$n" | awk '/=>/{print $3}'); do [ -e "$W/broot$l" ] || [ -e "$W/broot/usr$l" ] || { echo "rudolf-$n needs $l, which the base layer lacks"; exit 1; }; done
+		echo "::notice title=rudolf-$n::$((NAB / 1024)) KB added to the base layer (a native app, with librudolf-ui)"
+	done
+	[ -x "$W/broot/usr/bin/rudolf-taskmgr" ] || { echo "the native Task Manager (rudolf-taskmgr) is missing from the base layer"; exit 1; }
+	[ -x "$W/broot/usr/bin/rudolf-settings" ] || { echo "the native Settings (rudolf-settings) is missing from the base layer"; exit 1; }
 	# 1.6.0 (plan Part 14): the keyring for Linux apps, gnome-keyring-daemon's secrets part (/usr/lib/rudolf/keyring starts
 	# it at sign-in, as the account's user), with what it needs that the base layer lacks, in a budget of its own, 3 MB.
 	# After WebKit, whose libraries it

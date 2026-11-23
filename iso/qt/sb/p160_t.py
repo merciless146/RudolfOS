@@ -133,9 +133,12 @@ def wait_log(sh, dd, pat, secs, n=1):
     return False, lg
 def started(lg): return len(re.findall(r' started \d+', lg))
 def this_start(lg): i = lg.rfind(' started '); return lg[i:] if i >= 0 else lg
+# (the portal's page: since 1.6.1 Part 23 A (#537) the shell's one hidden page, do-bg, does what do-portal did; do-portal on a release
+# before it)
+PG = r'do-(?:bg|portal)'
 def portal_hidden(st):
     # (the portal page's window, out of sight between its dialogs: no taskbar button, not on the screen)
-    m = re.search(r'^client (\S+) .* app=do-portal ', st, re.M); return bool(m) and re.search(rf'^clienthidden {m.group(1)}$', st, re.M) is not None
+    m = re.search(rf'^client (\S+) .* app={PG} ', st, re.M); return bool(m) and re.search(rf'^clienthidden {m.group(1)}$', st, re.M) is not None
 # (inside the guest: from the app's "keyring prompting" (its own clock) to when CHECK is true, in ms; CHECK a shell condition)
 def shown_ms(sh, dd, n, secs=60):
     # (from the app's "keyring prompting" (its n-th, its own clock) to when the native desktop put the portal's page's dialog over the
@@ -266,7 +269,7 @@ try:
             if re.search(rf'^srch .*{q}', st, re.M): break
         out('the start menu found:', [l for l in st.split('\n') if l.startswith(('srch ', 'menuq'))][:4]); g.q.key('ret')
         return wait_log(sh, dd, wait_log_pat, secs, n)
-    ONTOP = "grep -q '^ontop do-portal$' /tmp/nstate"
+    ONTOP = "grep -qE '^ontop do-(bg|portal)$' /tmp/nstate"
     # ---- launched from the start menu, no app window open: the keyring's prompt
     cmd_file(sh, dd, h, ['keyring SoberN pw-n1', 'open', 'link https://example.org/signin-n'])
     st = state(); ok('N2a. no app window is open', not re.search(r'^app ', st, re.M), [l for l in st.split('\n') if l.startswith('app ')])
@@ -275,7 +278,7 @@ try:
     if not s1: out('started through rudolfd instead (to go on):', api(sh, f'apps/run?id={APP}&desktop={APP}', True))
     prompt_ms(sh, dd, ONTOP, 1); ms = shown_ms(sh, dd, len(re.findall('keyring prompting', app_log(sh, dd)))); vm.shot('p160n-keyring')
     kq = tev('do-portal', "(()=>{const o=document.querySelector('.krp60');return o?[o.querySelector('.kra').textContent,o.querySelector('.krm').textContent,document.activeElement&&document.activeElement.className].join('|'):'none'})()")
-    st = state(); inwin = [l for l in st.split('\n') if l.startswith(('ontop', 'client')) and 'do-portal' in l]
+    st = state(); inwin = [l for l in st.split('\n') if l.startswith(('ontop', 'client')) and re.search(PG, l)]
     ok(f'N3. Native, no app window open: the keyring\'s prompt on the screen, above everything, focused, within 2 s ({ms} ms)', ms is not None and 0 <= ms <= 2000 and kq.lower().startswith('portalstand|') and 'new keyring' in kq and kq.endswith('kp1'), [ms, kq, inwin])
     g.q.type('pw-n1'); g.q.key('tab'); g.q.type('pw-n1'); g.q.key('ret')
     c1, lg = wait_log(sh, dd, r'keyring created', 60)
@@ -308,7 +311,7 @@ try:
         if r != '…': break
     time.sleep(8); st = state(); reqs = sh("ls /run/rudolf/portal/req/ 2>/dev/null; pgrep -f 'portalstand app' || echo none", 30, False)
     vm.shot('p160n-forcequit')
-    ok('N7. Native: Task Manager (Ctrl+Alt+Del) force-quits it while its prompt waits: the app ends, its prompt goes', tm and r == 'true' and not re.search(r'^ontop do-portal$', st, re.M) and 'none' in reqs and not re.search(r'^k', reqs, re.M), [tm, r, reqs, [l for l in st.split('\n') if l.startswith('ontop')]])
+    ok('N7. Native: Task Manager (Ctrl+Alt+Del) force-quits it while its prompt waits: the app ends, its prompt goes', tm and r == 'true' and not re.search(rf'^ontop {PG}$', st, re.M) and 'none' in reqs and not re.search(r'^k', reqs, re.M), [tm, r, reqs, [l for l in st.split('\n') if l.startswith('ontop')]])
     tev('taskmgr', "(()=>{window.__oneAppClose();return 1})()", 10); time.sleep(4)
     cmd_file(sh, dd, h, ['keyring AgainN pw-n3']); n0 = started(app_log(sh, dd))
     s1, lg = menu_launch('PortalStand', r' started \d+', n0 + 1)
@@ -335,11 +338,11 @@ try:
     if not s1: out('started through rudolfd instead (to go on):', api(sh, f'apps/run?id={APP}&desktop={APP}', True))
     for _ in range(20):
         st = state()
-        if re.search(r'^ontop do-portal$', st, re.M): break
+        if re.search(rf'^ontop {PG}$', st, re.M): break
         time.sleep(2)
     time.sleep(2); fd = tev('do-portal', "document.querySelectorAll('.lxfd').length"); np_ = tev('notepad', "document.querySelectorAll('.rmodal').length"); ca = tev('calc', "document.querySelectorAll('.rmodal').length")
     vm.shot('p160n-two')
-    ok('N11. Native, Notepad and Calculator open: the app\'s file dialog once, above them, in neither window', re.search(r'^ontop do-portal$', st, re.M) and fd == '1' and np_ == '0' and ca == '0', [fd, np_, ca, [l for l in st.split('\n') if l.startswith(('ontop', 'app '))]])
+    ok('N11. Native, Notepad and Calculator open: the app\'s file dialog once, above them, in neither window', re.search(rf'^ontop {PG}$', st, re.M) and fd == '1' and np_ == '0' and ca == '0', [fd, np_, ca, [l for l in st.split('\n') if l.startswith(('ontop', 'app '))]])
     g.q.key('esc'); c1, lg = wait_log(sh, dd, r'open response 1', 60); time.sleep(5); lg = app_log(sh, dd)
     st = state(); ok('N12. Native: ...answered once; the portal\'s page out of sight again', c1 and this_start(lg).count('open response') == 1 and portal_hidden(st), [portal_hidden(st), this_start(lg)[-500:]])
     out(sh(f"pkill -f 'portalstand app'; tail -8 /run/rudolf/portal-*.log; tail -5 /run/rudolf/apps/{APP}.log; grep -E 'portal' /run/rudolf/native-desktop.log | tail -15", 30, False))

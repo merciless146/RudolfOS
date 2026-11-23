@@ -3,7 +3,10 @@
 Asked for on 2026-11-13: the whole of Rudolf OS as built so far converted to the native desktop. The shell first
 (docs/plan-1.6.0.md Part 12: everything the web desktop's shell has, Native the default), then every app rewritten as a
 native program, one at a time, in this plan. 2.0 is released when the apps in waves 1 to 3 are native.
-**Its name: Rudolf Kryptonite** (the owner, 2026-11-20: "Rudolf's 2.0 version with the 7.3 kernel and Wayland will be
+**Its name: WendigOS** (the owner, 2026-11-22: "Rudolf Kryptonite is going to receive a name-change. WendigOS will be the
+new name, standing for Wayland-ENhanced Driver-Integrated Gaming Operating System"): Rudolf OS 2.0, code-named WendigOS.
+The `kryptonite` branch, its workflows and the logo folder keep their names; a new logo comes in a step of its own.
+Before: (the owner, 2026-11-20: "Rudolf's 2.0 version with the 7.3 kernel and Wayland will be
 called Rudolf Kryptonite"): 2.0 on the newest kernel (7.3 and later) with Wayland. 1.6.x on the 6.18 LTS with X11 keeps
 the name Rudolf OS.
 2.0 also brings the phone's own build, on the hardware 1.6.1 proves ("The phone build", below).
@@ -11,22 +14,22 @@ the name Rudolf OS.
 **Two editions, one repository (the owner, 2026-11-22):** "The 6.18 kernel version with X11 is going to continue being
 developed as the main version of the operating system", and "Rudolf Kryptonite is going to be a version of Rudolf
 specifically built and optimized for gaming and mobile use. Rudolf as it currently is in 1.6.x is going to be the regular
-home office version." So Kryptonite is an edition beside Rudolf OS, not its replacement:
+home office version." So WendigOS is an edition beside Rudolf OS, not its replacement:
 - **Rudolf OS (1.6.x and on): the home and office edition, and the main one.** The 6.18 longterm kernel and X11, built
   for steadiness on everyday and older computers. It keeps the stable update channel, and the recovery system.
-- **Rudolf Kryptonite: the gaming and mobile edition.** The newest stable kernel (7.3.x, then 7.4 and on: newer graphics
+- **WendigOS: the gaming and mobile edition.** The newest stable kernel (7.3.x, then 7.4 and on: newer graphics
   drivers, handheld and controller drivers, HDR and variable refresh) with Wayland. It is tuned for games (game mode,
   the GPU drivers, Steam, Wine, emulators) and for phones and handhelds (the phone build, touch, battery). It has its
-  own update channel ("next", below, becoming Kryptonite's channel), so neither edition ever receives the other's
+  own update channel ("next", below, becoming WendigOS's channel), so neither edition ever receives the other's
   updates.
 - **One repository, built from main.** Most of the code is shared (the desktop, Oracle, Blitzen, File Explorer,
-  rudolfd, the security work), and Kryptonite's differences are additions: the kernel track, the Wayland session, and
+  rudolfd, the security work), and WendigOS's differences are additions: the kernel track, the Wayland session, and
   gaming and mobile tuning. They go into main behind build switches, and the release workflow builds each edition from
   the same tree. A fix made once reaches both, and the keys and their secrets stay in one place.
 - **The `kryptonite` branch only for work that cannot share main yet** (today: the 7.3 kernel, while its kexec-handover
   crash at 1.5 GB in QEMU is understood). Each piece moves into main behind its switch as soon as it is sound, so the
-  branch never drifts far from main. A separate repository only if Kryptonite ever stops sharing Rudolf's code.
-- **Work on Rudolf OS's features continues on main as before.** Gaming and mobile work is marked for Kryptonite in its
+  branch never drifts far from main. A separate repository only if WendigOS ever stops sharing Rudolf's code.
+- **Work on Rudolf OS's features continues on main as before.** Gaming and mobile work is marked for WendigOS in its
   plan and PR, with the switch that keeps it out of the home and office edition where it does not belong there.
 
 Why (1.5.9's measurements, docs/plan-1.5.9.md 12.3a): with nothing open Native uses 854 MB against Chromium's (formerly Standard's) 1,110 MB,
@@ -34,6 +37,9 @@ because no web page runs; each app opened today loads a WebKit page with the des
 app of the same kind is typically 15 to 40 MB.
 
 ## How a native app is built
+- **Shared with Rudolf OS from 1.6.2** (the owner, 2026-11-22: native rewrites "a core fix for 1.6.2 as well as 2.0"; plan-1.6.2.md
+  Part 39): the native apps and librudolf-ui are built from main for both editions, with no build switch, ordered for Rudolf
+  OS by the memory they save (librudolf-ui, Task Manager, then Settings, then the Office apps); WendigOS uses the same apps.
 - **C and GTK 3**, as rudolf-native: the system layer already has GTK 3, cairo, Pango and GStreamer (for WebKitGTK), so
   most apps need no new library. A library an app would add (a PDF renderer, a source-code view) is named in its wave
   with its size, and the base layer's budget is checked by the release build as for ModemManager.
@@ -188,7 +194,7 @@ the security model do not change. Native, Chromium and Lite all run on it; X11 s
     - The test's apps were closed afterwards. The packages stay in the owner's Debian sandbox and can be removed with
       apt.
   - **W0 (B), planned: a real Wayland session from a test stick**, so nothing is installed on the laptop.
-    - **The build:** a Kryptonite test image built on the `kryptonite` branch (its kernel 7.3.x; or 6.18 for a
+    - **The build:** a WendigOS test image built on the `kryptonite` branch (its kernel 7.3.x; or 6.18 for a
       like-for-like comparison, built both ways if it costs little). It adds a wlroots kiosk compositor (Cage) and
       Xwayland in the image, and a boot entry "Wayland test" that starts the Chromium desktop's page with
       `--ozone-platform=wayland` under Cage instead of Xorg. Native's shell is X11-only until W1, so the comparison is
@@ -229,7 +235,7 @@ be done on 1.6's 6.18 LTS with X11 and also on a 7.3 build with Wayland: "Keep t
   (7.3.x on 2026-11-20, then 7.4 once it has settled): newer graphics drivers (7.2: AMD HDMI 2.1 FRL, Intel Arc; 7.3: NVK
   video decode, Valve's AMD reset and memory work), new hardware earlier, the 2026 Steam Controller and MSI Claw drivers,
   and the Wayland compositors' HDR and variable-refresh needs.
-- **The "next" channel (Rudolf Kryptonite's).** A third release channel beside stable and beta (gh-pages `next/`, its own manifest, signed with
+- **The "next" channel (WendigOS's).** A third release channel beside stable and beta (gh-pages `next/`, its own manifest, signed with
   the same keys, joined the way beta is joined in Settings › Update and recovery). Built by the same workflow with two
   switches: the kernel track (LTS or newest stable) and the session started by default (X11 or Wayland). Recovery mode
   stays the official stable release (the owner's rule), so a computer on "next" always has its way back.
@@ -243,12 +249,12 @@ be done on 1.6's 6.18 LTS with X11 and also on a 7.3 build with Wayland: "Keep t
 - **NVIDIA's own driver (docs/plan-1.6.1.md Part 19), on "next":** its module must build against each new kernel; the
   channel takes a new kernel only once it does (as Bazzite does), and says so in the build's notes.
 - **Its logo** (the owner, 2026-11-20): Rudolf's logo in carbon-fibre off-black instead of white, the glowing nose green
-  instead of red: iso/systools/kryptonite/ (kryptonite_logo.py draws it from the logo's own paths). Used wherever
-  Kryptonite shows its own logo (its boot splash, About, the "next" channel's page); 1.6.x keeps the white logo.
+  instead of red (made while 2.0 was Rudolf Kryptonite; WendigOS's own logo is a later step): iso/systools/kryptonite/ (kryptonite_logo.py draws it from the logo's own paths). Used wherever
+  WendigOS shows its own logo (its boot splash, About, the "next" channel's page); 1.6.x keeps the white logo.
 - **The cost:** two release builds and two versions to test; the owner's rule for every session (same_t.sh's screenshots
   and the behaviour scripts) runs on both tracks.
 - **Order:** the channel and the kernel switch first (nothing else changes for stable and beta); W0 measured on it; then
-  the Wayland stages as above. When 2.0 (Rudolf Kryptonite) is released, "next" becomes stable and 1.6.x keeps the LTS for older computers
+  the Wayland stages as above. When 2.0 (WendigOS) is released, "next" becomes stable and 1.6.x keeps the LTS for older computers
   for at least two releases.
 
 ## The phone build (added on 2026-11-15)
@@ -316,9 +322,9 @@ extensions, from a reviewed list in the Library, signed with its key) is suggest
 start in 1.6.1. The owner decides.
 
 ## Moved from 1.6.2: the mobile and gaming parts (added on 2026-11-22)
-Moved from docs/plan-1.6.2.md on 2026-11-22: Rudolf Kryptonite is the gaming and mobile edition ("Two editions, one
+Moved from docs/plan-1.6.2.md on 2026-11-22: WendigOS is the gaming and mobile edition ("Two editions, one
 repository", above), and the owner said "Yes" to moving these parts here. Their text is as it stood in the 1.6.2 plan,
-with numbers kept so references still point the right way. They are Kryptonite's, built from main behind its build
+with numbers kept so references still point the right way. They are WendigOS's, built from main behind its build
 switches, or on the `kryptonite` branch while they cannot share main.
 
 **What they need:**
@@ -328,7 +334,7 @@ switches, or on the `kryptonite` branch while they cannot share main.
 - **The Vivobook and the Asus desktop "RuckXTrauma", with the owner:** 19b (gaming measured).
 
 **Order:** Part 8 with the MiFi, then Part 7. Then the phone: Part 4, Part 6's items measured, 9b, and Part 5 when the
-hardware is there. 19b with the owner whenever games are measured, on Kryptonite's kernel too.
+hardware is there. 19b with the owner whenever games are measured, on WendigOS's kernel too.
 
 #### 4. The first phone, stage 1: the hardware (from 1.6.0 "Not in 1.6.0", and docs/plan-1.5.8.md 8.3)
 The phone's hardware made to work, on today's native desktop; its interface is 2.0's (stage 2).
@@ -539,3 +545,77 @@ default if "on" is never slower than "off" on either computer (within the runs' 
 slowing behind a game ever makes the game itself stutter (a launcher or overlay in the desktop's group), say so: the
 weight (20) is one line in /usr/lib/rudolf/gamemode.
 
+
+## Game Mode: WendigOS's own console mode (added on 2026-11-22)
+The owner, 2026-11-22, after comparing WendigOS with SteamOS, Bazzite, CachyOS, Nobara and ChimeraOS (all of which but CachyOS
+and Nobara start into Steam's Game Mode under gamescope) and asking for gamescope's Game Mode to be described: of the two ways
+offered (gamescope's Steam session as a separate session, or Rudolf's own console mode in its compositor), the owner asked to
+see the second as a concept, then its cost, and answered "Alright, sounds good". The concept's three screens (home, the
+in-game Quick menu, a game's page) are on the owner's design canvas "WendigOS Game Mode — concept".
+- **The look: Version 2** (the owner, 2026-11-22: "Version 2 is ideal"), the canvas's "Home, version 2" artboard: the
+  WendigOS brand leaned into (the wordmark set wide in capitals with "OS" in a glowing green, "Wayland-Enhanced ·
+  Driver-Integrated · Gaming" beneath it, a carbon-fibre off-black ground, one green accent used throughout, a frost and
+  night key art with aurora bands, no creature drawn) and what current game dashboards do: a full-bleed cinematic hero
+  with the game's title in large capitals, its progress and Resume on A; shoulder-button tabs (LB/RB: Home, Library,
+  Steam, Emu, Media); a shelf of cover-shaped cards with their source on each, the focused one larger, ringed and
+  glowing; glass side cards for the performance profile (and the play time left on battery) and downloads; the
+  controller, Wi-Fi, battery, the time and the account at the top; the controller's buttons along the bottom. The
+  Quick menu and the game's page are to be redone in the same look when Game Mode is built. Type: Space Grotesk and
+  Inter (both SIL Open Font License) unless fonts already in the system will do; the wordmark stays type until
+  WendigOS's logo is made in its own step.
+- **Its colours follow Display Properties** (the owner, 2026-11-22: "Have it so that the game-mode's color theme (the green
+  highlights and artwork at the top of the screen) follows the color theme selected in display properties"): the
+  account's Settings › Display › Colours and theme › Accent colour (`S.accent`: its eight swatches or any colour) sets every
+  highlight (the tab underline, Resume, the progress bar, the focused card's ring and glow, the status dots, the account's
+  ring, the Library's source chips) and tints the key art at the top (the aurora bands and the night sky). Text on a
+  highlight turns dark or light by the accent's luminance; the accent used as text on the dark ground is lightened until
+  it reaches 7:1, so every accent stays readable (slate and the dark blues included). Changing the accent in Display
+  Properties changes Game Mode at once, as it changes the desktop. Steam's and Emu's chips keep their own colours (blue,
+  amber) so the source stays recognisable. WendigOS's default accent is Version 2's green (#4ff0a0); Rudolf OS 1.6.x
+  keeps its own default (blue). The canvas's Version 2 shows it with the accent as a tweak.
+- **What it is:** a full-screen, controller-first session of WendigOS's compositor (not gamescope, not a web page): one
+  launcher for the Library's games, Steam's (through Proton) and Emu's, with source tabs (All, Library, Steam, Emu,
+  Recent), a game's page (continue, its save's state, its own settings) and "Switch to desktop" back to the WendigOS desktop.
+- **The Quick menu** (one button, over the running game): a small performance overlay (FPS, frame time, temperatures, a
+  frame-time graph), the power limit (TDP, per game, where the hardware allows it: AMD's and Intel's processor drivers),
+  the frame limit, scaling (FSR 1, integer, off), the refresh rate and variable refresh, HDR where the display and the
+  compositor can, screenshot, suspend and quit. Game mode (rudolfd's, docs/plan-1.6.1.md Part 19) is on for the game.
+- **How it is built, lean:** native C and GTK (layer-shell surfaces of the compositor, as the shell's), never the desktop's
+  web page; the compositor itself does the frame limit, scaling and direct scan-out. While a game runs the launcher sleeps
+  and only the Quick menu stays ready. Steam is started only for Steam's games. Rudolf's own small overlay rather than
+  MangoHud if it is smaller. Fonts already in the system where they will do.
+- **Its cost, estimated on 2026-11-22 (to be measured, as everything here):** disk about 2-8 MB (the program under 1 MB, the
+  compositor's part under 1 MB, fonts about 1 MB if new ones are needed, MangoHud 2-5 MB only if used; per-game artwork
+  kept in the account's folder). Memory about 15-40 MB on the home screen, 5-15 MB during a game (plus 5-10 MB with an
+  overlay). Steam's client, several hundred MB, only while a Steam game runs, as on every system that runs Steam. Against
+  gamescope's Steam session, which keeps Steam's interface running throughout, it saves most of that when no Steam game is
+  open.
+- **Order:** after W3 (the apps on Wayland), with the handheld controls (the Steam Controller and handhelds' drivers in the
+  7.x kernel; fan and TDP where the hardware allows) and the phone build's touch work. Not started.
+- **Tests:** the compositor's headless backend with a stand-in game (full screen, the frame limit and scaling measured),
+  controller-only navigation, the Quick menu over a game, suspend and resume, the switch to the desktop and back; memory
+  and disk measured against the estimates above; on the owner's Vivobook and the Asus desktop (19b's games).
+
+## Following 1.6.x's trimming (added on 2026-11-22)
+The owner, 2026-11-22: "Keep track of the trimming work that the main session is doing for the 1.6.x versions of native and
+apply whatever is beneficial to performance here as well." WendigOS is built from main, so most of 1.6.x's trimming
+reaches it by itself; this section is where each trimming part is checked for what WendigOS needs beyond that.
+- **The rule:** when a 1.6.x part that trims memory, disk or start-up time is planned or merged (on main), its entry is
+  added below the same day: what reaches WendigOS by itself, and what WendigOS needs on top (measured again on Wayland,
+  done in the compositor, or carried to the `kryptonite` branch while that branch exists). A trim that only helps X11,
+  Chromium mode's page or 1.6.x's older computers is noted and not carried. The handoff (rudolfos-devlink) keeps the list
+  of what is waiting.
+- **The kernel:** while the 7.3 kernel lives on the `kryptonite` branch, every change to main's iso/kconfig.sh (options
+  added, removed or made modules) is carried to that branch's kconfig.sh in a PR based on `kryptonite`, unless it is
+  6.18-only.
+- **1.6.2 Part 38, smaller pages for the native desktop's app windows** (planned 2026-11-22, branch plan-lean-pages: each
+  Native app window loads the whole desktop page, about 3.5 MB of script and about 100 MB a window; a small page per app,
+  about 35 MB): reaches WendigOS by itself (the same build19.py pages and the same native shell). On top: measured again
+  with WebKitGTK on Wayland (W3) before and after, since its process floor may differ from X11's; the small pages are
+  WendigOS's way until each app is native (this plan's waves), and a wave's native app replaces its small page, never both.
+  Step 5 (Oracle's Chromium memory) applies as it is: Oracle runs in Rudolf's Chromium on both editions.
+- **Already in 1.6.x and carried by main:** the native shell's memory work (1.5.9-1.6.1: lean61.js, the apps moved to files
+  loaded when opened), zstd for the images (1.6.2 Part 31: measured per engine; its kernel side, SQUASHFS_ZSTD, is on the
+  `kryptonite` branch since #617), game mode (1.6.1 Part 19).
+- **Waiting to carry to the `kryptonite` branch:** 1.6.2 Part 35's SMB client (CIFS as a signed module, the legacy dialects
+  and SMB server off), in main's kconfig.sh since #636.

@@ -16,7 +16,7 @@
 #   python3 t160_t.py REL-DIR [RUDOLF-UPDATE]   (SB_PARTS and QEMU as for t150; root; QEMU_ACCEL=kvm where it can)
 #   R161_FIX=DIR (1.6.1, docs/plan-1.6.1.md Part 11): this tree's rudolfd, rudolf-rootd and root helpers (DIR/rudolfd,
 #   DIR/rudolf-rootd, DIR/root/NAME) put in place at each start (fix161.sh, on an extra disk), the checks unchanged
-import os, sys, time, re, subprocess, shutil, struct, json, base64, urllib.request
+import os, sys, time, re, subprocess, shutil, struct, json, base64, hashlib, urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__)); QT = os.path.dirname(HERE); ISO = os.path.dirname(QT)
 sys.path.insert(0, HERE); sys.path.insert(0, QT)
 import sbvm
@@ -47,6 +47,19 @@ DSER = int(mv('serial')) + 1
 subprocess.run([sys.executable, f'{ISO}/systools/make_release.py', '--layers', f'{W}/l', '--kernel', f'{W}/l/vmlinuz', '--out', f'{W}/out',
                 '--key', f'{W}/dev.key', '--serial', str(DSER), '--version', mv('version') + '-dev', '--chromium', mv('chromium'), '--kernel-version', mv('kernel')], check=True, stdout=subprocess.DEVNULL)
 DEVPUB = open(f'{W}/dev.pub').read().strip()
+# REL/release-kernel/ (confine-check's "built" runs: the release's own vmlinuz and modules.sfs, kept there when a kernel
+# built from this tree took their place in REL): the system that starts is then not the signed release (its kernel is
+# not the listed one), so the official recovery system is not made from it, and that refusal is what 11 and 12 check;
+# the recovery system is the one an earlier start of the official release made (make_drive), and Return to official
+# puts it back, with this tree's kernel again for the start after (16 to 31 still on it)
+RK = os.path.join(REL, 'release-kernel'); BUILT = os.path.isdir(RK)
+if BUILT:
+    for n, f in (('vmlinuz', 'vmlinuz'), ('modules', 'modules.sfs')):
+        L = re.search(rf'^L\t{n}\t(\d+)\t([0-9a-f]{{64}})\t', man, re.M)
+        h = hashlib.sha256(); fh = open(f'{RK}/{f}', 'rb')
+        for b in iter(lambda: fh.read(1 << 20), b''): h.update(b)
+        if not L or h.hexdigest() != L.group(2): sys.exit(f'{RK}/{f} is not the release\'s own (its signed list)')
+        if os.path.getsize(f'{REL}/{f}') == int(L.group(1)): sys.exit(f'{REL}/{f}: a built kernel of the release\'s own size: the refusal checked below would not happen')
 FIX = os.environ.get('R161_FIX', ''); FIXIMG = ''
 if FIX:
     shutil.copytree(FIX, f'{W}/fix'); FIXIMG = os.path.abspath('t160fix.img'); subprocess.run(['truncate', '-s', '64M', FIXIMG], check=True)
@@ -62,6 +75,16 @@ def make_drive(path):
         for n in ('manifest.txt', 'manifest.sig'): shutil.copy(f'{src}/{n}', f'{d}/{n}')
         open(f'{d}/RELEASE', 'w').write(rl + f"released {mv('released')}\nchromium {mv('chromium')}\nkernel {mv('kernel')}\nnotes test\n"); open(f'{d}/complete', 'w').write('1\n')
     open(f'{T}/os/system/state', 'w').write('good=a\nprev=\nnext=\ntries=0\nfailed=\n')
+    if BUILT:
+        # (a kernel built here: the official recovery system an earlier start of the official release made, from that
+        # release's own files exactly; rudolf-update checks it against the signed list like any other)
+        d = f'{T}/os/system/r'; os.makedirs(d)
+        for n in ('base.sfs', 'chromium.sfs', 'desktop.sfs'): os.link(f'{T}/os/system/a/{n}', f'{d}/{n}')   # (as rudolf-update links them)
+        for n in ('vmlinuz', 'modules.sfs'): shutil.copy(f'{RK}/{n}', f'{d}/{n}')
+        for n in ('manifest.txt', 'manifest.sig'): shutil.copy(f'{REL}/{n}', f'{d}/{n}')
+        open(f'{d}/RELEASE', 'w').write(f"serial {mv('serial')}\nversion {mv('version')}\nreleased {mv('released')}\nchromium {mv('chromium')}\nkernel {mv('kernel')}\nnotes test\n")
+        open(f'{d}/official', 'w').write(f"official recovery system: release {mv('serial')}, from slot a (the release's own kernel, before t160's built one); only official releases update it\n")
+        open(f'{d}/complete', 'w').write('1\n')
     subprocess.run(['chown', '-R', '1000:1000', f'{T}/home/rudolf'], check=True)
     D = path + '.data'; subprocess.run(['truncate', '-s', f'{DMB}M', D], check=True)
     subprocess.run(['mkfs.ext4', '-q', '-F', '-O', 'encrypt', '-L', 'RUDOLFDATA', '-m', '1', '-d', T, D], check=True); shutil.rmtree(T)
@@ -299,10 +322,22 @@ try:
     U = 'rudolf-update'
     if RU:
         g.put(RU, '/tmp/ru160'); U = '/tmp/ru160'
-    o = sh(f"{U} boot-ok; cat /persist/os/system/r/official 2>&1; {U} status", 300)
-    ok('11. the official recovery system made from the official release that started', 'official recovery system: release' in o and '"signer":"official"' in o, o)
-    o = sh(f"rm /persist/os/system/r/desktop.sfs; head -c 1000 /dev/urandom > /persist/os/system/r/desktop.sfs; {U} recovery-check; echo rc=$?; cmp /persist/os/system/r/desktop.sfs /persist/os/system/a/desktop.sfs && echo SAME", 300)
-    ok('12. a recovery system file changed: found at the check, made again from the official system', 'made again from this official system' in o and 'SAME' in o, o)
+    S = '/persist/os/system'
+    if not BUILT:
+        o = sh(f"{U} boot-ok; cat {S}/r/official 2>&1; {U} status", 300)
+        ok('11. the official recovery system made from the official release that started', 'official recovery system: release' in o and '"signer":"official"' in o, o)
+        o = sh(f"rm {S}/r/desktop.sfs; head -c 1000 /dev/urandom > {S}/r/desktop.sfs; {U} recovery-check; echo rc=$?; cmp {S}/r/desktop.sfs {S}/a/desktop.sfs && echo SAME", 300)
+        ok('12. a recovery system file changed: found at the check, made again from the official system', 'made again from this official system' in o and 'SAME' in o, o)
+    else:
+        # (a kernel built here, not the signed release's: see RK above) the official recovery system set aside, boot-ok
+        # does not make one from this system; put back, it passes the full check (every file's SHA-256)
+        o = sh(f"mv {S}/r {S}/r.kept; {U} boot-ok; [ -e {S}/r ] && echo R-MADE || echo NO-R; rm -rf {S}/r; mv {S}/r.kept {S}/r; rm -f {S}/r/checked; {U} recovery-check; echo rc=$?; cat {S}/r/official 2>&1; {U} status", 300)
+        ok('11. (this tree\'s kernel, not the signed release\'s) the recovery system is not made from the system that started; the official one there passes the full check',
+           'could not be refreshed' in o and 'NO-R' in o and 'R-MADE' not in o and 'rc=0' in o and 'not as it should be' not in o and 'official recovery system: release' in o and '"signer":"official"' in o and '"recoveryOfficial":true' in o, o)
+        o = sh(f"cp -al {S}/r {S}/r.kept; rm {S}/r/desktop.sfs; head -c 1000 /dev/urandom > {S}/r/desktop.sfs; {U} recovery-check; echo rc=$?; [ -e {S}/r ] && echo R-LEFT || echo NO-R; "
+               f"rm -rf {S}/r; mv {S}/r.kept {S}/r; rm -f {S}/r/checked; {U} recovery-check; echo rc2=$?", 300)
+        ok('12. (this tree\'s kernel) a recovery system file changed: found at the check and removed, not made again from the system that started; the official one put back passes',
+           'not as it should be' in o and 'could not be refreshed' in o and 'NO-R' in o and re.search(r'^rc=[1-9]', o, re.M) and 'rc2=0' in o, o)
     o = sh(f"RU_NOAUTOFETCH=1 {U} developer on '{DEVPUB}' https://dev.example/rudolf; printf 'good=a\\nprev=\\nnext=b\\ntries=2\\nfailed=\\n' > /persist/os/system/state; sync", 60)
     ok('13. 8.7: Developer mode on with a developer\'s key', 'Developer mode is on' in o, o)
     sh('sync', 60); vm.stop(); time.sleep(3)
@@ -311,8 +346,12 @@ try:
     o = sh(f"cat /etc/rudolf/slot; {U} boot-ok; {U} status", 300) if up else 'not up'
     ok('14. ...a release signed by that key starts from slot b, the system says it is a custom build, the recovery system stays official', up and '"signer":"custom"' in o and '"recoveryOfficial":true' in o, o)
     o = sh(f"RU_NOESP=1 {U} return-official keep 2>&1; cat /persist/os/system/state", 600) if up else ''
-    ok('15. Return to official (keep): the official recovery system goes into the spare slot, to start next', 'Returning to the official Rudolf OS' in o and 'ret=1' in o, o)
     nxt = (re.search(r'^next=(\w)', o, re.M) or [None, 'a'])[1]
+    if BUILT and up:
+        # (this tree's kernel again for the start after, as slot a had it: the official files Return to official put
+        # there are hard links of the recovery system's, so unlinked first; the recovery system checked in full after)
+        o += sh(f"for f in vmlinuz modules.sfs; do rm -f {S}/{nxt}/$f; cp {S}/b/$f {S}/{nxt}/$f; done; rm -f {S}/r/checked; {U} recovery-check; echo rc=$?", 300)
+    ok('15. Return to official (keep): the official recovery system goes into the spare slot, to start next', 'Returning to the official Rudolf OS' in o and 'ret=1' in o and (not BUILT or 'rc=0' in o), o)
     sh('sync', 60); vm.stop(); time.sleep(3)
     vm, g, up, js = boot('c', nxt); sh = lambda c, t=60: run(g, c, t)
     if RU and up: g.put(RU, '/tmp/ru160')

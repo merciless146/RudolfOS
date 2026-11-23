@@ -468,6 +468,8 @@ static void prev_msg(AppWin *a, JSCValue *v); static void prev_end(void); static
 static void appwin_fs(AppWin *a, int on);
 static gboolean apps_reload(gpointer d);
 static void wins_ask(AppWin *to); static void win_op(const char *id, const char *what);   /* (Task Manager's windows: test finding N3) */
+static int native_app_open(const char *k, const char *extra);
+static int native_tm_urgent(void); static void native_wins_out(Window w, const char *json); static Window WINS_NTO;   /* (1.6.2 Part 39: the native apps, below) */
 static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d);
 static char *gpu_script(void);
 static void ctx_make(void)
@@ -789,6 +791,7 @@ static void app_open_ex(const char *k, const char *file, const char *extra, int 
 	   unseen (do-qs, do-nc, do-pin, do-mute, do-desk, do-fs, do-short) goes to its one hidden page, signed in already (bg_route); a
 	   page of its own only while that one is not there yet, or does not take it */
 	if (hidden == 1 && bg_route(k, file, extra)) return;
+	if (!hidden && native_app_open(k, extra)) return;   /* (1.6.2 Part 39: an app that is native now: its program, not its page) */
 	/* (2026-11-16, the owner's Vivobook) a Linux or Windows program, or a Library app rudolfd runs (the catalogue's "x"): its page opens it unseen,
 	   as Standard's launch() starts it, and is shown only if it makes a window of the page's after all (a question, a download's dialog) */
 	int reveal = hidden == 2; if (reveal) hidden = 1;   /* (2: the same for a page of the shell's: a file opened from the start menu's search) */
@@ -823,7 +826,7 @@ static int BW = 1;   /* (the page's windows' 1 px edge, 2 px with high contrast;
 typedef struct Client { Window w, frame, rz[4]; int x, y, cw, ch, min, max, full, sx, sy, scw, sch, ignore_unmap, hover, press, hidden, ontop; char title[256]; AppWin *app; Window trans; Time last_click;
 	char ak[40]; Window clip; int il, it, ir, ib; int ws, off, mk; gint64 oask, used; int opened; char ptitle[256]; int wait; Window cover; int lpclip; LPRect lpcr;
 	int csd, gl, gr, gt, gb, nodeco, tbcut;
-	int pg; double pgf, pgt; gint64 pgb0, pgch, pgend; } Client;   /* (1.6.1 Part 25: its page's progress, for its minimized taskbar button: pg 0 none, 1 a percentage (pgt; drawn from pgf, changed at pgch), 2 busy since pgb0, 3 ended at pgend) */   /* (1.6.1 Part 15: csd, the app draws its own title bar (_MOTIF_WM_HINTS, no decorations): Rudolf's frame keeps only its edge; gl..gb, GTK's
+	int pg; double pgf, pgt; gint64 pgb0, pgch, pgend; char nk[24]; } Client;   /* (nk: 1.6.2 Part 39, a native app's window: its app, as the page's k) */   /* (1.6.1 Part 25: its page's progress, for its minimized taskbar button: pg 0 none, 1 a percentage (pgt; drawn from pgf, changed at pgch), 2 busy since pgb0, 3 ended at pgend) */   /* (1.6.1 Part 15: csd, the app draws its own title bar (_MOTIF_WM_HINTS, no decorations): Rudolf's frame keeps only its edge; gl..gb, GTK's
 	   invisible margins around it (_GTK_FRAME_EXTENTS), cut away by the clip window as Oracle's own bar is) */   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
 static void wopen_start(Client *c);
 static void tbp_set(Client *c, const char *v); static int oracle_at(Client *c, int x, int y, int w, int h);   /* (1.6.1 Part 25, below) */
@@ -841,6 +844,7 @@ static Cursor CUR[9];
 static int wm_err;
 static int wm_errh(Display *d, XErrorEvent *e) { (void)d; if (e->error_code == BadAccess) wm_err = 1; return 0; }
 static void clients_forget(AppWin *a) { for (GList *l = CLIENTS; l; l = l->next) if (((Client *)l->data)->app == a) ((Client *)l->data)->app = NULL; }
+static void native_client(Client *c); static int native_ask(Client *c, XClientMessageEvent *m);   /* (1.6.2 Part 39: the native apps) */
 static Client *client_of(Window w) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->w == w || c->frame == w || (w && (c->clip == w || c->rz[0] == w || c->rz[1] == w || c->rz[2] == w || c->rz[3] == w))) return c; } return NULL; }
 static int rz_of(Client *c, Window w) { for (int i = 0; i < 4; i++) if (c->rz[i] && c->rz[i] == w) return i; return -1; }
 static Client *client_of_app(AppWin *a) { for (GList *l = CLIENTS; l; l = l->next) if (((Client *)l->data)->app == a) return l->data; return NULL; }
@@ -1471,6 +1475,7 @@ static void wm_manage(Window w, AppWin *own)
 	Client *c = g_new0(Client, 1); c->w = w; c->app = own; c->cw = wa.width; c->ch = wa.height; c->ws = WSC;
 	if (!XGetTransientForHint(DPY, w, &c->trans)) c->trans = None;
 	if (!own) oracle_client(c, &wa);   /* (1.5.9, 12.3c: Oracle's Chromium is Oracle's window) */
+	if (!own) native_client(c);   /* (1.6.2 Part 39: a native app's window: rudolf-taskmgr) */
 	if (!own && !c->ak[0]) csd_read(c, &wa);   /* (1.6.1 Part 15: an app drawing its own title bar) */
 	wm_title(c);
 	int ay = work_top(), ah = work_h(), TH = th_of(c);
@@ -1509,6 +1514,7 @@ static void wm_manage(Window w, AppWin *own)
 	if (XGetWindowProperty(DPY, w, A_NSTATE, 0, 32, False, XA_ATOM, &type, &fmt, &n, &after, &d) == Success && d) { for (unsigned long i = 0; i < n; i++) if (((Atom *)d)[i] == A_NFULL) { c->full = 0; wm_fullscreen(c, 1); } XFree(d); }
 	if (own && !strcmp(own->k, "do-saver")) { c->ontop = 1; wm_fullscreen(c, 1); }   /* (the screen saver: over everything, the taskbar too: item 6) */
 	if (own && TM_TOP && !strcmp(own->k, "taskmgr")) { c->ontop = 1; TM_TOP = 0; }   /* (1.6.0: Ctrl+Alt+Del's Task Manager, above every window) */
+	if (!own && TM_TOP && !strcmp(c->nk, "taskmgr")) { c->ontop = 1; TM_TOP = 0; }   /* (1.6.2 Part 39: the native one too) */
 	if (c->ak[0]) { XSync(DPY, False); oracle_title_take(c); }   /* (1.6.0: Oracle's page's title, when it came first) */
 	if (big && !c->full) wm_fullscreen(c, 1);
 	if (!c->full) csd_max_first(c);
@@ -1910,6 +1916,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 			if (c) wm_focus(c); else if (m->window != ROOT) XSetInputFocus(DPY, m->window, RevertToPointerRoot, CurrentTime);   /* (our own windows: the menu, the sign-in) */
 			return GDK_FILTER_REMOVE; }
 		if (m->message_type == A_CHANGE && c && m->data.l[0] == IconicState) { wm_minimise(c); return GDK_FILTER_REMOVE; }
+		if (c && native_ask(c, m)) return GDK_FILTER_REMOVE;   /* (1.6.2 Part 39: a native app asks the shell: native_ask) */
 		return GDK_FILTER_CONTINUE; }
 	}
 	return GDK_FILTER_CONTINUE;
@@ -2262,7 +2269,9 @@ static TbbVars tbb_vars(void)
 /* a part of the taskbar: K, hovered, pressed (retro's :active) */
 static Box tb_box(int k, int hover, int press)
 {
-	TbVars V = tb_vars(); TbbVars B = tbb_vars(); RGBA ac = ca(accent(), 1), grey = cx("#d1d5db", 1);
+	/* (the pinned apps' and the workspaces' edge: base_v24.html's button border, var(--bd): #d1d5db, and #334155 in dark mode
+	   (styles25.css html.dark), as the page's themeApply sets it: S.darkui!==false and dark) */
+	TbVars V = tb_vars(); TbbVars B = tbb_vars(); RGBA ac = ca(accent(), 1), grey = cx(S.darkui && is_dark() ? "#334155" : "#d1d5db", 1);
 	Box b; memset(&b, 0, sizeof b); b.fg = cx("#ffffff", 1);
 	int isbtn = k != TB_BAR && k != TB_TRAY;   /* (#bar button: everything but the bar and the tray) */
 	int bx = k == TB_TASK || k == TB_TASKON || k == TB_WS || k == TB_NET || k == TB_TRAY;   /* accent56's BX (#tasks button, #wsw button:not(.on), #net, #vol, #tray) */
@@ -2488,6 +2497,18 @@ static void tbp_paint(cairo_t *cr, Client *c, double x, double y, double w, doub
 	double iw = (w - 2 * b->bw - 6) * fmin(100, f) / 100, ih = h - 2 * b->bw - 6; if (iw <= 0 || ih <= 0) return;
 	cairo_save(cr); rrect(cr, x + b->bw + 3, y + b->bw + 3, iw, ih, 3); src(cr, tbp_colour(), (S.hc ? .65 : .5) * al); cairo_fill(cr); cairo_restore(cr);
 }
+/* (a pinned app's line under its picture, as the page's pinDraw and styles25.css: .run when it has a window (on any workspace,
+   minimized too): 3 px high, 12 px in from each side, 2 px above the bottom, #94a3b8; .on when one of them is the active window
+   and not minimized: the accent colour, 8 px in. Inside the 1 px edge: the button's padding box holds it) */
+static void pin_line(cairo_t *cr, const char *k, double x, double y, double w, double h)
+{
+	int run = 0, on = 0;
+	if (WM_OK) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->trans || !c->app || c->app->hidden || strcmp(c->app->k, k)) continue; run = 1; if (c == FOCUS && !c->min) on = 1; } }
+	else for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (a->hidden || strcmp(a->k, k)) continue; run = 1; if (a == ACTIVE) on = 1; }
+	if (!run) return;
+	Box b; memset(&b, 0, sizeof b); b.bg = on ? ca(accent(), 1) : cx("#94a3b8", 1); b.rad = 2; double in = on ? 8 : 12;
+	box_paint(cr, x + 1 + in, y + h - 1 - 2 - 3, w - 2 - 2 * in, 3, &b);
+}
 static void bar_paint_v(cairo_t *cr, double W, double H);
 static void bar_paint(cairo_t *cr, double W, double H, int top)
 {
@@ -2515,6 +2536,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 			Box b = tb_box(TB_PIN, HV("pin", S.pins[p]), PR("pin", S.pins[p])); double y = mid - 17; box_paint(cr, x, y, 34, 34, &b); hit_add(x, y, 34, 34, "pin", S.pins[p]);
 			const App *ap = app_find(S.pins[p]); GdkPixbuf *px = app_pix(ap);
 			if (px) pix_at(cr, px, x + 5, mid - 12, 24, b.filt); else css_text(cr, ap ? ap->icon : "▫", UIFAM, 400, 18, x + 5, y, 34, b.fg, 0);
+			pin_line(cr, S.pins[p], x, y, 34, 34);
 			x += 34 + (p + 1 < S.npins ? 2 : 0); }
 		x += 4; }
 	double tasks_x = x;
@@ -2580,7 +2602,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		if (c && c->w == LP_LITW && LP_LITA > 0) { cairo_save(cr); cairo_set_source_rgba(cr, LP_CORE.r, LP_CORE.g, LP_CORE.b, .55 * LP_LITA); cairo_rectangle(cr, wx, y, tw, 34); cairo_fill(cr); cairo_restore(cr); }   /* (Part 17: lit as the point lands) */
 		/* the line: the picture (vertical-align -4px) and the title, centred in the button's content (34 less 1 px above and below) */
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = y + b.bw + 1 + (32 - 2 * b.bw - (lb - lt)) / 2 - lt;
-		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = wx + b.bw + 6;
+		const App *ap = a ? app_find(a->k) : c && (c->ak[0] || c->nk[0]) ? app_find(c->ak[0] ? c->ak : c->nk) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = wx + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, wx + b.bw + 6, y, tw - 2 * b.bw - 12, 34); cairo_clip(cr);
 		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
 		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
@@ -2635,6 +2657,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 			Box b = tb_box(TB_PIN, HV("pin", S.pins[p]), PR("pin", S.pins[p])); box_paint(cr, px0, y, 34, 34, &b); hit_add(px0, y, 34, 34, "pin", S.pins[p]);
 			const App *ap = app_find(S.pins[p]); GdkPixbuf *px = app_pix(ap);
 			if (px) pix_at(cr, px, px0 + 5, y + 5, 24, b.filt); else css_text(cr, ap ? ap->icon : "▫", UIFAM, 400, 18, px0 + 5, y, 34, b.fg, 0);
+			pin_line(cr, S.pins[p], px0, y, 34, 34);
 			px0 += 36; }
 		y += 34 + 4; }
 	double tasks_y = y;
@@ -2681,7 +2704,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 		tbp_paint(cr, c, x, ty, cw, 22, &b);   /* (1.6.1 Part 25) */
 		if (c && c->w == LP_LITW && LP_LITA > 0) { cairo_save(cr); cairo_set_source_rgba(cr, LP_CORE.r, LP_CORE.g, LP_CORE.b, .55 * LP_LITA); cairo_rectangle(cr, x, ty, cw, 22); cairo_fill(cr); cairo_restore(cr); }
 		double d, A = css_ascent(cr, UIFAM, act ? 600 : 400, 13, &d), lt = fmin(-A, -14), lb = fmax(d, 4), base = ty + b.bw + 1 + (20 - 2 * b.bw - (lb - lt)) / 2 - lt;
-		const App *ap = a ? app_find(a->k) : c && c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = x + b.bw + 6;
+		const App *ap = a ? app_find(a->k) : c && (c->ak[0] || c->nk[0]) ? app_find(c->ak[0] ? c->ak : c->nk) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap); double tx = x + b.bw + 6;
 		cairo_save(cr); cairo_rectangle(cr, x + b.bw + 6, ty, cw - 2 * b.bw - 12, 22); cairo_clip(cr);
 		if (px) { pix_at(cr, px, tx, base + 4 - 18, 18, b.filt); tx += 18; }
 		const char *ti = a ? a->title : c->title, *ico = a ? a->icon : ap ? ap->icon : ""; char *tt = px ? g_strdup_printf(" %s", ti) : g_strdup_printf("%s%s%s", ico, ico[0] ? " " : "", ti);
@@ -2897,7 +2920,7 @@ static void frame_draw(Client *c)
 	else box_paint(cr, eb, eb, W - 2 * eb, TB, &tb);
 	cairo_restore(cr);
 	/* the picture, the title, the buttons */
-	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] ? app_find(c->ak) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap);
+	int wt = !strcmp(st, "retro") && V.on ? 700 : 600; AppWin *a = c->app; const App *ap = a ? app_find(a->k) : c->ak[0] || c->nk[0] ? app_find(c->ak[0] ? c->ak : c->nk) : NULL; GdkPixbuf *px = a && a->pix ? a->pix : app_pix(ap);
 	int filt = V.on && !strcmp(st, "mono") ? 1 : 0; double fs = S.fs >= 6 && S.fs <= 72 ? S.fs : 13, ix = eb + 8, ty = eb + G.ty;
 	if (px) pix_at(cr, px, ix, eb + G.iy, 16, filt); else if (a && a->icon[0]) css_text(cr, a->icon, UIFAM, wt, fs, ix, ty, G.lh, fg, 0); else if (!a && ap && ap->icon[0]) css_text(cr, ap->icon, UIFAM, wt, fs, ix, ty, G.lh, fg, 0);
 	int r[3][4]; btn_rects(c, r); double tx = ix + 16 + 3, tmax = r[0][0] / Z - (!strcmp(st, "candy") ? 1 : 0) - 3 - tx;
@@ -5407,21 +5430,24 @@ static void jumps_load(JV *v)
    estimates it (oneapp59.js __oaMe, asked of every page at once; a page that does not answer in 400 ms has none). "Switch to" and
    "End task" come back as op "winop" (focus: brought to the front, its workspace shown; end: the window closed as Standard's End task
    closes it, without asking about unsaved work: the page's own close, oaDone, so its files are written first). */
-typedef struct { AppWin *to; int n, left, sent; char **me; Client **cl; guint t; } WinsReq;
+typedef struct { AppWin *to; int n, left, sent; char **me; Client **cl; guint t; Window nto; } WinsReq;   /* (nto: a native app asked: 1.6.2 Part 39) */
 static void json_esc(GString *s, const char *v);
 static void wins_free(WinsReq *q) { for (int i = 0; i < q->n; i++) g_free(q->me[i]); g_free(q->me); g_free(q->cl); g_free(q); }
 static void wins_send(WinsReq *q)
 {
 	if (q->sent) return; q->sent = 1; if (q->t) { g_source_remove(q->t); q->t = 0; }
-	if (g_list_find(WINS, q->to) && q->to->view) {
+	int pg = q->to && g_list_find(WINS, q->to) && q->to->view;
+	if (pg || q->nto) {
 		GString *s = g_string_new("[");
 		for (int i = 0, k = 0; i < q->n; i++) { Client *c = q->cl[i]; if (!g_list_find(CLIENTS, c)) continue; AppWin *a = c->app;
 			char id[24]; snprintf(id, sizeof id, "%lx", (unsigned long)c->frame);
-			g_string_append_printf(s, "%s{\"id\":\"%s\",\"w\":%d,\"app\":", k++ ? "," : "", id, a ? a->id : 0); json_esc(s, a ? a->k : c->ak);
+			g_string_append_printf(s, "%s{\"id\":\"%s\",\"w\":%d,\"app\":", k++ ? "," : "", id, a ? a->id : 0); json_esc(s, a ? a->k : c->nk[0] ? c->nk : c->ak);
 			g_string_append(s, ",\"title\":"); json_esc(s, c->title); g_string_append(s, ",\"icon\":"); json_esc(s, a ? a->icon : "");
 			g_string_append_printf(s, ",\"min\":%d,\"ws\":%d,\"act\":%d,\"rest\":%d,\"me\":%s}", c->min, c->ws, c == FOCUS, a ? a->rest : 0, q->me[i] && q->me[i][0] == '{' && !(a && a->rest) ? q->me[i] : "null"); }
-		g_string_append(s, "]"); GString *js = g_string_new("window.__oaWinsIn&&__oaWinsIn("); json_esc(js, s->str); g_string_append(js, ")");
-		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(q->to->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); g_string_free(s, TRUE); }
+		g_string_append(s, "]");
+		if (q->nto) native_wins_out(q->nto, s->str);
+		if (pg) { GString *js = g_string_new("window.__oaWinsIn&&__oaWinsIn("); json_esc(js, s->str); g_string_append(js, ")");
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(q->to->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); } g_string_free(s, TRUE); }
 	if (q->left <= 0) wins_free(q);   /* (else the last answer frees it) */
 }
 typedef struct { WinsReq *q; int i; } WinsAns;
@@ -5436,8 +5462,8 @@ static gboolean wins_late(gpointer d) { WinsReq *q = d; q->t = 0; wins_send(q); 
 static int tb_win(Client *c);
 static void wins_ask(AppWin *to)
 {
-	WinsReq *q = g_new0(WinsReq, 1); q->to = to; int n = g_list_length(CLIENTS); q->me = g_new0(char *, n + 1); q->cl = g_new0(Client *, n + 1);
-	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!tb_win(c) || !c->ws || (!c->app && !c->ak[0])) continue; q->cl[q->n++] = c; }
+	WinsReq *q = g_new0(WinsReq, 1); q->to = to; q->nto = WINS_NTO; WINS_NTO = 0; int n = g_list_length(CLIENTS); q->me = g_new0(char *, n + 1); q->cl = g_new0(Client *, n + 1);
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!tb_win(c) || !c->ws || (!c->app && !c->ak[0] && !c->nk[0])) continue; q->cl[q->n++] = c; }
 	q->left = 1;   /* (until every page is asked) */
 	for (int i = 0; i < q->n; i++) { AppWin *a = q->cl[i]->app; if (!a || !a->view || a->rest) continue; WinsAns *w = g_new0(WinsAns, 1); w->q = q; w->i = i; q->left++;
 		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(a->view), "window.__oaMe?JSON.stringify(__oaMe()):''", -1, NULL, NULL, NULL, wins_got, w); }
@@ -5450,10 +5476,84 @@ static void win_op(const char *id, const char *what)
 	if (!strcmp(what, "focus")) { wm_focus(c); return; }
 	if (!strcmp(what, "end")) { if (c->app && c->app->view) webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(c->app->view), "window.__oaEnd?__oaEnd():window.close()", -1, NULL, NULL, NULL, NULL, NULL); else wm_close(c); }
 }
+/* ------------------------------------------------------------------ the native apps (1.6.2, docs/plan-1.6.2.md Part 39)
+   An app that has a native program (/usr/bin/rudolf-NAME, built with librudolf-ui) opens as that program instead of its page, from
+   everywhere that opens it here (the start menu, the pins, the taskbar's right-click, Ctrl+Shift+Esc and Ctrl+Alt+Del for Task
+   Manager): started by the shell, so it runs as the account's user in the desktop's group (rudolfd's peer check), and framed by the
+   window manager like any window; its window known by its class (WM_CLASS rudolf-NAME, Rudolf), so the taskbar, Task Manager's Apps
+   and the shell's own lists name it as the page's app. Only Native: Chromium and Lite keep the web app in their page.
+   RUDOLF_NATIVE_APPS=0 (tests, a fallback) keeps every app a page; RUDOLF_NATIVE_APPS_DIR (tests) is where the programs are.
+   What a native app asks of the shell comes as a ClientMessage _RUDOLF_ASK from its own framed window, the request in that window's
+   property _RUDOLF_ASK (one line): "wins" (Task Manager's Apps: the windows as the page's Task Manager is given them, written back
+   into the window's property _RUDOLF_WINS), "winop FRAME focus|end" (Switch to, End task), "open APP" (an app opened as the start
+   menu opens it); nothing else, and only from a native app's window. */
+static const char *const NATIVE_APPS[] = { "taskmgr", NULL };
+static Atom A_RASK, A_RWINS;
+static void native_atoms(void) { if (!A_RASK) { A_RASK = XInternAtom(DPY, "_RUDOLF_ASK", False); A_RWINS = XInternAtom(DPY, "_RUDOLF_WINS", False); } }
+static int native_has(const char *k, char *bin, size_t n)
+{
+	const char *on = getenv("RUDOLF_NATIVE_APPS"); if (on && !strcmp(on, "0")) return 0;
+	int known = 0; for (int i = 0; NATIVE_APPS[i]; i++) if (!strcmp(NATIVE_APPS[i], k)) known = 1; if (!known) return 0;
+	const char *d = getenv("RUDOLF_NATIVE_APPS_DIR"); snprintf(bin, n, "%s/rudolf-%s", d && *d ? d : "/usr/bin", k);
+	return access(bin, X_OK) == 0;
+}
+static void native_client(Client *c)
+{
+	XClassHint ch = {0}; if (!XGetClassHint(DPY, c->w, &ch)) return;
+	if (ch.res_class && !strcmp(ch.res_class, "Rudolf") && ch.res_name && !strncmp(ch.res_name, "rudolf-", 7) && !c->trans)
+		for (int i = 0; NATIVE_APPS[i]; i++) if (!strcmp(ch.res_name + 7, NATIVE_APPS[i])) snprintf(c->nk, sizeof c->nk, "%s", NATIVE_APPS[i]);
+	if (ch.res_name) XFree(ch.res_name); if (ch.res_class) XFree(ch.res_class);
+}
+static Client *native_find(const char *k) { for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!strcmp(c->nk, k) && !c->trans) return c; } return NULL; }
+static int native_app_open(const char *k, const char *extra)
+{
+	char bin[300]; if (!native_has(k, bin, sizeof bin)) return 0;
+	Client *c = native_find(k);
+	if (c) { if (c->min) { c->min = 0; XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); } wm_focus(c); wm_restack(); return 1; }   /* (one window, as the page's) */
+	char base[96]; snprintf(base, sizeof base, "RUI_BASE=http://%s:%d", HOST, PORT);
+	gchar **env = g_environ_setenv(g_get_environ(), "RUI_BASE", base + 9, TRUE);
+	const char *av[3] = { bin, extra && strstr(extra, "urgent=1") ? "--urgent" : NULL, NULL };
+	GError *er = NULL; int ok = g_spawn_async(NULL, (gchar **)av, env, G_SPAWN_DEFAULT, NULL, NULL, NULL, &er); g_strfreev(env);
+	if (!ok) { fprintf(stderr, "rudolf-native: %s did not start (%s): its page instead\n", bin, er ? er->message : "?"); g_clear_error(&er); return 0; }
+	fprintf(stderr, "rudolf-native: %s started (the native %s)\n", bin, k); return 1;
+}
+/* (tmtop57.js tmUrgent for the native Task Manager: above every window, restored, focused; the desktop's processes first while it is open) */
+static int native_tm_urgent(void)
+{
+	char bin[300]; if (!native_has("taskmgr", bin, sizeof bin)) return 0;
+	Client *c = native_find("taskmgr");
+	if (!c) { TM_TOP = 1; return native_app_open("taskmgr", "&urgent=1"); }
+	c->ontop = 1; if (c->min) { c->min = 0; XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); } wm_focus(c); wm_restack();
+	http("POST", "/api/desktop/priority?on=1", NULL, 0, NULL); state_write(); return 1;
+}
+static void native_wins_out(Window w, const char *json)
+{
+	native_atoms(); if (!client_of(w)) return;
+	XChangeProperty(DPY, w, A_RWINS, A_UTF8, 8, PropModeReplace, (const unsigned char *)json, (int)strlen(json)); XFlush(DPY);
+}
+/* (1.6.2 Part 39: "open APP PAGE", an app at one of its pages as the page opens it: Settings › About's Licences, helpApp('licences');
+   only Help, and a page named as the page names its topics) */
+static int native_open_page(const char *q)
+{
+	char k[KN], pg[40]; if (sscanf(q, "%31s %39s", k, pg) != 2 || strcmp(k, "help") || strspn(pg, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(pg)) return 0;
+	char ex[64]; snprintf(ex, sizeof ex, "&page=%s", pg); app_open_ex("help", NULL, ex, 0); return 1;
+}
+static int native_ask(Client *c, XClientMessageEvent *m)
+{
+	native_atoms(); if (m->message_type != A_RASK) return 0;
+	if (!c->nk[0] || m->window != c->w) return 1;   /* (only a native app's own window asks) */
+	Atom type; int fmt; unsigned long n = 0, after; unsigned char *d = NULL; char q[200] = "";
+	if (XGetWindowProperty(DPY, c->w, A_RASK, 0, 50, True, AnyPropertyType, &type, &fmt, &n, &after, &d) == Success && d) { snprintf(q, sizeof q, "%.*s", (int)MIN(n, sizeof q - 1), (char *)d); XFree(d); }
+	if (!strcmp(q, "wins")) { WINS_NTO = c->w; wins_ask(NULL); return 1; }
+	if (!strncmp(q, "winop ", 6)) { char id[24] = "", op[12] = ""; if (sscanf(q + 6, "%23s %11s", id, op) == 2 && (!strcmp(op, "focus") || !strcmp(op, "end"))) win_op(id, op); return 1; }
+	if (!strncmp(q, "open ", 5) && native_open_page(q + 5)) return 1;
+	if (!strncmp(q, "open ", 5)) { const char *k = q + 5; if (key_ok(k) && (app_find(k) || !strcmp(k, "do-hwcheck"))) app_open(k, NULL); return 1; }   /* (do-hwcheck: the page's hardware check, Task Manager's Hardware) */
+	return 1;
+}
 static int tb_win(Client *c) { return c && !c->hidden && !c->trans && (!c->app || (!c->app->hidden && c->app->modal != 2 && strcmp(c->app->k, "do-saver"))); }   /* (not the screen saver: item 6) */   /* (the page's wins: the taskbar's windows) */
 static int tb_count(int min) { int n = 0; for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (tb_win(c) && (min < 0 || c->min == min)) n++; } return n; }
 static int app_running(const char *k) { for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; if (!a->hidden && !strcmp(a->k, k)) return 1; }
-	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ak[0] && !strcmp(c->ak, k)) return 1; } return 0; }   /* (and Oracle's Chromium's windows: 12.3c) */
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if ((c->ak[0] && !strcmp(c->ak, k)) || (c->nk[0] && !strcmp(c->nk, k))) return 1; } return 0; }   /* (and Oracle's Chromium's windows: 12.3c; a native app's: Part 39) */
 static void tb_page(const char *k, const char *extra, int hidden) { app_open_ex(k, NULL, extra, hidden); }
 static void tb_settings(const char *page) { char *e = qesc(page), ex[96]; snprintf(ex, sizeof ex, "&page=%s", e); g_free(e); tb_page("settings", ex, 0); }
 static void tb_jump(const char *k, const char *label) { char *e = qesc(label), ex[300]; snprintf(ex, sizeof ex, "&jump=%s", e); g_free(e); tb_page(k, ex, 0); }
@@ -5837,6 +5937,56 @@ static void net_read(void)
 	for (int i = 0; i < NNIF && NCUR < 0; i++) if (NIF[i].ip[0] && !strcmp(NIF[i].state, "up")) NCUR = i;
 	jfree(v);
 }
+/* (1.6.2 Part 33: the VPNs, vpn62.js vpnRows: after the adapters, each a row of the same list; GET vpn) */
+typedef struct { char id[16], name[96], state[16], by[96], policy[16]; int on, may_on, may_off; } VpnRow;
+static VpnRow VPNR[8]; static int NVPN; static char VPN_ME[96], VPN_ACT[16], VPN_BUSY[16];
+static void vpn_read(void)
+{
+	JV *v = jget("/api/vpn"); NVPN = 0; VPN_ME[0] = VPN_ACT[0] = 0; if (!v) return;
+	JV *me = jprop(v, "me"); jstr(me, "name", VPN_ME, sizeof VPN_ME); jstr(v, "active", VPN_ACT, sizeof VPN_ACT);
+	JV *a = jprop(v, "vpns");
+	for (int i = 0; a && a->t == 4 && i < a->len && NVPN < 8; i++) { JV *o = jat(a, i); VpnRow *r = &VPNR[NVPN++]; memset(r, 0, sizeof *r);
+		jstr(o, "id", r->id, sizeof r->id); jstr(o, "name", r->name, sizeof r->name); jstr(o, "state", r->state, sizeof r->state); jstr(o, "by", r->by, sizeof r->by); jstr(o, "policy", r->policy, sizeof r->policy);
+		r->on = jbool(o, "on"); r->may_on = jbool(o, "mayOn"); r->may_off = jbool(o, "mayOff"); }
+	jfree(v);
+}
+/* (vpnState) */
+static const char *vpn_state(const VpnRow *r)
+{
+	if (VPN_BUSY[0] && !strcmp(VPN_BUSY, r->id)) return r->on ? "Turning off…" : "Connecting…";
+	return !r->on ? "Off" : !strcmp(r->state, "connected") ? "Connected" : !strcmp(r->state, "noanswer") ? "No answer" : !strcmp(r->state, "down") ? "Down" : "Connecting…";
+}
+/* (vpnDirect: at once from the pop-up, with no password and no question; else Settings › Network asks) */
+static int vpn_direct(const VpnRow *r)
+{
+	if (r->on) return r->may_off && !(r->by[0] && VPN_ME[0] && strcmp(r->by, VPN_ME));
+	if (!r->may_on) return 0;
+	for (int i = 0; i < NVPN; i++) if (VPN_ACT[0] && strcmp(VPN_ACT, r->id) && !strcmp(VPNR[i].id, VPN_ACT) && !VPNR[i].may_off) return 0;
+	return 1;
+}
+typedef struct { char path[64], name[96]; int off, code; GByteArray *b; } VpnJob;
+static gboolean vpn_done(gpointer p)
+{
+	VpnJob *j = p; char msg[300] = ""; const char *kind = "info";
+	JV *v = j->b ? jparse((char *)j->b->data) : NULL;
+	if (j->code == 200) { if (j->off) snprintf(msg, sizeof msg, "%s is off.", j->name); else { jstr(v, "message", msg, sizeof msg); if (!msg[0]) snprintf(msg, sizeof msg, "%s is on.", j->name); } }
+	else { kind = "error"; jstr(v, "error", msg, sizeof msg); if (!msg[0]) snprintf(msg, sizeof msg, "It did not work."); }
+	jfree(v); if (j->b) g_byte_array_free(j->b, TRUE);
+	char at[40]; snprintf(at, sizeof at, "%.0f", g_get_real_time() / 1000.0);
+	const char *f[4] = {"VPN", msg, kind, at}; nt_notef(fget_note4, (void *)f); toast_addf(NULL, NULL, fget_note4, (void *)f);
+	VPN_BUSY[0] = 0; vpn_read(); if (FLK == FL_NET && FLAREA) gtk_widget_queue_draw(FLAREA);
+	g_free(j); return G_SOURCE_REMOVE;
+}
+static gpointer vpn_thread(gpointer p) { VpnJob *j = p; j->code = http("POST", j->path, NULL, 0, &j->b); g_idle_add(vpn_done, j); return NULL; }
+static void vpn_click(int i)
+{
+	if (i < 0 || i >= NVPN || VPN_BUSY[0]) return; VpnRow *r = &VPNR[i];
+	if (!vpn_direct(r)) { fl_close(); tb_settings("net"); return; }
+	VpnJob *j = g_new0(VpnJob, 1); j->off = r->on; snprintf(j->name, sizeof j->name, "%s", r->name);
+	if (r->on) snprintf(j->path, sizeof j->path, "/api/vpn/off"); else snprintf(j->path, sizeof j->path, "/api/vpn/on?id=%s", r->id);
+	snprintf(VPN_BUSY, sizeof VPN_BUSY, "%s", r->id); if (FLAREA) gtk_widget_queue_draw(FLAREA);
+	g_thread_unref(g_thread_new("vpn", vpn_thread, j));
+}
 static int fl_hov(const char *k) { return FLHOV >= 0 && !strcmp(FLBK[FLHOV], k); }
 /* the lines a text breaks into at width W, as a browser breaks white-space:normal text */
 static int css_wrap(cairo_t *cr, const char *t, const char *fam, int wt, double px, double w, char (*out)[320], int max)
@@ -5868,14 +6018,16 @@ static void fl_net(cairo_t *cr, int draw, int dark, int top)
 	double l12 = fl_lh(cr, 400, 12), l13 = fl_lh(cr, 400, 13), l11 = fl_lh(cr, 400, 11); const NetIf *wl = NULL; for (int i = 0; i < NNIF && !wl; i++) if (NIF[i].wireless) wl = &NIF[i];
 	char msg[200] = ""; if (wl && !NWTOOLS) snprintf(msg, sizeof msg, "This system has no Wi-Fi tools; update Rudolf OS or use a network cable.");
 	char ml[6][320]; int nm = msg[0] ? css_wrap(cr, msg, UIFAM, 400, 13, 330, ml, 6) : 0; double mh = nm ? fmax(18, nm * l13) : 0;
-	double rows = NNIF ? NNIF * (10 + l12) : l12, bh = 2 + 6 + l12;
+	double rows = (NNIF ? NNIF * (10 + l12) : l12) + NVPN * (10 + l12), bh = 2 + 6 + l12;   /* (1.6.2 Part 33: the VPNs' rows after the adapters) */
 	/* (placed as the page places it: by flyPlace before the Wi-Fi's part is filled in, so it grows downwards from there) */
 	FLW = 330 + 24 + 2; FLH = 1 + 10 + l12 + 2 + l12 + 6 + rows + 8 + bh + 10 + 1; fl_place_over(NETB, top); FLH += nm ? 10 + mh : 0;   /* (an empty Wi-Fi part: its margin and the buttons' one as one) */
 	if (!draw) return;
 	Box b; memset(&b, 0, sizeof b); b.bg = cx("#ffffff", 1); b.bw = 1; b.bc = cx(dark ? "#334155" : "#d1d5db", 1); b.rad = 10; shd_add(&b, 0, 10, 26, cx("#000000", .3), 0); box_paint(cr, FLX, FLY, FLW, FLH, &b);
 	RGBA ink = cx("#111111", 1); double x = FLX + 13, y = FLY + 11;
 	css_text(cr, "Network", UIFAM, 700, 12, x, y, l12, ink, 0); y += l12 + 2;
-	css_text(cr, NCUR >= 0 ? "Connected" : "Not connected", UIFAM, 400, 12, x, y, l12, cx("#4b5563", 1), 0); y += l12 + 6;
+	{ char st[200]; snprintf(st, sizeof st, "%s", NCUR >= 0 ? "Connected" : "Not connected");
+		for (int i = 0; i < NVPN; i++) if (VPNR[i].on) { size_t L = strlen(st); snprintf(st + L, sizeof st - L, " · VPN: %s", VPNR[i].name); break; }   /* (vpnRows: the header says so) */
+		css_text(cr, st, UIFAM, 400, 12, x, y, l12, cx("#4b5563", 1), 330); } y += l12 + 6;
 	if (!NNIF) { css_text(cr, "No network adapter was found.", UIFAM, 400, 12, x, y, l12, cx("#6b7280", 1), 0); y += l12; }
 	for (int i = 0; i < NNIF; i++) { const NetIf *f = &NIF[i]; int on = i == NCUR; char key[16]; snprintf(key, sizeof key, "row:%d", i); double rh = 10 + l12;
 		RGBA bg = on ? ca(accent(), 1) : fl_hov(key) ? ca(accent(), .18) : (RGBA){0, 0, 0, 0};
@@ -5884,6 +6036,15 @@ static void fl_net(cairo_t *cr, int draw, int dark, int top)
 		char nm2[200]; if (f->cellular) snprintf(nm2, sizeof nm2, "Mobile data%s%s", f->cell[0] ? " · " : "", f->cell); else if (f->wireless) { if (f->ssid[0] && f->ip[0]) snprintf(nm2, sizeof nm2, "Wi-Fi · %s", f->ssid); else snprintf(nm2, sizeof nm2, "Wi-Fi"); } else snprintf(nm2, sizeof nm2, "Ethernet (%s)", f->name);
 		const char *st = f->cellular && !on ? "In reserve" : f->cellular ? "Connected" : f->ip[0] ? "Connected" : !strcmp(f->state, "up") ? "No address" : f->wireless ? "Not connected" : "No cable";
 		const char *ic = f->wireless || f->cellular ? "📶" : "🔌"; double iw = css_width(cr, ic, UIFAM, 400, 12), sw = css_width(cr, st, UIFAM, 400, 11);
+		css_text(cr, ic, UIFAM, 400, 12, x + 6, y + 5, l12, c1, 0);
+		double bx = x + 6 + iw + 8, bw = 330 - 12 - iw - 8 - 8 - sw; css_text(cr, nm2, UIFAM, 600, 12, bx, y + 5, l12, c1, bw);
+		css_text(cr, st, UIFAM, 400, 11, x + 330 - 6 - sw, y + 5 + (l12 - l11) / 2, l11, c2, 0); fl_btn(key, x, y, 330, rh); y += rh; }
+	for (int i = 0; i < NVPN; i++) { const VpnRow *v = &VPNR[i]; int on = v->on; char key[16]; snprintf(key, sizeof key, "vpn:%d", i); double rh = 10 + l12;   /* (1.6.2 Part 33: vpn62.js vpnRows) */
+		RGBA bg = on ? ca(accent(), 1) : fl_hov(key) ? ca(accent(), .18) : (RGBA){0, 0, 0, 0};
+		if (bg.a > 0) { Box r; memset(&r, 0, sizeof r); r.bg = bg; r.rad = 6; box_paint(cr, x, y, 330, rh, &r); }
+		RGBA c1 = on ? cx("#ffffff", 1) : ink, c2 = on ? cx("#ffffff", 1) : cx("#15803d", 1);
+		char nm2[200]; snprintf(nm2, sizeof nm2, "VPN · %s", v->name); const char *st = vpn_state(v);
+		const char *ic = "🔒"; double iw = css_width(cr, ic, UIFAM, 400, 12), sw = css_width(cr, st, UIFAM, 400, 11);
 		css_text(cr, ic, UIFAM, 400, 12, x + 6, y + 5, l12, c1, 0);
 		double bx = x + 6 + iw + 8, bw = 330 - 12 - iw - 8 - 8 - sw; css_text(cr, nm2, UIFAM, 600, 12, bx, y + 5, l12, c1, bw);
 		css_text(cr, st, UIFAM, 400, 11, x + 330 - 6 - sw, y + 5 + (l12 - l11) / 2, l11, c2, 0); fl_btn(key, x, y, 330, rh); y += rh; }
@@ -6084,6 +6245,7 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "mute")) { char q[16]; snprintf(q, sizeof q, "muted=%d", !FLMUTE); fl_volume_set(q); }
 	else if (!strcmp(k, "sounds")) { fl_close(); tb_settings("vol"); return; }
 	else if (!strcmp(k, "npo")) { fl_close(); tb_settings("net"); return; }   /* (the network's Network Settings…) */
+	else if (!strncmp(k, "vpn:", 4)) { vpn_click(atoi(k + 4)); return; }   /* (1.6.2 Part 33: a VPN's row) */
 	else if (!strcmp(k, "qs:8")) { air_set(!AIR_ON); }
 	else if (!strcmp(k, "qs:9")) { mob_set(!MOB_ON); }
 	else if (!strncmp(k, "qs:", 3)) qs_toggle(atoi(k + 3));
@@ -6171,7 +6333,7 @@ static void fl_open(int kind)
 	if (kind == FL_QS) { air_read(); mob_read(); }   /* (1.6.0 Parts 2 and 3: Airplane mode and Mobile data, as they are now) */
 	FLK = kind; FLHOV = FLPRESS = -1; FLSCROLL = 0;
 	if (kind == FL_CAL) { GDateTime *n = fl_now(); FL_Y = g_date_time_get_year(n); FL_M = g_date_time_get_month(n); g_date_time_unref(n); }
-	else if (kind == FL_NET) net_read();
+	else if (kind == FL_NET) { net_read(); vpn_read(); }
 	else if (kind == FL_BRI) bri_load();
 	else { JV *v = jget("/api/volume"); if (v && jbool(v, "ok")) { FLVOL = VOL = (int)jnum(v, "volume", -1); FLMUTE = MUTED = jbool(v, "muted"); } else { FLVOL = VOL; FLMUTE = MUTED; } jfree(v); }
 	if (kind == FL_NC) { for (int i = 0; i < NNT; i++) NT_SEEN = fmax(NT_SEEN, NT[i].at); bar_redraw(); }   /* (ncToggle: what is in the centre is seen) */
@@ -6895,6 +7057,7 @@ static void tm_urgent(void)
 	if (!USER_ID[0] || LOCKED) return;
 	menu_hide(); if (FLK) fl_close();
 	if (FOCUS && FOCUS->full && FOCUS->app) appwin_fs(FOCUS->app, 0);
+	if (native_tm_urgent()) return;   /* (1.6.2 Part 39: the native Task Manager) */
 	for (GList *l = WINS; l; l = l->next) { AppWin *w = l->data; if (w->hidden || w->closing || strcmp(w->k, "taskmgr")) continue;
 		Client *c = WM_OK ? client_of_app(w) : NULL; if (c) { c->ontop = 1; if (c->min) { c->min = 0; XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); } wm_focus(c); wm_restack(); }
 		else appwin_activate(w);
@@ -8089,7 +8252,7 @@ static void state_write(void)
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (!c->ws) continue;   /* (no workspace: going, 12.3c) */
 		if (c->wait == 1) { g_string_append_printf(s, "clientwait %lx %lx app=%s\n", (unsigned long)c->w, (unsigned long)c->frame, c->app ? c->app->k : "-"); continue; }
 		g_string_append_printf(s, "client %lx %lx %d %d %d %d min=%d max=%d full=%d focus=%d app=%s %s\n", (unsigned long)c->w, (unsigned long)c->frame, c->x, c->y, c->cw, c->ch,
-			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : "-", c->title);
+			c->min, c->max, c->full, c == FOCUS, c->app ? c->app->k : c->ak[0] ? c->ak : c->nk[0] ? c->nk : "-", c->title);   /* (nk: a native app, Part 39) */
 		g_string_append_printf(s, "clientws %lx %d %d\n", (unsigned long)c->w, c->ws, c->off);
 		if (c->pg) g_string_append_printf(s, "clientprog %lx %d %.0f\n", (unsigned long)c->w, c->pg, c->pg == 1 ? c->pgt : 0);   /* (1.6.1 Part 25: its progress: 1 a percentage, 2 busy, 3 ending) */
 		if (c->csd || c->clip) g_string_append_printf(s, "clientcsd %lx %d %d %d %d %d %d\n", (unsigned long)c->w, c->csd, c->il, c->it, c->ir, c->ib, c->tbcut);   /* (1.6.1 Part 15: its own title bar, its cut) */   /* (item 4: its workspace, shown or not) */

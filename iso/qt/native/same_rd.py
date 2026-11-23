@@ -104,6 +104,18 @@ class H(http.server.BaseHTTPRequestHandler):
                 import urllib.parse; v = (L.get('data') or {}).get(urllib.parse.unquote(q[4:]))
                 return self.j({'ok': True, 'gen': L.get('gen') or 0, 'v': v if isinstance(v, str) else None})
             return self.j({'ok': True, 'message': 'saved'})
+        # (1.6.2 Part 39, taskmgr_t.js) DIR/tm: Task Manager's requests answered from a JSON file ({"processes": {...}, "system": {...}, ...}: the
+        # same for the page's Task Manager and the native one); the actions taken answered as rudolfd answers them (and noted in DIR/calls)
+        if rd('tm') is not None:
+            T = json.loads(rd('tm'))
+            if w in T and (m == 'GET' or w in ('apps/running',)): return self.j(T[w])
+            if w == 'proc/end' and m == 'POST': return self.j({'ok': True, 'message': 'proc', 'ended': 3, 'kept': 0} if 'tree=1' in q else {'ok': True, 'message': 'proc'})
+            if w in ('service/restart', 'apps/end', 'apps/kill', 'shell/switch') and m == 'POST': return self.j({'ok': True, 'message': w})
+            if w == 'memory/dropcache' and m == 'POST': return self.j({'ok': True, 'freed': 104857600})
+            if w == 'desktop/priority': return self.j({'ok': True, 'on': False})
+        if w == 'desktop/admin' and m == 'POST':   # (1.6.2 Part 39: an administrator's permission, as rudolfd-desktop.inc checks it)
+            o = json.loads(b or b'{}'); k = KEYS.get('Ann')
+            return self.j({'ok': True, 'message': 'allowed'}) if k and o.get('n') == 'Ann' and o.get('p') == k['pw'] else self.err(403, 'Wrong password.')
         if w == 'desktop/accounts':
             acc = (sget(data, 'bd95user') or {}).get('accts', [])
             last = max(acc, key=lambda a: a.get('last', 0))['id'] if acc else ''
@@ -175,9 +187,13 @@ class H(http.server.BaseHTTPRequestHandler):
         if w == 'desktop/engine' and m == 'GET' and rd('engine'): return self.j(dict({'ok': True}, **json.loads(rd('engine'))[self.engine()]))   # (DIR/engine: rudolfd's answer for each engine's page)
         if w == 'stats': return self.j({'ok': True, 'cpu': 12.3, 'load': 0.2, 'memTotal': 8589934592, 'memFree': 4294967296, 'memAvailable': 5368709120})
         if w == 'devlink': return self.j({'ok': True, 'available': True, 'on': False})
+        # (1.6.2 Part 34: the Scan app's case: one scanner found, what it can do)
+        if w == 'scan/find': return self.j({'ok': True, 'scanners': [{'id': 'escl:http://192.168.1.30:80/eSCL', 'name': 'Office Scanner', 'model': 'Office Scanner', 'via': 'network', 'proto': 'eSCL'}]})
+        if w == 'scan/caps': return self.j({'ok': True, 'sources': [{'source': 'flatbed', 'width': 215.9, 'height': 296.9, 'resolutions': [75, 100, 150, 200, 300]}, {'source': 'adf', 'width': 215.9, 'height': 296.9, 'resolutions': [75, 100, 150, 200, 300]}], 'modes': ['color', 'grey', 'bw']})
         if w == 'mic':   # (DIR/mic: the apps using a microphone, a JSON list; muted=0|1 kept, as rudolfd's)
             if m == 'POST': ST['micmuted'] = q == 'muted=1'
             return self.j({'ok': True, 'users': json.loads(rd('mic', b'[]')), 'muted': ST.get('micmuted', False)})
+        if w == 'vpn' and rd('vpn'): return self.j(json.loads(rd('vpn')))   # (1.6.2 Part 33: DIR/vpn, a case's VPNs, as rudolfd's GET vpn)
         if w == 'net' and rd('net'): return self.j(json.loads(rd('net')))   # (1.6.0 Part 5: DIR/net, a case's own network list: mobile data)
         if w == 'net': return self.j({'ok': True, 'interfaces': [{'name': 'wlan0', 'ip': '192.168.1.5/24', 'state': 'up', 'wireless': True, 'virtual': False, 'default': True, 'ssid': 'Home', 'rssi': -55}]})
         if w == 'volume':   # (kept: set=N, muted=0|1, step=up|down, as rudolfd's)

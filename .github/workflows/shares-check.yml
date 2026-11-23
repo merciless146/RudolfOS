@@ -1,0 +1,120 @@
+# 1.6.2 (docs/plan-1.6.2.md Part 35): network shares in File Explorer. Step 1, the kernel's SMB client: the module job builds
+# this tree's kernel (iso/systools/testkernel.sh: the stable release's Linux 6.18.y with kconfig.sh as it is; kept as this
+# run's artifact only) and checks the SMB client in it (iso/qt/host/cifsmod62_t.sh: a signed module, SMB 2.1 and 3 only, no
+# server). Step 2, rudolfd's request to open a share: the host job (iso/qt/host/shares62_t.sh: rudolf-shares and the drives
+# helper's share-mount against Samba in network namespaces, through the runner's own kernel SMB client) and the qemu job
+# (iso/qt/sb/shares62_q.py: the newest beta, or the release that file's serial=SERIAL names, started with the module job's
+# kernel and this tree's rudolfd, rudolf-rootd, helpers, rudolf-shares and rudolf-portal, on a bridge with the same servers).
+# Step 3, File Explorer's Network: the page job (iso/qt/shell2/shares62_t.js: Standard's page in Chromium and Native's app
+# window in WebKit, the engine Native draws with, compared), the host job's firewall checks (WS-Discovery's answers let in), and
+# the qemu job's found checks (this tree's firewall put in place).
+# Run by a push that changes .github/shares62-run.txt (serial=SERIAL: the release; kernel_run=RUN_ID: an earlier run's kernel
+# instead of building one) or this workflow; the host and page jobs also by pull requests. Nothing is published.
+name: Network shares check
+on:
+  push:
+    paths: ['.github/shares62-run.txt', '.github/workflows/shares-check.yml']
+  pull_request:
+    paths: ['iso/sys/rudolf-shares.c', 'iso/sys/rudolf-drives.c', 'iso/sys/rudolfd-shares.inc', 'iso/qt/host/shares62_t.sh', 'iso/sys/root/usr/lib/rudolf/firewall',
+      'desktop/shares62.js', 'desktop/files25.js', 'iso/qt/shell2/shares62_t.js', '.github/workflows/shares-check.yml']
+permissions: {contents: read, actions: read}
+jobs:
+  module:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
+    steps:
+      - uses: actions/checkout@v5
+      # (.github/shares62-run.txt's kernel_run=RUN_ID: that run's kernel artifact is used, and none is built here)
+      - name: The run's settings
+        run: echo "N_krun=$(sed -n 's/^kernel_run=//p' .github/shares62-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV
+      - name: Tools
+        if: env.N_krun == ''
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq bc flex bison libelf-dev libssl-dev squashfs-tools kmod >/dev/null
+      - name: This tree's kernel (the release's Linux 6.18.y, kconfig.sh as it is; an artifact of this run only)
+        if: env.N_krun == ''
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          KV=$(git show origin/gh-pages:stable/manifest.txt | sed -n 's/^kernel //p'); export KERNEL_VERSION=${KV%-rudolf}
+          S=$(date +%s); cd iso && OUT=$PWD/../kout bash systools/testkernel.sh; echo "built in $(( $(date +%s) - S )) s"
+      - name: The SMB client (cifsmod62_t.sh)
+        if: env.N_krun == ''
+        run: |
+          M=$(ls -d iso/work-test/mods/lib/modules/*); sh iso/qt/host/cifsmod62_t.sh kout/config.txt "$M" | tee cifsmod62.txt
+          echo "::notice title=SMB client::$(tail -1 cifsmod62.txt), $(du -k $(find "$M" -name 'cifs.ko*') | cut -f1) KB"
+      - if: always() && env.N_krun == ''
+        uses: actions/upload-artifact@v4
+        with: {name: shares62-kernel, retention-days: 7, path: "kout/vmlinuz\nkout/modules.sfs\nkout/config.txt\ncifsmod62.txt"}
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools (Samba, wsdd, zeroconf, the kernel's SMB client)
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq samba wsdd python3-zeroconf libssl-dev nftables >/dev/null
+          sudo systemctl stop smbd nmbd samba-ad-dc wsdd 2>/dev/null || true
+          sudo modprobe cifs || { sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" >/dev/null && sudo modprobe cifs; } || echo "no cifs module on this runner"
+      - name: shares62_t.sh
+        run: sudo sh iso/qt/host/shares62_t.sh | tee shares62_t.txt; echo "::notice title=Network shares (host)::$(tail -1 shares62_t.txt)"; grep -q '^FAIL' shares62_t.txt && exit 1 || true
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium and WebKit (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium webkit >/dev/null
+      - name: File Explorer's Network (Standard in Chromium, Native's app window in WebKit, compared)
+        run: node iso/qt/shell2/shares62_t.js | tee shares62_js.txt; echo "::notice title=Network shares (page)::$(tail -1 shares62_js.txt)"; tail -1 shares62_js.txt | grep -q '^\([0-9]*\)/\1 passed$'
+  qemu:
+    if: github.event_name != 'pull_request'
+    needs: module
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - name: The run's settings
+        run: for k in serial kernel_run; do echo "N_${k%_run}=$(sed -n "s/^$k=//p" .github/shares62-run.txt 2>/dev/null | head -1)" >> $GITHUB_ENV; done
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq qemu-system-x86 ovmf e2fsprogs python3-cryptography bzip2 samba wsdd python3-zeroconf dnsmasq-base libssl-dev zlib1g-dev libglib2.0-dev >/dev/null
+          sudo systemctl stop smbd nmbd samba-ad-dc wsdd 2>/dev/null || true
+          [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm && echo "QEMU_ACCEL=kvm" >> $GITHUB_ENV || echo "no KVM: QEMU's own (slow)"
+          Q=$PWD/qemu-tree; mkdir -p $Q/build $Q/pc-bios; ln -s /usr/bin/qemu-system-x86_64 $Q/build/qemu-system-x86_64
+          for f in /usr/share/qemu/*; do ln -sf "$(readlink -f "$f")" "$Q/pc-bios/$(basename "$f")"; done
+          bzip2 -c /usr/share/OVMF/OVMF_CODE_4M.fd > $Q/pc-bios/edk2-x86_64-code.fd.bz2
+          echo "QEMU=$Q" >> $GITHUB_ENV
+          mkdir -p parts && cp /usr/share/OVMF/OVMF_VARS_4M.ms.fd parts/ && echo "SB_PARTS=$PWD/parts" >> $GITHUB_ENV
+      - if: env.N_kernel == ''
+        uses: actions/download-artifact@v4
+        with: {name: shares62-kernel, path: .}   # (the artifact holds kout/... and cifsmod62.txt: their common folder is the workspace)
+      - if: env.N_kernel != ''
+        uses: actions/download-artifact@v4
+        with: {name: shares62-kernel, path: ., run-id: '${{ env.N_kernel }}', github-token: '${{ github.token }}'}
+      - name: The release
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S="$N_serial"; [ -n "$S" ] || S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')
+          mkdir -p rel; gh release download "r$S" -D rel -p vmlinuz -p 'base.sfs' -p 'chromium.sfs' -p 'desktop.sfs' -p 'modules.sfs'
+          if [ "$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p')" = "$S" ]; then git show origin/gh-pages:beta/manifest.txt > rel/manifest.txt; git show origin/gh-pages:beta/manifest.sig > rel/manifest.sig
+          else git show origin/gh-pages:files/$S/manifest.txt > rel/manifest.txt; git show origin/gh-pages:files/$S/manifest.sig > rel/manifest.sig; fi
+          ls -la rel kout; echo "::notice title=Network shares check::release $S ($(sed -n 's/^version //p' rel/manifest.txt)) with this tree's kernel"
+      - name: This tree's rudolfd, rudolf-rootd, helpers, rudolf-shares and rudolf-portal (as the release builds them)
+        run: |
+          . iso/systools/hardflags.sh; mkdir -p fix/root fix/bin
+          gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/rudolf-rootd iso/sys/rudolf-rootd.c
+          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c -Wl,-Bstatic -lz -Wl,-Bdynamic; done
+          gcc -O2 $HARD -o fix/root/drives-home iso/sys/rudolf-drives-home.c -Wl,-Bstatic -lz -Wl,-Bdynamic
+          gcc -O2 $HARD -o fix/bin/rudolf-shares iso/sys/rudolf-shares.c -lcrypto
+          mkdir -p fix/lib && cp iso/sys/root/usr/lib/rudolf/firewall fix/lib/
+          gcc -O2 $HARD -o fix/bin/rudolf-portal iso/sys/rudolf-portal.c $(pkg-config --cflags --libs gio-2.0 gio-unix-2.0) -lcrypto
+          python3 iso/systools/hardcheck.py fix/rudolfd fix/rudolf-rootd fix/root/* fix/bin/*; ls -laR fix
+      - name: shares62 in QEMU
+        run: mkdir -p run && cd run && sudo -E env SB_PARTS=$SB_PARTS QEMU=$QEMU QEMU_ACCEL=${QEMU_ACCEL:-tcg,thread=multi} SHARES_FIX=$PWD/../fix SHARES_KERNEL=$PWD/../kout python3 ../iso/qt/sb/shares62_q.py ../rel
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: shares62, retention-days: 7, path: "run/shares62.txt\nrun/s62*/qemu.log\nrun/w62s/*.log"}

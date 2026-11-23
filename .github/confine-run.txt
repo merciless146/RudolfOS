@@ -1,2 +1,2 @@
 serial=
-run=9
+run=10 (t160 on the built kernel: the recovery system checks with the release's own kernel kept)

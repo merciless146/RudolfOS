@@ -3,7 +3,7 @@
 # (xserver-xorg-video-dummy), whose outputs RandR lights like real ones: DUMMY0 1920x1080 at 0,0 (the main one) and DUMMY1 1280x800 to its
 # right; rudolf-display --monitors (built here) gives the list both engines read (Standard through the stand-in rudolfd's screen
 # request, Native as /run/rudolf/monitors: RUDOLF_MON_RUN). Xorg needs root (or sudo without a password). Needs too what same_t.sh needs.
-#   sh monbeh_t.sh [OUT] [RUDOLF-NATIVE]      (MON_SCALE=125: at that display scaling)
+#   sh monbeh_t.sh [OUT] [RUDOLF-NATIVE]      (MON_SCALE=125: at that display scaling; MON_DM=dark: in dark mode, else light)
 HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/monbeh_t.XXXXXX); PORT=${SAME_PORT:-8612}; DSP=${SAME_DSP:-:84}
 OUT=${1:-$T/out}; BIN=$2
 command -v xdotool >/dev/null && command -v import >/dev/null && command -v xrandr >/dev/null || { echo "SKIP: needs xdotool, ImageMagick and xrandr"; exit 0; }
