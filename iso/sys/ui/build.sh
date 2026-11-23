@@ -12,5 +12,5 @@ case "$SRC" in ui-sample) S=$HERE/ui-sample.c;; *) S=$HERE/../apps/$SRC.c;; esac
 [ -f "$S" ] || { echo "build.sh: no $S"; exit 1; }
 WE=""; [ "${RUI_WERROR:-0}" = 1 ] && WE=-Werror
 CF="-O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-sign-compare -Wno-misleading-indentation -Wno-deprecated-declarations $WE"
-gcc $CF "$@" -I"$W" -I"$HERE" -c -o "$W/rudolf-ui.o" "$HERE/rudolf-ui.c" $(pkg-config --cflags gtk+-3.0)
-gcc $CF "$@" -I"$W" -I"$HERE" -o "$OUT" "$S" "$W/rudolf-ui.o" $(pkg-config --cflags --libs gtk+-3.0) -lX11 -lm
+gcc $CF "$@" -I"$W" -I"$HERE" -c -o "$W/rudolf-ui.o" "$HERE/rudolf-ui.c" $(pkg-config --cflags gtk+-3.0 fontconfig)
+gcc $CF "$@" -I"$W" -I"$HERE" -o "$OUT" "$S" "$W/rudolf-ui.o" $(pkg-config --cflags --libs gtk+-3.0 fontconfig) -lX11 -lm

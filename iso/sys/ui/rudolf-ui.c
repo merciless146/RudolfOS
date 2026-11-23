@@ -19,6 +19,7 @@
 #include <sys/time.h>
 #include <time.h>
 #include <unistd.h>
+#include <fontconfig/fontconfig.h>
 #include "rudolf-ui.h"
 
 /* what rudolf-native's code (below, from rui-gen.h) reads: the settings it was written for */
@@ -123,7 +124,7 @@ const char *rui_tr(const char *en)
 }
 
 /* ------------------------------------------------------------------ the settings and the theme */
-static double line_h(double px, int wt);
+static double line_h(double px, int wt); static void font_options(void);
 double rui_px(double css) { return css * RUI.z; }
 const char *rui_version(void) { return RUI_RVER; }
 const char *rui_version_date(void) { return RUI_RVERDATE; }
@@ -184,10 +185,27 @@ static gboolean settings_tick(gpointer d)
 	(void)d; JV *v = (JV *)rui_get("/api/desktop/settings"); if (!v) return G_SOURCE_CONTINUE;
 	double g = jnum(v, "gen", 0); jfree(v);
 	int dk = RUI.dark; if (!strcmp(S.dm, "auto")) { int nd = is_dark(); dk = nd != RUI.dark; }
-	if (g != RUI.gen || dk) { if (settings_read() == 1) { theme_apply(); redraw_all(); GArray *l = SETCB ? g_array_copy(SETCB) : NULL;   /* (a callback may make or destroy widgets) */
+	if (g != RUI.gen || dk) { if (settings_read() == 1) { font_options(); theme_apply(); redraw_all(); GArray *l = SETCB ? g_array_copy(SETCB) : NULL;   /* (a callback may make or destroy widgets) */
 		for (guint i = 0; l && i < l->len; i++) { Cb *c = &g_array_index(l, Cb, i); int live = !c->w; for (guint k = 0; !live && SETCB && k < SETCB->len; k++) if (g_array_index(SETCB, Cb, k).w == c->w && g_array_index(SETCB, Cb, k).d == c->d) live = 1; if (live) c->cb(c->d); }
 		if (l) g_array_unref(l); } }
 	return G_SOURCE_CONTINUE;
+}
+/* the writing as Chromium's: antialiased and hinted as fontconfig has it for the page's font at its size (Chromium asks fontconfig for
+   each font; GTK's own defaults would differ from it), and the font's own line height (metrics not rounded up to whole pixels each:
+   Pango's 17 px lines for DejaVu Sans at 13 px against the page's 15) */
+static void font_options(void)
+{
+	FcPattern *p = FcPatternCreate(); char fam[96]; snprintf(fam, sizeof fam, "%.*s", (int)strcspn(RUI.family, ","), RUI.family);
+	FcPatternAddString(p, FC_FAMILY, (const FcChar8 *)fam); FcPatternAddDouble(p, FC_PIXEL_SIZE, RUI.fs * RUI.z);
+	FcConfigSubstitute(NULL, p, FcMatchPattern); FcDefaultSubstitute(p); FcResult r; FcPattern *m = FcFontMatch(NULL, p, &r);
+	FcBool aa = FcTrue, hint = FcTrue; int hs = FC_HINT_SLIGHT, rgba = FC_RGBA_NONE;
+	if (m) { FcPatternGetBool(m, FC_ANTIALIAS, 0, &aa); FcPatternGetBool(m, FC_HINTING, 0, &hint); FcPatternGetInteger(m, FC_HINT_STYLE, 0, &hs); FcPatternGetInteger(m, FC_RGBA, 0, &rgba); FcPatternDestroy(m); }
+	FcPatternDestroy(p);
+	static const char *const HS[] = { "hintnone", "hintslight", "hintmedium", "hintfull" };
+	GtkSettings *gs = gtk_settings_get_default(); g_object_set(gs, "gtk-xft-antialias", aa ? 1 : 0, "gtk-xft-hinting", hint ? 1 : 0, "gtk-xft-hintstyle", HS[hint ? (hs >= 0 && hs <= 3 ? hs : 1) : 0], "gtk-xft-rgba", "none", NULL);
+	cairo_font_options_t *fo = cairo_font_options_create(); cairo_font_options_set_antialias(fo, aa ? CAIRO_ANTIALIAS_GRAY : CAIRO_ANTIALIAS_NONE);
+	cairo_font_options_set_hint_style(fo, !hint ? CAIRO_HINT_STYLE_NONE : hs == FC_HINT_FULL ? CAIRO_HINT_STYLE_FULL : hs == FC_HINT_MEDIUM ? CAIRO_HINT_STYLE_MEDIUM : hs == FC_HINT_NONE ? CAIRO_HINT_STYLE_NONE : CAIRO_HINT_STYLE_SLIGHT);
+	cairo_font_options_set_hint_metrics(fo, CAIRO_HINT_METRICS_OFF); gdk_screen_set_font_options(gdk_screen_get_default(), fo); cairo_font_options_destroy(fo); (void)rgba;
 }
 int rui_init(int *argc, char ***argv, const char *app)
 {
@@ -196,16 +214,12 @@ int rui_init(int *argc, char ***argv, const char *app)
 	const char *b = getenv("RUI_BASE");
 	if (b && !strncmp(b, "http://", 7)) { char h[64]; int p = 0; if (sscanf(b + 7, "%63[^:/]:%d", h, &p) >= 1) { snprintf(HOST, sizeof HOST, "%s", h); if (p > 0) PORT = p; } }
 	gdk_set_allowed_backends("x11"); gtk_init(argc, argv);
-	/* the writing as Chromium's: antialiased in grey, slight hinting, the font's own line height (metrics not rounded up to whole
-	   pixels each: Pango's 17 px lines for DejaVu Sans at 13 px against the page's 15) */
-	{ GtkSettings *gs = gtk_settings_get_default(); g_object_set(gs, "gtk-xft-antialias", 1, "gtk-xft-hinting", 1, "gtk-xft-hintstyle", "hintslight", "gtk-xft-rgba", "none", NULL);
-	  cairo_font_options_t *fo = cairo_font_options_create(); cairo_font_options_set_antialias(fo, CAIRO_ANTIALIAS_GRAY); cairo_font_options_set_hint_style(fo, CAIRO_HINT_STYLE_SLIGHT);
-	  cairo_font_options_set_hint_metrics(fo, CAIRO_HINT_METRICS_OFF); gdk_screen_set_font_options(gdk_screen_get_default(), fo); cairo_font_options_destroy(fo); }
+	font_options();
 	g_set_prgname(g_strdup_printf("rudolf-%s", APP));
 	memset(&RUI, 0, sizeof RUI); snprintf(RUI.accent, sizeof RUI.accent, "#2563eb"); snprintf(RUI.acfg, sizeof RUI.acfg, "#ffffff"); RUI.fs = 13; RUI.z = 1; RUI.scale = 100;
 	snprintf(RUI.lang, sizeof RUI.lang, "en"); snprintf(RUI.tx, sizeof RUI.tx, "#000000"); ui_family(NULL); snprintf(RUI.family, sizeof RUI.family, "%s", UIFAM);
 	int ok = get_token();
-	if (ok) settings_read(); else g_printerr("librudolf-ui: rudolfd gave no token (only the desktop's own programs are given it)\n");
+	if (ok) settings_read(); font_options(); if (!ok) g_printerr("librudolf-ui: rudolfd gave no token (only the desktop's own programs are given it)\n");
 	theme_apply();
 	g_timeout_add_seconds(3, settings_tick, NULL);
 	return ok;
