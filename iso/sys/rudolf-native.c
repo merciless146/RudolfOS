@@ -4498,6 +4498,75 @@ static gboolean pet_tick(gpointer d)
 	gint64 now = g_get_monotonic_time(); double dt = fmin(.2, PET_LAST ? (now - PET_LAST) / 1e6 : 0); PET_LAST = now; double t = (now - FX_T0) / 1e6;
 	pet_step(dt, t); pet_draw(t); FXD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); return G_SOURCE_CONTINUE;
 }
+/* ---- Desert Camp (desert62.js: dsSun, dsSmoke, dsFlames, dsTents, dsStarsDraw, dsMeteor), the same numbers: at sunrise the sun's
+   mirage and the campfires' smoke; at night the twinkling and shooting stars, the lit tents breathing and the flames. Worked out
+   from the time alone, so the frames are the page's; 800×534 (half the picture), every 100 ms. */
+static const double DS_HZ = 640, DS_SUN[3] = { 1030, 640, 44 };
+static const double DS_FIRES[4][3] = { { 760, 930, 1.35 }, { 312, 714, .42 }, { 1262, 698, .36 }, { 905, 680, .26 } };
+static const double DS_LIT[5][4] = { { 548, 890, 340, 190 }, { 370, 706, 80, 45 }, { 1204, 700, 70, 40 }, { 1260, 684, 46, 26 }, { 872, 679, 36, 20 } };
+static double DS_ST[140][5], DS_MT[16][5], DS_MTP; static int DS_INIT; static cairo_surface_t *DS_CV; static guint DS_T;
+static uint32_t DS_RX; static double ds_r(void) { DS_RX = DS_RX * 1103515245u + 12345u; return ((DS_RX >> 16) & 32767) / 32768.0; }
+static void ds_init(void)
+{
+	if (DS_INIT) return; DS_INIT = 1; DS_RX = 62;
+	for (int i = 0; i < 140; i++) { double x = ds_r() * 1600, y = ds_r() * (DS_HZ - 40), b1 = ds_r(), b = .35 + .65 * b1 * ds_r(), w = .6 + 2.2 * ds_r(), p = ds_r() * 6.283;
+		DS_ST[i][0] = x; DS_ST[i][1] = y; DS_ST[i][2] = b; DS_ST[i][3] = w; DS_ST[i][4] = p; }
+	DS_RX = 1622; double t = 4;
+	for (int i = 0; i < 16; i++) { t += 7 + 18 * ds_r(); double x0 = 120 + 1300 * ds_r(), y0 = 40 + 300 * ds_r(), an = .2 + .4 * ds_r(), ln = 260 + 260 * ds_r();
+		DS_MT[i][0] = t; DS_MT[i][1] = x0; DS_MT[i][2] = y0; DS_MT[i][3] = an; DS_MT[i][4] = ln; }
+	DS_MTP = DS_MT[15][0] + 9;
+}
+static double ds_mod(double a, double p) { return fmod(fmod(a, p) + p, p); }
+static void ds_rad(cairo_t *g, double x, double y, double r0, double r1, double rr, double gg, double bb, double a0, double r2, double g2, double b2)
+{ cairo_pattern_t *p = cairo_pattern_create_radial(x, y, r0, x, y, r1); cairo_pattern_add_color_stop_rgba(p, 0, rr / 255, gg / 255, bb / 255, a0); cairo_pattern_add_color_stop_rgba(p, 1, r2 / 255, g2 / 255, b2 / 255, 0); cairo_set_source(g, p); cairo_pattern_destroy(p); }
+static void ds_draw(double t)
+{
+	ds_init(); if (!DS_CV) DS_CV = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 800, 534);
+	cairo_t *g = cairo_create(DS_CV); cairo_set_operator(g, CAIRO_OPERATOR_CLEAR); cairo_paint(g); cairo_set_operator(g, CAIRO_OPERATOR_OVER); cairo_scale(g, .5, .5);
+	if (!is_dark()) {
+		double sx = DS_SUN[0], hz = DS_SUN[1], r = DS_SUN[2], cy = hz - r * .42, lob = r * (.42 + .1 * sin(t * .55) + .04 * sin(t * 1.7)), neck = r * (.34 + .14 * sin(t * .8 + 1));
+		ds_rad(g, sx, hz - 6, r * .8, r * 3.4, 255, 170, 70, .38 + .05 * sin(t * .9), 255, 130, 40); cairo_rectangle(g, sx - r * 3.6, hz - r * 3.6, r * 7.2, r * 3.6); cairo_fill(g);
+		for (int y = (int)floor(cy - r); y < hz + lob; y += 2) { double hw;
+			if (y < hz) { double dy = y - cy; hw = dy * dy < r * r ? sqrt(r * r - dy * dy) : 0; double k = fmax(0, 1 - (hz - y) / (r * .5)); hw = hw * (1 - k) + fmin(hw, neck) * k; }
+			else { double u = (y - hz) / lob; hw = neck + (r * .98 - neck) * sin(M_PI * fmin(1, .15 + u * 1.05)); hw *= 1 - pow(u, 5); }
+			if (hw <= .5) continue;
+			double sh = 1.6 * sin(y * .45 + t * 4.1) + .9 * sin(y * .13 - t * 2.3), u = fmax(0, fmin(1, (y - (cy - r)) / (hz - (cy - r))));
+			double cg = y < hz ? round(252 - 30 * u) : 238, cb = y < hz ? round(230 - 90 * u) : 186, a = y < hz ? 1 : .96 - .4 * (y - hz) / lob;
+			cairo_set_source_rgba(g, 1, cg / 255, cb / 255, a); cairo_rectangle(g, sx - hw + sh, y, hw * 2, 2.4); cairo_fill(g); }
+		for (int f = 0; f < 4; f++) { double fx = DS_FIRES[f][0], fy = DS_FIRES[f][1], fs = DS_FIRES[f][2], P = 9; int N = 15;
+			for (int k = 0; k < N; k++) { double age = ds_mod(t + k * P / N + fx * .01, P), u = age / P;
+				double x = fx + (age * 7 + sin(age * .9 + k) * 5) * fs, y = fy - 6 * fs - age * 20 * fs, rad = (5 + u * 26) * fs, a = .42 * sin(M_PI * fmin(1, u * 1.2)) * (1 - u * .8);
+				if (a <= .01) continue; ds_rad(g, x, y, 0, rad, 232, 224, 216, a, 232, 224, 216); cairo_rectangle(g, x - rad, y - rad, rad * 2, rad * 2); cairo_fill(g); } }
+	} else {
+		for (int i = 0; i < 140; i++) { double x = DS_ST[i][0], y = DS_ST[i][1], b = DS_ST[i][2], s = sin(t * DS_ST[i][3] + DS_ST[i][4]), a = b * (.15 + .85 * s * s); if (a < .05) continue;
+			cairo_set_source_rgba(g, 240 / 255., 244 / 255., 1, a); cairo_rectangle(g, x - 1, y - 1, 2.2, 2.2); cairo_fill(g);
+			if (b > .75 && a > .6) { cairo_set_source_rgba(g, 240 / 255., 244 / 255., 1, a * .35); cairo_rectangle(g, x - 4, y - .4, 8, .9); cairo_rectangle(g, x - .4, y - 4, .9, 8); cairo_fill(g); } }
+		if (!S.rmotion) { double tc = fmod(t, DS_MTP);
+			for (int i = 0; i < 16; i++) { double u = (tc - DS_MT[i][0]) / .9; if (u < 0 || u > 1) continue;
+				double an = DS_MT[i][3], ln = DS_MT[i][4], dx = (DS_MT[i][1] < 800 ? 1 : -1) * cos(an), dy = sin(an), hx = DS_MT[i][1] + dx * ln * u, hy = DS_MT[i][2] + dy * ln * u, tl = ln * .4 * sin(M_PI * u);
+				if (hy > DS_HZ - 20) continue; double ex = hx - dx * tl, ey = hy - dy * tl;
+				cairo_pattern_t *p = cairo_pattern_create_linear(hx, hy, ex, ey); cairo_pattern_add_color_stop_rgba(p, 0, 1, 1, 1, .95 * sin(M_PI * u)); cairo_pattern_add_color_stop_rgba(p, 1, 200 / 255., 215 / 255., 1, 0);
+				cairo_set_source(g, p); cairo_pattern_destroy(p); cairo_set_line_width(g, 2); cairo_move_to(g, hx, hy); cairo_line_to(g, ex, ey); cairo_stroke(g); } }
+		for (int i = 0; i < 5; i++) { double cx = DS_LIT[i][0], by = DS_LIT[i][1], tw = DS_LIT[i][2], th = DS_LIT[i][3], a = .08 + .04 * sin(t * 1.3 + cx * .01) + .02 * sin(t * 3.7 + by);
+			ds_rad(g, cx, by - th * .35, 0, tw * .6, 255, 214, 140, a, 255, 200, 120); cairo_rectangle(g, cx - tw * .6, by - th * .35 - tw * .6, tw * 1.2, tw * 1.2); cairo_fill(g); }
+		for (int f = 0; f < 4; f++) { double fx = DS_FIRES[f][0], fy = DS_FIRES[f][1], fs = DS_FIRES[f][2], fl = .85 + .1 * sin(t * 7.3 + fx) + .05 * sin(t * 13.1 + fy);
+			ds_rad(g, fx, fy - 4 * fs, 0, 70 * fs, 255, 150, 60, .32 * fl, 255, 120, 40); cairo_rectangle(g, fx - 70 * fs, fy - 74 * fs, 140 * fs, 110 * fs); cairo_fill(g);
+			for (int j = 0; j < 5; j++) { double ox = (j - 2) * 4.2 * fs, h = fs * (16 + 7 * sin(t * 5.1 + j * 1.7) + 4 * sin(t * 8.7 + j * 2.9)) * (j == 2 ? 1.25 : 1), w = fs * (4.2 + 1.2 * sin(t * 4.3 + j)),
+					lean = fs * (2.5 * sin(t * 2.1 + j * 1.3)), bx = fx + ox, by = fy - 2 * fs;
+				cairo_pattern_t *p = cairo_pattern_create_linear(bx, by, bx, by - h); cairo_pattern_add_color_stop_rgba(p, 0, 1, 236 / 255., 170 / 255., .95);
+				cairo_pattern_add_color_stop_rgba(p, .35, 1, 170 / 255., 60 / 255., .85); cairo_pattern_add_color_stop_rgba(p, 1, 220 / 255., 70 / 255., 20 / 255., 0); cairo_set_source(g, p); cairo_pattern_destroy(p);
+				/* (the canvas's quadratic curves as cairo's cubic ones: the control points two thirds of the way) */
+				double q1x = bx - w * .9 + lean * .3, q1y = by - h * .55, ex = bx + lean, ey = by - h, q2x = bx + w * .9 + lean * .3, q2y = by - h * .55;
+				cairo_move_to(g, bx - w, by); cairo_curve_to(g, bx - w + 2. / 3 * (q1x - bx + w), by + 2. / 3 * (q1y - by), ex + 2. / 3 * (q1x - ex), ey + 2. / 3 * (q1y - ey), ex, ey);
+				cairo_curve_to(g, ex + 2. / 3 * (q2x - ex), ey + 2. / 3 * (q2y - ey), bx + w + 2. / 3 * (q2x - bx - w), by + 2. / 3 * (q2y - by), bx + w, by); cairo_close_path(g); cairo_fill(g); }
+			for (int k = 0; k < 4; k++) { double P = 2.4, age = ds_mod(t + k * P / 4 + fx * .003, P), u = age / P, x = fx + sin(age * 3 + k * 2) * 6 * fs, y = fy - 10 * fs - age * 28 * fs;
+				cairo_set_source_rgba(g, 1, 190 / 255., 90 / 255., .8 * (1 - u)); cairo_rectangle(g, x, y, 1.6 * fs + .6, 1.6 * fs + .6); cairo_fill(g); } }
+	}
+	cairo_destroy(g);
+}
+static int fx_desert(void) { return !strcmp(S.dyn, "desert") && fx_shown(); }
+static gboolean ds_tick(gpointer d) { (void)d; if (!fx_seen()) return G_SOURCE_CONTINUE; if (!CHARGING && BAT >= 0 && (FX_SLOWT ^= 1)) return G_SOURCE_CONTINUE;
+	ds_draw((g_get_monotonic_time() - FX_T0) / 1e6); FXD = 1; if (DESKAREA) gtk_widget_queue_draw(DESKAREA); return G_SOURCE_CONTINUE; }
 /* (aurUpdate, stUpdate: what is shown with these settings; the timers started or stopped) */
 static void fx_update(void)
 {
@@ -4509,6 +4578,10 @@ static void fx_update(void)
 	if (o) { int mode = is_dark(); if (mode != PET_MODE) { PET_MODE = mode; for (int i = 0; i < 70; i++) pet_new(&PS[i], 1); for (int i = 0; i < 28; i++) lan_new(&LS[i], 1); }
 		pet_draw(S.rmotion ? 0 : (g_get_monotonic_time() - FX_T0) / 1e6);
 		if (!S.rmotion && !PET_T) PET_T = g_timeout_add(66, pet_tick, NULL); else if (S.rmotion && PET_T) { g_source_remove(PET_T); PET_T = 0; } }
+	int dz = BG && fx_desert();   /* (Desert Camp: desert62.js) */
+	if (!dz && DS_T) { g_source_remove(DS_T); DS_T = 0; }
+	if (dz) { ds_draw(S.rmotion ? 11.3 : (g_get_monotonic_time() - FX_T0) / 1e6);
+		if (!S.rmotion && !DS_T) DS_T = g_timeout_add(100, ds_tick, NULL); else if (S.rmotion && DS_T) { g_source_remove(DS_T); DS_T = 0; } }
 	FXD = 1;
 }
 static void fx_draw(cairo_t *cr)
@@ -4521,6 +4594,8 @@ static void fx_draw(cairo_t *cr)
 		if (ST_PIX && ST_BOX[2] > 0) { cairo_save(cr); cairo_translate(cr, ox + ST_BOX[0] * s, oy + ST_BOX[1] * s);
 			cairo_scale(cr, ST_BOX[2] * s / gdk_pixbuf_get_width(ST_PIX), ST_BOX[3] * s / gdk_pixbuf_get_height(ST_PIX)); gdk_cairo_set_source_pixbuf(cr, ST_PIX, 0, 0); cairo_paint(cr); cairo_restore(cr); }
 		if (PET_CV) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 800, 1067 * s / 534); cairo_set_source_surface(cr, PET_CV, 0, 0); cairo_paint(cr); cairo_restore(cr); } }
+	if (fx_desert() && DS_CV) { cairo_save(cr); cairo_translate(cr, ox, oy); cairo_scale(cr, 1600 * s / 800, 1067 * s / 534); cairo_set_source_surface(cr, DS_CV, 0, 0);
+		cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_BILINEAR); cairo_paint(cr); cairo_restore(cr); }
 }
 static int di_at(double x, double y)
 {
