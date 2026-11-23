@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.2 (in progress)
 Summary: In progress.
+- Kernel: the SMB client for network shares (Windows computers and NAS boxes, 1.6.2 Part 35) is built in as a signed module, loaded
+  only when a share is opened. It speaks SMB 3 (and SMB 2.1 when asked for a share), never the old SMB 1 or 2.0, and Rudolf OS
+  serves no share.
 - New: scanners (step 1 of 4: driverless scanning, without the Scan app yet). Rudolf OS finds the scanners and
   printer-scanners on the home network that speak eSCL (AirScan) or WSD, as most made since about 2015 do, with the
   firewall on, and USB ones that speak eSCL through IPP over USB; it scans with sane-airscan (pages in colour, grey or black
