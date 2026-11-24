@@ -5540,6 +5540,14 @@ static int native_open_page(const char *q)
 	char k[KN], pg[40]; if (sscanf(q, "%31s %39s", k, pg) != 2 || strcmp(k, "help") || strspn(pg, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(pg)) return 0;
 	char ex[64]; snprintf(ex, sizeof ex, "&page=%s", pg); app_open_ex("help", NULL, ex, 0); return 1;
 }
+/* (1.6.3 Part 3: Settings › Volume Controls' ▶, a style chosen, a volume let go) "sfx K V P": the sound K at volume V (0-1, the page's
+   master x the category's, from Settings' own working copy) in its style P, as the page's sfx() plays it on Standard */
+static void native_sfx(const char *a)
+{
+	char k[16] = ""; double v = 0; int p = 0; if (sscanf(a, "%15s %lf %d", k, &v, &p) != 3 || !(v > 0) || v > 1) return;
+	int i = snd_i(k); if (i < 0) return; if (p < 0 || p >= SNDPC[i] || !SNDPN[i][p]) p = 0;
+	snd_out(i, v, SNDP[i][p], SNDPN[i][p], &SNDR[i][p]);
+}
 static int native_ask(Client *c, XClientMessageEvent *m)
 {
 	native_atoms(); if (m->message_type != A_RASK) return 0;
@@ -5548,7 +5556,8 @@ static int native_ask(Client *c, XClientMessageEvent *m)
 	if (XGetWindowProperty(DPY, c->w, A_RASK, 0, 50, True, AnyPropertyType, &type, &fmt, &n, &after, &d) == Success && d) { snprintf(q, sizeof q, "%.*s", (int)MIN(n, sizeof q - 1), (char *)d); XFree(d); }
 	if (!strcmp(q, "wins")) { WINS_NTO = c->w; wins_ask(NULL); return 1; }
 	if (!strncmp(q, "winop ", 6)) { char id[24] = "", op[12] = ""; if (sscanf(q + 6, "%23s %11s", id, op) == 2 && (!strcmp(op, "focus") || !strcmp(op, "end"))) win_op(id, op); return 1; }
-	if (!strcmp(q, "kbcap 1") || !strcmp(q, "kbcap 0")) { native_kbcap(c, q[6] == '1'); return 1; }   /* (Settings' Press keys…: every key its own for a moment) */
+	if (!strcmp(q, "kbcap 1") || !strcmp(q, "kbcap 0")) { native_kbcap(c, q[6] == '1'); return 1; }
+	if (!strncmp(q, "sfx ", 4)) { native_sfx(q + 4); return 1; }   /* (Settings' Volume Controls: a sound tried) */   /* (Settings' Press keys…: every key its own for a moment) */
 	if (!strncmp(q, "open ", 5) && native_open_page(q + 5)) return 1;
 	if (!strncmp(q, "open ", 5)) { const char *k = q + 5; if (key_ok(k) && (app_find(k) || !strcmp(k, "do-hwcheck"))) app_open(k, NULL); return 1; }   /* (do-hwcheck: the page's hardware check, Task Manager's Hardware) */
 	return 1;

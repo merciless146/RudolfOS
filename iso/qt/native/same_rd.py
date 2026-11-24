@@ -116,6 +116,9 @@ class H(http.server.BaseHTTPRequestHandler):
             # (Settings › Bring in files, settings_t.js U14-U15: rudolfd's bring/* answered ok; the account's files from DIR/home, a Range read as
             # rudolfd's api_home_read answers it, home/delete removing one)
             if w.startswith('bring/') and m == 'POST': return self.j({'ok': True, 'message': w})
+            # (Settings › Volume Controls, settings_t.js V-checklist: the sound card, the microphone, the echo canceller, as rudolfd answers them)
+            if w in ('audio', 'audio/mic') and m == 'POST': return self.j({'ok': True, 'message': 'sound card set' if w == 'audio' else 'microphone chosen'})
+            if w == 'sound/echo' and m == 'POST': return self.j({'ok': True, 'on': 'on=1' in q, 'active': 'on=1' in q})
             if w in ('home/read', 'home/delete'):
                 import urllib.parse; rel = urllib.parse.parse_qs(q).get('path', [''])[0]; f = os.path.normpath(os.path.join(D, 'home', rel))
                 if not f.startswith(os.path.join(D, 'home') + os.sep) or not os.path.isfile(f): return self.err(404, 'no such file')

@@ -213,7 +213,7 @@ void set_notify(const char *title, const char *body, int error) { rui_notify(tit
 /* ================================================================== the page: blocks laid out as the page's CSS lays them out */
 enum { I_H3, I_H4, I_SGRP, I_MSG, I_R2, I_BTNS, I_BLOCK, I_SPACE, I_CUSTOM, I_CHECK };
 typedef struct { int k; GtkWidget *w; double gap, dy, mt, mb; int full; char *text; int grey, weight; double x, y, wd, h; GtkWidget *bt[8]; int nb; } CItem;   /* k: 0 a control, 1 a line break, 2 .msg, 3 writing, 4 label.ck, 5 .rmrow, 6 pre */
-struct Cell { char *label; GPtrArray *items; int more; double lx, ly, lw, lh, y, h; };
+struct Cell { char *label; GPtrArray *items; int more; double lx, ly, lw, lh, y, h, ltop; };   /* (ltop > 0: the label at the row's top, ltop - 1 px down: align-self start) */
 typedef struct { int k; char *text; int grey; double mt, mb, x, y, w, h; GtkWidget *wg; Cell *cell; GtkWidget *btn[8]; int nb; double minh; double (*lay)(void *d, double x, double y, double w); void *ld; } Item;
 static GPtrArray *ITEMS; static GtkWidget *FX, *SCR, *FOOT, *FOOTST, *FOOTB[3], *AREA, *OUTER, *SIDE, *SBAR, *SQ, *DD; static int (*FDIRTY)(void); static SetFoot FACT; static double FX_W = 587;
 static char CUR[16];
@@ -294,7 +294,7 @@ static double cell_lay(Cell *c, double x, double y, double w)
 		/* a block */
 		if (inl) { cy = lt + lhh; inl = 0; }
 		cy += first ? it->mt : fmax(pmb, it->mt); first = 0; it->x = x; it->y = cy; it->wd = w;
-		if (it->k == 2) { double lh = lh_of(LK->msg_fs[0], 400); int n = text_lines(it->text, LK->msg_fs[0], 400, w, 0, NULL); it->h = fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }
+		if (it->k == 2) { double fs = it->grey == 2 ? 12 : LK->msg_fs[0], lh = lh_of(fs, 400); int n = text_lines(it->text, fs, 400, w, 0, NULL); it->h = fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }
 		else if (it->k == 4) { double lh, h = ck_lines(it->text, w, &lh); it->h = fmax(19, h); rui_check_wrap(it->w, w, it->h); place(it->w, x, cy, 0, 0); }
 		else if (it->k == 6) { PangoLayout *l = lay(pctx(), it->text, 11, 400, w, 0); PangoFontDescription *f = pango_font_description_from_string("monospace"); pango_font_description_set_absolute_size(f, 11 * Z() * PANGO_SCALE); pango_layout_set_font_description(l, f); pango_font_description_free(f);
 			int n = pango_layout_get_line_count(l); g_object_unref(l); it->h = fmin(160, n * pre_lh()); place(it->w, x, cy, w, it->h); }
@@ -317,11 +317,12 @@ static void lay_all(void)
 		case I_H3: i->h = lh_of(LK->h3_fs[0], 700); break;
 		case I_H4: i->h = lh_of(13, 700); break;
 		case I_SGRP: i->h = lh_of(SGRP_FS, 700); break;
-		case I_MSG: { int n = text_lines(i->text, LK->msg_fs[0], 400, W, 0, NULL); i->h = fmax(LK->msg_mh[0], n * lh_of(LK->msg_fs[0], 400)); place(i->wg, x0, y, W, i->h); break; }
+		case I_MSG: { double fs = i->grey == 2 ? 12 : LK->msg_fs[0]; int n = text_lines(i->text, fs, 400, W, 0, NULL); i->h = fmax(LK->msg_mh[0], n * lh_of(fs, 400)); place(i->wg, x0, y, W, i->h); break; }
 		case I_R2: { Cell *c = i->cell; double gap = LK->r2_gap[0], lw = 130; int n = text_lines(c->label, RUI.fs, 400, lw, 0, NULL); c->lh = n * lh_of(RUI.fs, 400);
 			double ch = cell_lay(c, x0 + lw + gap, y, W - lw - gap); double h = fmax(c->lh, ch);
 			if (ch < h) { /* (align-items: center: the cell in the middle of a taller label) */ double dy = (h - ch) / 2; for (guint q = 0; q < c->items->len; q++) { CItem *it = g_ptr_array_index(c->items, q); if (it->w && it->k != 1) { it->y += dy; gtk_fixed_move(GTK_FIXED(FX), it->w, R(it->x), R(it->y)); } } }
-			c->lx = x0; c->ly = y + (h - c->lh) / 2; c->lw = lw; c->y = y; c->h = h; i->h = h; i->mb = c->more ? gap : LK->r2_mb[0]; break; }
+			if (c->ltop > 0) { h = fmax(h, c->ltop - 1 + c->lh); }
+			c->lx = x0; c->ly = c->ltop > 0 ? y + c->ltop - 1 : y + (h - c->lh) / 2; c->lw = lw; c->y = y; c->h = h; i->h = h; i->mb = c->more ? gap : LK->r2_mb[0]; break; }
 		case I_BTNS: { double bx = x0, bh = 0; for (int b = 0; b < i->nb; b++) { double bw = nat_w(i->btn[b]), h = fmax(i->minh, nat_h(i->btn[b], bw)); if (i->minh > 0) { int ow, oh; gtk_widget_get_size_request(i->btn[b], &ow, &oh); gtk_widget_set_size_request(i->btn[b], ow, R(h)); } place(i->btn[b], bx, y, 0, 0); bx += bw + LK->rmrow_gap[0]; bh = fmax(bh, h); } i->h = bh; break; }
 		case I_BLOCK: { double h = nat_h(i->wg, W); place(i->wg, x0, y, W, 0); i->h = h; break; }
 		case I_CUSTOM: i->h = i->lay(i->ld, x0, y, W); break;
@@ -357,12 +358,12 @@ static gboolean fx_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 		case I_H4: if (RUI.dark) rui_color(cr, "mut", 1); else cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0);
 			if (RUI.dark) setc(cr, LK->msg_dark, 1); { char *u = g_utf8_strup(i->text, -1); text_draw(cr, u, i->x, i->y, 13, 700, 0, .04, i->h); g_free(u); } break;
 		case I_SGRP: fgc(cr, 1); { char *u = g_utf8_strup(i->text, -1); text_draw(cr, u, i->x, i->y, SGRP_FS, 700, 0, .04, i->h); g_free(u); } break;
-		case I_MSG: if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (i->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
-			text_draw(cr, i->text, i->x, i->y, LK->msg_fs[0], 400, i->w, 0, lh_of(LK->msg_fs[0], 400)); break;
+		case I_MSG: if (i->grey == 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (i->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
+			{ double fs = i->grey == 2 ? 12 : LK->msg_fs[0]; text_draw(cr, i->text, i->x, i->y, fs, 400, i->w, 0, lh_of(fs, 400)); } break;
 		case I_R2: { Cell *c = i->cell; fgc(cr, 1); text_draw(cr, c->label, c->lx, c->ly, RUI.fs, 400, c->lw, 0, lh_of(RUI.fs, 400));
 			for (guint q = 0; q < c->items->len; q++) { CItem *it = g_ptr_array_index(c->items, q);
-				if (it->k == 2) { if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (it->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
-					text_draw(cr, it->text, it->x, it->y, LK->msg_fs[0], 400, it->wd, 0, lh_of(LK->msg_fs[0], 400)); }
+				if (it->k == 2) { if (it->grey == 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (it->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
+					{ double fs = it->grey == 2 ? 12 : LK->msg_fs[0]; text_draw(cr, it->text, it->x, it->y, fs, 400, it->wd, 0, lh_of(fs, 400)); } }
 				if (it->k == 3) { fgc(cr, 1); text_draw(cr, it->text, it->x, it->y, RUI.fs, it->weight == 700 ? 700 : 400, 0, 0, it->h); }
 				if (it->k == 6) { fgc(cr, 1); PangoLayout *l = lay(pctx(), it->text, 11, 400, it->wd, 0); PangoFontDescription *f = pango_font_description_from_string("monospace"); pango_font_description_set_absolute_size(f, 11 * Z() * PANGO_SCALE); pango_layout_set_font_description(l, f); pango_font_description_free(f);
 					PangoFontMetrics *m = pango_context_get_metrics(pctx(), pango_layout_get_font_description(l), NULL); double a = round(pango_font_metrics_get_ascent(m) / (double)PANGO_SCALE); pango_font_metrics_unref(m);
@@ -481,7 +482,7 @@ void s_select_width(GtkWidget *w, double cw) { Sel *s = g_object_get_data(G_OBJE
 
 /* ================================================================== the slider (input type=range as Chromium draws it on Linux: an 8px track,
    #efefef with a #b2b2b2 edge, the part before the thumb #0075ff, a 16px round thumb; the value stepped as the page's step) */
-typedef struct { double min, max, step, v; void (*cb)(double, void *); void *d; int drag; } Rng;
+typedef struct { double min, max, step, v; void (*cb)(double, void *); void *d; int drag; double v0; void (*chg)(double, void *); } Rng;   /* (chg: the page's change event; v0 the value when a drag began) */
 static gboolean rng_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	Rng *r = d; double z = RUI.z, W = gtk_widget_get_allocated_width(w) / z, f = r->max > r->min ? (r->v - r->min) / (r->max - r->min) : 0, cx = 8 + fmax(0, fmin(1, f)) * (W - 16);
@@ -498,13 +499,17 @@ static gboolean rng_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 static double rng_snap(Rng *r, double v) { if (r->step > 0) v = r->min + round((v - r->min) / r->step) * r->step; v = fmax(r->min, fmin(r->max, v)); return round(v * 1e9) / 1e9; }
 static void rng_to(GtkWidget *w, Rng *r, double v) { v = rng_snap(r, v); if (v == r->v) return; r->v = v; gtk_widget_queue_draw(w); if (r->cb) r->cb(v, r->d); set_state_soon(); }
 static void rng_at(GtkWidget *w, Rng *r, double px) { double W = gtk_widget_get_allocated_width(w) / RUI.z, f = (px / RUI.z - 8) / fmax(1, W - 16); rng_to(w, r, r->min + fmax(0, fmin(1, f)) * (r->max - r->min)); }
-static gboolean rng_press(GtkWidget *w, GdkEventButton *e, gpointer d) { Rng *r = d; if (e->button != 1 || e->type != GDK_BUTTON_PRESS) return FALSE; gtk_widget_grab_focus(w); r->drag = 1; rng_at(w, r, e->x); return TRUE; }
+static gboolean rng_press(GtkWidget *w, GdkEventButton *e, gpointer d) { Rng *r = d; if (e->button != 1 || e->type != GDK_BUTTON_PRESS) return FALSE; gtk_widget_grab_focus(w); r->drag = 1; r->v0 = r->v; rng_at(w, r, e->x); return TRUE; }
 static gboolean rng_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { Rng *r = d; if (r->drag) rng_at(w, r, e->x); return r->drag; }
-static gboolean rng_release(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)e; Rng *r = d; r->drag = 0; return TRUE; }
+static gboolean rng_release(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)e; Rng *r = d; if (r->drag && r->v != r->v0 && r->chg) r->chg(r->v, r->d); r->drag = 0; return TRUE; }
+static gboolean rng_key1(GtkWidget *w, Rng *r, guint kv, double st);
 static gboolean rng_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 {
-	Rng *r = d; double st = r->step > 0 ? r->step : (r->max - r->min) / 100;
-	switch (e->keyval) { case GDK_KEY_Left: case GDK_KEY_Down: rng_to(w, r, r->v - st); return TRUE; case GDK_KEY_Right: case GDK_KEY_Up: rng_to(w, r, r->v + st); return TRUE;
+	Rng *r = d; double st = r->step > 0 ? r->step : (r->max - r->min) / 100, was = r->v; gboolean k = rng_key1(w, r, e->keyval, st); if (k && r->v != was && r->chg) r->chg(r->v, r->d); return k;
+}
+static gboolean rng_key1(GtkWidget *w, Rng *r, guint kv, double st)
+{
+	switch (kv) { case GDK_KEY_Left: case GDK_KEY_Down: rng_to(w, r, r->v - st); return TRUE; case GDK_KEY_Right: case GDK_KEY_Up: rng_to(w, r, r->v + st); return TRUE;
 		case GDK_KEY_Home: rng_to(w, r, r->min); return TRUE; case GDK_KEY_End: rng_to(w, r, r->max); return TRUE; case GDK_KEY_Page_Up: rng_to(w, r, r->v + (r->max - r->min) / 10); return TRUE; case GDK_KEY_Page_Down: rng_to(w, r, r->v - (r->max - r->min) / 10); return TRUE; }
 	return FALSE;
 }
@@ -517,6 +522,7 @@ GtkWidget *s_range(double min, double max, double step, double v, void (*cb)(dou
 	gtk_widget_set_size_request(w, R(220), R(16)); return w;
 }
 double s_range_get(GtkWidget *w) { Rng *r = g_object_get_data(G_OBJECT(w), "set-rng"); return r ? r->v : 0; }
+void s_range_on_change(GtkWidget *w, void (*cb)(double v, void *d)) { Rng *r = g_object_get_data(G_OBJECT(w), "set-rng"); if (r) r->chg = cb; }
 void s_range_set(GtkWidget *w, double v) { Rng *r = g_object_get_data(G_OBJECT(w), "set-rng"); if (!r) return; r->v = rng_snap(r, v); gtk_widget_queue_draw(w); }
 
 /* ================================================================== the date field (input type=date as Chromium draws it: mm/dd/yyyy) */
@@ -580,7 +586,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "upd", page_upd }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;
@@ -785,11 +791,12 @@ static void own_css(void)
 		"entry.set-ssq selection { background-color: alpha(%s, 0.3); }\n"
 		".set-foot { background-color: %s; border-top: %.2fpx solid %s; padding: %.2fpx %.2fpx %.2fpx %.2fpx; }\n"
 		".set-sst { font-size: %.2fpx; color: %s; }\n.set-sst.ok { color: %s; }\n"
-		".set-foot button.rui:disabled { opacity: %g; }\n",
+		".set-foot button.rui:disabled { opacity: %g; }\n"
+		"button.rui.set-small { font-size: %.2fpx; padding: %.2fpx %.2fpx; min-height: 0; min-width: 0; }\n",
 		bb, LK->ssbar_bd_w[0] * z, bd, LK->ssbar_pad[0] * z, LK->ssbar_pad[1] * z, LK->ssbar_pad[2] * z, LK->ssbar_pad[3] * z,
 		qb, fg, LK->ssq_bd_w[0] * z, qd, LK->ssq_r[0] * z, LK->ssq_pad[0] * z, LK->ssq_pad[1] * z, fmax(0, LK->ssq_pad[2] - lhd) * z, LK->ssq_pad[3] * z, RUI.fs * z, fg,
 		LK->ssq_focus_w[0] * z, RUI.accent, LK->ssq_focus_off[0] * z, (LK->ssq_r[0] + LK->ssq_focus_off[0]) * z, RUI.accent,
-		fb, LK->sfoot_bd_w[0] * z, fd, LK->sfoot_pad[0] * z, LK->sfoot_pad[1] * z, LK->sfoot_pad[2] * z, LK->sfoot_pad[3] * z, LK->sfoot_sst_fs[0] * z, st, ok, LK->sfoot_dis[0]);
+		fb, LK->sfoot_bd_w[0] * z, fd, LK->sfoot_pad[0] * z, LK->sfoot_pad[1] * z, LK->sfoot_pad[2] * z, LK->sfoot_pad[3] * z, LK->sfoot_sst_fs[0] * z, st, ok, LK->sfoot_dis[0], 12 * z, 1 * z, 8 * z);
 	if (!CSS) { CSS = gtk_css_provider_new(); gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), GTK_STYLE_PROVIDER(CSS), GTK_STYLE_PROVIDER_PRIORITY_USER + 1); }
 	GError *e = NULL; if (!gtk_css_provider_load_from_data(CSS, c, -1, &e)) { g_printerr("rudolf-settings: its CSS: %s\n", e ? e->message : "?"); g_clear_error(&e); }
 	g_free(c); g_free(bb); g_free(bd); g_free(qb); g_free(qd); g_free(fb); g_free(fd); g_free(st); g_free(ok);
@@ -826,6 +833,8 @@ static void harvest(void)
 }
 /* (a label of the cell that Search in Settings finds, as the page's <label>: "After") */
 GtkWidget *c_label(Cell *c, const char *t, double dy);
+void p_r2_top(Cell *c, double mt) { c->ltop = mt + 1; }
+void c_gap(GtkWidget *w, double gap) { CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); if (x) x->gap = gap; }
 GtkWidget *c_label(Cell *c, const char *t, double dy) { GtkWidget *w = c_text(c, rui_tr(t), 1); CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); x->dy = dy; return w; }
 static GtkAdjustment *fx_adj(void) { GList *c = gtk_container_get_children(GTK_CONTAINER(SCR)); GtkAdjustment *a = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(c->data)); g_list_free(c); return a; }
 static void scroll_to(double y, double h)
@@ -1058,3 +1067,16 @@ void s_col(cairo_t *cr, const char *w, double a)
 	else rui_color(cr, w, a);
 }
 double s_z(void) { return RUI.z; }
+/* (1.6.3 Part 3) a text laid out as the page's (its font, wrapped at w CSS px; 0: one line), for a page that draws its lines itself */
+PangoLayout *s_layout(const char *t, double px, int wt, double w) { return lay(pctx(), t, px, wt, w, 0); }
+double s_asc(double px, int wt, double *desc) { return asc_of(px, wt, desc); }
+/* Chromium's check box (13 px; its blue when on, greyed when disabled), its top left corner at (x, y) CSS px */
+void s_ckbox(cairo_t *cr, double x, double y, int on, int sens)
+{
+	double s = 13; cairo_save(cr); cairo_scale(cr, RUI.z, RUI.z);
+	if (on) { if (sens) cairo_set_source_rgb(cr, 0, 117 / 255.0, 1); else cairo_set_source_rgba(cr, 0, 117 / 255.0, 1, .5); rrect(cr, x, y, s, s, 2); cairo_fill(cr);
+		cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 1.8); cairo_set_line_cap(cr, CAIRO_LINE_CAP_SQUARE); cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
+		cairo_move_to(cr, x + 3.2, y + 6.8); cairo_line_to(cr, x + 5.4, y + 9.2); cairo_line_to(cr, x + 9.9, y + 3.9); cairo_stroke(cr); }
+	else { double g = RUI.dark ? .23 : 1; cairo_set_source_rgba(cr, g, g, g, sens ? 1 : .5); rrect(cr, x + .5, y + .5, s - 1, s - 1, 2); cairo_fill_preserve(cr); cairo_set_source_rgba(cr, .46, .46, .46, sens ? 1 : .5); cairo_set_line_width(cr, 1); cairo_stroke(cr); }
+	cairo_restore(cr);
+}

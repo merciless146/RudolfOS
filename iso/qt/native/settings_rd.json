@@ -182,5 +182,30 @@
  "bring/result": {
   "ok": true,
   "found": false
+ },
+ "audio": {
+  "ok": true,
+  "cards": " 0 [Generic        ]: HDA-Intel - HD-Audio Generic\n                      HD-Audio Generic at 0xd04c8000 irq 69\n 1 [Generic_1      ]: HDA-Intel - HD-Audio Generic\n                      HD-Audio Generic at 0xd04c0000 irq 70\n 2 [acp6x          ]: acp6x - acp6x\n                      ASUSTeK COMPUTER INC.-Vivobook Go\n",
+  "pcm": "00-03: HDMI 0 : HDMI 0 : playback 1\n01-00: ALC256 Analog : ALC256 Analog : playback 1 : capture 1\n02-00: acp6x-dmic-capture dmic-hifi-0 :  : capture 1\n"
+ },
+ "audio/mics": {
+  "ok": true,
+  "mics": [
+   {
+    "name": "alsa_input.pci-0000_04_00.6.analog-stereo",
+    "desc": "Digital Microphone",
+    "default": true
+   },
+   {
+    "name": "alsa_input.pci-0000_04_00.6.HiFi__Headset__source",
+    "desc": "Headset Microphone",
+    "default": false
+   }
+  ]
+ },
+ "sound/echo": {
+  "ok": true,
+  "on": false,
+  "active": false
  }
 }
