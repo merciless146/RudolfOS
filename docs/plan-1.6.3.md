@@ -208,6 +208,14 @@ rest of the PC." So:
   "Extensions only run when Oracle runs in its own window. Turn on Settings › Oracle › Extensions (Oracle then opens in
   its own window), or turn on 'Keep my websites encrypted with my account'." with a button that opens that page of
   Settings; nothing is installed or switched by the notice itself.
+- **"Learn more"** in that reminder opens Oracle's page **about:safety#extensions-desktop** (the owner, 2026-11-24 12:55
+  CST): "Oracle's safety and your data", a page of Oracle's user-safety and data-security policies in the default
+  bookmarks (as "Safety"; added once to bookmarks kept from before), scrolled to the entry that explains why extensions
+  are unsafe in the desktop's own Chromium and highlighted. Its entries: nothing sent about you; ads and trackers
+  blocked; your websites account by account (the TPM, the encrypted setting); private windows; Tor windows (and their
+  limits); updates and site isolation; extensions and the desktop; Guest; what Oracle cannot do for you. **Built and
+  tested on the branch oracle-safety-page** (desktop/orasafe63.js, orasafe63_t.js 9/9, oracle-safety-check.yml;
+  "This will be part of Oracle's 1.6.3 work": merged with this part, not before), its text kept true as each part lands.
 - Oracle in its own Chromium, over the desktop (Native; the Chromium desktop with extensions or the encrypted setting
   on): extensions as below. A test checks the desktop's profile refuses every extension even if Oracle's own policy
   allows one.
