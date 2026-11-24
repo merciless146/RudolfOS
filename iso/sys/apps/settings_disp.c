@@ -139,6 +139,46 @@ static GtkWidget *colour(const char *k, double w)
 	g_signal_connect(a, "draw", G_CALLBACK(colour_draw), (gpointer)k); g_signal_connect(a, "button-press-event", G_CALLBACK(colour_press), (gpointer)k); p_label_named(k, a); return a;
 }
 
+
+/* ================================================================== Northern lights (aurora58.js) and the Spirit Falls statue (statue58.js):
+   .aurrow and .strow, 6 px under the row before, their .acrow lines (a check box or a word, then a drop-down 10 px after it, 25 px tall),
+   their .msg 4 px under */
+typedef struct { GtkWidget *ck, *sel, *msg, *lab2, *sel2; char *t; double mh; int statue; } Ext;
+static Ext AUR, STA;
+static char *st_text(void)
+{
+	char *a = gs("accent"); for (char *p = a; *p; p++) *p = g_ascii_tolower(*p); const char *an = NULL;
+	for (guint i = 0; i < G_N_ELEMENTS(STOF); i++) if (!strcmp(STOF[i][0], a)) an = STOF[i][1];
+	if (!an) { double r, gg, b, bd = 1e9; rgb_of(*a == '#' ? a : "#2563eb", &r, &gg, &b); an = "dog";
+		for (guint i = 0; i < G_N_ELEMENTS(STOF); i++) { double r2, g2, b2; rgb_of(STOF[i][0], &r2, &g2, &b2); double d = pow((r - r2) * 255, 2) + pow((gg - g2) * 255, 2) + pow((b - b2) * 255, 2); if (d < bd) { bd = d; an = STOF[i][1]; } } }
+	const char *nm = an; for (guint i = 0; i < G_N_ELEMENTS(STNAMES); i++) if (!strcmp(STNAMES[i][0], an)) nm = STNAMES[i][1]; g_free(a);
+	return g_strdup_printf("The %s stands on the right bank. Each accent colour has its own statue: the twelve animals of the Chinese zodiac, a panda, an elephant, a leopard and a deer. Its carvings glow faintly in the accent colour, and at night paper lanterns rise into the sky in it: Normal is the accent colour; Negative is its negative; Complementary is the colour opposite it on the colour wheel.", nm);
+}
+static gboolean ext_msg_draw(GtkWidget *w, cairo_t *cr, gpointer d) { Ext *e = d; s_col(cr, "msg", 1); s_text(cr, e->t, 0, 0, 13, 400, gtk_widget_get_allocated_width(w) / s_z(), 0); return TRUE; }
+static gboolean word_draw(GtkWidget *w, cairo_t *cr, gpointer d) { s_col(cr, "fg", 1); s_text(cr, rui_tr(d), 0, (gtk_widget_get_allocated_height(w) / s_z() - s_lh(13, 400)) / 2, 13, 400, 0, 0); return TRUE; }
+static double wordw(const char *t) { double w; s_lines(rui_tr(t), 13, 400, 0, &w); return w; }
+static double ext_lay(void *d, double x, double y, double w)
+{
+	Ext *e = d; double cy = y + 6, mh;
+	if (!e->statue) { double cw = p_nat_w(e->ck); p_place(e->ck, x, cy + 3, 0, 0); p_place(e->sel, x + cw + 10, cy, 142, 25); }
+	else { double ww = wordw("Glow"); p_place(e->ck, x, cy, ww + 1, 25); p_place(e->sel, x + ww + 10, cy, 142, 25); }
+	cy += 25 + 4; mh = fmax(18, s_lines(e->t, 13, 400, w, NULL) * s_lh(13, 400)); p_place(e->msg, x, cy, w, mh); cy += mh;
+	if (e->statue) { double ww = wordw("Sky lanterns at night"); p_place(e->lab2, x, cy, ww + 1, 25); p_place(e->sel2, x + ww + 10, cy, 142, 25); cy += 25; }
+	return cy - y;
+}
+static void on_aur(int on, void *d) { (void)d; set("aur", g_strdup(on ? "true" : "false")); gtk_widget_set_sensitive(AUR.sel, on); }
+static GtkWidget *word(const char *t) { GtkWidget *a = gtk_drawing_area_new(); g_signal_connect(a, "draw", G_CALLBACK(word_draw), (gpointer)t); return a; }
+static GtkWidget *msgw(Ext *e) { GtkWidget *a = gtk_drawing_area_new(); g_signal_connect(a, "draw", G_CALLBACK(ext_msg_draw), e); return a; }
+static double zero_lay(void *d, double x, double y, double w) { (void)d; (void)x; (void)y; (void)w; return 0; }
+static void rows_ext(void)
+{
+	g_free(AUR.t); memset(&AUR, 0, sizeof AUR); AUR.t = g_strdup(rui_tr("The lights take the accent colour: Normal is the accent colour; Negative is its negative; Complementary is the colour opposite it on the colour wheel."));
+	AUR.ck = rui_check("At night, with Glacier Lake", !strcmp(g("aur"), "true"), on_aur, NULL); AUR.sel = dsel("daurm", "aurm"); gtk_widget_set_sensitive(AUR.sel, !strcmp(g("aur"), "true")); AUR.msg = msgw(&AUR);
+	p_put(AUR.ck); p_put(AUR.sel); p_put(AUR.msg); p_label_named("daur", AUR.ck); row("Northern lights", ext_lay, &AUR, 10); p_custom(zero_lay, NULL, 0, 0); p_custom_find("At night, with Glacier Lake", 0);
+	g_free(STA.t); memset(&STA, 0, sizeof STA); STA.statue = 1; STA.t = st_text(); STA.ck = word("Glow"); STA.sel = dsel("dstm", "stm"); STA.msg = msgw(&STA); STA.lab2 = word("Sky lanterns at night"); STA.sel2 = dsel("dlnm", "lnm");
+	p_put(STA.ck); p_put(STA.sel); p_put(STA.msg); p_put(STA.lab2); p_put(STA.sel2); row("Spirit Falls statue", ext_lay, &STA, 10);
+}
+
 /* ================================================================== the footer */
 static void act(int what)
 {
@@ -157,8 +197,8 @@ void page_disp(void)
 	for (guint i = 0; i < G_N_ELEMENTS(DYNS); i++) if (!DYNS[i].live) th_new(DYNS[i].k, DYNS[i].n, light);
 	row("Dynamic Backgrounds", grid_lay, GINT_TO_POINTER(0), 10);
 	row("Static Backgrounds", grid_lay, GINT_TO_POINTER(1), 10);
-	{ Cell *c = p_r2("Appearance"); c_add(c, dsel("dm", "dm"), 0, 0, 0); DMI = c_msg_m(c, "Choose a dynamic or static background to use it in light or dark mode.", 2, 6, 0);   /* (.dmi: 12 px; its colour #4b5563 to be matched) */ p_r2_more(c); }
-	/* (to come: Northern lights, Spirit Falls statue) */
+	{ Cell *c = p_r2("Appearance"); c_add(c, dsel("dm", "dm"), 0, 0, 0); DMI = c_msg_m(c, "Choose a dynamic or static background to use it in light or dark mode.", 3, 6, 0);   /* (.dmi: 12 px; its colour #4b5563 to be matched) */ p_r2_more(c); }
+	rows_ext();
 	{ Cell *c = p_r2("Background style"); c_add(c, dsel("bs", "bs"), 0, 0, 1); p_r2_more(c); }
 	/* (to come: Picture) */
 	{ Cell *c = p_r2("Color 1 / Color 2"); c_add(c, colour("b1", 50), 0, 0, 0); c_add(c, colour("b2", 50), 4.1, 0, 0); p_r2_more(c); }
