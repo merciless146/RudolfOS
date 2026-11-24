@@ -43,8 +43,8 @@ static char *brtext(const char *log)
 	if (o->len && o->str[0] == '\n') g_string_erase(o, 0, 1); return g_string_free(o, FALSE);
 }
 /* the page's own storage, a key at a time */
-static RuiJ *ls_get(const char *k) { char *e = qe(k), p[300]; snprintf(p, sizeof p, "/api/lsync?key=%s", e); g_free(e); RuiJ *r = rui_get(p); const char *v = rui_jstr(r, "v"); char *w = v ? g_strdup_printf("{\"x\":%s}", v) : NULL; RuiJ *o = w ? rui_jparse(w) : NULL; g_free(w); rui_jfree(r); return o; }
-static int ls_set(const char *k, const char *json) { char *a = jesc(k), *b = jesc(json), *body = g_strdup_printf("{\"part\":1,\"set\":{\"%s\":\"%s\"}}", a, b); int c = rui_post("/api/lsync", body, NULL, 0); g_free(a); g_free(b); g_free(body); return c; }
+#define ls_get set_ls_get
+#define ls_set set_ls_set
 static void jw(GString *b, RuiJ *v);
 static void jw(GString *b, RuiJ *v)
 {

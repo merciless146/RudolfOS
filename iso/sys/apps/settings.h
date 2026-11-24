@@ -22,6 +22,9 @@ const char *set_engine_now(void);                     /* the desktop engine runn
 RuiJ *set_stored(void);                               /* the saved settings (SC): an object, never NULL (free with rui_jfree) */
 int set_store(const char *const *keys, const char *const *json_vals, int n);   /* the page's persistS: those keys of SC saved (bd95set and bd95set:ACCT) */
 const char *set_jstr(RuiJ *o, const char *k, const char *dflt);
+RuiJ *set_ls_get(const char *k);                      /* the page's ld(k): {"x": the value} (NULL: none) */
+int set_ls_set(const char *k, const char *json);      /* the page's svj(k, value): the value as JSON */
+char *set_jesc(const char *s);                        /* a string's JSON escapes (without its quotes) */
 
 /* ---- building a page (between set_page_begin and set_page_end, called by settings.c) */
 typedef struct Cell Cell;
@@ -59,6 +62,10 @@ void s_select_disable(GtkWidget *s, int i, int off);  /* an option greyed */
 void s_select_label(GtkWidget *s, int i, const char *t);
 void s_select_width(GtkWidget *s, double css_w);      /* 0: as wide as its widest option (the page's select) */
 GtkWidget *s_date(int y, int m, int d, void (*cb)(int y, int m, int d, void *dd), void *dd);   /* input type=date */
+GtkWidget *s_range(double min, double max, double step, double v, void (*cb)(double v, void *d), void *d);   /* input type=range (220x16 CSS px; cb as its input event) */
+double s_range_get(GtkWidget *w);
+void s_range_set(GtkWidget *w, double v);
+void p_custom_find(const char *t, int h4);            /* the custom block just added is found by Search in Settings (h4: a heading) */
 void s_date_set(GtkWidget *w, int y, int m, int d);
 
 /* ---- the pages: each a function that builds its blocks (settings_PAGE.c) */
@@ -92,6 +99,8 @@ void s_rrect(cairo_t *cr, double x, double y, double w, double h, double r);
 void s_col(cairo_t *cr, const char *what, double a);
 double s_z(void);
 void page_upd(void);
+void page_kbd(void);
+void page_mouse(void);
 void sec_bring(void); /* settings_bring.c */
 void bring_step(const char *disk, void (*cb)(int ok, void *d), void *d);
 #endif
