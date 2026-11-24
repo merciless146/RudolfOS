@@ -1,4 +1,4 @@
-# Rudolf OS 1.6.3: the signing keys protected, native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page
+# Rudolf OS 1.6.3 (with installing beside Windows): the signing keys protected, native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page, installing beside Windows
 
 1.6.3 follows 1.6.2. The owner, 2026-11-23 18:20 and 18:23 CST: "Push fingerprint scanners to 1.6.3" and, for the Office
 apps' native versions, "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that includes
@@ -142,6 +142,50 @@ Chromium in QEMU (sign in, a site's cookie kept, sign out, the drive read from o
 the owner's checklist: Chromium mode on the Vivobook, the setting on, Oracle's tabs in the page, signed-in sites kept after
 sign-out and back in.
 
+### Part 6. Installing beside Windows on the same drive (the owner, 2026-11-24 11:35 and 12:30 CST)
+The owner, installing on an ASUS desktop: "Is there a way to install it without formatting the hard drive or removing
+Windows?", then "Yes, add it to 1.6.3."
+**Today.** Settings > Update and recovery > Install here... writes Rudolf OS's whole disc image to the start of the
+chosen disk and adds RUDOLFDATA after it (iso/sys/root/usr/lib/rudolf/install.sh): the whole disk is erased. Beside
+Windows today means another disk (an internal second drive, an external SSD, or a stick with Keep my files).
+**The change: "Install beside Windows..."** (UEFI computers with a GPT disk; BIOS/MBR stays whole-disk only):
+1. **Room, made in Windows first.** The person shrinks Windows' partition in Windows' own Disk Management (Shrink
+   Volume), which knows NTFS, BitLocker, the page file and hibernation; Rudolf OS uses only unallocated space and never
+   resizes or writes to a Windows partition. The installer shows the disk's partitions by name, size and kind (EFI
+   system, Microsoft reserved, Windows, recovery, free) and offers only a free area of at least 16 GB. Before that,
+   Rudolf OS's own guide (and Settings' text) says how: back up, note the BitLocker recovery key (aka.ms/myrecoverykey),
+   turn off Windows' Fast Startup, then Disk Management > Shrink Volume.
+2. **What Rudolf OS writes, and nothing else:** one new partition in that free space, RUDOLFDATA (the installed
+   system's slots, as an installed drive with boot files only already works: 1.5.3, 1.6.0 Part 16), and Rudolf OS's start-up
+   files in the disk's existing EFI system partition, in their own folder only (\EFI\rudolf\: shim, Rudolf's signed
+   start-up file, recovery.efi, the menu), never touching \EFI\Microsoft\ or \EFI\Boot\. If the EFI system
+   partition is too small for them, it stops and says so (no resizing).
+3. **Choosing at start-up:** a UEFI boot entry "Rudolf OS" (shim), put first; Rudolf's start-up menu gets a "Windows"
+   entry that starts Windows Boot Manager from the same EFI system partition (systemd-boot finds it), so the person
+   picks each time, with a short wait and Rudolf OS as the default (changeable in Settings > Update and recovery). The
+   firmware's own boot menu (F8 on ASUS) still offers both. Windows updates that put Windows Boot Manager first again:
+   Rudolf OS puts its entry back at its next start, and System health says so.
+4. **Secure Boot** stays on for both: Rudolf OS through Microsoft-signed shim as now (its key enrolled once); nothing
+   in the firmware's own key lists changes. BitLocker: changing the boot order can make Windows ask for its recovery
+   key once; the installer says so before it starts, and the guide says where the key is.
+5. **Updates and Recovery mode** work as on any installed Rudolf OS (both slots in RUDOLFDATA; recovery.efi in
+   \EFI\rudolf\ starts the official stable).
+6. **Removing it:** Settings > Update and recovery > "Remove Rudolf OS from this drive" (from a stick or from Windows'
+   side: a guide) deletes RUDOLFDATA, \EFI\rudolf\ and the boot entry, and leaves the space unallocated for Windows to
+   take back (Disk Management > Extend Volume).
+**Never:** a Windows partition written, resized or formatted; anything in \EFI\Microsoft\; the firmware's Secure Boot
+keys changed; an install that goes on when the free area, the EFI system partition or the disk's partition table is not
+what was shown.
+**Tests:** in QEMU with OVMF and Secure Boot on: a made-up GPT disk laid out as Windows lays one out (an EFI system
+partition with a stand-in \EFI\Microsoft\Boot\bootmgfw.efi that only prints a mark, Microsoft reserved, an NTFS
+partition with files, a recovery partition, free space; no Windows files or images): install beside; every Windows
+partition's checksum unchanged and \EFI\Microsoft\ unchanged; Rudolf OS starts, updates, rolls back, Recovery mode;
+the menu's Windows entry starts the stand-in; the boot order put back; too little free space, a full EFI system
+partition, an MBR disk and a BIOS computer refused with plain words; removal leaves the disk as before (unallocated).
+**The owner's checklist** (the ASUS desktop): back up and note the BitLocker key; shrink in Disk Management; install
+beside; Rudolf OS and Windows each start from the menu and from F8; a Windows update, then Rudolf OS's next start; an
+update of Rudolf OS; removal and Extend Volume back.
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
@@ -149,3 +193,4 @@ sign-out and back in.
 - Part 2: after 1.6.2 is stable.
 - Part 4: after 1.6.2 is stable.
 - Part 5: last, after 1.6.2 is stable.
+- Part 6: after Part 3 (native Settings), before the Office apps if the owner wants it sooner.

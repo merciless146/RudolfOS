@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.3.md Part 6): installing Rudolf OS beside Windows on the same drive, in free space
+  made in Windows, with a start-up menu for both.
 - Changed: Rudolf OS trusts a second release key, made offline by the owner (IcNJiy4z…cVg=), beside the current one, so the
   signing key can be replaced; Recovery mode's start-up file carries both. Only the first key in the list signs releases
   until the switch (plan 1.6.3 Part 0).
