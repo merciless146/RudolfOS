@@ -64,7 +64,7 @@ const line = k => (nst().split('\n').find(x => x.startsWith(k + ' ')) || '').sli
 const lines = k => nst().split('\n').filter(x => x.startsWith(k + ' ')).map(x => x.slice(k.length + 1));
 const rect = n => { const l = line('rect ' + n); return l ? l.split(' ').map(Number) : null };
 async function until(f, ms) { const t = Date.now(); while (Date.now() - t < (ms || 15000)) { if (await f()) return true; await wait(100) } return false }
-function natStart(page, extra) { try { fs.unlinkSync(SF) } catch (e) {} const e = Object.assign(env0(), {RUDOLF_SET_STATE: SF, RUDOLF_SET_NOW: NOWS, RUDOLF_SET_GPU: GPU}, extra || {});
+function natStart(page, extra) { try { fs.unlinkSync(SF) } catch (e) {} const e = Object.assign(env0(), {RUDOLF_SET_STATE: SF, RUDOLF_SET_NOW: NOWS, RUDOLF_SET_GPU: GPU, RUDOLF_SET_WWW: path.join(__dirname, '../../www')}, extra || {});
   const q = NP = cp.spawn(BIN, page ? [page] : [], {env: e, stdio: ['ignore', 'pipe', 'pipe']}); q.log = ''; q.stdout.on('data', d => q.log += d); q.stderr.on('data', d => q.log += d) }
 function natStop() { if (NP) { NP.kill(); NP = null } }
 const xdo = a => sh('xdotool ' + a);

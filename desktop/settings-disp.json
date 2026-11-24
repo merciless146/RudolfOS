@@ -207,5 +207,595 @@
    "tl": "a/f2a560f9cd5ddabb.jpg",
    "td": "a/ba9e81a09620f447.jpg"
   }
+ },
+ "SELECTS": {
+  "dm": [
+   [
+    "auto",
+    "Automatic (sunrise / sunset)"
+   ],
+   [
+    "light",
+    "Light mode (locked)"
+   ],
+   [
+    "dark",
+    "Dark mode (locked)"
+   ]
+  ],
+  "daurm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dstm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dlnm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "bs": [
+   [
+    "solid",
+    "solid"
+   ],
+   [
+    "gradient",
+    "gradient"
+   ],
+   [
+    "vertical",
+    "vertical"
+   ],
+   [
+    "radial",
+    "radial"
+   ],
+   [
+    "checker",
+    "checker"
+   ],
+   [
+    "dots",
+    "dots"
+   ],
+   [
+    "grid",
+    "grid"
+   ],
+   [
+    "stripes",
+    "stripes"
+   ]
+  ],
+  "lkbg": [
+   [
+    "desktop",
+    "The desktop’s background"
+   ],
+   [
+    "picture",
+    "A picture of your own"
+   ],
+   [
+    "color",
+    "A colour"
+   ]
+  ],
+  "lkck": [
+   [
+    "large",
+    "Large"
+   ],
+   [
+    "small",
+    "Small"
+   ],
+   [
+    "off",
+    "None"
+   ]
+  ],
+  "lkpos": [
+   [
+    "center",
+    "In the middle"
+   ],
+   [
+    "left",
+    "On the left"
+   ],
+   [
+    "bottom",
+    "Bottom left"
+   ]
+  ],
+  "ff": [
+   [
+    "DejaVu Sans",
+    "DejaVu Sans (default, like Verdana)"
+   ],
+   [
+    "DejaVu Sans Condensed",
+    "DejaVu Sans Condensed (like Tahoma)"
+   ],
+   [
+    "Liberation Sans",
+    "Liberation Sans (like Arial)"
+   ],
+   [
+    "Fira Sans",
+    "Fira Sans (like Trebuchet MS)"
+   ],
+   [
+    "Liberation Serif",
+    "Liberation Serif (like Times New Roman)"
+   ],
+   [
+    "Gelasio",
+    "Gelasio (like Georgia)"
+   ],
+   [
+    "DejaVu Serif",
+    "DejaVu Serif"
+   ],
+   [
+    "Comic Neue",
+    "Comic Neue (like Comic Sans MS)"
+   ],
+   [
+    "Liberation Mono",
+    "Liberation Mono (like Courier New)"
+   ],
+   [
+    "DejaVu Sans Mono",
+    "DejaVu Sans Mono (like Lucida Console)"
+   ]
+  ],
+  "fs": [
+   [
+    "11",
+    "11"
+   ],
+   [
+    "12",
+    "12"
+   ],
+   [
+    "13",
+    "13"
+   ],
+   [
+    "14",
+    "14"
+   ],
+   [
+    "16",
+    "16"
+   ],
+   [
+    "18",
+    "18"
+   ],
+   [
+    "20",
+    "20"
+   ]
+  ],
+  "tb": [
+   [
+    "bottom",
+    "bottom"
+   ],
+   [
+    "top",
+    "top"
+   ],
+   [
+    "left",
+    "left"
+   ],
+   [
+    "right",
+    "right"
+   ]
+  ],
+  "dtbs": [
+   [
+    "standard",
+    "Standard"
+   ],
+   [
+    "wire",
+    "Wireframe"
+   ],
+   [
+    "mono",
+    "Monochrome"
+   ],
+   [
+    "candy",
+    "Candy"
+   ],
+   [
+    "retro",
+    "Retro"
+   ]
+  ],
+  "dtbbs": [
+   [
+    "standard",
+    "Standard (as the taskbar)"
+   ],
+   [
+    "wire",
+    "Wireframe"
+   ],
+   [
+    "mono",
+    "Monochrome"
+   ],
+   [
+    "candy",
+    "Candy"
+   ],
+   [
+    "retro",
+    "Retro"
+   ]
+  ],
+  "dtbbacm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dtbpc": [
+   [
+    "green",
+    "Green (as it comes)"
+   ],
+   [
+    "blue",
+    "Blue"
+   ],
+   [
+    "orange",
+    "Orange"
+   ],
+   [
+    "purple",
+    "Purple"
+   ],
+   [
+    "red",
+    "Red"
+   ],
+   [
+    "accent",
+    "The accent colour"
+   ],
+   [
+    "custom",
+    "Any colour…"
+   ]
+  ],
+  "dtws": [
+   [
+    "standard",
+    "Standard"
+   ],
+   [
+    "wire",
+    "Wireframe"
+   ],
+   [
+    "mono",
+    "Monochrome"
+   ],
+   [
+    "candy",
+    "Candy"
+   ],
+   [
+    "retro",
+    "Retro"
+   ]
+  ],
+  "dtwm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dtbacm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dicacm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dlpacm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dic": [
+   [
+    "rudolf",
+    "Rudolf icons"
+   ],
+   [
+    "emoji",
+    "Emoji"
+   ]
+  ],
+  "dis": [
+   [
+    "rudolf",
+    "Rudolf — rounded gradient tiles (default)"
+   ],
+   [
+    "flat",
+    "Flat tiles"
+   ],
+   [
+    "circle",
+    "Circles"
+   ],
+   [
+    "outline",
+    "Outlines"
+   ],
+   [
+    "glyph",
+    "Symbols only"
+   ],
+   [
+    "glass",
+    "Glass"
+   ],
+   [
+    "retro",
+    "Retro 3-D"
+   ],
+   [
+    "sticker",
+    "Stickers"
+   ]
+  ],
+  "dsc": [
+   [
+    "75",
+    "75%"
+   ],
+   [
+    "90",
+    "90%"
+   ],
+   [
+    "100",
+    "100% (default)"
+   ],
+   [
+    "110",
+    "110%"
+   ],
+   [
+    "125",
+    "125%"
+   ],
+   [
+    "150",
+    "150%"
+   ],
+   [
+    "175",
+    "175%"
+   ],
+   [
+    "200",
+    "200%"
+   ]
+  ],
+  "drt": [
+   [
+    "0",
+    "Normal"
+   ],
+   [
+    "90",
+    "90° (portrait)"
+   ],
+   [
+    "180",
+    "180°"
+   ],
+   [
+    "270",
+    "270° (portrait, flipped)"
+   ]
+  ],
+  "dgp": [
+   [
+    "games",
+    "Use it for games and Linux apps (recommended)"
+   ],
+   [
+    "full",
+    "Use it for games and the desktop"
+   ],
+   [
+    "soft",
+    "Do not use it (software display)"
+   ]
+  ],
+  "ssmin": [
+   [
+    "1",
+    "1 minute without input"
+   ],
+   [
+    "2",
+    "2 minutes without input"
+   ],
+   [
+    "3",
+    "3 minutes without input"
+   ],
+   [
+    "5",
+    "5 minutes without input"
+   ],
+   [
+    "10",
+    "10 minutes without input"
+   ],
+   [
+    "15",
+    "15 minutes without input"
+   ],
+   [
+    "20",
+    "20 minutes without input"
+   ],
+   [
+    "30",
+    "30 minutes without input"
+   ],
+   [
+    "45",
+    "45 minutes without input"
+   ],
+   [
+    "60",
+    "60 minutes without input"
+   ]
+  ],
+  "ssst": [
+   [
+    "stars",
+    "Starfield"
+   ],
+   [
+    "clock",
+    "Clock"
+   ],
+   [
+    "rudolf",
+    "Rudolf"
+   ],
+   [
+    "rain",
+    "Code rain"
+   ],
+   [
+    "mystify",
+    "Mystify"
+   ],
+   [
+    "bubbles",
+    "Bubbles"
+   ],
+   [
+    "aurora",
+    "Aurora"
+   ],
+   [
+    "fireworks",
+    "Fireworks"
+   ]
+  ],
+  "dtab": [
+   [
+    "auto",
+    "Automatic (on when there is a touchscreen and no mouse or touchpad)"
+   ],
+   [
+    "on",
+    "On"
+   ],
+   [
+    "off",
+    "Off"
+   ]
+  ]
  }
 }

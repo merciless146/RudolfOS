@@ -108,6 +108,7 @@ double s_z(void);
 void page_upd(void);
 void page_kbd(void);
 void page_mouse(void);
+void page_disp(void);  /* settings_disp.c (1.6.3 PR 5: in progress) */
 void page_vol(void);   /* settings_vol.c */
 void page_mm(void);    /* settings_mm.c */
 void page_acc(void);   /* settings_acc.c */

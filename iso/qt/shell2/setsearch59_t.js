@@ -34,8 +34,11 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
      native25.js's ?? defaults), and DYN's backgrounds as the built page names their thumbnails: desktop/settings-disp.json, which the
      native Settings' mksettings.py reads */
   const disp = await q("JSON.stringify({DKEYS,DEFS:DEFS.disp,ACMODES,ST_NAMES,ST_OF:typeof ST_OF=='object'?ST_OF:{},DYN_LIVE,DYN:Object.fromEntries(Object.keys(DYN).map(k=>[k,{n:DYN[k].n,tl:DYN[k].tl,td:DYN[k].td}]))})");
-  if (WRITE) { fs.writeFileSync(DISP, JSON.stringify(JSON.parse(disp), null, 1) + '\n'); console.log('wrote ' + DISP) }
-  ok('2b. desktop/settings-disp.json is what the page has (else: --write)', fs.existsSync(DISP) && JSON.stringify(JSON.parse(fs.readFileSync(DISP, 'utf8'))) == JSON.stringify(JSON.parse(disp)));
+  /* (and each drop-down of the page as it shows it: its id and its options, value and words) */
+  await q("SW.show('disp',1)"); await wait(800);
+  const sels = await q("JSON.stringify(Object.fromEntries([...SW.body.querySelectorAll('.sc select[id]')].map(s=>[s.id,[...s.options].map(o=>[o.value,o.textContent])])))");
+  if (WRITE) { fs.writeFileSync(DISP, JSON.stringify(Object.assign(JSON.parse(disp), {SELECTS: JSON.parse(sels)}), null, 1) + '\n'); console.log('wrote ' + DISP) }
+  ok('2b. desktop/settings-disp.json is what the page has (else: --write)', fs.existsSync(DISP) && JSON.stringify(JSON.parse(fs.readFileSync(DISP, 'utf8'))) == JSON.stringify(Object.assign(JSON.parse(disp), {SELECTS: JSON.parse(sels)})));
   const idx = fs.existsSync(IDX) ? JSON.parse(fs.readFileSync(IDX, 'utf8')) : {};
   const miss = keys.filter(k => (live[k] || []).length && !(idx[k] && idx[k].length)), stale = [];
   for (const k of keys) for (const e of live[k] || []) if (!(idx[k] || []).some(x => x[0] == e[0] && x[1] == e[1])) stale.push(k + ': ' + e[0]);
