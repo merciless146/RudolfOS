@@ -148,6 +148,11 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   wpfit wpname tbac tbacm icac icacm tbstyle tablet aur aurm stm lnm gmsleep gamemode twstyle twacm tbbstyle tbbac tbbacm lpac lpacm lpbr
   tbpcol (DEFS.disp gives each default; mksettings.py reads the lists the modules push). To be built in two halves: up to Icon size,
   then Taskbar to the end. It goes to the owner as one PR, once every view of the whole page holds under 2 %.
+  The defaults and keys are not all plain literals in the page's code: ff becomes DejaVu Sans through fonts47.js's renaming,
+  native25.js writes `DEFS.disp.icstyle??'rudolf'`, and scale comes from DEFS.acc. So they are read from the live page, as Search
+  in Settings' index is: `node iso/qt/shell2/setsearch59_t.js --write` also writes desktop/settings-disp.json (DKEYS, DEFS.disp,
+  ACMODES, ST_NAMES and the accent of each statue, DYN's names and thumbnails as the built page names them), and mksettings.py reads
+  that file.
 - **Left:** Display (PR 5, the memory with Display open); Network, Mobile network, Bluetooth, Oracle, Remote; Devices, Storage,
   Apps, Notifications; Privacy, Security, System health, Users; the switch.
 - **The owner's checklist for PR 4 (Vivobook; `rudolf-settings vol`, `mm`, `acc` from a terminal on the native desktop until the
