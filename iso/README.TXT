@@ -344,11 +344,41 @@ PROBLEMS?
 Black screen after the menu: choose "Recovery mode" (starts without the
   graphics card driver), or "Screen resolution" and pick 1024x768.
 "Verification failed" or a blue MokManager screen on a UEFI PC: enroll the
-  Rudolf OS key (SECURE BOOT below), or turn Secure Boot off.
+  Rudolf OS key (SECURE BOOT above), or turn Secure Boot off.
 Desktop does not appear: start with D pressed in the boot menu and note the
   messages; "Recovery mode" may help after a failed update.
 Files on the disc damaged: choose "Check disc".
 
+
+DEVELOPER MODE AND YOUR OWN BUILD
+---------------------------------
+Rudolf OS is free software: you may fork it, change any part of it (the
+desktop, its apps, the kernel and drivers, Blitzen) and build your own
+release with your own signing keys. The full guide is "Making your own
+Rudolf OS", online at
+github.com/merciless146/RudolfOS/blob/main/docs/custom-builds.md. In short:
+1. Fork the project on GitHub, make your two keys (a release key and a
+   Secure Boot key) and add their private halves as your fork's secrets.
+   Only the public halves ever go into the repository.
+2. Run your fork's "Rudolf OS release" workflow: it builds your release
+   and publishes it to your own update address. Run it again with
+   "promote" set to that release's serial to make it stable; that also
+   publishes your own disc image and boot image with this guide.
+3. On a Rudolf OS computer: Settings > Security Settings > Developer mode >
+   Turn on. Give your release key's public half (44 characters) and your
+   update address. An administrator confirms with a typed sentence and
+   their password. The computer then also installs releases signed by
+   your key, and Settings > About says "Custom build".
+4. Optional: the development link (docs/DEVLINK.md, beside the guide)
+   lets you, or any coding agent you choose, run commands on a test
+   computer through a private repository of your own. With Developer
+   mode on, Settings > Apps > Blitzen > Developer makes Blitzen that agent
+   (your fork's runs, changes as pull requests, and the test computer,
+   each step asked first).
+Going back: Settings > Update and recovery > Return to official Rudolf OS.
+Recovery mode in the start-up menu always starts the official Rudolf OS.
+A custom build must not call itself the official Rudolf OS: give it a name
+of your own and your own update addresses.
 
 LICENCES AND SOURCE CODE
 ------------------------
