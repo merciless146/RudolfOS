@@ -92,4 +92,6 @@ void s_rrect(cairo_t *cr, double x, double y, double w, double h, double r);
 void s_col(cairo_t *cr, const char *what, double a);
 double s_z(void);
 void page_upd(void);
+void sec_bring(void); /* settings_bring.c */
+void bring_step(const char *disk, void (*cb)(int ok, void *d), void *d);
 #endif

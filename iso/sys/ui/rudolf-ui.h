@@ -44,6 +44,7 @@ const char *rui_version_date(void);                    /* the page's RVERDATE */
 /* ---- rudolfd */
 typedef struct RuiJ RuiJ;   /* a JSON value (rudolf-native's JV) */
 int rui_http(const char *method, const char *path, const char *body, size_t blen, char **out, size_t *outn);   /* the status (0: no answer) */
+int rui_http_h(const char *method, const char *path, const char *headers, const char *body, size_t blen, char **out, size_t *outn);   /* headers: "Name: value\r\n"... */
 RuiJ *rui_get(const char *path);                       /* GET, 200 and JSON: the value, else NULL */
 int rui_post(const char *path, const char *body, char *err, size_t errn);   /* the status; err: rudolfd's "error" */
 void rui_jfree(RuiJ *j);

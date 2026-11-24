@@ -417,14 +417,15 @@ static void inst_go(int i, void *d)
 	if (c != 200) { set_notify(BOOTONLY ? "The boot files were not replaced" : "Installation failed", m, 1); return; }
 	if (!ILOG) ILOG = g_string_new(NULL); g_string_assign(ILOG, " "); p_relayout(); g_timeout_add(1000, inst_tick, k);
 }
-static void inst_elev(int ok, void *d)
+static void inst_confirm(int ok, void *d)
 {
 	(void)d; Disk *k = IDISK; if (ok != 1 || !k) return; char *bb = fmtb(k->bytes); const char *B[2] = { "Cancel", BOOTONLY ? "Replace the boot files" : "Erase and install" };
-	/* (bring62.js's bringStep, an offer to bring in the old computer's files first: Part 39, PR 2b) */
 	if (BOOTONLY) { char *t = g_strdup_printf("The area in front of %s's files is written with this Rudolf OS. Its files, settings and installed system are kept. Do not unplug it or switch the computer off while it is written.", k->name), *tt = g_strdup_printf("Replace the boot files on %s?", k->name); dlg(tt, t, B, 2, inst_go, NULL); g_free(t); g_free(tt); }
 	else { char *t = g_strdup_printf("All partitions and files on %s (%s) will be destroyed and replaced by Rudolf OS.", k->name, bb), *tt = g_strdup_printf("Erase %s?", k->name); dlg(tt, t, B, 2, inst_go, NULL); g_free(t); g_free(tt); }
 	g_free(bb);
 }
+/* bring62.js's bringStep: before the disk is erased, an offer to keep the old computer's files (Part 39, PR 2b) */
+static void inst_elev(int ok, void *d) { if (ok != 1 || !IDISK) return; if (BOOTONLY) inst_confirm(1, d); else bring_step(IDISK->name, inst_confirm, d); }
 static void on_install(GtkButton *b, gpointer d) { (void)b; Disk *k = d; IDISK = k; BOOTONLY = 0; char *bb = fmtb(k->bytes), *r = g_strdup_printf("Install Rudolf OS on %s (%s, %s). EVERYTHING on this disk will be erased.", k->name, k->model, bb); rui_elevate(SW, r, inst_elev, NULL); set_note("ask install %s", k->name); g_free(r); g_free(bb); }
 static void on_bootonly(GtkButton *b, gpointer d) { (void)b; Disk *k = d; IDISK = k; BOOTONLY = 1; char *r = g_strdup_printf("Replace the boot files on %s (%s). Its files are kept.", k->name, k->model); rui_elevate(SW, r, inst_elev, NULL); set_note("ask bootonly %s", k->name); g_free(r); }
 static void fr_go(int i, void *d) { (void)d; if (i != 1) return; char m[300]; int c = post("/api/factory-reset", NULL, m, sizeof m); set_notify(c == 200 ? "Factory reset scheduled" : "Factory reset failed", m, c != 200); }
@@ -456,23 +457,6 @@ static void sec_install(void)
 	p_msg_m("\x03" "Choose <i>Recovery mode</i> in the boot menu to start the installed system with safe settings (the Chromium desktop engine, no shell, safe graphics); updates wait until a normal start. Recovery mode needs boot files from 1.5.7 or later (Update and recovery › boot files): older ones start the drive's own system, which most installed computers do not have. <i>Check this disc</i> verifies every file.", 0, 10, 13);
 	RuiJ *ck = rui_get("/api/check"); const char *res = rui_jstr(ck, "result"); char *t = res && *res ? g_strdup_printf("Last media check: %s", res) : g_strdup(""); p_msg_m(t, 0, 10, 0); g_free(t); rui_jfree(ck);
 	const char *L[1] = { "Factory reset…" }; GCallback C[1] = { G_CALLBACK(on_factory) }; p_label_named("factory", p_buttons(L, 1, C, NULL));
-}
-/* ================================================================== Bring in files from the old computer (bring62.js brSection) */
-static RuiJ *BRF; static int BRLOOKED;
-static void br_look(GtkButton *b, gpointer d) { (void)b; (void)d; rui_jfree(BRF); BRF = rui_get("/api/bring/found"); BRLOOKED = 1; set_note("bring look %d", BRF != NULL); redraw(); }
-static void br_in(GtkButton *b, gpointer d) { (void)b; (void)d; set_notify("Bring in files from the old computer", "Not in the native Settings yet (docs/plan-1.6.2.md Part 39): open Settings in Chromium mode to bring them in.", 1); }
-static void sec_bring(void)
-{
-	p_h4("Bring in files from the old computer");
-	p_msg_m("The files the installer kept on a USB drive (Rudolf OS - Bring your files) go into your folders: the old Documents into Documents, Pictures into Pictures and so on. Plug the drive in, then look.", 0, 10, 13);
-	if (BRLOOKED) { RuiJ *sets = rui_jprop(BRF, "sets");
-		if (!BRF) p_msg_m("rudolfd did not answer.", 0, 10, 13);
-		else if (!rui_jlen(sets)) p_msg_m("No copy of an old computer's files on the drives plugged in.", 0, 10, 13);
-		for (int i = 0; i < rui_jlen(sets); i++) { RuiJ *s = rui_jat(sets, i); const char *sy = set_jstr(s, "system", ""); char made[16]; snprintf(made, sizeof made, "%.10s", set_jstr(s, "made", ""));
-			char *t = g_strdup_printf("%s · copied %s", !strcmp(sy, "windows") ? "Windows" : !strcmp(sy, "linux") ? "Linux" : sy, made); p_msg_m(t, 0, 10, 0); g_free(t);
-			RuiJ *pp = rui_jprop(s, "people"); for (int k = 0; k < rui_jlen(pp); k++) { RuiJ *p = rui_jat(pp, k); char *b = fmtb(rui_jnum(p, "bytes", 0)), *x = g_strdup_printf("%s's files — %s (%.0f files)", set_jstr(p, "name", ""), b, rui_jnum(p, "files", 0)); p_msg_m(x, 0, 4, 0); g_free(b); g_free(x); }
-			const char *L[1] = { "Bring them in" }; GCallback C[1] = { G_CALLBACK(br_in) }; p_buttons(L, 1, C, NULL); } }
-	const char *L[1] = { "Look on the drives" }; GCallback C[1] = { G_CALLBACK(br_look) }; p_label_named("brlook", p_buttons(L, 1, C, NULL));
 }
 /* ================================================================== Start-up of this drive (startup60.js) */
 static void sup_ck_cred(const char *n, const char *p, void *d)

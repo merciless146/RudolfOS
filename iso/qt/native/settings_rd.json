@@ -178,5 +178,9 @@
   "running": false,
   "status": 0,
   "log": ""
+ },
+ "bring/result": {
+  "ok": true,
+  "found": false
  }
 }

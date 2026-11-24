@@ -113,6 +113,17 @@ class H(http.server.BaseHTTPRequestHandler):
             if w in ('service/restart', 'apps/end', 'apps/kill', 'shell/switch') and m == 'POST': return self.j({'ok': True, 'message': w})
             if w == 'memory/dropcache' and m == 'POST': return self.j({'ok': True, 'freed': 104857600})
             if w == 'desktop/priority': return self.j({'ok': True, 'on': False})
+            # (Settings › Bring in files, settings_t.js U14-U15: rudolfd's bring/* answered ok; the account's files from DIR/home, a Range read as
+            # rudolfd's api_home_read answers it, home/delete removing one)
+            if w.startswith('bring/') and m == 'POST': return self.j({'ok': True, 'message': w})
+            if w in ('home/read', 'home/delete'):
+                import urllib.parse; rel = urllib.parse.parse_qs(q).get('path', [''])[0]; f = os.path.normpath(os.path.join(D, 'home', rel))
+                if not f.startswith(os.path.join(D, 'home') + os.sep) or not os.path.isfile(f): return self.err(404, 'no such file')
+                if w == 'home/delete' and m == 'POST': os.unlink(f); return self.j({'ok': True, 'message': 'deleted'})
+                x = open(f, 'rb').read(); r = re.fullmatch(r'bytes=(-?\d+)(?:-(\d+))?', self.headers.get('Range') or '')
+                if r and r.group(1).startswith('-'): x = x[int(r.group(1)):]
+                elif r: x = x[int(r.group(1)):(int(r.group(2)) + 1 if r.group(2) else None)]
+                return self.send(206 if r else 200, x, 'application/octet-stream')
         if w == 'desktop/admin' and m == 'POST':   # (1.6.2 Part 39: an administrator's permission, as rudolfd-desktop.inc checks it)
             o = json.loads(b or b'{}'); k = KEYS.get('Ann')
             return self.j({'ok': True, 'message': 'allowed'}) if k and o.get('n') == 'Ann' and o.get('p') == k['pw'] else self.err(403, 'Wrong password.')

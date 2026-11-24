@@ -208,6 +208,30 @@ async function checkUpd() {
     ok('U11. Factory reset…: the administrator\'s permission, asked again, then factory-reset', /POST factory-reset/.test(since()), [since().slice(-200), nst().split('\n').filter(x => /^act|^rect (factory|dialog)/.test(x)).slice(-6)]) }
   { mark = c0(); await wait(800); await scrollTo('supck'); click(rect('supck')); await until(() => rect('dialog'), 3000); pw(); await until(() => /startup-check/.test(since()), 5000);
     ok('U12. Check this drive\'s start-up…: the administrator\'s name and password, sys/startup-check', /POST sys\/startup-check/.test(since())) }
+  /* Bring in files (bring62.js brSection, brImport, brScan): Ann's files on the disk, a copy found on a drive, two files brought in, one of them EICAR's */
+  { const L = JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))), u = JSON.parse(L.data.bd95user); u.accts.forEach(a => { if (a.id == 'uAnnA1b2') a.disk = 1 }); L.data.bd95user = JSON.stringify(u); L.gen++;
+    fs.writeFileSync(path.join(D, 'ls.json'), JSON.stringify(L)); const H = path.join(D, 'home'); fs.mkdirSync(path.join(H, '.rudolf'), {recursive: true}); fs.mkdirSync(path.join(H, 'Documents'), {recursive: true});
+    fs.writeFileSync(path.join(H, 'Documents/notes.txt'), 'hello from the old computer\n'); fs.writeFileSync(path.join(H, 'Documents/eicar.txt'), 'X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*');
+    fs.writeFileSync(path.join(H, '.rudolf/bring-imported.txt'), 'Documents/notes.txt\nDocuments/eicar.txt\n');
+    const T = JSON.parse(JSON.stringify(SETD)); T['bring/found'] = {ok: true, sets: [{dir: '/media/sdb1/Rudolf OS - Bring your files/Old computer 2026-11-20 10.00', made: '2026-11-20T10:00:00Z', system: 'windows', drive: 1, last: true, people: [{name: 'Ann', dir: 'Ann', bytes: 2100, files: 2}]}]};
+    T.job = {ok: true, running: false, status: 0, log: 'PROGRESS 2 2 2100 2100\nBrought in 2 files.\n'}; fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(T));
+    mark = c0(); await wait(800); await scrollTo('brlook'); click(rect('brlook')); await until(() => rect('brin0'), 4000); await scrollTo('brin0'); click(rect('brin0'));
+    await until(() => /Your files from the old computer are here/.test(nst()), 8000); const c = since(), l = JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data;
+    ok('U14. Bring in files: Look on the drives (bring/found), Bring them in (bring/import), the job, the antivirus over what came in: EICAR\'s file deleted (home/delete) and written to the security log, the set marked brought in',
+      /POST bring\/import\?acct=uAnnA1b2&dir=%2Fmedia%2Fsdb1%2FRudolf%20OS%20-%20Bring%20your%20files%2FOld%20computer%202026-11-20%2010\.00&person=Ann/.test(c) && /POST home\/delete\?acct=uAnnA1b2&path=Documents%2Feicar\.txt/.test(c) && !/delete\?.*notes/.test(c)
+      && fs.existsSync(path.join(H, 'Documents/notes.txt')) && !fs.existsSync(path.join(H, 'Documents/eicar.txt')) && /Blocked EICAR\.TXT.*EICAR-Test-File/.test(l.bd95seclog || '') && /Old computer 2026-11-20 10\.00\|2026-11-20T10:00:00Z\|Ann/.test(l['bd95bring:uAnnA1b2'] || ''),
+      [c.slice(-600), l.bd95seclog, l['bd95bring:uAnnA1b2'], nst().split('\n').filter(x => /^act/.test(x)).slice(-6)]) }
+  /* Before an installation (bringStep): Windows found on the disk, Ann's Documents kept on a USB drive, then the installation goes on */
+  { const T = JSON.parse(JSON.stringify(SETD)); T['bring/result'] = {ok: true, found: true, total: 1048576, systems: [{name: 'Windows 11', part: 'nvme0n1p3', state: 'hibernated', people: [{id: 'p1', name: 'Ann', bytes: 1048576, folders: [{k: 'Documents', bytes: 1048576, files: 3}]}]}], locked: []};
+    T.disks.disks.push({name: 'sdb', model: 'USB DISK', bytes: 32e9, removable: true, partitions: [{name: 'sdb1', fs: 'exfat', label: 'KEEP', mount: '', bytes: 32e9}]}); T.job = {ok: true, running: false, status: 0, log: 'PROGRESS 3 3 1048576 1048576\nCopied 3 files.\n'};
+    fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(T)); mark = c0(); await wait(800);
+    await scrollTo('install0'); click(rect('install0')); await until(() => rect('dialog'), 3000); pw(); await until(() => rect('bsgo') && /bringstep .* has another system/.test(nst()), 6000); await wait(500);
+    sh(`import -window root ${path.join(OUT, 'bringstep.png')}`); const g = rect('bsgo'); const keep = !!rect('bskeep') && !!rect('bsf0') && !!rect('bsto'); xdo(`mousemove ${g[0] + 10} ${g[1] + 8} click 1`); await until(() => /Copied and checked/.test(nst()), 6000); await wait(400);
+    const g2 = rect('bsgo'); xdo(`mousemove ${g2[0] + 10} ${g2[1] + 8} click 1`); await until(() => /ask Erase nvme0n1/.test(nst()), 4000); await wait(300); xdo('key Return'); await until(() => /POST install\?/.test(since()), 4000);
+    const c = since(); ok('U15. Install here… on a disk with Windows (bringStep): the disk looked at (bring/scan, bring/result), Keep them, the USB drive mounted (mount?dev=sdb1), bring/copy, its job, Continue to install, then Erase nvme0n1? and install',
+      keep && /POST bring\/scan\?disk=nvme0n1/.test(c) && /GET bring\/result\?disk=nvme0n1/.test(c) && /POST mount\?dev=sdb1/.test(c) && /POST bring\/copy/.test(c) && /POST install\?disk=nvme0n1&confirm=nvme0n1/.test(c) && !/bring\/decide/.test(c),
+      [c.slice(-500), keep, nst().split('\n').filter(x => /^act|^rect bs/.test(x)).slice(-10)]);
+    await until(() => /ask Rudolf OS is installed/.test(nst()), 4000); const d = rect('dialog'); if (d) { xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo('key Escape') } fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(SETD)) }
   natStop();
 }
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
