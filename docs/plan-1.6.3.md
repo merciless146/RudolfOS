@@ -1,4 +1,4 @@
-# Rudolf OS 1.6.3: native Settings, the native Office apps, fingerprint readers and Oracle's memory
+# Rudolf OS 1.6.3: native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page
 
 1.6.3 follows 1.6.2. The owner, 2026-11-23 18:20 and 18:23 CST: "Push fingerprint scanners to 1.6.3" and, for the Office
 apps' native versions, "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that includes
@@ -65,8 +65,40 @@ Oracle's Tor windows and encrypted folders. Kept only with a measured saving (es
 Oracle's tests passing. The owner's checklist: Oracle on the Vivobook with several tabs, the memory in Task Manager, a
 freed tab coming back as it was.
 
+### Part 5. Oracle's encrypted websites back in the page on Chromium (the owner, 2026-11-23 20:08 and 20:10 CST)
+The owner: "Is it possible to have the Oracle browser in Chromium running in the same Chromium page again?", then "Yes, add
+it to the end of 1.6.3."
+**Today.** On the Chromium desktop, Oracle's tabs are real tabs inside the desktop page (Controlled Frames, desktop/tabs26.js),
+each account in its own partition of the desktop's one shared browser profile (encrypted by this computer's TPM key, 1.6.1
+Part 20). With "Keep my websites encrypted with my account" on (1.6.0 Part 22, oraenc60.js; #583), Oracle runs instead in a
+Chromium of its own whose profile is the account's encrypted folder (/persist/oracle/ID, the home folder's key, locked at
+sign-out), as a separate window (1.6.2 Part 29 frames it). Turning the setting off brings the tabs back into the page.
+**The way to have both** (to be proven first): while the account is signed in, rudolfd mounts the account's encrypted Oracle
+folder over that account's partition's storage folder inside the desktop's Chromium profile (bind mount, as Documents are
+mounted over /home/rudolf for Linux apps); at sign-out the partition's tabs are closed, Chromium is made to let go of the
+partition's files, then the mount is taken away and the folder locked. So the page's real tabs use the account's own
+encrypted storage, and Oracle stays in the page with the setting on.
+**What has to be proven before it is built:**
+- Where Chromium keeps a Controlled Frame partition's files (cookies, local storage, IndexedDB, cache, service workers) and
+  that all of them are under one folder per partition, with nothing of it in the profile's shared files (the network
+  service's shared cookie database, the HTTP cache, Safe Browsing, preferences, history, the password store, crash reports).
+- That Chromium tolerates the folder appearing at sign-in and going away at sign-out while it runs (it opens a partition's
+  stores lazily and may keep them open: closing them must be forced, or the partition must be one Chromium only opens after
+  the mount), and that a crash or power loss never leaves the account's websites written in the clear profile.
+- Saved site passwords: whether they live in the partition or in the profile's own password store; if the latter, they stay
+  in the account's own place some other way.
+**If any of these fails,** the setting keeps its current meaning (Oracle in its own window) and this part is written up as
+not possible, with why.
+**Never weakened:** each account's websites unreadable to others and to root while it is signed out; Guest in memory only;
+the TPM-keyed shared profile for accounts with the setting off; the separation of Oracle's Tor windows and private windows.
+**Tests:** host (a fake profile and partitions, the mount and unmount at sign-in and sign-out, a crash in between) and on
+Chromium in QEMU (sign in, a site's cookie kept, sign out, the drive read from outside: nothing of the site in the clear);
+the owner's checklist: Chromium mode on the Vivobook, the setting on, Oracle's tabs in the page, signed-in sites kept after
+sign-out and back in.
+
 ## Steps
 - Part 3: first, after 1.6.2 is stable.
 - Part 1: after 1.6.2 is stable; WordPro first.
 - Part 2: after 1.6.2 is stable.
 - Part 4: after 1.6.2 is stable.
+- Part 5: last, after 1.6.2 is stable.
