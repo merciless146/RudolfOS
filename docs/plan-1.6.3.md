@@ -1,4 +1,4 @@
-# Rudolf OS 1.6.3: the signing keys protected, native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page
+# Rudolf OS 1.6.3: the signing keys protected, native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page, installing beside Windows, Oracle's extensions
 
 1.6.3 follows 1.6.2. The owner, 2026-11-23 18:20 and 18:23 CST: "Push fingerprint scanners to 1.6.3" and, for the Office
 apps' native versions, "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that includes
@@ -183,6 +183,110 @@ Chromium in QEMU (sign in, a site's cookie kept, sign out, the drive read from o
 the owner's checklist: Chromium mode on the Vivobook, the setting on, Oracle's tabs in the page, signed-in sites kept after
 sign-out and back in.
 
+### Part 6. Installing beside Windows on the same drive (the owner, 2026-11-24 11:35 and 12:30 CST)
+The owner, installing on an ASUS desktop: "Is there a way to install it without formatting the hard drive or removing
+Windows?", then "Yes, add it to 1.6.3."
+**Today.** Settings > Update and recovery > Install here... writes Rudolf OS's whole disc image to the start of the
+chosen disk and adds RUDOLFDATA after it (iso/sys/root/usr/lib/rudolf/install.sh): the whole disk is erased. Beside
+Windows today means another disk (an internal second drive, an external SSD, or a stick with Keep my files).
+**The change: "Install beside Windows..."** (UEFI computers with a GPT disk; BIOS/MBR stays whole-disk only):
+1. **Room, made in Windows first.** The person shrinks Windows' partition in Windows' own Disk Management (Shrink
+   Volume), which knows NTFS, BitLocker, the page file and hibernation; Rudolf OS uses only unallocated space and never
+   resizes or writes to a Windows partition. The installer shows the disk's partitions by name, size and kind (EFI
+   system, Microsoft reserved, Windows, recovery, free) and offers only a free area of at least 16 GB. Before that,
+   Rudolf OS's own guide (and Settings' text) says how: back up, note the BitLocker recovery key (aka.ms/myrecoverykey),
+   turn off Windows' Fast Startup, then Disk Management > Shrink Volume.
+2. **What Rudolf OS writes, and nothing else:** one new partition in that free space, RUDOLFDATA (the installed
+   system's slots, as an installed drive with boot files only already works: 1.5.3, 1.6.0 Part 16), and Rudolf OS's start-up
+   files in the disk's existing EFI system partition, in their own folder only (\EFI\rudolf\: shim, Rudolf's signed
+   start-up file, recovery.efi, the menu), never touching \EFI\Microsoft\ or \EFI\Boot\. If the EFI system
+   partition is too small for them, it stops and says so (no resizing).
+3. **Choosing at start-up:** a UEFI boot entry "Rudolf OS" (shim), put first; Rudolf's start-up menu gets a "Windows"
+   entry that starts Windows Boot Manager from the same EFI system partition (systemd-boot finds it), so the person
+   picks each time, with a short wait and Rudolf OS as the default (changeable in Settings > Update and recovery). The
+   firmware's own boot menu (F8 on ASUS) still offers both. Windows updates that put Windows Boot Manager first again:
+   Rudolf OS puts its entry back at its next start, and System health says so.
+4. **Secure Boot** stays on for both: Rudolf OS through Microsoft-signed shim as now (its key enrolled once); nothing
+   in the firmware's own key lists changes. BitLocker: changing the boot order can make Windows ask for its recovery
+   key once; the installer says so before it starts, and the guide says where the key is.
+5. **Updates and Recovery mode** work as on any installed Rudolf OS (both slots in RUDOLFDATA; recovery.efi in
+   \EFI\rudolf\ starts the official stable).
+6. **Removing it:** Settings > Update and recovery > "Remove Rudolf OS from this drive" (from a stick or from Windows'
+   side: a guide) deletes RUDOLFDATA, \EFI\rudolf\ and the boot entry, and leaves the space unallocated for Windows to
+   take back (Disk Management > Extend Volume).
+**Never:** a Windows partition written, resized or formatted; anything in \EFI\Microsoft\; the firmware's Secure Boot
+keys changed; an install that goes on when the free area, the EFI system partition or the disk's partition table is not
+what was shown.
+**Tests:** in QEMU with OVMF and Secure Boot on: a made-up GPT disk laid out as Windows lays one out (an EFI system
+partition with a stand-in \EFI\Microsoft\Boot\bootmgfw.efi that only prints a mark, Microsoft reserved, an NTFS
+partition with files, a recovery partition, free space; no Windows files or images): install beside; every Windows
+partition's checksum unchanged and \EFI\Microsoft\ unchanged; Rudolf OS starts, updates, rolls back, Recovery mode;
+the menu's Windows entry starts the stand-in; the boot order put back; too little free space, a full EFI system
+partition, an MBR disk and a BIOS computer refused with plain words; removal leaves the disk as before (unallocated).
+**The owner's checklist** (the ASUS desktop): back up and note the BitLocker key; shrink in Disk Management; install
+beside; Rudolf OS and Windows each start from the menu and from F8; a Windows update, then Rudolf OS's next start; an
+update of Rudolf OS; removal and Extend Volume back.
+
+### Part 7. Oracle's extensions, and a password manager built in (the owner, 2026-11-24 12:42 and 12:45 CST)
+The owner: "What would be the recommended means of adding extensions (password managers, specialized blockers, etc) to
+Oracle?", then "Yes" to adding it with the built-in password manager first.
+**Where extensions may run.** On the Chromium desktop, Oracle's tabs are Controlled Frames inside the desktop's page,
+where Chromium runs no extensions, and that page holds rudolfd's token: **extensions never run in the desktop's own
+Chromium.** They run only in Oracle's own Chromium with its own profile (as on Native, and with "Keep my websites
+encrypted with my account"): turning extensions on makes Oracle open that way on the Chromium desktop too, as the
+encrypted setting does (Part 5 does not change this: frames run no extensions). The Lite desktop (WebKit) has none, and
+Settings says so.
+**The owner's rule (2026-11-24 12:50 CST):** "Whenever Oracle is running on any Chromium desktop as part of the desktop's
+own Chromium, instead of over top of it, extensions must not run at all and attempting to activate them should remind
+the user to change the appropriate settings. This keeps potential unauthorized extension access from the desktop and the
+rest of the PC." So:
+- Oracle in the desktop's own Chromium (its tabs in the desktop page: the Chromium desktop with extensions off and the
+  encrypted setting off, and Part 5's encrypted-in-the-page): **no extension runs**, enforced by Chromium's policy on the
+  desktop's own profile (ExtensionInstallBlocklist "*", no allowlist, ExtensionSettings "*": installation_mode blocked;
+  the desktop's profile never gets an extension, whatever Oracle's settings say), not only by Oracle's buttons.
+- **Trying to use one there reminds the person, and does nothing else:** Oracle's extensions button, ☰ › Extensions, an
+  extension's page on the Web Store ("Add to Chrome") and Settings › Oracle › Extensions all show the same notice:
+  "Extensions only run when Oracle runs in its own window. Turn on Settings › Oracle › Extensions (Oracle then opens in
+  its own window), or turn on 'Keep my websites encrypted with my account'." with a button that opens that page of
+  Settings; nothing is installed or switched by the notice itself.
+- **"Learn more"** in that reminder opens Oracle's page **about:safety#extensions-desktop** (the owner, 2026-11-24 12:55
+  CST): "Oracle's safety and your data", a page of Oracle's user-safety and data-security policies in the default
+  bookmarks (as "Safety"; added once to bookmarks kept from before), scrolled to the entry that explains why extensions
+  are unsafe in the desktop's own Chromium and highlighted. Its entries: nothing sent about you; ads and trackers
+  blocked; your websites account by account (the TPM, the encrypted setting); private windows; Tor windows (and their
+  limits); updates and site isolation; extensions and the desktop; Guest; what Oracle cannot do for you. **Built and
+  tested on the branch oracle-safety-page** (desktop/orasafe63.js, orasafe63_t.js 9/9, oracle-safety-check.yml;
+  "This will be part of Oracle's 1.6.3 work": merged with this part, not before), its text kept true as each part lands.
+- Oracle in its own Chromium, over the desktop (Native; the Chromium desktop with extensions or the encrypted setting
+  on): extensions as below. A test checks the desktop's profile refuses every extension even if Oracle's own policy
+  allows one.
+**Step 1 (first): the built-in password manager.** Chromium's own (save, fill, generate, check for leaked passwords
+only if the person turns that on) in Oracle's own-profile mode, its store the account's keyring (Rudolf OS already keeps
+apps' sign-ins there: Settings › Privacy › Saved passwords for apps), so it is locked with the account; Oracle's ☰ ›
+Passwords opens it; Guest and Tor windows never save. No extension needed for the most common need.
+**Step 2: extensions, by Chromium's enterprise policies** (Rudolf OS already writes Chromium policy):
+- ExtensionInstallAllowlist: by default a short vetted list, signed by the release key like the Library's lists (a forged
+  list is refused): password managers (Bitwarden, 1Password, KeePassXC-Browser, Proton Pass), uBlock Origin Lite,
+  Privacy Badger, Dark Reader. An administrator may allow any extension from the Chrome Web Store (the administrator's
+  prompt). Extensions come from the Web Store, signed by Google, and update through Chromium's own updater.
+- ExtensionSettings for every extension: runtime_blocked_hosts localhost, 127.0.0.1, [::1] and Rudolf OS's own pages,
+  so no extension ever reaches rudolfd or the desktop; native messaging off unless allowed for one app (KeePassXC-Browser
+  with KeePassXC from Flathub).
+- Per account, in that account's Oracle profile (in the encrypted folder when that is on); Guest none.
+- Tor windows: never (extensions leak identity and help fingerprinting). Private windows: off unless the person allows an
+  extension there, as in Chrome.
+- Settings › Oracle › Extensions: the list, add and remove, each one's permissions in plain words, its memory (each
+  running extension ~20-60 MB), the administrator's switch; Oracle's toolbar: an extensions button for their menus.
+**Never:** an extension in the desktop's Chromium (whatever Oracle's settings say), in an app window or a Tor window; one reaching 127.0.0.1 or the
+desktop page; an extension installed without the vetted list or the administrator's switch.
+**Tests:** with Oracle in the desktop's own Chromium, a stand-in extension cannot be installed or run (policy) and each
+way of trying shows the reminder; a stand-in extension that tries 127.0.0.1, rudolfd's port and the desktop page: refused; a Tor window loads
+none; a forged vetted list refused; the built-in password manager saves and fills in a test page and keeps nothing in
+Guest; on runners, Bitwarden's and uBlock Origin Lite's real extensions install from the policy and work (a test
+sign-in filled; a test ad blocked); memory with two extensions.
+**The owner's checklist:** Oracle on the Vivobook: save and fill a password; Bitwarden (or the owner's manager) signed
+in and filling; uBlock Origin Lite on a busy site; a Tor window without them.
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
@@ -190,3 +294,5 @@ sign-out and back in.
 - Part 2: after 1.6.2 is stable.
 - Part 4: after 1.6.2 is stable.
 - Part 5: last, after 1.6.2 is stable.
+- Part 6: after Part 3 (native Settings), before the Office apps if the owner wants it sooner.
+- Part 7: step 1 (the built-in password manager) early; step 2 after it.

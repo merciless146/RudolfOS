@@ -9,6 +9,10 @@ Summary: In progress.
   sound's style, switch and volume with its ▶, "Use one style everywhere", App volume, the output, the sound card, the
   microphone and its test, echo cancelling for calls), Multimedia Settings and Accessibility, as the web Settings has them
   (plan 1.6.3 Part 3). Native's shell plays a sound Settings tries.
+- Changed: the plan (docs/plan-1.6.3.md Part 6): installing Rudolf OS beside Windows on the same drive, in free space
+  made in Windows, with a start-up menu for both.
+- Changed: the plan (docs/plan-1.6.3.md Part 7): Oracle's extensions (a vetted list, never in the desktop's Chromium or a
+  Tor window), with Chromium's built-in password manager first.
 - Changed: Rudolf OS trusts a second release key, made offline by the owner (IcNJiy4z…cVg=), beside the current one, so the
   signing key can be replaced; Recovery mode's start-up file carries both. Only the first key in the list signs releases
   until the switch (plan 1.6.3 Part 0).
