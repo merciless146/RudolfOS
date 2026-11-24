@@ -75,6 +75,11 @@ if _r.returncode: bad.extend('noremote: ' + l for l in _r.stdout.splitlines() if
 _w = _sp.run([sys.executable, os.path.join(ISO, 'systools', 'wfkeys.py')], capture_output=True, text=True)
 if _w.returncode: bad.extend(l for l in _w.stdout.splitlines() if not l.startswith('wfkeys: FAILED'))
 
+# ---- 1.6.2: every listener the sources start is in the list of listeners (listeners59_t.sh, as the release build runs it;
+# rudolf-shares' finding stopped the release build of 2026-11-23 although every pull request's own checks passed)
+_l = _sp.run(['sh', os.path.join(ISO, 'qt', 'host', 'listeners59_t.sh')], capture_output=True, text=True, cwd=ISO)
+if _l.returncode: bad.extend('listeners: ' + l for l in _l.stdout.splitlines() if l.startswith('FAIL'))
+
 for b in bad:
     print('deadcheck:', b)
 print(f'deadcheck: {"FAILED" if bad else "ok"} ({len(bad)} found)')

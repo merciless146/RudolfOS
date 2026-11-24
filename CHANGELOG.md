@@ -6,6 +6,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 ## 1.6.2 (in progress)
 Summary: In progress.
 - Added: the native Settings' Update and recovery page (docs/plan-1.6.2.md Part 39), as the web one: updates, system extensions,
+  installing, recovery, the drive's start-up files and the boot menu; bringing in an old computer's files follows.
+- Fixed: the release build stopped at its check of what listens on the computer: rudolf-shares (File Explorer's network
+  shares) listens for a few seconds for multicast DNS and WS-Discovery answers, and the list of listeners did not name it.
+  It does now, with who may answer and how it checks; deadcheck.py runs that check too, so a pull request finds it first.
   installing, recovery, the drive's start-up files and the boot menu.
 - Added: the native Settings brings in an old computer's files as the web one does (docs/plan-1.6.2.md Part 39): what came in
   checked by the antivirus, and before an installation erases a disk, its files kept on a USB drive first.
