@@ -64,7 +64,7 @@ enum { SD_PRIVKEY = 1, SD_TOKEN = 2, SD_OWN = 4, SD_RECOVERY = 8, SD_PASSWORD = 
 #define SD_SHOWN (SD_SECRET | SD_PASSWORD | SD_CODE)   /* what is hidden from what Blitzen reads and writes */
 #define SD_ALL (SD_SECRET | SD_SENSITIVE)               /* what is looked for in what is sent */
 /* Rudolf OS's own public keys (CLAUDE.md): the release key and the Library's. Shown as they are. */
-static const char *const SD_PUBLIC[] = { "UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=", "kRBDN3Ys6i49gblu504quUt7NZHGZj/kexNTb6uoenY=", NULL };
+static const char *const SD_PUBLIC[] = { "UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=", "IcNJiy4zFkKUU3g3jalcgTQlneiDXv3E0/bbJt19cVg=", "kRBDN3Ys6i49gblu504quUt7NZHGZj/kexNTb6uoenY=", NULL };
 
 SD_FN const char *sd_label(int k)
 {

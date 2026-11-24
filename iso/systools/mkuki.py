@@ -13,7 +13,8 @@ line, so Rudolf OS can revoke its own old bundles if one ever has to be withdraw
 1.5.9 (docs/plan-1.5.9.md 8.4): --recovery KEYFILE makes the official recovery start-up file (recovery.efi): the
 same kernel, and a small second initramfs in the bundle's .initrd section (unpacked over the kernel's own) with
 /etc/rudolf-recovery (the mark: the start-up starts only the checked official recovery system, system/r) and
-/etc/rudolf-official-key (KEYFILE: the official release key alone, one Ed25519 public key in base64), and
+/etc/rudolf-official-key (KEYFILE: the official release keys only, Ed25519 public keys in base64: one, or (1.6.3 Part 0)
+up to four while a key is being replaced; never Developer mode's), and
 /etc/rudolf-kexec-initrd (an empty initramfs the handover to system/r gives the new kernel, see rudolf-kexec.c)."""
 import os, re, subprocess, sys, tempfile
 
@@ -48,12 +49,14 @@ def cpio(entries):
     return out + b'\0' * (-len(out) % 512)
 
 
-def official_key(path):
-    """The one key in KEYFILE (comments allowed); refuses anything else (a second key, a private key)."""
+def official_keys(path):
+    """The official keys in KEYFILE (comments allowed): one, or (1.6.3 Part 0: while the release key is replaced, the
+    old and the new) up to four; refuses anything else (no key, more than four, a line that is not a public key: a
+    private key, a PEM block)."""
     keys = [l.strip() for l in open(path) if l.strip() and not l.startswith('#')]
-    if len(keys) != 1 or not re.fullmatch(r'[A-Za-z0-9+/]{43}=', keys[0]):
-        sys.exit(f'{path}: the recovery start-up file carries exactly one public key (base64), not {len(keys)} lines')
-    return keys[0]
+    if not 1 <= len(keys) <= 4 or not all(re.fullmatch(r'[A-Za-z0-9+/]{43}=', k) for k in keys):
+        sys.exit(f'{path}: the recovery start-up file carries one to four public keys (base64, one per line), not {len(keys)} lines like that')
+    return keys
 
 
 def main():
@@ -80,7 +83,7 @@ def main():
             data = open(TEST_INITRD, 'rb').read() if TEST_INITRD else b''
             data += cpio([('etc', 0o40755, None),
                           ('etc/rudolf-recovery', 0o100644, f'official recovery start-up file, Rudolf OS {ver}\n'.encode()),
-                          ('etc/rudolf-official-key', 0o100644, (official_key(rec) + '\n').encode()),
+                          ('etc/rudolf-official-key', 0o100644, ''.join(k + '\n' for k in official_keys(rec)).encode()),
                           # (an empty initramfs for the handover to system/r: see rudolf-kexec.c)
                           ('etc/rudolf-kexec-initrd', 0o100644, cpio([]))])
             open(ird, 'wb').write(data)

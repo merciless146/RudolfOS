@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Changed: Rudolf OS trusts a second release key, made offline by the owner (IcNJiy4z…cVg=), beside the current one, so the
+  signing key can be replaced; Recovery mode's start-up file carries both. Only the first key in the list signs releases
+  until the switch (plan 1.6.3 Part 0).
 - Changed: the signing workflows run in a "release" environment, so that once the owner sets it up only main can use
   the signing keys (plan 1.6.3 Part 0).
 - New: README.TXT has a section on Developer mode and making your own build (in short, with where the full guide is),

@@ -1,3 +1,6 @@
 # Release and package signing keys this Rudolf OS trusts (Ed25519 public keys, base64, one per line).
 # Copied into the system as /etc/rudolf/rpk-keys. Never put a private key here.
 UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=
+# 1.6.3 Part 0 (2026-11-24): the new release key, made offline by the owner; signing moves to it once every computer
+# trusts it (a release signed by the key above ships this list), then the key above may leave this list.
+IcNJiy4zFkKUU3g3jalcgTQlneiDXv3E0/bbJt19cVg=

@@ -14,7 +14,8 @@
 # PARTS-DIR: the files of the draft release sb-parts (shimx64.efi, mmx64.efi, systemd-bootx64.efi,
 # linuxx64.efi.stub), checked against iso/boot/sb/parts.txt. SB_KEY / SB_CERT: the signing key and its
 # certificate (SB_CERT defaults to iso/boot/sb/rudolf-sb.crt); SBSIGN: the sbsign program. GPL-2.0-or-later.
-# The official release key for recovery.efi: iso/trusted-keys.txt (exactly one key); RUDOLF_TEST_KEYS instead in local
+# The official release keys for recovery.efi: iso/trusted-keys.txt (one, or while a key is replaced the old and the
+# new: 1.6.3 Part 0); RUDOLF_TEST_KEYS instead in local
 # test builds only (never in the workflow).
 set -e
 K=$1; VER=$2; P=$3; OUT=$4
