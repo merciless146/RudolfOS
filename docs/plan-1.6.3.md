@@ -195,6 +195,22 @@ Chromium.** They run only in Oracle's own Chromium with its own profile (as on N
 encrypted with my account"): turning extensions on makes Oracle open that way on the Chromium desktop too, as the
 encrypted setting does (Part 5 does not change this: frames run no extensions). The Lite desktop (WebKit) has none, and
 Settings says so.
+**The owner's rule (2026-11-24 12:50 CST):** "Whenever Oracle is running on any Chromium desktop as part of the desktop's
+own Chromium, instead of over top of it, extensions must not run at all and attempting to activate them should remind
+the user to change the appropriate settings. This keeps potential unauthorized extension access from the desktop and the
+rest of the PC." So:
+- Oracle in the desktop's own Chromium (its tabs in the desktop page: the Chromium desktop with extensions off and the
+  encrypted setting off, and Part 5's encrypted-in-the-page): **no extension runs**, enforced by Chromium's policy on the
+  desktop's own profile (ExtensionInstallBlocklist "*", no allowlist, ExtensionSettings "*": installation_mode blocked;
+  the desktop's profile never gets an extension, whatever Oracle's settings say), not only by Oracle's buttons.
+- **Trying to use one there reminds the person, and does nothing else:** Oracle's extensions button, ☰ › Extensions, an
+  extension's page on the Web Store ("Add to Chrome") and Settings › Oracle › Extensions all show the same notice:
+  "Extensions only run when Oracle runs in its own window. Turn on Settings › Oracle › Extensions (Oracle then opens in
+  its own window), or turn on 'Keep my websites encrypted with my account'." with a button that opens that page of
+  Settings; nothing is installed or switched by the notice itself.
+- Oracle in its own Chromium, over the desktop (Native; the Chromium desktop with extensions or the encrypted setting
+  on): extensions as below. A test checks the desktop's profile refuses every extension even if Oracle's own policy
+  allows one.
 **Step 1 (first): the built-in password manager.** Chromium's own (save, fill, generate, check for leaked passwords
 only if the person turns that on) in Oracle's own-profile mode, its store the account's keyring (Rudolf OS already keeps
 apps' sign-ins there: Settings › Privacy › Saved passwords for apps), so it is locked with the account; Oracle's ☰ ›
@@ -212,9 +228,10 @@ Passwords opens it; Guest and Tor windows never save. No extension needed for th
   extension there, as in Chrome.
 - Settings › Oracle › Extensions: the list, add and remove, each one's permissions in plain words, its memory (each
   running extension ~20-60 MB), the administrator's switch; Oracle's toolbar: an extensions button for their menus.
-**Never:** an extension in the desktop's Chromium, in an app window or a Tor window; one reaching 127.0.0.1 or the
+**Never:** an extension in the desktop's Chromium (whatever Oracle's settings say), in an app window or a Tor window; one reaching 127.0.0.1 or the
 desktop page; an extension installed without the vetted list or the administrator's switch.
-**Tests:** a stand-in extension that tries 127.0.0.1, rudolfd's port and the desktop page: refused; a Tor window loads
+**Tests:** with Oracle in the desktop's own Chromium, a stand-in extension cannot be installed or run (policy) and each
+way of trying shows the reminder; a stand-in extension that tries 127.0.0.1, rudolfd's port and the desktop page: refused; a Tor window loads
 none; a forged vetted list refused; the built-in password manager saves and fills in a test page and keeps nothing in
 Guest; on runners, Bitwarden's and uBlock Origin Lite's real extensions install from the policy and work (a test
 sign-in filled; a test ad blocked); memory with two extensions.
