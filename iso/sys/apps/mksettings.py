@@ -382,5 +382,16 @@ mmd = jsconst(base, 'MMD', 'base_v24.html'); mmi = jsconst(base, 'MMI', 'base_v2
 if list(mmd['plug']) != list(mmi) or 'rufUrl' not in mmd['set']: die("base_v24.html's MMD and MMI were not read")
 out.append('static const char *const MMPLUG[][3] = {' + ','.join('{ %s, %s, %s }' % (cstr(k), cstr(v['name']), cstr(v['blurb'])) for k, v in mmi.items()) + '};')
 out.append('static const char *const MMSET[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(jsjson(v))) for k, v in mmd['set'].items()) + '};')
+
+# ---------------------------------------------------------------- Display Properties: its keys and defaults, the accent modes, the statues and the
+# backgrounds' thumbnails, as the live page has them (desktop/settings-disp.json, written by setsearch59_t.js --write)
+dsp = json.load(open(os.path.join(DESK, 'settings-disp.json'), encoding='utf-8'))
+if 'dyn' not in dsp['DKEYS'] or 'bs' not in dsp['DEFS']: die('desktop/settings-disp.json is not whole: node iso/qt/shell2/setsearch59_t.js --write')
+out.append('static const char *const DKEYS[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(json.dumps(dsp['DEFS'].get(k), ensure_ascii=False))) for k in dsp['DKEYS']) + '};')
+out.append('static const char *const ACMODES[][2] = {' + ','.join('{ %s, %s }' % (cstr(a), cstr(b)) for a, b in dsp['ACMODES']) + '};')
+out.append('static const char *const STNAMES[][2] = {' + ','.join('{ %s, %s }' % (cstr(a), cstr(b)) for a, b in dsp['ST_NAMES'].items()) + '};')
+out.append('static const char *const STOF[][2] = {' + ','.join('{ %s, %s }' % (cstr(a), cstr(b)) for a, b in dsp['ST_OF'].items()) + '};')
+out.append('typedef struct { const char *k, *n, *tl, *td; int live; } SetDyn;')
+out.append('static const SetDyn DYNS[] = {' + ','.join('{ %s, %s, %s, %s, %d }' % (cstr(k), cstr(v['n']), cstr(v.get('tl') or ''), cstr(v.get('td') or ''), 1 if k in dsp['DYN_LIVE'] else 0) for k, v in dsp['DYN'].items()) + '};')
 out.append('static const unsigned char LOGO_PNG[] = {' + ','.join(str(b) for b in png) + '};')
 open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')
