@@ -1269,6 +1269,23 @@ static char *oracle_web_profile(gchar **L, int n)
 	}
 	char *r = g_strdup_printf("--user-data-dir=%s", prof); g_free(prof); return r;
 }
+/* 1.6.2 (docs/plan-1.6.2.md Part 38, step 5): Oracle's Chromium keeps no spare renderer. Chromium starts a renderer process ahead of
+   need (two here, about 21 MB RssAnon each, whatever the tabs) so the next website opened has one ready; Oracle's websites (Controlled
+   Frames in the shell) are given one when they open, a moment later. Measured on the host (oramem162.sh, the whole Chromium of Oracle's
+   profile, RssAnon / PSS MB): one website 363 / 458 -> 321 / 442, three 430 / 501 -> 387 / 485, six 549 / 584 -> 502 / 564; each website
+   costs what it did (about 37 / 25). Site isolation, the sandbox and the profiles are not touched: every site still has its own process.
+   The arguments: SpareRendererForSitePerProcess added to Chromium's --disable-features (Chromium reads only the last one given), or
+   that flag alone when none is given. RUDOLF_NATIVE_ORACLE_SPARE=1 (tests, readings) keeps the spare renderer. Returns what to free. */
+static GPtrArray *oracle_nospare(GPtrArray *a)
+{
+	GPtrArray *own = g_ptr_array_new_with_free_func(g_free); const char *f = "SpareRendererForSitePerProcess";
+	const char *keep = getenv("RUDOLF_NATIVE_ORACLE_SPARE"); if (keep && *keep == '1') return own;
+	int had = 0;
+	for (guint i = 0; i < a->len; i++) { const char *s = a->pdata[i]; if (!s || strncmp(s, "--disable-features=", 19)) continue; had = 1;
+		if (strstr(s + 19, f)) continue; char *r = g_strdup_printf("%s%s%s", s, s[19] ? "," : "", f); a->pdata[i] = r; g_ptr_array_add(own, r); }
+	if (!had) { char *r = g_strdup_printf("--disable-features=%s", f); g_ptr_array_add(a, r); g_ptr_array_add(own, r); }
+	return own;
+}
 static int oracle_open(const char *file, const char *extra)
 {
 	const char *cf = getenv("RUDOLF_ORACLE_CMD"); if (!cf) cf = "/run/rudolf/oracle-chrome";
@@ -1285,10 +1302,11 @@ static int oracle_open(const char *file, const char *extra)
 		char *wprof = WEB_DIR[0] && USER_ID[0] && strcmp(USER_R, "guest") ? oracle_web_profile(L, n) : NULL;
 		for (int i = 1; i < n; i++) if (L[i][0] && !(wprof && !strncmp(L[i], "--user-data-dir=", 16))) g_ptr_array_add(a, L[i]);
 		if (wprof) g_ptr_array_add(a, wprof);
+		GPtrArray *own = oracle_nospare(a);   /* (1.6.2 Part 38 step 5) */
 		g_ptr_array_add(a, NULL); GError *er = NULL;
 		int out = -1, ok = g_spawn_async_with_pipes(NULL, (gchar **)a->pdata, NULL, G_SPAWN_DO_NOT_REAP_CHILD, NULL, NULL, &OR_PID, NULL, &out, NULL, &er);
 		if (ok && out >= 0) { GIOChannel *ch = g_io_channel_unix_new(out); g_io_channel_set_close_on_unref(ch, TRUE); g_io_add_watch(ch, G_IO_IN | G_IO_HUP | G_IO_ERR, oracle_msgs, NULL); g_io_channel_unref(ch); }
-		g_ptr_array_free(a, TRUE); g_strfreev(L); g_free(wprof);
+		g_ptr_array_free(a, TRUE); g_ptr_array_free(own, TRUE); g_strfreev(L); g_free(wprof);
 		if (!ok) { fprintf(stderr, "rudolf-native: Oracle: %s\n", er ? er->message : "?"); if (er) g_error_free(er); unlink(OR_CTL); return 0; }
 		OR_RUN = 1; g_child_watch_add(OR_PID, oracle_exited, NULL);
 	}
