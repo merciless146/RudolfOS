@@ -1140,12 +1140,12 @@ its one page.
 3b. **The Office apps** (WordPro, SpreadsheetPro, PresentPro), right after Task Manager: a small page each from the same
    sources (their groups are already files loaded when opened; what remains is the whole page under them), with their
    comparison tests; measured before and after.
-3c. **The shell's hidden page** (rudolf-native's do-bg page: the catalogue, the settings, the services): it too loads the
-   whole page; what it needs measured by coverage, and trimmed where that lowers the baseline without slowing the shell.
+3c. ~~**The shell's hidden page**~~ **dropped** (the owner, 2026-11-23 18:51 CST: "drop the desktop background trimming
+   idea"): it needs most of what it starts, and step 1 found the cost is the page starting; the estimate was 0-25 MB.
 4. **Settings, panel by panel** (the owner names it with Task Manager as the main concern): Settings reaches into most of the
    page, so a small page per panel (Sound, Display, Network...) rather than one for all of it, each with its comparison test.
-5. **Oracle's Chromium apart:** on Native, Oracle runs in Rudolf's own Chromium (one for every Oracle window), not in these pages;
-   its memory (how Chromium splits and keeps its tab processes) is measured and worked on as its own item.
+5. **Oracle's Chromium apart: moved to 1.6.3** (docs/plan-1.6.3.md Part 4; the owner, 2026-11-23 18:51 CST: "Move the Oracle
+   trimming to 1.6.3").
 5b. **Longer term (WendigOS, docs/plan-2.0.md):** the core apps rewritten natively (GTK, 10 to 40 MB a window instead of a
    whole page each): the lean end of this, too large for 1.6.x; the owner's WendigOS session reads this part.
 6. **The sign-in screen's flash:** each app window loading the whole page showed the desktop's sign-in screen for a moment

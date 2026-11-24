@@ -1,4 +1,4 @@
-# Rudolf OS 1.6.3: native Settings, the native Office apps and fingerprint readers
+# Rudolf OS 1.6.3: native Settings, the native Office apps, fingerprint readers and Oracle's memory
 
 1.6.3 follows 1.6.2. The owner, 2026-11-23 18:20 and 18:23 CST: "Push fingerprint scanners to 1.6.3" and, for the Office
 apps' native versions, "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that includes
@@ -56,7 +56,17 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
 - The tests, the memory against the web Settings (~170 MB) and the owner's checklist as 1.6.2 Part 39's PRs have them.
   Chromium and Lite keep the web Settings.
 
+### Part 4. Oracle's Chromium, its memory (moved from 1.6.2 Part 38, item 5)
+On Native, Oracle runs in Rudolf's own Chromium; each tab keeps its own process and memory, also when it has not been
+looked at for an hour (estimated, before measuring: ~100-150 MB with one tab, ~450-700 MB with six). Measured with one,
+three and six tabs; then only settings that lower it without weakening anything: background tabs freed after a while
+(they reload when chosen), caches freed under memory pressure. Never site isolation, the sandbox, or the separation of
+Oracle's Tor windows and encrypted folders. Kept only with a measured saving (estimated ~50-100 MB a background tab), with
+Oracle's tests passing. The owner's checklist: Oracle on the Vivobook with several tabs, the memory in Task Manager, a
+freed tab coming back as it was.
+
 ## Steps
 - Part 3: first, after 1.6.2 is stable.
 - Part 1: after 1.6.2 is stable; WordPro first.
 - Part 2: after 1.6.2 is stable.
+- Part 4: after 1.6.2 is stable.
