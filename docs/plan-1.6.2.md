@@ -1140,12 +1140,12 @@ its one page.
 3b. **The Office apps** (WordPro, SpreadsheetPro, PresentPro), right after Task Manager: a small page each from the same
    sources (their groups are already files loaded when opened; what remains is the whole page under them), with their
    comparison tests; measured before and after.
-3c. **The shell's hidden page** (rudolf-native's do-bg page: the catalogue, the settings, the services): it too loads the
-   whole page; what it needs measured by coverage, and trimmed where that lowers the baseline without slowing the shell.
+3c. ~~**The shell's hidden page**~~ **dropped** (the owner, 2026-11-23 18:51 CST: "drop the desktop background trimming
+   idea"): it needs most of what it starts, and step 1 found the cost is the page starting; the estimate was 0-25 MB.
 4. **Settings, panel by panel** (the owner names it with Task Manager as the main concern): Settings reaches into most of the
    page, so a small page per panel (Sound, Display, Network...) rather than one for all of it, each with its comparison test.
-5. **Oracle's Chromium apart:** on Native, Oracle runs in Rudolf's own Chromium (one for every Oracle window), not in these pages;
-   its memory (how Chromium splits and keeps its tab processes) is measured and worked on as its own item.
+5. **Oracle's Chromium apart: moved to 1.6.3** (docs/plan-1.6.3.md Part 4; the owner, 2026-11-23 18:51 CST: "Move the Oracle
+   trimming to 1.6.3").
 5b. **Longer term (WendigOS, docs/plan-2.0.md):** the core apps rewritten natively (GTK, 10 to 40 MB a window instead of a
    whole page each): the lean end of this, too large for 1.6.x; the owner's WendigOS session reads this part.
 6. **The sign-in screen's flash:** each app window loading the whole page showed the desktop's sign-in screen for a moment
@@ -1232,12 +1232,9 @@ account's own Linux user, nothing new opened up.
    (a sample window screenshot-compared with the page's same controls).
 2. **Task Manager** (1.6.2): the first native app; ~130 MB today in its own web process; aim 15 to 40 MB. Its small page
    (Part 38 step 2) is the stopgap until the native one passes, then the native one replaces it.
-3. **Settings** (**1.6.2**: the owner, 2026-11-23, "Do native settings in 1.6.2"; it was planned for 1.6.3): ~170 MB today.
-   `/usr/bin/rudolf-settings` on librudolf-ui, built panel group by panel group (one PR each), all 22 panels of
-   `desktop/settings-index.json` (Display, Sound, Multimedia, Network, Mobile, Bluetooth, Web, System, Keyboard, Mouse,
-   Devices, Accessibility, Privacy, Security, Health, Users, Remote, Storage, Apps, Notifications, Updates, About) and
-   Settings' search. Native opens it instead of the web Settings only once every panel and the search pass (no window half
-   native, half web: that would cost both); until then the web Settings stays. Chromium and Lite keep the web Settings.
+3. **Settings**: **moved to 1.6.3** (docs/plan-1.6.3.md Part 3; the owner, 2026-11-23 18:27 CST: "Push settings to 1.6.3 as
+   well"). What is merged (#665, #672) stays in main switched off: the native desktop keeps opening the web Settings until
+   every page and the search pass in 1.6.3. ~170 MB today.
 4. **The Office apps** (WordPro, SpreadsheetPro, PresentPro): **moved to 1.6.3** (docs/plan-1.6.3.md Part 1; the owner,
    2026-11-23 18:23 CST: "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that
    includes native settings"). ~130 MB each today; Part 38's small pages measured too little to be made.

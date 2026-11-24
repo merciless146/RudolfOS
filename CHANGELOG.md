@@ -10,8 +10,9 @@ Summary: In progress.
 
 ## 1.6.2 (in progress)
 Summary: In progress.
-- Changed: the plans: the native Office apps and fingerprint readers go to 1.6.3 (docs/plan-1.6.3.md), so 1.6.2 goes
-  stable from the beta that carries native Settings.
+- Changed: the plans: native Settings, the native Office apps, fingerprint readers and Oracle's memory go to 1.6.3
+  (docs/plan-1.6.3.md), with Oracle's encrypted websites back in the page on Chromium at its end, so 1.6.2 goes stable sooner; what of native Settings is merged stays switched off. The hidden
+  page's trimming is dropped.
 - Added: the native Settings' Update and recovery page (docs/plan-1.6.2.md Part 39), as the web one: updates, system extensions,
   installing, recovery, the drive's start-up files and the boot menu; bringing in an old computer's files follows.
 - Fixed: the release build stopped at its check of what listens on the computer: rudolf-shares (File Explorer's network
