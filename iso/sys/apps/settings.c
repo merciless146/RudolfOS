@@ -58,6 +58,7 @@ RuiJ *set_stored(void)
 	return o ? o : rui_jparse("{}");
 }
 static void jesc(GString *b, const char *s) { for (; *s; s++) { unsigned char c = *s; if (c == '"' || c == '\\') g_string_append_printf(b, "\\%c", c); else if (c < 32) g_string_append_printf(b, "\\u%04x", c); else g_string_append_c(b, c); } }
+char *set_jesc(const char *s) { GString *b = g_string_new(NULL); jesc(b, s ? s : ""); return g_string_free(b, FALSE); }
 /* a value of the stored object written back as JSON (rudolf-native's reader keeps numbers, strings, booleans, arrays, objects) */
 static void jwrite(GString *b, RuiJ *v)
 {
@@ -68,6 +69,17 @@ static void jwrite(GString *b, RuiJ *v)
 	else if (t == 3) { g_string_append_c(b, '"'); jesc(b, rui_jsval(v)); g_string_append_c(b, '"'); }
 	else if (t == 4) { g_string_append_c(b, '['); for (int i = 0; i < rui_jlen(v); i++) { if (i) g_string_append_c(b, ','); jwrite(b, rui_jat(v, i)); } g_string_append_c(b, ']'); }
 	else { g_string_append_c(b, '{'); for (int i = 0; i < rui_jlen(v); i++) { const char *k = rui_jkey(v, i); if (i) g_string_append_c(b, ','); g_string_append_c(b, '"'); jesc(b, k); g_string_append(b, "\":"); jwrite(b, rui_jprop(v, k)); } g_string_append_c(b, '}'); }
+}
+/* one key of the page's storage, as the page's ld(k): {"x": its value}, or NULL; and svj(k, value) (one part of rudolfd's copy) */
+RuiJ *set_ls_get(const char *k)
+{
+	char *e = g_uri_escape_string(k, NULL, TRUE), p[300]; snprintf(p, sizeof p, "/api/lsync?key=%s", e); g_free(e); RuiJ *r = rui_get(p); const char *v = rui_jstr(r, "v");
+	char *w = v ? g_strdup_printf("{\"x\":%s}", v) : NULL; RuiJ *o = w ? rui_jparse(w) : NULL; g_free(w); rui_jfree(r); return o;
+}
+int set_ls_set(const char *k, const char *json)
+{
+	GString *b = g_string_new("{\"part\":1,\"set\":{\""); jesc(b, k); g_string_append(b, "\":\""); jesc(b, json); g_string_append(b, "\"}}");
+	int c = rui_post("/api/lsync", b->str, NULL, 0); g_string_free(b, TRUE); return c;
 }
 int set_store(const char *const *keys, const char *const *vals, int n)
 {
@@ -248,6 +260,8 @@ GtkWidget *p_msg_m(const char *t, int grey, double mt, double mb) { GtkWidget *w
 GtkWidget *p_check(const char *t, int on, void (*cb)(int, void *), void *d) { Item *i = add_item(I_CHECK, t, 0, 0); i->wg = rui_check(t, on, cb, d); gtk_fixed_put(GTK_FIXED(FX), i->wg, 0, 0); return i->wg; }
 GtkWidget *p_buttons_h(const char *const *labels, int n, GCallback *cbs, void *d, double minh) { GtkWidget *b = p_buttons(labels, n, cbs, d); Item *i = g_ptr_array_index(ITEMS, ITEMS->len - 1); i->minh = minh; return b; }
 void p_custom(double (*lay)(void *d, double x, double y, double w), void *d, double mt, double mb) { Item *i = add_item(I_CUSTOM, NULL, mt, mb); i->lay = lay; i->ld = d; }
+/* (the last custom block found by Search in Settings: its label, or (h4) a section's heading that the rows after it are in) */
+void p_custom_find(const char *t, int h4) { Item *i = ITEMS && ITEMS->len ? g_ptr_array_index(ITEMS, ITEMS->len - 1) : NULL; if (!i || i->k != I_CUSTOM) return; g_free(i->text); i->text = g_strdup(rui_tr(t)); i->grey = h4; }
 void p_put(GtkWidget *w) { gtk_fixed_put(GTK_FIXED(FX), w, 0, 0); gtk_widget_show_all(w); }
 void p_place(GtkWidget *w, double x, double y, double wd, double h) { if (wd > 0 || h > 0) gtk_widget_set_size_request(w, wd > 0 ? R(wd) : -1, h > 0 ? R(h) : -1); gtk_fixed_move(GTK_FIXED(FX), w, R(x), R(y)); }
 double p_nat_w(GtkWidget *w);
@@ -465,6 +479,46 @@ void s_select_disable(GtkWidget *w, int i, int off) { Sel *s = g_object_get_data
 void s_select_label(GtkWidget *w, int i, const char *t) { Sel *s = g_object_get_data(G_OBJECT(w), "set-sel"); if (!s || i < 0 || i >= s->n) return; g_free(s->l[i]); s->l[i] = g_strdup(t); sel_size(w); gtk_widget_queue_draw(w); }
 void s_select_width(GtkWidget *w, double cw) { Sel *s = g_object_get_data(G_OBJECT(w), "set-sel"); if (!s) return; s->w = cw; sel_size(w); }
 
+/* ================================================================== the slider (input type=range as Chromium draws it on Linux: an 8px track,
+   #efefef with a #b2b2b2 edge, the part before the thumb #0075ff, a 16px round thumb; the value stepped as the page's step) */
+typedef struct { double min, max, step, v; void (*cb)(double, void *); void *d; int drag; } Rng;
+static gboolean rng_draw(GtkWidget *w, cairo_t *cr, gpointer d)
+{
+	Rng *r = d; double z = RUI.z, W = gtk_widget_get_allocated_width(w) / z, f = r->max > r->min ? (r->v - r->min) / (r->max - r->min) : 0, cx = 8 + fmax(0, fmin(1, f)) * (W - 16);
+	int on = gtk_widget_is_sensitive(w); cairo_save(cr); cairo_scale(cr, z, z);
+	cairo_set_source_rgb(cr, 0xef / 255.0, 0xef / 255.0, 0xef / 255.0); rrect(cr, 1, 4, W - 2, 8, 4); cairo_fill(cr);
+	cairo_set_source_rgb(cr, 0xb2 / 255.0, 0xb2 / 255.0, 0xb2 / 255.0); cairo_set_line_width(cr, 1); rrect(cr, 1.5, 4.5, W - 3, 7, 3.5); cairo_stroke(cr);
+	cairo_save(cr); cairo_rectangle(cr, 0, 0, cx, 16); cairo_clip(cr);
+	if (on) cairo_set_source_rgb(cr, 0, 0x75 / 255.0, 1); else cairo_set_source_rgb(cr, 0xcb / 255.0, 0xcb / 255.0, 0xcb / 255.0); rrect(cr, 1, 4, W - 2, 8, 4); cairo_fill(cr);
+	if (on) cairo_set_source_rgb(cr, 59 / 255.0, 117 / 255.0, 186 / 255.0); else cairo_set_source_rgb(cr, 0xb2 / 255.0, 0xb2 / 255.0, 0xb2 / 255.0); rrect(cr, 1.5, 4.5, W - 3, 7, 3.5); cairo_stroke(cr);
+	if (on) cairo_set_source_rgb(cr, 0, 0x75 / 255.0, 1); else cairo_set_source_rgb(cr, 0xcb / 255.0, 0xcb / 255.0, 0xcb / 255.0); cairo_rectangle(cr, 1, 5, W, 6); cairo_fill(cr); cairo_restore(cr);
+	if (on) cairo_set_source_rgb(cr, 0, 0x75 / 255.0, 1); else cairo_set_source_rgb(cr, 0xcb / 255.0, 0xcb / 255.0, 0xcb / 255.0); cairo_arc(cr, cx, 8, 8, 0, 2 * G_PI); cairo_fill(cr);
+	cairo_restore(cr); return TRUE;
+}
+static double rng_snap(Rng *r, double v) { if (r->step > 0) v = r->min + round((v - r->min) / r->step) * r->step; v = fmax(r->min, fmin(r->max, v)); return round(v * 1e9) / 1e9; }
+static void rng_to(GtkWidget *w, Rng *r, double v) { v = rng_snap(r, v); if (v == r->v) return; r->v = v; gtk_widget_queue_draw(w); if (r->cb) r->cb(v, r->d); set_state_soon(); }
+static void rng_at(GtkWidget *w, Rng *r, double px) { double W = gtk_widget_get_allocated_width(w) / RUI.z, f = (px / RUI.z - 8) / fmax(1, W - 16); rng_to(w, r, r->min + fmax(0, fmin(1, f)) * (r->max - r->min)); }
+static gboolean rng_press(GtkWidget *w, GdkEventButton *e, gpointer d) { Rng *r = d; if (e->button != 1 || e->type != GDK_BUTTON_PRESS) return FALSE; gtk_widget_grab_focus(w); r->drag = 1; rng_at(w, r, e->x); return TRUE; }
+static gboolean rng_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { Rng *r = d; if (r->drag) rng_at(w, r, e->x); return r->drag; }
+static gboolean rng_release(GtkWidget *w, GdkEventButton *e, gpointer d) { (void)w; (void)e; Rng *r = d; r->drag = 0; return TRUE; }
+static gboolean rng_key(GtkWidget *w, GdkEventKey *e, gpointer d)
+{
+	Rng *r = d; double st = r->step > 0 ? r->step : (r->max - r->min) / 100;
+	switch (e->keyval) { case GDK_KEY_Left: case GDK_KEY_Down: rng_to(w, r, r->v - st); return TRUE; case GDK_KEY_Right: case GDK_KEY_Up: rng_to(w, r, r->v + st); return TRUE;
+		case GDK_KEY_Home: rng_to(w, r, r->min); return TRUE; case GDK_KEY_End: rng_to(w, r, r->max); return TRUE; case GDK_KEY_Page_Up: rng_to(w, r, r->v + (r->max - r->min) / 10); return TRUE; case GDK_KEY_Page_Down: rng_to(w, r, r->v - (r->max - r->min) / 10); return TRUE; }
+	return FALSE;
+}
+GtkWidget *s_range(double min, double max, double step, double v, void (*cb)(double v, void *d), void *d)
+{
+	Rng *r = g_new0(Rng, 1); r->min = min; r->max = max; r->step = step; r->cb = cb; r->d = d; r->v = rng_snap(r, v);
+	GtkWidget *w = gtk_drawing_area_new(); gtk_widget_set_can_focus(w, TRUE); gtk_widget_add_events(w, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_KEY_PRESS_MASK);
+	g_object_set_data_full(G_OBJECT(w), "set-rng", r, g_free); g_signal_connect(w, "draw", G_CALLBACK(rng_draw), r); g_signal_connect(w, "button-press-event", G_CALLBACK(rng_press), r);
+	g_signal_connect(w, "motion-notify-event", G_CALLBACK(rng_motion), r); g_signal_connect(w, "button-release-event", G_CALLBACK(rng_release), r); g_signal_connect(w, "key-press-event", G_CALLBACK(rng_key), r);
+	gtk_widget_set_size_request(w, R(220), R(16)); return w;
+}
+double s_range_get(GtkWidget *w) { Rng *r = g_object_get_data(G_OBJECT(w), "set-rng"); return r ? r->v : 0; }
+void s_range_set(GtkWidget *w, double v) { Rng *r = g_object_get_data(G_OBJECT(w), "set-rng"); if (!r) return; r->v = rng_snap(r, v); gtk_widget_queue_draw(w); }
+
 /* ================================================================== the date field (input type=date as Chromium draws it: mm/dd/yyyy) */
 typedef struct { int y, m, d, seg, typed; void (*cb)(int, int, int, void *); void *dd; } Dt;
 static int mdays(int y, int m) { static const int D[12] = { 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31 }; return m == 2 && ((y % 4 == 0 && y % 100) || y % 400 == 0) ? 29 : D[(m + 11) % 12]; }
@@ -526,7 +580,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "sys", page_sys }, { "upd", page_upd }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;
@@ -766,6 +820,7 @@ static void harvest(void)
 	for (guint k = 0; k < ITEMS->len; k++) { Item *i = g_ptr_array_index(ITEMS, k);
 		if (i->k == I_H4 || i->k == I_SGRP) { const char *orig = g_object_get_data(G_OBJECT(FX), "x") ? NULL : NULL; (void)orig; char *o2 = harv_clean(i->text ? i->text : ""); g_free(sec); sec = o2; if (!*sec) continue; harv_add(o, seen, i->text, "", 1); }
 		if (i->k == I_CHECK) harv_add(o, seen, i->text, sec, 0);
+		if (i->k == I_CUSTOM && i->text) { if (i->grey) { g_free(sec); sec = harv_clean(i->text); harv_add(o, seen, i->text, "", 1); } else harv_add(o, seen, i->text, sec, 0); }
 		if (i->k == I_R2) { harv_add(o, seen, i->cell->label, sec, 0); for (guint q = 0; q < i->cell->items->len; q++) { CItem *it = g_ptr_array_index(i->cell->items, q); if (it->k == 4 || (it->k == 3 && it->weight == 1)) harv_add(o, seen, it->text, sec, 0); else if (it->k == 0 && g_object_get_data(G_OBJECT(it->w), "set-label")) harv_add(o, seen, g_object_get_data(G_OBJECT(it->w), "set-label"), sec, 0); } } }
 	g_free(sec); g_hash_table_unref(seen); if (LIVE[pi]) g_ptr_array_unref(LIVE[pi]); LIVE[pi] = o; set_state_soon();
 }
@@ -804,6 +859,8 @@ static void ss_open(SE *e)
 	char *sec = g_strdup(""); Item *hit = NULL; CItem *hc = NULL;
 	for (guint k = 0; k < ITEMS->len && !hit; k++) { Item *i = g_ptr_array_index(ITEMS, k);
 		if (i->k == I_H4 || i->k == I_SGRP) { g_free(sec); sec = harv_clean(i->text); char *t = harv_clean(i->text); if (e->h && !strcmp(t, e->t)) hit = i; g_free(t); continue; }
+		if (i->k == I_CUSTOM && i->text && i->grey) { g_free(sec); sec = harv_clean(i->text); char *t = harv_clean(i->text); if (e->h && !strcmp(t, e->t)) hit = i; g_free(t); continue; }
+		if (i->k == I_CUSTOM && i->text && !e->h) { int ok = !e->s || !*e->s || !strcmp(sec, e->s); char *t = harv_clean(i->text); if (ok && !strcmp(t, e->t)) hit = i; g_free(t); continue; }
 		if (i->k != I_R2 || e->h) continue; int secok = !e->s || !*e->s || !strcmp(sec, e->s);
 		char *t = harv_clean(i->cell->label); if (secok && !strcmp(t, e->t)) hit = i; g_free(t);
 		for (guint q = 0; !hit && q < i->cell->items->len; q++) { CItem *it = g_ptr_array_index(i->cell->items, q); const char *lt = it->k == 0 ? g_object_get_data(G_OBJECT(it->w), "set-label") : it->text; if (!(it->k == 4 || (it->k == 3 && it->weight == 1) || (it->k == 0 && lt))) continue; char *x = harv_clean(lt); if (secok && !strcmp(x, e->t)) { hit = i; hc = it; } g_free(x); } }

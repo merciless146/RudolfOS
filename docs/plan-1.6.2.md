@@ -1324,6 +1324,21 @@ in Task Manager.
     (the web one 74.8 MB); 462 KB stripped (the 1 MB budget).
     **Known differences (PR 2b):** the Bring your files dialog's people are not in a bordered box with their name in its border (the
     page's fieldset), and its Keep and Erase choices are drawn as the native check boxes, not round radio buttons.
+  - **PR 3a (2026-11-24, scheduled task; branch `native-settings-4`, based on PR 2b's `native-settings-3`): Keyboard, Mouse and
+    touchpad.** `settings_kbd.c`: the layouts (the account's list, `bd95kbl:ACCT`: ▲, Remove, Add a layout), Input method, Compose key
+    and Clipboard history (saved at once), and the shortcuts' table (the page's order, groups and keys, read from the page at build
+    time; Change, then the keys, a combination taken from another shortcut and "Shortcut moved", Default, Reset all shortcuts:
+    `bd95kb:ACCT` as the page writes it). While Settings waits for the keys, rudolf-native leaves every key to it (a native app's
+    "kbcap 1", as the page's `oaKeyCap`; the hardware keys and Ctrl+Alt+Del stay the shell's; asked only by a native app's own
+    window, so for Settings from the last PR on, when the shell knows it as one). `settings_mouse.c`: Pointer speed and
+    Acceleration, the touchpad's three settings (rudolfd's `pointer?speed=&accel=&tap=&natural=&typing=`; `ptr` and `msens` saved as
+    ptrKeep saves them), Buttons and clicks (Primary button, Double-click speed with its folder to try, Scroll speed, Open with a
+    single click), Restore defaults. Settings gets the page's slider (`s_range`, Chromium's range input: its track, its colours,
+    its thumb, dragging and the arrow keys) and custom blocks that Search in Settings finds. Fixed in the page too: Esc on
+    "Press keys…" cancelled and then gave the shortcut the Esc key (the page's message says Esc cancels). Against the web one:
+    Keyboard 0.48 to 0.71 %, Mouse and touchpad 0.57 to 0.59 % (light, dark); Search the same rows (8, 12); the checklist K1-K7
+    and M1-M6 13/13; every view of the five native pages under 2 % (0.34 to 0.71 %); the whole test 117/117; memory at idle with
+    System open 15.9 MB RssAnon (the web one 73.6 MB); 499 KB stripped.
   - **Left for the next PRs:** Display, Sound, Multimedia, Keyboard, Mouse, Accessibility; Network, Mobile,
     Bluetooth, Oracle, Remote; Devices, Storage, Apps, Notifications; Privacy, Security, Health, Users; then the switch in
     rudolf-native (the start menu, pins, the taskbar, the desktop's right-click, Display Properties and every place that opens a
@@ -1356,6 +1371,10 @@ in Task Manager.
    Bring them in (an account whose files are on the disk): the files in Documents, Pictures…; the security log lists any file the
    antivirus blocked. Install here… onto a spare disk with Windows on it only if you have one to erase: Keep them onto a USB drive,
    then Cancel at Erase…? (nothing is erased); a BitLocker disk asks for its recovery key.
+7. Keyboard (PR 3a): Add a layout, ▲ and Remove; Change a shortcut and press new keys: the native desktop must not act on them
+   meanwhile (Super+E does not open File Explorer while Settings waits); then the new keys work and the old ones do not; Esc cancels.
+8. Mouse and touchpad (PR 3a): Pointer speed, Acceleration, Tap to click, Natural scrolling and Ignore the touchpad while typing
+   take effect on the Vivobook's touchpad at once; Primary button (left-handed); Restore defaults.
 
 ### 40. Windows programs from before 1.5.9, and no silent failure (added on 2026-11-23)
 **What happened (the owner's Vivobook, 1.6.2b, release 2026112223; read-only devlink 000578-000579 in the main session):** Starport GE

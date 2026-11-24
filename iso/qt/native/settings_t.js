@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,upd,about').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -234,6 +234,45 @@ async function checkUpd() {
     await until(() => /ask Rudolf OS is installed/.test(nst()), 4000); const d = rect('dialog'); if (d) { xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo('key Escape') } fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(SETD)) }
   natStop();
 }
+// ---- the checklist of Keyboard (settings25.js kbdPanel) and Mouse and touchpad (devices26.js mousePanel, settings31.js): what each saves
+async function checkKbdMouse() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark);
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 550) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 550 ? 5 : 4}`); await wait(450) } await wait(300) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  const over = () => { const b = rect('body'); xdo(`mousemove ${b[0] + 400} ${b[1] + 20}`) };
+  natStart('kbd'); await until(() => rect('body') && line('page') == 'kbd', 20000); await wait(1500);
+  { await pick('kbla', 2, 16); click(rect('kbadd')); await until(() => /"de"/.test(LS()['bd95kbl:uAnnA1b2'] || ''), 4000);
+    ok('K1. Add a layout: Deutsch chosen, Add: the account\'s layouts ["us","de"] (bd95kbl:ACCT)', LS()['bd95kbl:uAnnA1b2'] == '["us","de"]', LS()['bd95kbl:uAnnA1b2']) }
+  { await until(() => rect('kbup1'), 3000); click(rect('kbup1')); await until(() => LS()['bd95kbl:uAnnA1b2'] == '["de","us"]', 4000); const a = LS()['bd95kbl:uAnnA1b2'];
+    await until(() => rect('kbrm1'), 3000); await wait(300); click(rect('kbrm0')); await until(() => LS()['bd95kbl:uAnnA1b2'] == '["us"]', 4000);
+    ok('K2. ▲ moves Deutsch first (["de","us"]), Remove takes it away (["us"])', a == '["de","us"]' && LS()['bd95kbl:uAnnA1b2'] == '["us"]', [a, LS()['bd95kbl:uAnnA1b2']]) }
+  { await wait(500); await pick('kbime', 1, 4); await until(() => SET().ime == 'ja', 4000); await scrollTo('kbch'); click(rect('kbch')); await until(() => SET().cliphist === false, 4000);
+    ok('K3. Input method Japanese, Clipboard history off: saved at once (ime "ja", cliphist false in bd95set:ACCT)', SET().ime == 'ja' && SET().cliphist === false, SET()) }
+  { await scrollTo('kbc0'); click(rect('kbc0')); await until(() => /kbcap 1 files/.test(nst()), 3000); over(); xdo('key ctrl+alt+k'); await until(() => /Ctrl\+Alt\+K/.test(LS()['bd95kb:uAnnA1b2'] || ''), 4000);
+    const m1 = LS()['bd95kb:uAnnA1b2']; await until(() => rect('kbd0'), 3000); await wait(300); click(rect('kbd0')); await until(() => LS()['bd95kb:uAnnA1b2'] == '{}', 4000);
+    ok('K4. Change, then Ctrl+Alt+K: Open File Explorer\'s keys (bd95kb:ACCT {"files":"Ctrl+Alt+K"}; the shell asked for every key meanwhile: kbcap 1, then 0); Default: {}', m1 == '{"files":"Ctrl+Alt+K"}' && /act kbcap 0/.test(nst()) && LS()['bd95kb:uAnnA1b2'] == '{}', [m1, LS()['bd95kb:uAnnA1b2']]) }
+  { await wait(400); await scrollTo('kbc1'); click(rect('kbc1')); await until(() => /kbcap 1 desktop/.test(nst()), 3000); over(); xdo('key ctrl+Escape'); await until(() => /Ctrl\+Escape/.test(LS()['bd95kb:uAnnA1b2'] || ''), 4000);
+    const m = LS()['bd95kb:uAnnA1b2']; await until(() => /notify Shortcut moved/.test(nst()), 3000);
+    ok('K5. Ctrl+Escape, Open the Start menu\'s, for Show the desktop: it moves ({"desktop":"Ctrl+Escape","start":""}) and "Shortcut moved" is said', m == '{"desktop":"Ctrl+Escape","start":""}' && /notify Shortcut moved/.test(nst()), m) }
+  { await wait(400); await scrollTo('kbc2'); click(rect('kbc2')); await until(() => /kbcap 1 run/.test(nst()), 3000); over(); xdo('key e'); await wait(400); const refused = /kbcap refused E/.test(nst()); xdo('key Escape'); await wait(800);
+    ok('K6. Change, E alone: "Use Ctrl, Alt or Super"; Esc cancels and saves nothing (the page\'s own Esc fixed in 1.6.2 to do the same)', refused && !/"run"/.test(LS()['bd95kb:uAnnA1b2']) && /act kbcap 0/.test(nst().split('\n').slice(-6).join('\n')), [LS()['bd95kb:uAnnA1b2'], nst().split('\n').filter(x => /^act kb/.test(x)).slice(-4)]) }
+  { await scrollTo('kbr'); click(rect('kbr')); await until(() => LS()['bd95kb:uAnnA1b2'] == '{}', 4000); ok('K7. Reset all shortcuts: {}', LS()['bd95kb:uAnnA1b2'] == '{}') }
+  natStop();
+  natStart('mouse'); await until(() => rect('body') && line('page') == 'mouse', 20000); await wait(1500);
+  { mark = c0(); const r = rect('ptsp'); xdo(`mousemove ${Math.round(r[0] + r[2] * (8 + 204 * (1.5 - 0.3) / 2.7) / 220)} ${Math.round(r[1] + r[3] / 2)} click 1`); await until(() => /POST pointer/.test(since()), 4000); await wait(300);
+    const st = SET(); ok('M1. Pointer speed 1.5: saved (ptr.speed 1.5, msens 6) and sent (pointer?speed=1.5&accel=1&tap=1&natural=0&typing=1)', st.ptr && st.ptr.speed == 1.5 && st.msens == 6 && /POST pointer\?speed=1\.5&accel=1&tap=1&natural=0&typing=1/.test(since()), [st, since().slice(-200)]) }
+  { mark = c0(); click(rect('pttap')); await until(() => /tap=0/.test(since()), 4000); ok('M2. Tap to click off: pointer?…&tap=0, ptr.tap false', /POST pointer\?speed=1\.5&accel=1&tap=0/.test(since()) && SET().ptr.tap === false, since().slice(-200)) }
+  { await scrollTo('mpb'); await pick('mpb', 1, 2); await until(() => SET().mhand == 'left', 4000); ok('M3. Primary button: Right button (left-handed): mhand "left"', SET().mhand == 'left') }
+  { await scrollTo('mpd'); click(rect('mpd')); await wait(300); xdo('key Right'); await until(() => SET().mdbl == 600, 4000); const d = rect('dbltest'); xdo(`mousemove ${d[0] + 20} ${d[1] + 10} click --repeat 2 --delay 80 1`); await until(() => /dbltest 1/.test(nst()), 3000);
+    ok('M4. Double-click speed: a click at its middle (550), then →: mdbl 600; the folder opens on a double-click', SET().mdbl == 600 && /dbltest 1/.test(nst()), [SET().mdbl, nst().split('\n').filter(x => /^act (persistS mdbl|dbltest)/.test(x))]) }
+  { await scrollTo('mpo'); click(rect('mpo')); await until(() => SET().msingle === true, 4000); ok('M5. Open files and folders with a single click: msingle true', SET().msingle === true) }
+  { mark = c0(); await scrollTo('ptdef'); click(rect('ptdef')); await until(() => SET().mhand == 'right' && SET().msingle === false, 4000); const st = SET();
+    ok('M6. Restore defaults: ptr {speed 1, accel 1, tap, no natural, typing}, msens 5, mhand right, mdbl 450, mscroll 5, msingle false; sent to rudolfd', JSON.stringify(st.ptr) == '{"speed":1,"accel":1,"tap":true,"natural":false,"typing":true}' && st.msens == 5 && st.mdbl == 450 && st.mscroll == 5 && /POST pointer\?speed=1&accel=1&tap=1&natural=0&typing=1/.test(since()), st) }
+  natStop();
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -274,6 +313,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   }
   if (only('checklist') || only('search')) { const P = await pageSearch(); await checklist(P) }
   if (only('checklist') || only('upd-checklist')) await checkUpd();
+  if (only('checklist') || only('km-checklist')) await checkKbdMouse();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

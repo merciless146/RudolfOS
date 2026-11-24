@@ -187,5 +187,31 @@ page = open(os.path.join(ISO, 'www', 'index.html'), encoding='utf-8').read()
 lg = re.search(r'<button id="start" title="Start"><img class="rlogo" alt="Start" src="data:image/png;base64,([A-Za-z0-9+/=]+)"', page)
 if not lg: die('the start button\'s logo (#start img) was not found in the page')
 png = base64.b64decode(lg.group(1))
+# ---------------------------------------------------------------- Keyboard's layouts (a11y25.js LAYOUTS) and shortcuts (shell25.js shortcut(), in the page's order)
+lm = re.search(r"const LAYOUTS=\{([^}]*)\};", page)
+if not lm: die("the page's LAYOUTS (a11y25.js) were not found")
+lays = re.findall(r"(\w+):'([^']*)'", lm.group(1))
+out.append('static const char *const LAYK[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(n)) for k, n in lays) + '};')
+def call_args(src, at):
+    """the text of a call's arguments, from just after its '(' to its ')'"""
+    k, depth, q = at, 1, None
+    while k < len(src):
+        c = src[k]
+        if q:
+            if c == '\\': k += 2; continue
+            if c == q: q = None
+        elif c in "'\"`": q = c
+        elif c == '(': depth += 1
+        elif c == ')':
+            depth -= 1
+            if not depth: return src[at:k]
+        k += 1
+    die('a shortcut() call has no end')
+shorts = []
+for m in re.finditer(r"\bshortcut\('([^']*)','([^']*)','([^']*)',", page):
+    g = re.search(r",\s*'([^']*)'\s*$", call_args(page, m.start() + len('shortcut(')))
+    shorts.append((m.group(1), m.group(2), m.group(3), g.group(1) if g else 'System'))
+if len(shorts) < 20: die("the page's shortcuts (shell25.js shortcut()) were not found")
+out.append('static const char *const SHORTS[][4] = {' + ','.join('{ %s }' % ', '.join(cstr(x) for x in t) for t in shorts) + '};')
 out.append('static const unsigned char LOGO_PNG[] = {' + ','.join(str(b) for b in png) + '};')
 open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')
