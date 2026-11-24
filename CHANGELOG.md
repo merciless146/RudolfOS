@@ -7,6 +7,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 Summary: In progress.
 - Added: the native Settings' Update and recovery page (docs/plan-1.6.2.md Part 39), as the web one: updates, system extensions,
   installing, recovery, the drive's start-up files and the boot menu; bringing in an old computer's files follows.
+- Fixed: the release build stopped at its check of what listens on the computer: rudolf-shares (File Explorer's network
+  shares) listens for a few seconds for multicast DNS and WS-Discovery answers, and the list of listeners did not name it.
+  It does now, with who may answer and how it checks; deadcheck.py runs that check too, so a pull request finds it first.
 - Fixed: the release workflow (the 6-hourly security releases and the betas) had not started since 2026-11-22: two merges
   had each given its Tools step its own `run:` line, and GitHub runs nothing of a workflow with a key given twice. One
   line now has both (OpenVPN and the scanners' packages); deadcheck.py checks every workflow for this (wfkeys.py).
