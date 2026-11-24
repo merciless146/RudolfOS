@@ -37,6 +37,8 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-24.04
+    # 1.6.3 Part 0: the signing keys are the "release" environment's secrets, which only main may use
+    environment: release
     env: {BASH_ENV: '${{ github.workspace }}/.github/err-trap.sh'}
     steps:
       - uses: actions/checkout@v5

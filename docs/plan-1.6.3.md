@@ -1,4 +1,4 @@
-# Rudolf OS 1.6.3: native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page
+# Rudolf OS 1.6.3: the signing keys protected, native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page
 
 1.6.3 follows 1.6.2. The owner, 2026-11-23 18:20 and 18:23 CST: "Push fingerprint scanners to 1.6.3" and, for the Office
 apps' native versions, "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that includes
@@ -8,6 +8,41 @@ The owner's rule for the native desktop holds for every part: "Rudolf OS on the 
 function exactly as it does in Chromium mode." Chromium and Lite keep the web versions of every app unchanged.
 
 ## Parts
+
+### Part 0. The signing keys: only main can use them (the first step of 1.6.3; the owner, 2026-11-24 08:55 CST)
+The owner asked how secure Rudolf's keys are, then: "Make it the first step of 1.6.3."
+**Today.** The release key (Ed25519, secret RPK_SIGNING_KEY), the Secure Boot key (RUDOLF_SB_KEY; also offline with the
+owner) and the Library's key (rudolfos-library's RPK_LIBRARY_KEY; also offline) are strong and have never been in a
+repository, a disc or a computer. But they are *repository* secrets: any workflow run on any branch of the repository gets
+them, so anyone with write access (the owner, and the Claude sessions, forbidden by CLAUDE.md but not by GitHub) could
+push a branch with a changed workflow, run it on that branch and read them. Whoever holds the owner's GitHub account
+holds the keys. Nothing is in hardware; a copy works anywhere.
+**The change.**
+1. **A GitHub environment "release"** in each repository (RudolfOS and rudolfos-library), Settings > Environments >
+   New environment, with **Deployment branches: Selected branches: main** (no other branch, no tags). Required reviewers
+   are optional: they would also hold the 6-hourly security releases until the owner approves, so not by default; they
+   may be set for promotions later as a second environment.
+2. **The signing jobs run in it** (`environment: release`): rudolf-release.yml (release), extensions.yml (build),
+   blitzen-model.yml (publish); in rudolfos-library publish.yml (build) and certify.yml (certify). Done by this part's
+   PRs; harmless before the environment exists (GitHub then makes it with no rules and the repository secrets still
+   apply), so they may be merged first.
+3. **The secrets move into the environment, and the repository secrets are deleted.** A secret cannot be read back from
+   GitHub. The Secure Boot key and the Library's key have offline copies: the owner pastes them as environment secrets
+   of the same names. The release key exists only as the secret, so it is **replaced**, which also gives Rudolf its key
+   replacement plan:
+   a. The owner makes a new Ed25519 key on their own computer (`openssl genpkey -algorithm ed25519 -out
+      rudolf-signing-2.pem`; its public half: `openssl pkey -in rudolf-signing-2.pem -pubout -outform DER | tail -c 32 |
+      base64`), keeps it offline, and adds it as the environment's RPK_SIGNING_KEY. Claude never sees or handles it.
+   b. A PR adds the new public half to iso/trusted-keys.txt **beside** the old one; a release signed by the old key ships
+      it, so every computer trusts both (Recovery Mode's stable included once promoted).
+   c. From then on the release workflow signs with the environment's key; the old repository secret is deleted.
+   d. Later, once every supported release trusts the new key, the old public half can leave trusted-keys.txt.
+   Developer mode and custom builds are unaffected (their own keys).
+4. **The GitHub account:** two-factor with a hardware security key; no long-lived tokens beyond what each tool needs.
+**Checks:** a workflow run on a branch other than main that asks for the environment is refused by GitHub (tried once
+with a harmless job that only says whether RPK_SIGNING_KEY is set, never its value); the release, an extension and the
+Library's publish still sign on main; a computer on the new release trusts both keys.
+**Later (not this part):** signing through a hardware key or a cloud key service, so the private key can't be copied at all.
 
 ### Fixes
 - **Oracle's status line stays one line** (the owner, 2026-11-23 19:04 CST, with photos: a long "Goes To:" address wrapped
@@ -101,6 +136,7 @@ the owner's checklist: Chromium mode on the Vivobook, the setting on, Oracle's t
 sign-out and back in.
 
 ## Steps
+- Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
 - Part 1: after 1.6.2 is stable; WordPro first.
 - Part 2: after 1.6.2 is stable.
