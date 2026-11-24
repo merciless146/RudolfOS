@@ -213,5 +213,174 @@ for m in re.finditer(r"\bshortcut\('([^']*)','([^']*)','([^']*)',", page):
     shorts.append((m.group(1), m.group(2), m.group(3), g.group(1) if g else 'System'))
 if len(shorts) < 20: die("the page's shortcuts (shell25.js shortcut()) were not found")
 out.append('static const char *const SHORTS[][4] = {' + ','.join('{ %s }' % ', '.join(cstr(x) for x in t) for t in shorts) + '};')
+
+# ---------------------------------------------------------------- Volume Controls' sounds (base_v24.html SNDS and SPRE, sound58.js's styles
+# renamed and their old ones kept as "(legacy)", sndrs60.js's nine more categories with their four styles, and "Rudolf" last in every
+# category that sndrs60.js's rsEvents has a tune for; "Use one style everywhere": RS_SCHEME), in the page's order
+def jslit(src, i=0):
+    """a JS literal (arrays, objects, strings, numbers, null/true/false; a name or a call is kept as None) from src[i]: (value, end)"""
+    def ws(i):
+        while i < len(src) and src[i] in ' \t\r\n': i += 1
+        return i
+    i = ws(i); c = src[i]
+    if c == '[':
+        a = []; i = ws(i + 1)
+        while src[i] != ']':
+            v, i = jslit(src, i); a.append(v); i = ws(i)
+            if src[i] == ',': i = ws(i + 1)
+        return a, i + 1
+    if c == '{':
+        o = {}; i = ws(i + 1)
+        while src[i] != '}':
+            m = re.compile(r"'([^']*)'|(\w+)").match(src, i); k = m.group(1) if m.group(1) is not None else m.group(2); i = ws(m.end())
+            if src[i] != ':': die('a JS object literal mksettings.py cannot read at: ' + src[i:i + 40])
+            v, i = jslit(src, i + 1); o[k] = v; i = ws(i)
+            if src[i] == ',': i = ws(i + 1)
+        return o, i + 1
+    if c in "'\"":
+        j = i + 1; b = ''
+        while src[j] != c:
+            if src[j] == '\\': b += src[j + 1]; j += 2; continue
+            b += src[j]; j += 1
+        return b, j + 1
+    m = re.compile(r'-?(\d+\.?\d*|\.\d+)(e-?\d+)?').match(src, i)
+    if m: return float(m.group(0)), m.end()
+    m = re.compile(r'[\w.$]+').match(src, i)
+    if not m: die('a JS literal mksettings.py cannot read at: ' + src[i:i + 40])
+    j = m.end()
+    if j < len(src) and src[j] == '(': j = len(call_args(src, j + 1)) + j + 2
+    return {'null': None, 'true': True, 'false': False}.get(m.group(0)), j
+def jsconst(src, name, what):
+    m = re.search(r'const ' + re.escape(name) + r'\s*=\s*', src)
+    if not m: die("%s's %s was not found" % (what, name))
+    return jslit(src, m.end())[0]
+snds = [(k, n, int(v)) for k, n, v in jsconst(base, 'SNDS', 'base_v24.html')]
+spre = {k: [x[0] for x in v] for k, v in jsconst(base, 'SPRE', 'base_v24.html').items()}
+s58 = rd('sound58.js'); ups = re.findall(r"\bup\('(\w+)','([^']+)',[\w.]+(?:,'([^']+)')?\)", s58)
+if len(ups) < 4: die("sound58.js's renamed styles (up()) were not read")
+for k, n, legacy in ups:
+    if n in spre.get(k, []): spre[k].append((legacy or n) + ' (legacy)')
+rs = rd('sndrs60.js'); rsnew = jsconst(rs, 'RS_NEW', 'sndrs60.js'); rssty = jsconst(rs, 'RS_STY', 'sndrs60.js'); rssch = jsconst(rs, 'RS_SCHEME', 'sndrs60.js')
+for k, n, v in rsnew:
+    if any(x[0] == k for x in snds): continue
+    snds.append((k, n, int(v))); spre[k] = ['Classic'] + [x for x in ('Retro', 'Candy', 'Minimal') if x in rssty[k]]
+tune = re.search(r'const RS_TUNE = \{(.*?)\n\};', rs, re.S) or re.search(r'const RS_TUNE = (\{.*?\});', rs, re.S)
+if not tune or not re.search(r'function rsEvents\(k, tune\)', rs): die("sndrs60.js's Rudolf tunes (RS_TUNE, rsEvents) have changed: read them anew")
+for k, _, _ in snds:
+    if re.search(r'\b' + k + r':\s*\{', tune.group(1)) or re.search(r"\b" + k + r":\s*\[", tune.group(1)): spre[k].append('Rudolf')
+if len(snds) != 18 or any('Rudolf' not in spre[k] for k, _, _ in snds): die('Volume Controls\' categories or their Rudolf styles were not read as the page has them (%d)' % len(snds))
+out.append('typedef struct { const char *k, *name; int vol; const char *const *styles; int ns; } SetSnd;')
+for k, _, _ in snds: out.append('static const char *const SNDSTY_%s[] = { %s };' % (k, ', '.join(cstr(x) for x in spre[k])))
+out.append('static const SetSnd SNDCAT[] = {' + ','.join('{ %s, %s, %d, SNDSTY_%s, %d }' % (cstr(k), cstr(n), v, k, len(spre[k])) for k, n, v in snds) + '};')
+out.append('#define NSNDCAT %d' % len(snds))
+out.append('typedef struct { const char *name; const char *map[%d]; } SetScheme;' % len(snds))
+out.append('static const SetScheme SNDSCH[] = {' + ','.join('{ %s, { %s } }' % (cstr(n), ', '.join(cstr(rssch[n].get(k, '')) for k, _, _ in snds)) for n in rssch) + '};')
+
+# ---------------------------------------------------------------- Accessibility: its defaults (DEFS.acc with a11y25.js's, the mouse's and
+# tts25.js's), the cursors of the Preview (base_v24.html CURS, CURCOL: each path made absolute lines and curves for cairo), the voices'
+# samples (tts25.js TTS_SAMPLE, TTS_ESPEAK; Japanese read into kana with lib/ja-yomi.txt as jaKana does, eSpeak NG reading only kana)
+def jsjson(v):
+    if v is None: return 'null'
+    if v is True: return 'true'
+    if v is False: return 'false'
+    if isinstance(v, float): return ('%d' % v) if v == int(v) else repr(v)
+    if isinstance(v, str): return json.dumps(v, ensure_ascii=False)
+    if isinstance(v, dict): return '{' + ','.join(json.dumps(k) + ':' + jsjson(x) for k, x in v.items()) + '}'
+    return '[' + ','.join(jsjson(x) for x in v) + ']'
+dm = re.search(r'\bacc:\{', base)
+if not dm: die("base_v24.html's DEFS.acc was not found")
+accdef = jslit(base, dm.end() - 1)[0]
+for src, what in ((rd('a11y25.js'), 'a11y25.js'), (base, 'base_v24.html')):
+    for m in re.finditer(r'Object\.assign\(DEFS\.acc,', src): accdef.update(jslit(src, m.end())[0])
+for m in re.finditer(r'DEFS\.acc\.(\w+)=', rd('tts25.js')): accdef[m.group(1)] = jslit(rd('tts25.js'), m.end())[0]
+if not all(k in accdef for k in ('lang', 'cb', 'tts', 'sr', 'capbg', 'csize', 'ttsVoice')): die('DEFS.acc was not read whole')
+out.append('static const char *const ACCDEF[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(jsjson(v))) for k, v in accdef.items()) + '};')
+curs = jsconst(base, 'CURS', 'base_v24.html'); curcol = jsconst(base, 'CURCOL', 'base_v24.html')
+import math
+def svgpath(d):
+    """an SVG path as cairo's: 'M x y', 'L x y', 'C x1 y1 x2 y2 x y', 'Z' (absolute; arcs made curves)"""
+    toks = re.findall(r'[MmLlHhVvCcSsZzAa]|-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?', d); i = 0; o = []; cx = cy = sx = sy = 0; cmd = None; lc = None
+    def num():
+        nonlocal i; v = float(toks[i]); i += 1; return v
+    def flag():
+        nonlocal i
+        t = toks[i]
+        if len(t) > 1 and t[0] in '01':   # (flags written together: "110", "010")
+            toks[i] = t[1:]; return float(t[0])
+        i += 1; return float(t)
+    while i < len(toks):
+        if re.match(r'[A-Za-z]', toks[i]): cmd = toks[i]; i += 1
+        rel = cmd.islower(); C = cmd.upper(); ox, oy = (cx, cy) if rel else (0, 0)
+        if C == 'Z': o.append(('Z',)); cx, cy = sx, sy; lc = None; continue
+        if C == 'M':
+            cx, cy = ox + num(), oy + num(); sx, sy = cx, cy; o.append(('M', cx, cy)); cmd = 'l' if rel else 'L'; lc = None
+        elif C == 'L': cx, cy = ox + num(), oy + num(); o.append(('L', cx, cy)); lc = None
+        elif C == 'H': cx = ox + num(); o.append(('L', cx, cy)); lc = None
+        elif C == 'V': cy = (cy if rel else 0) + num(); o.append(('L', cx, cy)); lc = None
+        elif C in 'CS':
+            if C == 'C': x1, y1 = ox + num(), oy + num()
+            else: x1, y1 = (2 * cx - lc[0], 2 * cy - lc[1]) if lc else (cx, cy)
+            x2, y2, x, y = ox + num(), oy + num(), ox + num(), oy + num(); o.append(('C', x1, y1, x2, y2, x, y)); lc = (x2, y2); cx, cy = x, y
+        elif C == 'A':
+            rx, ry, phi, fa, fs = num(), num(), num(), flag(), flag(); x, y = ox + num(), oy + num(); lc = None
+            # (the endpoint form made the centre form, then curves of at most 90 degrees; the cursors' arcs are circles: phi 0)
+            dx, dy = (cx - x) / 2, (cy - y) / 2; lam = dx * dx / (rx * rx) + dy * dy / (ry * ry)
+            if lam > 1: rx *= math.sqrt(lam); ry *= math.sqrt(lam)
+            num_ = rx * rx * ry * ry - rx * rx * dy * dy - ry * ry * dx * dx; den = rx * rx * dy * dy + ry * ry * dx * dx
+            co = math.sqrt(max(0, num_ / den)) * (-1 if fa == fs else 1); ccx, ccy = co * rx * dy / ry + (cx + x) / 2, -co * ry * dx / rx + (cy + y) / 2
+            a1 = math.atan2((cy - ccy) / ry, (cx - ccx) / rx); a2 = math.atan2((y - ccy) / ry, (x - ccx) / rx); da = a2 - a1
+            if fs and da < 0: da += 2 * math.pi
+            if not fs and da > 0: da -= 2 * math.pi
+            n = max(1, int(math.ceil(abs(da) / (math.pi / 2) - 1e-9))); st = da / n; k = 4 / 3 * math.tan(st / 4)
+            for j in range(n):
+                t1 = a1 + j * st; t2 = t1 + st; p1 = (ccx + rx * math.cos(t1), ccy + ry * math.sin(t1)); p2 = (ccx + rx * math.cos(t2), ccy + ry * math.sin(t2))
+                o.append(('C', p1[0] - k * rx * math.sin(t1), p1[1] + k * ry * math.cos(t1), p2[0] + k * rx * math.sin(t2), p2[1] - k * ry * math.cos(t2), p2[0], p2[1]))
+            cx, cy = x, y
+    return o
+out.append('typedef struct { const char *k; int evenodd; const double *p; int n; } SetCur;   /* (p: ops, each 7 numbers: 0 move, 1 line, 2 curve, 3 close, then its points) */')
+cn = []
+for k in ('arrow', 'hand', 'text', 'move', 'ew', 'wait', 'no'):
+    c = curs[k]; d = re.search(r'd="([^"]*)"', c['p']).group(1); ops = svgpath(d); flat = []
+    for op in ops: flat += [{'M': 0, 'L': 1, 'C': 2, 'Z': 3}[op[0]]] + list(op[1:]) + [0] * (7 - len(op))
+    out.append('static const double CURP_%s[] = { %s };' % (k, ', '.join('%.4f' % v for v in flat))); cn.append('{ %s, %d, CURP_%s, %d }' % (cstr(k), 1 if 'evenodd' in c['p'] else 0, k, len(ops)))
+out.append('static const SetCur CURS7[] = {' + ','.join(cn) + '};')
+out.append('static const char *const CURCOL[][3] = {' + ','.join('{ %s, %s, %s }' % (cstr(k), cstr(v[0]), cstr(v[1])) for k, v in curcol.items()) + '};')
+tts = rd('tts25.js'); samp = jsconst(tts, 'TTS_SAMPLE', 'tts25.js'); esp = jsconst(tts, 'TTS_ESPEAK', 'tts25.js'); jcl = jsconst(tts, 'JA_CL', 'tts25.js')
+if 'const JA_HAN=/[\u3400-\u9fff\uf900-\ufaff\u3005\u3006]/;' not in tts or 'Math.min(max,16)' not in tts: die("tts25.js's Japanese reading (JA_HAN, jaDict) has changed: read it anew")
+def ja_kana(t):
+    tails = {}
+    for k, v in jcl.items():
+        for ch in v: tails.setdefault(ch, []).append(k)
+    D = {}; mx = 1
+    for l in open(os.path.join(ISO, 'www', 'lib', 'ja-yomi.txt'), encoding='utf-8').read().split('\n'):
+        p2 = l.split('\t')
+        if len(p2) < 2 or not p2[1]: continue
+        key = p2[0] + '\u0001' + p2[2] if len(p2) > 2 and p2[2] else p2[0]
+        if key not in D: D[key] = p2[1]
+        mx = max(mx, len(p2[0]))
+    mx = min(mx, 16); han = re.compile('[㐀-鿿豈-﫿々〆]'); o = ''; i = 0
+    while i < len(t):
+        if not han.match(t[i]): o += t[i]; i += 1; continue
+        best, bl = '', 0; L = min(mx, len(t) - i)
+        while L >= 1 and bl <= L:
+            w = t[i:i + L]; nx = t[i + L] if i + L < len(t) else ''
+            if nx and nx in tails and L + 1 > bl:
+                for tl in tails[nx]:
+                    y = D.get(w + '\u0001' + tl)
+                    if y is not None: best = y + nx; bl = L + 1; break
+            if L > bl:
+                y = D.get(w)
+                if y is not None: best = y; bl = L
+            L -= 1
+        if bl: o += best; i += bl
+        else: i += 1
+    return o
+out.append('static const char *const TTSV[][3] = {' + ','.join('{ %s, %s, %s }' % (cstr(k), cstr(esp.get(k, 'en-us')), cstr(ja_kana(v) if k == 'ja' else v)) for k, v in samp.items()) + '};')
+
+# ---------------------------------------------------------------- Multimedia Settings: the plugins (MMI: names, blurbs) and the preferences' defaults (MMD.set), in the page's order
+mmd = jsconst(base, 'MMD', 'base_v24.html'); mmi = jsconst(base, 'MMI', 'base_v24.html')
+if list(mmd['plug']) != list(mmi) or 'rufUrl' not in mmd['set']: die("base_v24.html's MMD and MMI were not read")
+out.append('static const char *const MMPLUG[][3] = {' + ','.join('{ %s, %s, %s }' % (cstr(k), cstr(v['name']), cstr(v['blurb'])) for k, v in mmi.items()) + '};')
+out.append('static const char *const MMSET[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(jsjson(v))) for k, v in mmd['set'].items()) + '};')
 out.append('static const unsigned char LOGO_PNG[] = {' + ','.join(str(b) for b in png) + '};')
 open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')

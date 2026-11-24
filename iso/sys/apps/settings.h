@@ -37,7 +37,10 @@ void p_r2_more(Cell *c);                              /* (the next row is in the
 void c_add(Cell *c, GtkWidget *w, double gap, double dy, int full);   /* a control in the cell's line: after gap px, dy px down; full: the cell's width */
 void c_line(Cell *c, double mt);                      /* the next controls on a line of their own, mt px under */
 GtkWidget *c_msg(Cell *c, const char *t, int grey);   /* a .msg in the cell */
-GtkWidget *c_text(Cell *c, const char *t, int weight);   /* plain writing in the cell (the Preview's: 700 bold, 400) */
+GtkWidget *c_text(Cell *c, const char *t, int weight);
+void c_gap(GtkWidget *w, double gap);
+void p_r2_top(Cell *c, double mt);                   /* (1.6.3) the row's label at its top, mt px down (align-self: start; margin-top) */
+/* (1.6.3) a .msg of .sp25 (settings25.js's sections: 12 px, --mut): p_msg / c_msg's grey 2; a button 12 px, 1px 8px (class set-small) */                 /* (1.6.3) a writing's room before it in its line (a space: the page's inline .msg after a select) */   /* plain writing in the cell (the Preview's: 700 bold, 400) */
 GtkWidget *c_label(Cell *c, const char *t, double dy); /* a <label> in the cell's line ("After"), dy px down: found by Search in Settings */
 GtkWidget *c_msg_m(Cell *c, const char *t, int grey, double mt, double mb);   /* a .msg with its own margins (a <p class=msg>) */
 GtkWidget *c_pre(Cell *c, const char *t);             /* a <pre> (11px monospace, 160 px at most) */
@@ -67,6 +70,10 @@ double s_range_get(GtkWidget *w);
 void s_range_set(GtkWidget *w, double v);
 void p_custom_find(const char *t, int h4);            /* the custom block just added is found by Search in Settings (h4: a heading) */
 void s_date_set(GtkWidget *w, int y, int m, int d);
+void s_range_on_change(GtkWidget *w, void (*cb)(double v, void *d));   /* the page's change event: a drag ended, a key's step (cb as the input's) */
+PangoLayout *s_layout(const char *t, double px, int wt, double w);   /* (1.6.3 Part 3) the page's writing laid out (free with g_object_unref) */
+double s_asc(double px, int wt, double *desc);
+void s_ckbox(cairo_t *cr, double x, double y, int on, int sens);   /* Chromium's check box at (x, y) CSS px */
 
 /* ---- the pages: each a function that builds its blocks (settings_PAGE.c) */
 void page_about(void);
@@ -101,6 +108,12 @@ double s_z(void);
 void page_upd(void);
 void page_kbd(void);
 void page_mouse(void);
+void page_vol(void);   /* settings_vol.c */
+void page_mm(void);    /* settings_mm.c */
+void page_acc(void);   /* settings_acc.c */
+/* (settings_vol.c) sound through PulseAudio's simple API, opened when first needed: 16-bit mono at rate, played in a thread of its own */
+void set_play_pcm(const short *pcm, size_t n, int rate);
 void sec_bring(void); /* settings_bring.c */
+void set_log_evt(const char *k, const char *m);   /* the page's logEvt (bd95seclog's list k, the last 100) */
 void bring_step(const char *disk, void (*cb)(int ok, void *d), void *d);
 #endif
