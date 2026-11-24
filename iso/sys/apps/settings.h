@@ -114,5 +114,6 @@ void page_acc(void);   /* settings_acc.c */
 /* (settings_vol.c) sound through PulseAudio's simple API, opened when first needed: 16-bit mono at rate, played in a thread of its own */
 void set_play_pcm(const short *pcm, size_t n, int rate);
 void sec_bring(void); /* settings_bring.c */
+void set_log_evt(const char *k, const char *m);   /* the page's logEvt (bd95seclog's list k, the last 100) */
 void bring_step(const char *disk, void (*cb)(int ok, void *d), void *d);
 #endif

@@ -376,5 +376,11 @@ def ja_kana(t):
         else: i += 1
     return o
 out.append('static const char *const TTSV[][3] = {' + ','.join('{ %s, %s, %s }' % (cstr(k), cstr(esp.get(k, 'en-us')), cstr(ja_kana(v) if k == 'ja' else v)) for k, v in samp.items()) + '};')
+
+# ---------------------------------------------------------------- Multimedia Settings: the plugins (MMI: names, blurbs) and the preferences' defaults (MMD.set), in the page's order
+mmd = jsconst(base, 'MMD', 'base_v24.html'); mmi = jsconst(base, 'MMI', 'base_v24.html')
+if list(mmd['plug']) != list(mmi) or 'rufUrl' not in mmd['set']: die("base_v24.html's MMD and MMI were not read")
+out.append('static const char *const MMPLUG[][3] = {' + ','.join('{ %s, %s, %s }' % (cstr(k), cstr(v['name']), cstr(v['blurb'])) for k, v in mmi.items()) + '};')
+out.append('static const char *const MMSET[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(jsjson(v))) for k, v in mmd['set'].items()) + '};')
 out.append('static const unsigned char LOGO_PNG[] = {' + ','.join(str(b) for b in png) + '};')
 open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')

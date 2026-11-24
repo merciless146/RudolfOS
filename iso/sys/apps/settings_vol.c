@@ -307,7 +307,7 @@ static void mt_start(void)
 static void mt_go(GtkButton *b, gpointer d) { (void)b; (void)d; if (MT.on) mt_stop(1); else mt_start(); }
 static void mt_pick(const char *v, void *d)
 {
-	(void)d; int was = MT.on; mt_stop(0); char *e = g_uri_escape_string(v, NULL, TRUE), p[300], *out = NULL; snprintf(p, sizeof p, "/api/audio/mic?name=%s", e); g_free(e);
+	(void)d; int was = MT.on; mt_stop(0); char *e = g_uri_escape_string(v, "!'()*", FALSE), p[300], *out = NULL; snprintf(p, sizeof p, "/api/audio/mic?name=%s", e); g_free(e);
 	int c = rui_http("POST", p, "", 0, &out, NULL); set_note("POST %s %d", p + 5, c);
 	if (c != 200) { RuiJ *j = out ? rui_jparse(out) : NULL; const char *m = rui_jstr(j, "error"); mt_status(m && *m ? m : "That microphone could not be chosen."); rui_jfree(j); free(out); return; }
 	free(out);

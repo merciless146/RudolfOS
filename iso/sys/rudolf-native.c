@@ -5537,6 +5537,8 @@ static void native_wins_out(Window w, const char *json)
    only Help, and a page named as the page names its topics) */
 static int native_open_page(const char *q)
 {
+	/* (1.6.3 Part 3: Multimedia Settings' folders, "explorer C:\\PROGRAMS\\INSTALLERS": File Explorer at a folder of the page's drive C:) */
+	if (!strncmp(q, "explorer C:\\", 12) && strlen(q) < 120 && strspn(q + 9, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:\\_-") == strlen(q + 9) && !strstr(q, "..")) { app_open("explorer", q + 9); return 1; }
 	char k[KN], pg[40]; if (sscanf(q, "%31s %39s", k, pg) != 2 || strcmp(k, "help") || strspn(pg, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(pg)) return 0;
 	char ex[64]; snprintf(ex, sizeof ex, "&page=%s", pg); app_open_ex("help", NULL, ex, 0); return 1;
 }

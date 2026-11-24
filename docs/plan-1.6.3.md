@@ -101,6 +101,47 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   the native desktop opens rudolf-settings, at the page asked for, from every place that opens Settings.
 - The tests, the memory against the web Settings (~170 MB) and the owner's checklist as 1.6.2 Part 39's PRs have them.
   Chromium and Lite keep the web Settings.
+- Also in main from 1.6.2 (switched off): Keyboard, Mouse and touchpad (#676).
+#### Status (2026-11-24, scheduled task)
+- **PR 4 (branch `native-settings-5`): Volume Controls, Multimedia Settings, Accessibility.** `settings_vol.c`: the system volume
+  (rudolfd's volume: Mute, the slider, followed every 5 s while the page is open), "Use one style everywhere", All desktop sounds and
+  the 18 categories (each one's switch, style, volume and ▶; a working copy until Apply, saved as `snd` in bd95set:ACCT; Revert; Reset
+  to defaults keeping the master volume), App volume (bd95mix:ACCT), Output, the sound card (audio?card=), the microphones as
+  settings25.js reads /proc/asound, the microphone (audio/mic?name=) and its test (PulseAudio's simple API: the bars and the level as
+  the page's analyser draws them), Calls' echo cancelling (sound/echo). The ▶, a style chosen and a volume let go are played by the
+  native shell (`sfx K V P` asked of rudolf-native: the page's own tones and Rudolf styles, which the shell already plays for the
+  desktop's sounds). `settings_mm.c`: the plugins (Installed, Enabled; the lock bar for a standard user), the folders and players (asked
+  of the shell: `open explorer C:\PROGRAMS\INSTALLERS`, `open gameboy`, `open flash`), Flash (Ruffle) and its Check Ruffle download (the
+  runtime's address asked over HTTPS), Game Boy, ZIP archives; Apply as mmPanelS (https:// checked, bd95mm, "installed plugin" in the
+  security log). `settings_acc.c`: Pointer and cursor (the page's cursors drawn from their paths), the link to Mouse and touchpad,
+  Vision (Colour vision, Screen reader, Text-to-speech with each language's voice and ▶: rudolfd's say, Japanese in kana as jaKana
+  reads it), Hearing (Caption style's colours with GTK's colour chooser), Voice control, Virtual keyboard, Keyboard and Pointer
+  assistance; Apply, Revert, Reset to defaults (DEFS.acc) as the page. mksettings.py reads the sounds' categories and styles, the
+  accessibility defaults, the cursors, the voices' samples and the multimedia defaults from the page at build time.
+  Against the web one (`qt/native/settings_t.sh`, the stand-in now answering audio, audio/mics and sound/echo): **every view of the
+  eight native pages under 2 %: 0.34 to 0.81 %** (light, dark, green and pink accents; Volume 0.49-0.71 %, Multimedia 0.46-0.76 %,
+  Accessibility 0.45-0.81 %); Search in Settings the same rows (Volume 31, Multimedia 27, Accessibility 42); the checklist V1-V8,
+  A1-A4, MM1-MM5 17/17; the whole test 173/173; memory at idle with System open 16.0 MB RssAnon (the web one 75.1 MB); 587 KB
+  stripped. rudolf-settings now asks rudolfd for volume, audio, audio/mics, audio/mic, sound/echo and say (all of which the page asks
+  already; winapi.py --update).
+  **Known differences (PR 4):** before Apply the sounds' changes play only in Settings' ▶ (the page also changes the desktop's own
+  sounds at once); Output device lists "System default" only (the page lists its own browser outputs, for its own sounds; the
+  native shell plays the desktop's sounds on the system's default output); App volume lists "system" (the page lists what made a sound
+  in its own page); Visual sound alerts' flash when it is turned on, the screen reader, live captions and voice control start
+  when the settings are applied (the page starts them when ticked); Multimedia's plugin files (C:\PROGRAMS\INSTALLERS' launchers) are
+  written by the desktop's page when it next starts (mmEnsure), and a removed plugin's launcher stays until then; Emu and Flash
+  Player open as the Start menu opens them (asking to install or enable a plugin that is not ready); the firewall's check of a new
+  Ruffle address is the page's alone.
+- **Left:** Display (PR 5, the memory with Display open); Network, Mobile network, Bluetooth, Oracle, Remote; Devices, Storage,
+  Apps, Notifications; Privacy, Security, System health, Users; the switch.
+- **The owner's checklist for PR 4 (Vivobook; `rudolf-settings vol`, `mm`, `acc` from a terminal on the native desktop until the
+  switch):** 1. each page against Chromium mode's, light and dark. 2. Volume Controls: Mute and the system volume follow the keys;
+  ▶ on each sound and a style chosen play the same sound as Chromium mode's (they play only once the switch makes Settings a native
+  app the shell knows); Apply, then a window opened and closed uses the new sounds; the sound card; the microphone and Test (speak:
+  the bars move); echo cancelling. 3. Multimedia: install Ruffle (Apply), the Start menu shows Flash Player after the desktop
+  restarts; the folders open in File Explorer. 4. Accessibility: Cursor size and colour change the pointer after Apply; Speak a
+  sample and each language's ▶ speak; Reduce motion, Sticky keys, Mouse keys take effect; Reset to defaults. 5. The memory in Task
+  Manager.
 
 ### Part 4. Oracle's Chromium, its memory (moved from 1.6.2 Part 38, item 5)
 On Native, Oracle runs in Rudolf's own Chromium; each tab keeps its own process and memory, also when it has not been

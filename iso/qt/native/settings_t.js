@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -273,6 +273,65 @@ async function checkKbdMouse() {
     ok('M6. Restore defaults: ptr {speed 1, accel 1, tap, no natural, typing}, msens 5, mhand right, mdbl 450, mscroll 5, msingle false; sent to rudolfd', JSON.stringify(st.ptr) == '{"speed":1,"accel":1,"tap":true,"natural":false,"typing":true}' && st.msens == 5 && st.mdbl == 450 && st.mscroll == 5 && /POST pointer\?speed=1&accel=1&tap=1&natural=0&typing=1/.test(since()), st) }
   natStop();
 }
+
+// ---- 1.6.3 Part 3: Volume Controls, Accessibility, Multimedia Settings (their checklists: V, A, MM), each step checked by what the native one
+// shows, asks of rudolfd and saves, as the page's code does it (base_v24.html volPanelS/secReset, osd31.js, sndrs60.js, settings25.js,
+// mictest59.js, call59.js; accPanelS and its modules, tts25.js; mmPanelS)
+async function checkVolAccMm() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark);
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 80; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(350) } await wait(300) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  const confirm = async b => { click(rect(b)); await until(() => rect('dialog'), 3000); xdo('key Return'); await wait(900) };
+  const notes = re => nst().split('\n').filter(x => re.test(x));
+  natStart('vol', {RUDOLF_SET_NOSOUND: '1'}); await until(() => rect('body') && line('page') == 'vol', 20000); await wait(1500);
+  { await scrollTo('sndv-startup'); { const r = rect('sndv-startup'); xdo(`mousemove ${Math.round(r[0] + 8 + .7 * (r[2] - 16))} ${Math.round(r[1] + r[3] / 2)} click 1`) } await wait(300); xdo('key Left'); xdo('key Left'); await until(() => line('dirty') == '1', 3000); await wait(400);
+    const sf = notes(/^act sfx startup/); ok('V1. Startup chime\'s slider, two steps left: 68%, unapplied; let go, the sound tried at the working copy\'s volume (the shell: sfx startup 0.4760 0)', line('dirty') == '1' && sf.length && /sfx startup 0\.4760 0$/.test(sf[sf.length - 1]), sf) }
+  { await pick('sndp-error', 2, 6); await until(() => /snd error p 2/.test(nst()), 3000); click(rect('sndt-click'));  await wait(400);
+    ok('V2. Errors: Triple beep (p 2), heard at once even if off (forced); ▶ on Button clicks plays it (sfx click 0.2800 0)', /act sfx error 0\.4900 2/.test(nst()) && /act sfx click 0\.2800 0/.test(nst()), notes(/^act sfx/)) }
+  { mark = c0(); await scrollTo('sysmute'); const r = rect('sysmute'); xdo(`mousemove ${r[0] + 10} ${r[1] + r[3] / 2} click 1`); await until(() => /volume\?muted=1/.test(since()), 3000);
+    click(rect('sysvol')); xdo('key Right'); await until(() => /volume\?set=/.test(since()), 3000);
+    ok('V3. System volume: Mute (volume?muted=1), then the slider (volume?set=N), at once, as osd31.js', /POST volume\?muted=1/.test(since()) && /POST volume\?set=\d+/.test(since()), since().slice(-300)) }
+  { await scrollTo('rsall'); await pick('rsall', 3, 6); await until(() => /snd scheme Retro/.test(nst()), 3000);
+    ok('V4. Use one style everywhere: Retro: "Retro for 18 of 18 categories. Press Apply to keep it." and the startup chime tried', /snd scheme Retro 18/.test(nst()) && /act sfx startup .* 3$/.test(notes(/^act sfx startup/).slice(-1)[0] || ''), notes(/scheme|sfx startup/)) }
+  { await confirm('apply'); await until(() => SET().snd && SET().snd.startup, 4000); const s = SET().snd;
+    ok('V5. Apply: snd saved as the page saves it (startup 68 % Retro boot, error Triple beep… p 2 by Retro: the scheme\'s Triple beep, click Typewriter)', s && s.startup.vol == 68 && s.startup.p == 3 && s.error.p == 2 && s.click.p == 2 && s.master.vol == 70 && s.logout.p == 1, s) }
+  { await confirm('reset'); await until(() => SET().snd && SET().snd.startup.vol == 70, 4000); const s = SET().snd;
+    ok('V6. Reset to defaults: every category on, its own volume, Classic (p 0), the master volume kept; saved at once', s.startup.vol == 70 && s.startup.p == 0 && s.click.vol == 40 && s.error.p == 0 && s.master.on === true && line('dirty') == '0', s) }
+  { mark = c0(); await scrollTo('card'); await pick('card', 1, 2); await until(() => /POST audio\?card=1/.test(since()), 3000);
+    await scrollTo('mtsel'); await pick('mtsel', 1, 2); await until(() => /audio\/mic\?name=/.test(since()), 3000);
+    await scrollTo('echo'); click(rect('echo')); await until(() => /sound\/echo\?on=1/.test(since()), 3000);
+    ok('V7. Sound card 1 (audio?card=1), the headset microphone (audio/mic?name=…HiFi__Headset__source), echo cancelling on (sound/echo?on=1)', /POST audio\?card=1/.test(since()) && /POST audio\/mic\?name=alsa_input\.pci-0000_04_00\.6\.HiFi__Headset__source/.test(since()) && /POST sound\/echo\?on=1/.test(since()) && /Chosen: Headset Microphone \(for every app\)/.test(nst()), since()) }
+  { await scrollTo('mix-system'); click(rect('mix-system')); xdo('key Home'); await until(() => /"system":0/.test(LS()['bd95mix:uAnnA1b2'] || ''), 3000);
+    ok('V8. App volume: system at 0 %: bd95mix:ACCT {"system":0}, at once (mixSet)', LS()['bd95mix:uAnnA1b2'] == '{"system":0}', LS()['bd95mix:uAnnA1b2']) }
+  natStop();
+  natStart('acc', {RUDOLF_SET_NOSOUND: '1'}); await until(() => rect('body') && line('page') == 'acc', 20000); await wait(1500);
+  { await pick('csize', 3, 6); await scrollTo('rmotion'); click(rect('rmotion')); await scrollTo('slowk'); await pick('slowk', 2, 5); await until(() => line('dirty') == '1', 3000);
+    await confirm('apply'); await until(() => SET().slowk == 500, 4000); const s = SET();
+    ok('A1. Cursor size Large, Reduce motion, Slow keys 500 ms, Apply: csize 48, rmotion true, slowk 500 (bd95set:ACCT), "Settings applied."', s.csize === 48 && s.rmotion === true && s.slowk === 500 && /Settings applied/.test(line('foot')), s) }
+  { mark = c0(); await scrollTo('atp'); click(rect('atp')); await until(() => /say\?/.test(since()), 3000); await scrollTo('tts-ja'); click(rect('tts-ja')); await until(() => (since().match(/say\?/g) || []).length > 1, 3000);
+    const u8 = decodeURIComponent(since()); ok('A2. Speak a sample (say?lang=en-us&text=Hello!…), Japanese\'s ▶ (say?lang=ja, its sample in kana)', /POST say\?lang=en-us&text=Hello!/.test(u8) && /POST say\?lang=ja&text=こんにちは。これはおんせいよみあげのこえです。/.test(u8), u8.slice(-400)) }
+  { await confirm('reset'); await until(() => SET().slowk === 0, 4000); const s = SET();
+    ok('A3. Reset to defaults: DEFS.acc kept at once (csize "system", rmotion false, slowk 0, lang "en"), "Defaults restored."', s.csize == 'system' && s.rmotion === false && s.slowk === 0 && s.lang == 'en' && /Defaults restored/.test(line('foot')), s) }
+  { const r = rect('mvgo'); await scrollTo('mvgo'); const m = rect('mvgo'); xdo(`mousemove ${m[0] + 160} ${m[1] + m[3] - 6} click 1`); await until(() => line('page') == 'mouse', 3000);
+    ok('A4. The link "Mouse and touchpad" opens that page', line('page') == 'mouse', nst().split('\n').filter(x => /^page|open mouse/.test(x))) }
+  natStop();
+  natStart('mm', {RUDOLF_SET_NOSOUND: '1', RUDOLF_SET_RUFFLE: 'ok'}); await until(() => rect('body') && line('page') == 'mm', 20000); await wait(1500);
+  { click(rect('inst-ruffle')); await until(() => line('dirty') == '1', 3000); await confirm('apply'); await until(() => /"ruffle":\{"inst":true/.test(LS().bd95mm || ''), 4000);
+    const m = JSON.parse(LS().bd95mm || '{}'), lg = JSON.parse(LS().bd95seclog || '{}');
+    ok('MM1. Ruffle Installed (and so enabled), Apply: bd95mm {plug:{ruffle:{inst:true,en:true}…}, set:{…}}, the security log "Ann installed plugin ruffle"', m.plug && m.plug.ruffle.inst && m.plug.ruffle.en && !m.plug.gb.inst && m.set.rufQ == 'high' && lg.sys && lg.sys.some(e => e.m == 'Ann installed plugin ruffle'), [m, lg.sys]) }
+  { await scrollTo('rufUrl'); click(rect('rufUrl')); xdo("type --delay 20 'http://example.com'"); await until(() => line('dirty') == '1', 3000); await confirm('apply');
+    ok('MM2. A runtime address that is not https://: refused ("must start with https://"), nothing saved', /mmm The runtime address must start with https:\/\//.test(nst()) && JSON.parse(LS().bd95mm).set.rufUrl == '', notes(/mmm/)) }
+  { await confirm('revert'); await scrollTo('mmchk'); click(rect('mmchk')); await until(() => /mmm Ruffle downloaded and ready/.test(nst()), 4000);
+    ok('MM3. Revert ("Changes reverted."), then Check Ruffle download: "Ruffle downloaded and ready."', /mmm Ruffle downloaded and ready/.test(nst()) && /footer Changes reverted/.test(nst()), notes(/mmm|footer/)) }
+  { await scrollTo('gbPal'); await pick('gbPal', 3, 4); await until(() => line('dirty') == '1', 3000); await confirm('reset'); await wait(300);
+    ok('MM4. Palette Amber, then Reset to defaults: the preferences back, unapplied until Apply ("Preferences reset. Apply to keep them."), nothing saved', /footer Preferences reset/.test(nst()) && line('dirty') == '0' && JSON.parse(LS().bd95mm).set.gbPal == 'green', notes(/footer|mm gbPal/)) }
+  { mark = c0(); await scrollTo('mmf1'); click(rect('mmf1')); click(rect('mmp1')); await wait(400);
+    ok('MM5. INSTALLERS folder and Emu: asked of the native shell (open explorer C:\\PROGRAMS\\INSTALLERS, open gameboy)', /act open explorer C:\\PROGRAMS\\INSTALLERS/.test(nst()) && /act open gameboy/.test(nst()), notes(/act open/)) }
+  natStop();
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -314,6 +373,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('search')) { const P = await pageSearch(); await checklist(P) }
   if (only('checklist') || only('upd-checklist')) await checkUpd();
   if (only('checklist') || only('km-checklist')) await checkKbdMouse();
+  if (only('checklist') || only('vam-checklist')) await checkVolAccMm();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

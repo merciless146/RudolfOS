@@ -72,7 +72,7 @@ static void say(const char *text, const char *lang)
 {
 	const char *es = "en-us", *t = text; for (guint i = 0; i < G_N_ELEMENTS(TTSV); i++) if (!strcmp(TTSV[i][0], lang)) { es = TTSV[i][1]; if (!text) t = TTSV[i][2]; }
 	if (!t) t = rui_tr("Hello! This is the text-to-speech voice.");
-	char *e1 = g_uri_escape_string(es, NULL, TRUE), *e2 = g_uri_escape_string(t, NULL, TRUE); Say *s = g_new0(Say, 1); s->path = g_strdup_printf("/api/say?lang=%s&text=%s", e1, e2);
+	char *e1 = g_uri_escape_string(es, "!'()*", FALSE), *e2 = g_uri_escape_string(t, "!'()*", FALSE); Say *s = g_new0(Say, 1); s->path = g_strdup_printf("/api/say?lang=%s&text=%s", e1, e2);
 	set_note("say %s %s", es, t); g_free(e1); g_free(e2); g_thread_unref(g_thread_new("say", say_thread, s));
 }
 static char *lang_now(void) { return gs("lang"); }
