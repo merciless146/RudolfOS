@@ -20,6 +20,7 @@ mods.append('orafind61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's fin
 # 1.4.0: a top-level function defined in two modules replaces the earlier one without a word (the development
 # link's dlPoll replaced the downloads' dlPoll, so downloads from real tabs never finished): stop the build instead
 import re as _re
+mods.append('orasafe63.js')   # 1.6.3: Oracle's safety and your data (about:safety; base_v24.html's page1 asks oraSafetyPage)
 mods.append('orareader61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's reader mode (after oracle58.js: it adds to __oracleMenu; Readability beside the page, below)
 _seen={}
 for _m in mods:

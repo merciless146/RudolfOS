@@ -1,0 +1,22 @@
+# 1.6.3 (the owner, 2026-11-24): Oracle's safety and your data (about:safety, desktop/orasafe63.js): in the default
+# bookmarks, its entries, and about:safety#ENTRY scrolled to and highlighted (the extensions reminder's "Learn more").
+# Oracle's own tests that share these files run too. Nothing published.
+name: Oracle safety page check
+on:
+  push:
+    paths: ['desktop/orasafe63.js', 'desktop/base_v24.html', 'desktop/build19.py', 'iso/qt/shell2/orasafe63_t.js', '.github/workflows/oracle-safety-check.yml']
+  pull_request:
+    paths: ['desktop/orasafe63.js', 'iso/qt/shell2/orasafe63_t.js', '.github/workflows/oracle-safety-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: The page
+        run: |
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          (cd desktop && python3 build19.py ../iso/www/index.html >/dev/null)
+          for t in orasafe63_t.js oracleart60_t.js oracle58_t.js; do echo "== $t"; node iso/qt/shell2/$t || exit 1; done

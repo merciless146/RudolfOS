@@ -1619,7 +1619,9 @@ const ORACLE_TEL_JS="<scr"+"ipt>document.addEventListener('click',function(e){va
 function browser(url,bo){bo=bo||{};const PV=!!bo.priv,W=win('Oracle','\u{1F310}\uFE0F',820,560),BS=String.fromCharCode(92),R=fs['C:'];if(PV){W.priv=true;W.el.classList.add('opriv')}   /* 1.5.9: a private window (private59.js) */if(bo.tor)W.tor=true;   /* (1.5.9: a Tor window, tor59.js) */
  ensureWelcome();
  const load=k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}},store=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
- let bms=load('bd95bm');if(!Array.isArray(bms)||bms.some(b=>/Oracle/i.test(b[0])))bms=[['Home','about:home'],['README','file:///C:/README.TXT'],['Welcome','file:///C:/WELCOME.HTM'],['Files','about:files?p=C:'],['Flathub','https://flathub.org/'],['About','about:oracle']];else if(!localStorage.getItem('bd95bmfh')&&!bms.some(b=>/flathub\.org/i.test(b[1]))){const i=bms.findIndex(b=>b[0]=='About');bms.splice(i<0?bms.length:i,0,['Flathub','https://flathub.org/']);store('bd95bm',bms)}try{localStorage.setItem('bd95bmfh','1')}catch(e){}
+ let bms=load('bd95bm');if(!Array.isArray(bms)||bms.some(b=>/Oracle/i.test(b[0])))bms=[['Home','about:home'],['README','file:///C:/README.TXT'],['Welcome','file:///C:/WELCOME.HTM'],['Files','about:files?p=C:'],['Flathub','https://flathub.org/'],['Safety','about:safety'],['About','about:oracle']];else if(!localStorage.getItem('bd95bmfh')&&!bms.some(b=>/flathub\.org/i.test(b[1]))){const i=bms.findIndex(b=>b[0]=='About');bms.splice(i<0?bms.length:i,0,['Flathub','https://flathub.org/']);store('bd95bm',bms)}try{localStorage.setItem('bd95bmfh','1')}catch(e){}
+ /* (1.6.3) Safety (about:safety, orasafe63.js) added once to bookmarks kept from before, before About */
+ if(!localStorage.getItem('bd95bmsafe')&&Array.isArray(bms)&&!bms.some(b=>b[1]=='about:safety')){const i=bms.findIndex(b=>b[0]=='About');bms.splice(i<0?bms.length:i,0,['Safety','about:safety']);store('bd95bm',bms)}try{localStorage.setItem('bd95bmsafe','1')}catch(e){}
  let hist=load('bd95hist')||[];const hadd=(ti,u)=>{if(PV)return;hist.push([ti,u]);hist=hist.slice(-200);store('bd95hist',hist)};   /* (a private window keeps no history) */const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;').replace(/"/g,'&quot;');
  W.body.style.background='#fff';W.el.tabIndex=-1;W.el.classList.add('oracle');if(typeof webDarkWin=='function')setTimeout(()=>webDarkWin(W),0);
  W.body.innerHTML=`<div class='otabs'></div><div class='ob'><button class='bk' title='Back (Alt+←)'>◀</button><button class='fw' title='Forward (Alt+→)'>▶</button><button class='rl' title='Reload (F5)'>⟳</button><button class='hm' title='Home'>🏠</button><input class='ad' spellcheck='false' placeholder='Search your files or enter an address'><button class='st' title='Bookmark this page'>☆</button><button class='ex' title='Open in a real browser tab' style='display:none'>↗</button>${PV?`<span class='opv' title='Private: Oracle forgets the pages you visit, and their cookies and site data when you close the last private window'>🕶️ Private</span>`:''}<button class='mn' title='Menu'>☰</button></div><div class='obm'></div><div class='fh' style='flex:1;position:relative;min-height:0;background:#fff'></div><div class='stat ostat'>Ready</div>`;if(bo.tor&&typeof torDress=='function')torDress(W);
@@ -1799,6 +1801,7 @@ if(INIT.q){$('q').value=INIT.q;search(INIT.q)}
  function page1(u){let m;
   if(u=='about:blank')return doc('Blank page','');
   if(u=='about:map'||/^about:map\?/.test(u))return special(u);
+  if(typeof oraSafetyPage=='function'){const g=oraSafetyPage(u,doc,lk,esc);if(g)return g}   /* (1.6.3: about:safety, orasafe63.js) */
   if(u=='about:home')return oracleHome(lk,esc);   /* (1.6.0: Oracle's own artwork, oracleart60.js) */
   if(u=='about:oracle')return doc('About Oracle','<h2 style="margin-top:0">Oracle 2.0</h2><p>A lightweight tabbed browser for Rudolf OS, with bookmarks, history, zoom and local-file viewing.</p><p>It plays audio and video (direct media links, YouTube and Vimeo links, and files on your drive; try <a href="#" data-u="about:media" onclick="go(this.dataset.u);return false">the media player</a>) and opens pages stored on your Rudolf OS drive plus internal <code>about:</code> pages. Websites on the internet load in an embedded frame, but many sites forbid that; for those, use the ↗ button to open the address in a real browser tab.</p>');
   if(u=='about:source')return doc('Page source','<pre style="white-space:pre-wrap;font:12px monospace">'+esc(src)+'</pre>');
@@ -21823,6 +21826,52 @@ function oraFind(c) {
   + ".odark .ofind{background:#0f172a;border-color:#374151;color:#e5e7eb}.odark .ofind input.ofq{background:#1f2937;color:#f3f4f6;border-color:#374151}.odark .ofind .ofq.ofno{background:#7f1d1d}.odark .ofind button{background:#1f2937;color:#e5e7eb;border-color:#374151}.odark .ofind .ofn{color:#9ca3af}"
   + ".opriv .ofind{background:#2e1065!important;color:#ddd6fe}";
   (document.head || document.documentElement).appendChild(s) })();
+
+__svcMod("orasafe63.js");
+/* ===== Rudolf OS 1.6.3: Oracle's safety and your data (about:safety) =====
+   The owner, 2026-11-24: "Add a page outlining Oracle's user safety and data security policies in the default bookmarks.
+   The notification for no extensions on desktop-based Chromium will have a "Learn more" link that the user can click
+   which paths to this section. The page will scroll to the entry explaining why it is unsafe and highlight it for the
+   user to read."
+   about:safety is one of Oracle's own pages (as about:home), in the default bookmarks as "Safety" (added once to
+   existing bookmarks). about:safety#ENTRY scrolls to that entry and highlights it: the extensions reminder (plan 1.6.3
+   Part 7) links to about:safety#extensions-desktop. Every entry says only what Rudolf OS does today, or names the plan
+   when it is a rule for something still coming. */
+const ORA_SAFE=[
+ ['nothing-sent','Nothing about you is sent anywhere',
+  `<p>Oracle and Rudolf OS collect no usage data, crash reports or browsing history about you, and send none to anyone. What you browse stays on this computer.</p>`],
+ ['blocking','Ads and trackers are blocked',
+  `<p>Oracle blocks ads and trackers on every page by itself. The shield 🛡 in the address box says how many were blocked on the page, and its menu turns blocking off (or on) for a site; Settings › Privacy › Ads and trackers in Oracle lists them.</p>`],
+ ['your-sites','Your websites are yours, account by account',
+  `<p>Each Rudolf OS account has its own sign-ins, cookies, site data and history; no other account sees them. On a computer with a security chip (TPM 2.0) they are encrypted with a key kept in that chip, so a drive taken out of the computer cannot be read.</p>
+   <p>Turn on <b>Settings › Oracle › Keep my websites encrypted with my account</b> and they are encrypted with <i>your account's</i> key instead, and locked when you sign out: then not even another administrator of this computer can read them. Oracle then opens in a window of its own.</p>`],
+ ['private','Private windows keep nothing',
+  `<p>A private tab or window (Ctrl+Shift+N) keeps no history; its cookies and site data are kept in memory only and forgotten when the last private window closes. Downloads and bookmarks you make there are kept.</p>`],
+ ['tor','Tor windows hide where you are',
+  `<p>Browse with Tor sends a window's tabs through the Tor network, so sites do not see your internet address; with a VPN on, Tor runs inside it. A Tor window is always private and never runs extensions.</p>
+   <p>It hides your address, not who you are: sites can still recognise a browser by how it looks and behaves. For real anonymity use Tor Browser on a computer meant for it.</p>`],
+ ['updates','Kept up to date, and kept apart',
+  `<p>Oracle is built on Chromium. Rudolf OS checks for Chromium's security fixes every six hours and ships them as signed updates. Each site runs in its own sandboxed process, kept apart from other sites and from the rest of the computer.</p>`],
+ ['extensions-desktop','Why extensions never run in Oracle as part of the desktop',
+  `<p>On the Chromium desktop, Rudolf OS's desktop is itself a page in Chromium, and Oracle's tabs can be part of that page. The desktop's page holds the key that lets it ask Rudolf OS to do things for you: open and save your files, change settings, install apps and updates.</p>
+   <p>An extension can read and change the pages it runs on. In the desktop's own Chromium it could reach that key, and with it your files and the rest of the computer, without asking. So while Oracle runs as part of the desktop, <b>no extension runs at all</b>: Rudolf OS's own rules for Chromium refuse every extension there, whatever any other setting says, and trying to add one only shows a reminder.</p>
+   <p>Extensions run only when Oracle runs in a window of its own, a separate Chromium with your websites and nothing of the desktop: turn on <b>Settings › Oracle › Extensions</b>, or <b>Keep my websites encrypted with my account</b>. Even there, extensions never reach this computer's own services or the desktop's pages, never run in Tor windows, and run in private windows only if you allow them. (Extensions are planned for Rudolf OS 1.6.3; this rule holds from the start.)</p>`],
+ ['guest','Guest leaves nothing behind',
+  `<p>Signed in as Guest, everything Oracle keeps is held in memory only and gone when Guest signs out.</p>`],
+ ['limits','What Oracle cannot do for you',
+  `<p>Oracle cannot tell a real sign-in page from a convincing fake: check the address box before typing a password. A file you download and open runs as you and can read your own files, as on any computer; open only what you trust, and keep a backup of what matters.</p>`]];
+function oraSafetyPage(u,doc,lk,esc){
+ const m=String(u).match(/^about:safety(?:#([a-z-]+))?$/);if(!m)return null;
+ const want=m[1]&&ORA_SAFE.some(e=>e[0]==m[1])?m[1]:'';
+ const toc=ORA_SAFE.map(e=>`<li><a href='#${e[0]}' onclick='show("${e[0]}");return false'>${e[1]}</a></li>`).join('');
+ const body=`<style>.os-e{border:1px solid #d1d5db;border-radius:6px;padding:4px 14px;margin:12px 0;transition:background .4s,box-shadow .4s}
+  .os-e h3{margin:10px 0 4px;font-size:15px}.os-e p{line-height:1.5}
+  .os-e.hl{background:#fff7cc;border-color:#d4a400;box-shadow:0 0 0 3px #f5d35b}
+  @media (prefers-color-scheme:dark){.os-e.hl{background:#3a3000;border-color:#d4a400}}</style>
+  <p>How Oracle keeps you safe and what happens to your data.</p>
+  <ul id='os-toc'>${toc}</ul>`+ORA_SAFE.map(e=>`<div class='os-e' id='${e[0]}'><h3>${e[1]}</h3>${e[2]}</div>`).join('');
+ const x=`function show(id){document.querySelectorAll('.os-e.hl').forEach(e=>e.classList.remove('hl'));const e=document.getElementById(id);if(!e)return;e.classList.add('hl');e.scrollIntoView({block:'center'})}${want?`addEventListener('load',()=>setTimeout(()=>show('${want}'),60))`:''}`;
+ return doc("Oracle's safety and your data",body,x)}
 
 __svcMod("orareader61.js");
 /* ===== Rudolf OS 1.6.1 (docs/plan-1.6.1.md Part 10, docs/plan-oracle.md item 7): Oracle's reader mode =====
