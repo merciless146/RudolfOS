@@ -837,6 +837,7 @@ static void lp_menu_open(GtkWidget *pw, int wx, int wy, int kind, double x, doub
 static void lp_menu_closed(GtkWidget *pw, double x, double y, double w, double h); static void lp_tbb(Client *c); static int lp_dir(void); static void lp_draw_clip(cairo_t *cr, GtkWidget *pw, int wx, int wy); static int lp_hit_mid(const char *kind, const char *arg, double *x, double *y, LPRect *r);   /* (Part 17b) */
 static Window LP_LITW; static double LP_LITA; static RGB LP_CORE;   /* (the taskbar button a point drops into, lit) */
 static GList *CLIENTS;   /* oldest first */
+static void native_kbcap(Client *c, int on); static void native_kbcap_gone(Client *c);
 static Client *FOCUS;
 static Display *DPY; static Window ROOT; static int WM_OK;
 static Atom A_PROTO, A_DEL, A_TAKE, A_WMSTATE, A_NSTATE, A_NFULL, A_NACTIVE, A_NLIST, A_NNAME, A_UTF8, A_NSUP, A_NCHECK, A_CHANGE, A_NHIDDEN;
@@ -1527,6 +1528,7 @@ static void wm_unmanage(Client *c, int gone)
 {
 	if (DRAG.c == c) { XUngrabPointer(DPY, CurrentTime); if (DRAG.kbd) XUngrabKeyboard(DPY, CurrentTime); DRAG.c = NULL; DRAG.kbd = 0; }   /* (1.6.1 Part 15: a window going while moved) */
 	lp_gone(c);   /* (Part 17: its frame folding away where it was) */
+	native_kbcap_gone(c);
 	desk_shadows();
 	CLIENTS = g_list_remove(CLIENTS, c);
 	if (!gone) { XReparentWindow(DPY, c->w, ROOT, mon_ox(c) + c->x + BW - c->il, mon_oy(c) + c->y + th_of(c) - c->it); XRemoveFromSaveSet(DPY, c->w); set_wm_state(c, WithdrawnState); grab_clicks(c, 0); }
@@ -5546,6 +5548,7 @@ static int native_ask(Client *c, XClientMessageEvent *m)
 	if (XGetWindowProperty(DPY, c->w, A_RASK, 0, 50, True, AnyPropertyType, &type, &fmt, &n, &after, &d) == Success && d) { snprintf(q, sizeof q, "%.*s", (int)MIN(n, sizeof q - 1), (char *)d); XFree(d); }
 	if (!strcmp(q, "wins")) { WINS_NTO = c->w; wins_ask(NULL); return 1; }
 	if (!strncmp(q, "winop ", 6)) { char id[24] = "", op[12] = ""; if (sscanf(q + 6, "%23s %11s", id, op) == 2 && (!strcmp(op, "focus") || !strcmp(op, "end"))) win_op(id, op); return 1; }
+	if (!strcmp(q, "kbcap 1") || !strcmp(q, "kbcap 0")) { native_kbcap(c, q[6] == '1'); return 1; }   /* (Settings' Press keys…: every key its own for a moment) */
 	if (!strncmp(q, "open ", 5) && native_open_page(q + 5)) return 1;
 	if (!strncmp(q, "open ", 5)) { const char *k = q + 5; if (key_ok(k) && (app_find(k) || !strcmp(k, "do-hwcheck"))) app_open(k, NULL); return 1; }   /* (do-hwcheck: the page's hardware check, Task Manager's Hardware) */
 	return 1;
@@ -7392,7 +7395,8 @@ static const char *sc_combo(int i) { return !SC_LOADED || SCKB[i][0] == 1 ? SC[i
    there: 19 keys "did not answer"). While the window that asked is in front, the shell grabs none of its shortcuts and Super alone
    opens nothing; the hardware keys and Ctrl+Alt+Del stay the shell's, as rudolf-display keeps them before Chromium on Standard. */
 static AppWin *KBCAP; static int AT_ON, OV_ON;
-static int kb_free(void) { return KBCAP && g_list_find(WINS, KBCAP) && FOCUS && FOCUS->app == KBCAP; }
+static Client *KBCAP_N;   /* (1.6.2 Part 39: a native app's window that has the keys, "kbcap 1": rudolf-settings' Press keys…) */
+static int kb_free(void) { return (KBCAP && g_list_find(WINS, KBCAP) && FOCUS && FOCUS->app == KBCAP) || (KBCAP_N && FOCUS == KBCAP_N); }
 /* (1.6.0) Super by itself, as the page's metaAlone: seen from XInput 2's raw key events on the root window (every key, whichever
    window has the keyboard, without grabbing it), so the window in front gets Super's own press and release as a page does on
    Standard (the check's ❖ never answered: the grab kept it from every app). Without XInput 2: grabbed, as before. */
@@ -7441,6 +7445,8 @@ static void sc_grab(void)
 /* (the grabs again when the window in front changes to or from one that has the keys) */
 static void kb_sync(void) { if (!WM_OK) return; if (!kb_free() && KBCAP && !g_list_find(WINS, KBCAP)) KBCAP = NULL; if (KB_GRABBED != !kb_free()) { sc_grab(); state_write(); } }
 static void kbcap_gone(AppWin *a) { if (KBCAP == a) { KBCAP = NULL; kb_sync(); } }
+static void native_kbcap(Client *c, int on) { if (on) KBCAP_N = c; else if (KBCAP_N == c) KBCAP_N = NULL; META_ALONE = 0; kb_sync(); }
+static void native_kbcap_gone(Client *c) { if (KBCAP_N == c) { KBCAP_N = NULL; kb_sync(); } }
 static void kbcap_msg(AppWin *a, int on) { if (on) KBCAP = a; else if (KBCAP == a) KBCAP = NULL; META_ALONE = 0; kb_sync(); }
 /* (a raw key: Super alone, as the page's metaAlone: any other key pressed between cancels it; a repeat is not a press) */
 static void xi_raw(XIRawEvent *r, int press)

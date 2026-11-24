@@ -16,6 +16,8 @@ Summary: In progress.
   installing, recovery, the drive's start-up files and the boot menu.
 - Added: the native Settings brings in an old computer's files as the web one does (docs/plan-1.6.2.md Part 39): what came in
   checked by the antivirus, and before an installation erases a disk, its files kept on a USB drive first.
+- Added: the native Settings' Keyboard and Mouse and touchpad pages (docs/plan-1.6.2.md Part 39), as the web ones.
+- Fixed: Settings › Keyboard: Esc while a shortcut waits for its new keys now only cancels (it also gave the shortcut the Esc key).
 - Fixed: the release workflow (the 6-hourly security releases and the betas) had not started since 2026-11-22: two merges
   had each given its Tools step its own `run:` line, and GitHub runs nothing of a workflow with a key given twice. One
   line now has both (OpenVPN and the scanners' packages); deadcheck.py checks every workflow for this (wfkeys.py).
