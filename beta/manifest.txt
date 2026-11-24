@@ -1,21 +1,26 @@
 rudolf-system 1
-serial 2026112223
-version 1.6.2.261122
-released 2026-11-22
-expires 2026-12-06
+serial 2026112400
+version 1.6.2.261124
+released 2026-11-24
+expires 2026-12-08
 urgent 0
 chromium 158.0.8127.36
-kernel 6.18.64-rudolf
-notes 1.6.2: In progress.
+kernel 6.18.65-rudolf
+notes Linux 6.18.65, system programs, desktop update, the system's images packed with zstd (the first update after it downloads them whole)
 datafmt 2
 readsfmt 1-2
-L	vmlinuz	13277816	da82886c63681375771046bcc0b22942be201468f000d232e9825f962d41b585	https://github.com/merciless146/RudolfOS/releases/download/r2026112223/vmlinuz
-L	base	311861248	c3e86906e637b2d9327cec74978293d316e1b8c08fe59927c3ba2dfb428ff694	https://github.com/merciless146/RudolfOS/releases/download/r2026112223/base.sfs
-L	chromium	138039296	400e04ecc335506d6e1998872ec7be457a624bb87811e3263cab1adbda897c07	https://github.com/merciless146/RudolfOS/releases/download/r2026112223/chromium.sfs
-L	desktop	7733248	fa5e29a9c486d9841c39235f1751dbac560ce5cc989a6be5e0a966b10fbd49f7	https://github.com/merciless146/RudolfOS/releases/download/r2026112223/desktop.sfs
-L	modules	102023168	cd35ed41e023814f4dcfe9cb17af0fa1cae9176ae328a19e64021dc1c6412092	https://github.com/merciless146/RudolfOS/releases/download/r2026112223/modules.sfs
-V	base	75541	267c65b8f6a8ac587d98f9d92c623c21044806b5864e0f89317a284841e49c3c	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
-V	chromium	33435	e487c73fa8c8d6c2dd4f6d126f761e076e48dfbe883f7d822c559eb57af07c59	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
-V	desktop	1872	7ceae22ef0bbc3fb9781c5f52f49569245985934f0f045c91bdb202a11d45a9e	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
-V	modules	24711	6cf90df6f09a16141e57e0d9bdd86b9ca6976fe195924a979fb0da431d5ff8bb	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
-S	source	11760452	039a0c7cbab7b6ce4b9bd04b72be2732df7ce525d99553cc4617c0f4b9d3b570	https://github.com/merciless146/RudolfOS/releases/download/r2026112223/rudolf-os-2026112223-source.tar.xz
+squashfs xz zstd zlib
+L	vmlinuz	13286520	51c4d01066f06accc2cdb4f82559ac08c5f069a4767d5fae19d85710facc5a02	https://github.com/merciless146/RudolfOS/releases/download/r2026112400/vmlinuz
+L	base	350269440	e21e78faa43376b709285ac368f185c0c9e6025c0150669c132d48f923572af3	https://github.com/merciless146/RudolfOS/releases/download/r2026112400/base.sfs
+L	chromium	147845120	d75c2ad7d93f577e97af5985fee29683595b95dc645a9293b271d02e0080161b	https://github.com/merciless146/RudolfOS/releases/download/r2026112400/chromium.sfs
+L	desktop	8441856	cbc79597e50aca96fdf14dd7abbd65114d7e48be66bfcd4405d64a6d53340ae0	https://github.com/merciless146/RudolfOS/releases/download/r2026112400/desktop.sfs
+L	modules	106864640	72cbf6a0a3d3a8e80066bc55adbbc4072a57499a75c9a18dd7da7a5de60dfe30	https://github.com/merciless146/RudolfOS/releases/download/r2026112400/modules.sfs
+V	base	84845	0745c899a0b72d7fe9b057ff3290a5302369fb10813f44404af7ef088cce41cc	807b39d1fff5e2f7e57894f1f7c071cdb3cef46bf64074273be7746be26a5a2e
+V	chromium	35811	adc0102feba847990a39b0ae4bb470e6c6d06f4a6c1a269d862407086de7fb20	da3143e0b76e95a8fb9b20d6cd921581143496db9de69f0900a337920b32f7f8
+V	desktop	2044	8e7fe5b4221f4e31165047d6bb07bed7e68532ce51422a81e446dbd82aca47fe	87740e930fa940e945b466b788c81d6144756377e3b6f6745285f12cd5c1e97d
+V	modules	25884	c48fba8b19ce379d06e847bcfeddf043e6a337cd65d827461a28d5d5e73bb660	aa6505275e92cee6be4301648b1e5555f4e24ca88fba4736e975aca28cdd3780
+S	source	12791144	61824210a96e9ede4543cf0666ff0239ca1c4f9cf4c978a19cc32f284f0548f1	https://github.com/merciless146/RudolfOS/releases/download/r2026112400/rudolf-os-2026112400-source.tar.xz
+C	base	zstd	1048576
+C	chromium	zstd	1048576
+C	desktop	zstd	1048576
+C	modules	zstd	1048576
