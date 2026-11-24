@@ -3,7 +3,8 @@
 # the hidden start menu, desktop and taskbar, no pinned buttons, no dynamic background's moving parts, no catalogue at sign-in when the
 # hidden page's is the same; the shell's own pages (#app=do-NAME) build all of it as before. rudolf-native under Xvfb with the stand-in
 # rudolfd (fixtures/native_rd.py), Spirit Falls (the statue) as the background:
-#   1. the hidden page: not lean, its catalogue given (every menu row's picture, the statue), the start menu's pictures made
+#   1. the hidden page: not lean as an app's window, its catalogue given (every menu row's picture, the statue); (1.6.2 Part 38 step 3c,
+#      lean61.js's second part) its own start menu's pictures not kept once the catalogue is given (bglean162_t.sh)
 #   2. Notepad's window: lean; none of the hidden parts' pictures, no pinned buttons, no statue or petals; no catalogue given (the hidden
 #      page's is the same); it works (typed); a window of its page's own (a dialog) has its title bar's picture
 #   3. every app of the page (those with a window of the page's) opened in a native window of its own, one after another: its window
@@ -57,7 +58,7 @@ openw() { ev do-bg "oaPost({op:'open',app:'$1'});1" >/dev/null; w8 "grep -q '^cl
 w8 '[ "$(st signin)" = 1 ]' 160; LC_ALL=C.UTF-8 xdotool type --delay 40 "$PW"; xdotool key Return
 w8 '[ "$(st user)" = Ann ]' 120; w8 '[ "$(st svc | cut -d" " -f1)" = ready ]' 240; w8 '[ "$(cats)" -ge 1 ]' 80; timeout 3 tail -f /dev/null
 B=$(ev do-bg "JSON.stringify([__oaLean().on,[...document.querySelectorAll('#menu img.ico')].length])")
-ok "1. the hidden page: not lean, the start menu's pictures made, its catalogue given (the menu's pictures, the statue)" "$([ "$(echo "$B" | cut -c1-7)" = '[false,' ] && ! echo "$B" | grep -q ',0]' && [ "$(catj "sum(1 for r in c['menu'] if r.get('ic'))>10 and bool(c.get('fx',{}).get('statue'))")" = True ] && echo 1)" "$B; $(catj "[sum(1 for r in c['menu'] if r.get('ic')),list(c.get('fx',{}))]")"
+ok "1. the hidden page: not lean as an app's window, its catalogue given (the menu's pictures, the statue); its start menu's pictures not kept (1.6.2)" "$([ "$B" = '[false,0]' ] && [ "$(catj "sum(1 for r in c['menu'] if r.get('ic'))>10 and bool(c.get('fx',{}).get('statue'))")" = True ] && echo 1)" "$B; $(catj "[sum(1 for r in c['menu'] if r.get('ic')),list(c.get('fx',{}))]")"
 C0=$(cats); E0=$(errs)
 openw notepad; timeout 4 tail -f /dev/null; xdotool type --delay 30 'lean'; timeout 1 tail -f /dev/null
 L=$(ev notepad "JSON.stringify([__oaLean(),$HID,!!(STS.el||PET.cv||AUR.cv),document.querySelector('.oamain textarea').value])")

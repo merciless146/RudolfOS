@@ -6,6 +6,7 @@
 //          panel by panel: the functions run, by module (desktop/build19.py's mods; "base" is base_v24.html's own code), written as JSON
 //   mem    the renderer's private memory (and PSS) of one window, alone in its browser, 20 s after it opened and after collecting
 //   node lean162m.js cover OUT.json [CHROME]
+//   node lean162m.js coverbg OUT.json [CHROME]     (the shell's hidden page, #app=do-bg: what it runs in its first 25 s, by module)
 //   node lean162m.js mem URLHASH [ID] [CHROME]        e.g.  mem app=taskmgr      mem app=taskmgr 0123456789abcdef (www/a/ID.html, as /?oa=ID)
 // Ports 8670-8679 (LEAN_PORT, default 8670).
 const {chromium} = require('playwright'); const fs = require('fs'), path = require('path'), cp = require('child_process'), os = require('os');
@@ -100,6 +101,16 @@ async function cover(OUT) {
   }
   fs.writeFileSync(OUT, JSON.stringify(R, null, 1)); console.log('written', OUT);
 }
+// (Part 38 step 3c) the shell's hidden page (#app=do-bg, as rudolf-native opens it at sign-in): what it runs in its first 25 s, by module
+async function coverbg(OUT) {
+  const html = await (await fetch(BASE + '/')).text();
+  const o = await open('app=do-bg&since=1&start=1'); const cdp = await o.ctx.newCDPSession(o.p);
+  await cdp.send('Profiler.enable'); await cdp.send('Profiler.startPreciseCoverage', {callCount: true, detailed: false});
+  await o.go(); await wait(25000);
+  const c = (await cdp.send('Profiler.takePreciseCoverage')).result.filter(s => s.url.startsWith(BASE));
+  const R = {when: new Date().toISOString(), chrome: o.b.version(), bg: byModule(c, html), errors: o.errs, posts: await o.p.evaluate(() => (window.__posts || []).map(m => m && m.op))};
+  await o.b.close(); fs.writeFileSync(OUT, JSON.stringify(R, null, 1)); console.log('written', OUT);
+}
 // a process's private memory and PSS (smaps_rollup), MB
 const smaps = pid => { try { const t = fs.readFileSync('/proc/' + pid + '/smaps_rollup', 'utf8'), g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [0, 0])[1]); return {priv: (g('Private_Clean') + g('Private_Dirty')) / 1024, pss: g('Pss') / 1024} } catch (e) { return null } };
 const renderers = bpid => { const out = []; for (const d of fs.readdirSync('/proc')) { if (!/^\d+$/.test(d)) continue; try { const c = fs.readFileSync('/proc/' + d + '/cmdline', 'utf8'); if (c.includes('--type=renderer') && !c.includes('--extension-process')) { const st = fs.readFileSync('/proc/' + d + '/stat', 'utf8'); out.push(+d) } } catch (e) {} } return out };
@@ -155,6 +166,7 @@ async function dump(o) {
 (async () => {
   try { await login();
     if (MODE == 'cover') await cover(A1);
+    else if (MODE == 'coverbg') await coverbg(A1);
     else if (MODE == 'mem') await mem(A1, A2);
     else if (MODE == 'memraw') await memraw(A1, A2);
     else { console.log('node lean162m.js cover OUT.json | mem HASH [PAGE]'); done(2) }

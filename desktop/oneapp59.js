@@ -692,7 +692,7 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   const sndp={};try{if(typeof SNDS=='object'&&typeof PAT=='object')for(const [k] of SNDS)sndp[k]=(typeof SPRE=='object'&&SPRE[k]?SPRE[k].map(x=>x[1]||PAT[k]):[PAT[k]]).map(p=>(p||[]).map(oaTone))}catch(e){}
   /* (1.6.1 Part 28) the places of icons just dropped or pasted (bd95place), which the shell takes over its own */
   const place=typeof dkPlaceFresh=='function'?dkPlaceFresh():null;
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,place,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}));OA_CSIG=sig
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,place,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid(),ich:typeof oaIch=='function'?oaIch(icons):undefined}));OA_CSIG=sig
   /* (2026-11-17, the owner's Vivobook: icons minutes late on Native) the native log says when giving the catalogue took long on this computer */
   {const ms=Math.round(performance.now()-t0);if(ms>3000)console.warn('desktop/apps given after '+ms+' ms')}}catch(e){console.warn('desktop/apps',e)}}
 /* (N12) the statue changes with the accent colour, its glow's rule and light or dark: given again, and the native shell told */

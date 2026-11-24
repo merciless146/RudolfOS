@@ -7,7 +7,7 @@
 name: Lite engine check
 on:
   push:
-    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/qt/webkit/files61_ci.py', 'iso/sys/rudolf-portal.c', 'desktop/linux26.js', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/qt/host/native59_t.sh', 'iso/qt/host/bgpage161_t.sh', 'iso/qt/host/chunks161_t.sh', 'iso/qt/host/rest161_t.sh', 'desktop/rest61.js', 'iso/qt/host/lean161_t.sh', 'desktop/lean61.js', 'iso/qt/host/apppage161_t.sh', 'desktop/oapage61.py', 'desktop/build19.py', 'desktop/svc60.js', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'iso/qt/host/csd161_t.sh', 'iso/sys/rudolf-display.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
+    paths: ['iso/sys/rudolf-webkit.c', 'iso/qt/webkit/links60_ci.py', 'iso/qt/webkit/files61_ci.py', 'iso/sys/rudolf-portal.c', 'desktop/linux26.js', 'iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/sys/rsynth.h', 'iso/qt/host/native59_t.sh', 'iso/qt/host/bgpage161_t.sh', 'iso/qt/host/chunks161_t.sh', 'iso/qt/host/rest161_t.sh', 'desktop/rest61.js', 'iso/qt/host/lean161_t.sh', 'iso/qt/host/bglean162_t.sh', 'iso/qt/host/bgmem162.sh', 'desktop/lean61.js', 'iso/qt/host/apppage161_t.sh', 'desktop/oapage61.py', 'desktop/build19.py', 'desktop/svc60.js', 'iso/qt/host/hwcnative160_t.sh', 'iso/qt/host/fixtures/native_rd.py', 'iso/qt/host/fixtures/xwmclient.c', 'iso/qt/host/csd161_t.sh', 'iso/sys/rudolf-display.c', 'desktop/oneapp59.js', 'iso/qt/webkit/webrtc59_ci.py', 'iso/systools/addwebkit.sh', '.github/workflows/webkit-check.yml', 'iso/qt/webkit/**']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -136,6 +136,15 @@ jobs:
           sh iso/qt/host/lean161_t.sh | tee lean-result.txt
           echo "::notice title=Native's lean windows::$(tail -1 lean-result.txt) — $(grep -E '^FAIL' lean-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
           grep -q ' passed$' lean-result.txt && ! grep -q '^FAIL' lean-result.txt
+      - name: The shell's hidden page draws no pictures it never shows (1.6.2, docs/plan-1.6.2.md Part 38, step 3c)
+        run: |
+          sh iso/qt/host/bglean162_t.sh | tee bglean-result.txt
+          echo "::notice title=The hidden page's pictures::$(tail -1 bglean-result.txt) — $(grep -E '^FAIL' bglean-result.txt | cut -c1-200 | tr '\n' '|' | sed 's/::/: /g')"
+          grep -q ' passed$' bglean-result.txt && ! grep -q '^FAIL' bglean-result.txt
+      - name: The hidden page's memory (1.6.2, docs/plan-1.6.2.md Part 38, step 3c; a reading, not a check)
+        run: |
+          sh iso/qt/host/bgmem162.sh "" 2 | tee bgmem-result.txt || true
+          echo "::notice title=The hidden page's memory::$(grep -o '"start":"[a-z]*","webprocs":[0-9]*,"mem":{[^}]*}' bgmem-result.txt | tr '\n' ' ')"
       - name: The apps' page in native windows (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2)
         run: |
           sh iso/qt/host/apppage161_t.sh | tee apppage-result.txt
