@@ -71,6 +71,12 @@ const prep = "(()=>{try{svj('bd95setup',1)}catch(e){}['oobe','login'].forEach(i=
   await ev({ev: 'hover', url: 'https://example.com/y'}); await p.waitForTimeout(100);
   const bothWins = await q("wins.filter(w=>/Oracle/.test(w.el.querySelector('.t').textContent)).map(w=>w.body.querySelector('.stat').textContent)");
   ok('B7. a tab\'s hover shows in its own window only', bothWins.filter(s => /^Goes To:/.test(s)).length == 1, bothWins);
+  // B8 (1.6.2, the owner 2026-11-23): a long address keeps the status line one line; the page above it does not move
+  {const geo = () => q("(()=>{const Ws=wins.filter(w=>/Oracle/.test(w.el.querySelector('.t').textContent));const W=Ws.find(w=>/^Goes To:/.test(w.body.querySelector('.stat').textContent))||Ws[0];const s=W.body.querySelector('.stat'),f=W.body.querySelector('.fh')||W.body.querySelector('iframe');const r=s.getBoundingClientRect(),g=f?f.getBoundingClientRect():{height:-1};return {h:Math.round(r.height),fh:Math.round(g.height),cut:s.scrollWidth>s.clientWidth,ws:getComputedStyle(s).whiteSpace,t:s.textContent.slice(0,20)}})()");
+   await ev({ev: 'hover', url: ''}); await p.waitForTimeout(100); const g0 = await geo();
+   await ev({ev: 'hover', url: 'https://www.youtube.com/watch?v=6A4yM3YV8hc&pp=' + 'kggVc3ZpLWFjcS15Y20td2YtcHJpY2Vh'.repeat(8) + '&surlp=IAE%3D'}); await p.waitForTimeout(100); const g1 = await geo();
+   ok('B8. a long "Goes To:" address: the status line stays one line (cut with …), the same height, the page above it the same size',
+      g1.ws == 'nowrap' && g1.cut && g1.h == g0.h && g1.fh == g0.fh, [g0, g1])}
   ok('no page errors', !errs.length, errs);
   await b.close(); srv.close();
   const n = R.filter(Boolean).length; console.log(`${n}/${R.length} passed`); process.exit(n == R.length ? 0 : 1);
