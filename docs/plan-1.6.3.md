@@ -1,9 +1,9 @@
-# Rudolf OS 1.6.3: the native Office apps and fingerprint readers
+# Rudolf OS 1.6.3: native Settings, the native Office apps and fingerprint readers
 
 1.6.3 follows 1.6.2. The owner, 2026-11-23 18:20 and 18:23 CST: "Push fingerprint scanners to 1.6.3" and, for the Office
 apps' native versions, "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that includes
-native settings." 1.6.2 goes stable from the beta that carries native Settings (docs/plan-1.6.2.md Part 39); these two
-parts start after it.
+native settings", then (18:27 CST) "Push settings to 1.6.3 as well." So 1.6.2 goes stable without the native Settings switched
+on, and these parts follow it.
 The owner's rule for the native desktop holds for every part: "Rudolf OS on the native desktop should appear and
 function exactly as it does in Chromium mode." Chromium and Lite keep the web versions of every app unchanged.
 
@@ -40,6 +40,18 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
 - **The owner's checklist:** enrol a finger; the lock screen and an administrator prompt with it; five wrong fingers,
   then the password; after a restart the password is asked.
 
+### Part 3. Native Settings, finished (moved from 1.6.2 Part 39, item 3)
+`/usr/bin/rudolf-settings` (iso/sys/apps/settings*.c), one PR per group of pages, as begun in 1.6.2 and kept there switched off:
+- **Done in 1.6.2 (in main, switched off):** the window, the sidebar, Search in Settings, System, About (#665); Update and
+  recovery (#672); Bring in files (#674, if merged).
+- **Left:** Display, Sound, Multimedia, Keyboard, Mouse, Accessibility; Network, Mobile, Bluetooth, Oracle, Remote; Devices,
+  Storage, Apps (with Part 40's two rows: Apps › Linux "Bring them in…" and System health), Notifications; Privacy,
+  Security, Health, Users (the administrator and two-step prompts exactly where the web ones are); then the switch:
+  the native desktop opens rudolf-settings, at the page asked for, from every place that opens Settings.
+- The tests, the memory against the web Settings (~170 MB) and the owner's checklist as 1.6.2 Part 39's PRs have them.
+  Chromium and Lite keep the web Settings.
+
 ## Steps
+- Part 3: first, after 1.6.2 is stable.
 - Part 1: after 1.6.2 is stable; WordPro first.
 - Part 2: after 1.6.2 is stable.

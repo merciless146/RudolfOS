@@ -1232,12 +1232,9 @@ account's own Linux user, nothing new opened up.
    (a sample window screenshot-compared with the page's same controls).
 2. **Task Manager** (1.6.2): the first native app; ~130 MB today in its own web process; aim 15 to 40 MB. Its small page
    (Part 38 step 2) is the stopgap until the native one passes, then the native one replaces it.
-3. **Settings** (**1.6.2**: the owner, 2026-11-23, "Do native settings in 1.6.2"; it was planned for 1.6.3): ~170 MB today.
-   `/usr/bin/rudolf-settings` on librudolf-ui, built panel group by panel group (one PR each), all 22 panels of
-   `desktop/settings-index.json` (Display, Sound, Multimedia, Network, Mobile, Bluetooth, Web, System, Keyboard, Mouse,
-   Devices, Accessibility, Privacy, Security, Health, Users, Remote, Storage, Apps, Notifications, Updates, About) and
-   Settings' search. Native opens it instead of the web Settings only once every panel and the search pass (no window half
-   native, half web: that would cost both); until then the web Settings stays. Chromium and Lite keep the web Settings.
+3. **Settings**: **moved to 1.6.3** (docs/plan-1.6.3.md Part 3; the owner, 2026-11-23 18:27 CST: "Push settings to 1.6.3 as
+   well"). What is merged (#665, #672) stays in main switched off: the native desktop keeps opening the web Settings until
+   every page and the search pass in 1.6.3. ~170 MB today.
 4. **The Office apps** (WordPro, SpreadsheetPro, PresentPro): **moved to 1.6.3** (docs/plan-1.6.3.md Part 1; the owner,
    2026-11-23 18:23 CST: "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that
    includes native settings"). ~130 MB each today; Part 38's small pages measured too little to be made.
