@@ -412,6 +412,8 @@ static void serve_fd_as(struct req *r, int f, const char *path, int dl)
 			start = a; if (b >= a && b < st.st_size) end = b;
 			partial = 1;
 		}
+		/* 1.6.2 (Part 39): a suffix range, the last N bytes (RFC 9110 14.1.2; the antivirus's look at a file's end, bring62.js brScan) */
+		else if (r->range[6] == '-' && sscanf(r->range + 7, "%lld", &b) == 1 && b > 0 && st.st_size > 0) { start = b < st.st_size ? st.st_size - b : 0; partial = 1; }
 	}
 	char h[600];
 	/* shared libraries (Ruffle, PDF.js) are also loaded by Oracle's sandboxed pages, which have no origin */

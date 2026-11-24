@@ -170,7 +170,13 @@ static void text_draw(cairo_t *cr, const char *t, double x, double y, double px,
 /* ------------------------------------------------------------------ the tests' state (RUDOLF_SET_STATE) */
 static GString *NOTES; static GHashTable *NAMED;
 void set_note(const char *fmt, ...) { if (!NOTES) NOTES = g_string_new(NULL); va_list a; va_start(a, fmt); char b[600]; vsnprintf(b, sizeof b, fmt, a); va_end(a); g_string_append_printf(NOTES, "act %s\n", b); if (NOTES->len > 20000) g_string_erase(NOTES, 0, NOTES->len - 15000); set_state_soon(); }
-void p_label_named(const char *n, GtkWidget *w) { if (!NAMED) NAMED = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL); g_hash_table_replace(NAMED, g_strdup(n), w); }
+/* (a name forgotten when its widget goes, so the state never reads a widget destroyed: a dialog's, say) */
+static void named_gone(GtkWidget *w, gpointer n) { if (NAMED && g_hash_table_lookup(NAMED, n) == w) g_hash_table_remove(NAMED, n); }
+void p_label_named(const char *n, GtkWidget *w)
+{
+	if (!NAMED) NAMED = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL); g_hash_table_replace(NAMED, g_strdup(n), w);
+	if (w) g_signal_connect_data(w, "destroy", G_CALLBACK(named_gone), g_strdup(n), (GClosureNotify)(void (*)(void))g_free, 0);
+}
 static void rect_line(GString *s, const char *n, GtkWidget *w)
 {
 	if (!w || !gtk_widget_get_mapped(w)) return; int x, y, ox, oy; gdk_window_get_origin(gtk_widget_get_window(SW->win), &ox, &oy);

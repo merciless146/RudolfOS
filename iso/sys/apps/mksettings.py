@@ -149,6 +149,39 @@ if not l: die("base_v24.html's LANGS was not found")
 langs = json.loads(l.group(1).replace("'", '"'))
 out.append('static const char *const SLANGS[][3] = {'); [out.append('\t{ %s, %s, %s },' % (cstr(a), cstr(b), cstr(c))) for a, b, c in langs]; out.append('};')
 
+
+# ---------------------------------------------------------------- the page's antivirus rules for what Bring in files brings in (bring62.js
+# brScan: avScan by the name, the program headers, EICAR, base_v24.html's SIGS over each part read; dl27.js's part size)
+def jsre(src, at):
+    """a JS regex literal starting at src[at] == '/': (pattern, flags, end)"""
+    i = at + 1; cls = False
+    while i < len(src):
+        c = src[i]
+        if c == '\\': i += 2; continue
+        if c == '[': cls = True
+        elif c == ']': cls = False
+        elif c == '/' and not cls: break
+        i += 1
+    j = i + 1
+    while j < len(src) and src[j].isalpha(): j += 1
+    return src[at + 1:i], src[i + 1:j], j
+sg = base.find('const SIGS=[')
+if sg < 0: die("base_v24.html's SIGS (the antivirus's signatures) were not found")
+sigs = []; i = sg
+while True:
+    m = re.compile(r"\['([^']+)',/").search(base, i)
+    if not m or base.find('];', sg) < m.start(): break
+    pat, fl, j = jsre(base, m.end() - 1); sigs.append((m.group(1), pat, 'i' in fl)); i = j
+if len(sigs) < 3: die('the antivirus signatures could not be read (%d)' % len(sigs))
+av = base[base.find('function avScan('):]
+dm = re.search(r"if\(/(\\\.\(TXT[^/]*)/\.test\(nm\)\)hits\.push\('Trojan\.DoubleExtension'\)", av)
+br = rd('bring62.js'); em = re.search(r"if\(/(\^\(MZ\|\\x7fELF\))/\.test\(parts\[0\]\)\)hits\.push\('Win\.Executable\.Header'\)", br)
+ei = re.search(r"if\(/(EICAR-STANDARD-ANTIVIRUS-TEST-FILE)/\.test\(s\)\)hits\.push\('EICAR-Test-File'\)", br)
+pt = re.search(r"DL_AVPART=(\d+)\*(\d+)", rd('dl27.js'))
+if not (dm and em and ei and pt): die("Bring in files' antivirus check (bring62.js brScan, avScan's double extension, dl27.js DL_AVPART) has changed: read it anew")
+out.append('typedef struct { const char *name, *re; int ci; } AvSig;')
+out.append('static const AvSig AVSIGS[] = {'); [out.append('\t{ %s, %s, %d },' % (cstr(n), cstr(p2), c)) for n, p2, c in sigs]; out.append('};')
+out.append('static const char AV_DOUBLE[] = %s, AV_EXEC[] = %s, AV_EICAR[] = %s; static const long AV_PART = %d;' % (cstr(dm.group(1)), cstr(em.group(1)), cstr(ei.group(1)), int(pt.group(1)) * int(pt.group(2))))
 # ---------------------------------------------------------------- About's logo: the start button's own picture, as the page has it
 page = open(os.path.join(ISO, 'www', 'index.html'), encoding='utf-8').read()
 lg = re.search(r'<button id="start" title="Start"><img class="rlogo" alt="Start" src="data:image/png;base64,([A-Za-z0-9+/=]+)"', page)

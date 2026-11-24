@@ -1306,7 +1306,25 @@ in Task Manager.
     **Left for PR 2b:** Bring them in (bring/import, then the page's antivirus check of what came in, its rules to be read from the
     page at build time) and an installation's offer to bring in the old computer's files first (bring62.js `bringStep`); until
     then the native button says so.
-  - **Left for the next PRs:** PR 2b (above), then Display, Sound, Multimedia, Keyboard, Mouse, Accessibility; Network, Mobile,
+  - **PR 2b (2026-11-23/24, scheduled task; branch `native-settings-3`): Bring in files from the old computer.** `settings_bring.c`:
+    Look on the drives (each copy with its drive, its people as the page's radio buttons, "brought in already" from
+    `bd95bring:ACCT`), Bring them in (bring/import, the job's PROGRESS lines on a bar, then what came in, `.rudolf/bring-imported.txt`,
+    checked with the page's own antivirus: the double extension, a program's header, EICAR and the page's SIGS over the first 8 MB
+    and the last 4 MB of each file, their rules read at build time by mksettings.py from the page (base_v24.html's SIGS, avScan's double extension, dl27.js's part size);
+    what is caught deleted with home/delete and written to the security log, `bd95seclog` 'av', as the page writes it), and before an
+    installation erases a disk (`bringStep`): the disk looked at read-only (bring/scan, bring/result), each system and person with
+    their folders, Windows' state, BitLocker's recovery key (bring/unlock, never kept), macOS, LUKS, Keep them (a USB drive chosen as
+    `dcTargets` chooses, mounted if it is not, bring/copy, its job, a full drive and another one, files that could not be read) or
+    Erase them without keeping (bring/decide), then the installation's own question. librudolf-ui gets `rui_http_h` (the caller's
+    headers, a file's bytes kept whole); rudolfd answers a suffix range (`Range: bytes=-N`, the last N bytes: the page's brScan
+    asks one for a file's end, and was given the whole file). Settings' named places forget a widget when it is destroyed (a
+    dialog's: the state no longer reads one gone). Against the web one: the checklist 15/15 (U14: Bring them in, EICAR's file
+    deleted and logged, the set marked; U15: Install here… on a disk with Windows, Keep them onto a USB drive, then the
+    installation); every view under 2 % (0.34 to 0.70 %); the whole test 78/78; memory at idle with System open 15.9 MB RssAnon
+    (the web one 74.8 MB); 462 KB stripped (the 1 MB budget).
+    **Known differences (PR 2b):** the Bring your files dialog's people are not in a bordered box with their name in its border (the
+    page's fieldset), and its Keep and Erase choices are drawn as the native check boxes, not round radio buttons.
+  - **Left for the next PRs:** Display, Sound, Multimedia, Keyboard, Mouse, Accessibility; Network, Mobile,
     Bluetooth, Oracle, Remote; Devices, Storage, Apps, Notifications; Privacy, Security, Health, Users; then the switch in
     rudolf-native (the start menu, pins, the taskbar, the desktop's right-click, Display Properties and every place that opens a
     Settings page) and the memory with Display open.
@@ -1334,6 +1352,10 @@ in Task Manager.
    password; a wrong one refused); Idle windows.
 4. About: the rows (Graphics names the GPU), Licences, Help, Copy details (paste it), Roll back (the administrator's password).
 5. The memory: rudolf-settings in Task Manager's Processes tab against the web Settings' WebKit process (~170 MB, Part 38).
+6. Update and recovery › Bring in files (PR 2b): with a USB drive holding a "Rudolf OS - Bring your files" copy, Look on the drives,
+   Bring them in (an account whose files are on the disk): the files in Documents, Pictures…; the security log lists any file the
+   antivirus blocked. Install here… onto a spare disk with Windows on it only if you have one to erase: Keep them onto a USB drive,
+   then Cancel at Erase…? (nothing is erased); a BitLocker disk asks for its recovery key.
 
 ### 40. Windows programs from before 1.5.9, and no silent failure (added on 2026-11-23)
 **What happened (the owner's Vivobook, 1.6.2b, release 2026112223; read-only devlink 000578-000579 in the main session):** Starport GE

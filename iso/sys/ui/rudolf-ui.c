@@ -34,7 +34,9 @@ typedef struct { void (*cb)(void *); void *d; GtkWidget *w; } Cb;
 static GArray *SETCB;
 
 /* ------------------------------------------------------------------ rudolfd over HTTP (as rudolf-native's http()) */
-int rui_http(const char *method, const char *path, const char *body, size_t blen, char **out, size_t *outn)
+int rui_http(const char *method, const char *path, const char *body, size_t blen, char **out, size_t *outn) { return rui_http_h(method, path, NULL, body, blen, out, outn); }
+/* (with headers of the caller's: "Range: bytes=0-99\r\n"; the answer's body kept whole, a file's bytes with their NULs, *outn long) */
+int rui_http_h(const char *method, const char *path, const char *hdrs, const char *body, size_t blen, char **out, size_t *outn)
 {
 	if (out) *out = NULL; if (outn) *outn = 0;
 	int s = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0); if (s < 0) return 0;
@@ -42,7 +44,7 @@ int rui_http(const char *method, const char *path, const char *body, size_t blen
 	struct sockaddr_in a = { .sin_family = AF_INET, .sin_port = htons(PORT) }; inet_pton(AF_INET, HOST, &a.sin_addr);
 	if (connect(s, (struct sockaddr *)&a, sizeof a)) { close(s); return 0; }
 	GString *h = g_string_new(NULL);
-	g_string_printf(h, "%s %s HTTP/1.0\r\nHost: %s:%d\r\nX-Rudolf-Token: %s\r\nContent-Length: %zu\r\nConnection: close\r\n\r\n", method, path, HOST, PORT, TOKEN, blen);
+	g_string_printf(h, "%s %s HTTP/1.0\r\nHost: %s:%d\r\nX-Rudolf-Token: %s\r\nContent-Length: %zu\r\nConnection: close\r\n%s\r\n", method, path, HOST, PORT, TOKEN, blen, hdrs ? hdrs : "");
 	int okw = send(s, h->str, h->len, MSG_NOSIGNAL) == (ssize_t)h->len; g_string_free(h, TRUE);
 	for (size_t o = 0; okw && o < blen;) { ssize_t w = send(s, body + o, blen - o, MSG_NOSIGNAL); if (w <= 0) { okw = 0; break; } o += w; }
 	GByteArray *b = g_byte_array_new(); char buf[16384]; ssize_t n;
@@ -51,7 +53,7 @@ int rui_http(const char *method, const char *path, const char *body, size_t blen
 	int code = 0; guint8 z = 0; g_byte_array_append(b, &z, 1);
 	if (b->len > 12 && sscanf((char *)b->data, "HTTP/%*s %d", &code) == 1) {
 		char *e = strstr((char *)b->data, "\r\n\r\n");
-		if (e && out) { size_t at = e + 4 - (char *)b->data; if (outn) *outn = b->len - 1 - at; *out = g_strdup(e + 4); }
+		if (e && out) { size_t at = e + 4 - (char *)b->data; if (outn) *outn = b->len - 1 - at; *out = g_memdup2(e + 4, b->len - at); }   /* (with the NUL added after it) */
 	}
 	g_byte_array_free(b, TRUE);
 	return code;
