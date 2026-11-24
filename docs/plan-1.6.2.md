@@ -1238,8 +1238,9 @@ account's own Linux user, nothing new opened up.
    Devices, Accessibility, Privacy, Security, Health, Users, Remote, Storage, Apps, Notifications, Updates, About) and
    Settings' search. Native opens it instead of the web Settings only once every panel and the search pass (no window half
    native, half web: that would cost both); until then the web Settings stays. Chromium and Lite keep the web Settings.
-4. **The Office apps** (WordPro, SpreadsheetPro, PresentPro; after Settings: the largest work): ~130 MB each today; their small
-   pages (Part 38 step 3b) meanwhile.
+4. **The Office apps** (WordPro, SpreadsheetPro, PresentPro): **moved to 1.6.3** (docs/plan-1.6.3.md Part 1; the owner,
+   2026-11-23 18:23 CST: "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that
+   includes native settings"). ~130 MB each today; Part 38's small pages measured too little to be made.
 5. **Then 2.0's waves in their order** for the rest (Calculator, Notepad and the other small apps cost little, about 15 MB, so
    they come after the heavy ones here).
 Each app's PR as docs/plan-2.0.md "Each app's pull request" says (its program, its host test under Xvfb, its screenshots
