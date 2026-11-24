@@ -9,6 +9,10 @@ function exactly as it does in Chromium mode." Chromium and Lite keep the web ve
 
 ## Parts
 
+### Fixes
+- **Oracle's status line stays one line** (the owner, 2026-11-23 19:04 CST, with photos: a long "Goes To:" address wrapped
+  onto a second line and the page above it jumped; 19:08 CST: "Add it as the first 1.6.3 fix"): PR #677.
+
 ### Part 1. The Office apps as native programs (moved from 1.6.2 Part 39, item 4)
 WordPro, SpreadsheetPro and PresentPro, about 130 MB each today as web windows (1.6.2 Part 38's readings), rewritten as
 native programs on librudolf-ui as the native Task Manager (1.6.2 #660) and native Settings (1.6.2 Part 39) were: each
