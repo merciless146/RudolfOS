@@ -7,6 +7,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 Summary: In progress.
 - Changed: the plan (docs/plan-1.6.3.md Part 6): installing Rudolf OS beside Windows on the same drive, in free space
   made in Windows, with a start-up menu for both.
+- Changed: the plan (docs/plan-1.6.3.md Part 7): Oracle's extensions (a vetted list, never in the desktop's Chromium or a
+  Tor window), with Chromium's built-in password manager first.
 - Changed: Rudolf OS trusts a second release key, made offline by the owner (IcNJiy4z…cVg=), beside the current one, so the
   signing key can be replaced; Recovery mode's start-up file carries both. Only the first key in the list signs releases
   until the switch (plan 1.6.3 Part 0).

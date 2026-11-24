@@ -1,4 +1,4 @@
-# Rudolf OS 1.6.3: the signing keys protected, native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page, installing beside Windows
+# Rudolf OS 1.6.3: the signing keys protected, native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page, installing beside Windows, Oracle's extensions
 
 1.6.3 follows 1.6.2. The owner, 2026-11-23 18:20 and 18:23 CST: "Push fingerprint scanners to 1.6.3" and, for the Office
 apps' native versions, "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that includes
@@ -186,6 +186,41 @@ partition, an MBR disk and a BIOS computer refused with plain words; removal lea
 beside; Rudolf OS and Windows each start from the menu and from F8; a Windows update, then Rudolf OS's next start; an
 update of Rudolf OS; removal and Extend Volume back.
 
+### Part 7. Oracle's extensions, and a password manager built in (the owner, 2026-11-24 12:42 and 12:45 CST)
+The owner: "What would be the recommended means of adding extensions (password managers, specialized blockers, etc) to
+Oracle?", then "Yes" to adding it with the built-in password manager first.
+**Where extensions may run.** On the Chromium desktop, Oracle's tabs are Controlled Frames inside the desktop's page,
+where Chromium runs no extensions, and that page holds rudolfd's token: **extensions never run in the desktop's own
+Chromium.** They run only in Oracle's own Chromium with its own profile (as on Native, and with "Keep my websites
+encrypted with my account"): turning extensions on makes Oracle open that way on the Chromium desktop too, as the
+encrypted setting does (Part 5 does not change this: frames run no extensions). The Lite desktop (WebKit) has none, and
+Settings says so.
+**Step 1 (first): the built-in password manager.** Chromium's own (save, fill, generate, check for leaked passwords
+only if the person turns that on) in Oracle's own-profile mode, its store the account's keyring (Rudolf OS already keeps
+apps' sign-ins there: Settings › Privacy › Saved passwords for apps), so it is locked with the account; Oracle's ☰ ›
+Passwords opens it; Guest and Tor windows never save. No extension needed for the most common need.
+**Step 2: extensions, by Chromium's enterprise policies** (Rudolf OS already writes Chromium policy):
+- ExtensionInstallAllowlist: by default a short vetted list, signed by the release key like the Library's lists (a forged
+  list is refused): password managers (Bitwarden, 1Password, KeePassXC-Browser, Proton Pass), uBlock Origin Lite,
+  Privacy Badger, Dark Reader. An administrator may allow any extension from the Chrome Web Store (the administrator's
+  prompt). Extensions come from the Web Store, signed by Google, and update through Chromium's own updater.
+- ExtensionSettings for every extension: runtime_blocked_hosts localhost, 127.0.0.1, [::1] and Rudolf OS's own pages,
+  so no extension ever reaches rudolfd or the desktop; native messaging off unless allowed for one app (KeePassXC-Browser
+  with KeePassXC from Flathub).
+- Per account, in that account's Oracle profile (in the encrypted folder when that is on); Guest none.
+- Tor windows: never (extensions leak identity and help fingerprinting). Private windows: off unless the person allows an
+  extension there, as in Chrome.
+- Settings › Oracle › Extensions: the list, add and remove, each one's permissions in plain words, its memory (each
+  running extension ~20-60 MB), the administrator's switch; Oracle's toolbar: an extensions button for their menus.
+**Never:** an extension in the desktop's Chromium, in an app window or a Tor window; one reaching 127.0.0.1 or the
+desktop page; an extension installed without the vetted list or the administrator's switch.
+**Tests:** a stand-in extension that tries 127.0.0.1, rudolfd's port and the desktop page: refused; a Tor window loads
+none; a forged vetted list refused; the built-in password manager saves and fills in a test page and keeps nothing in
+Guest; on runners, Bitwarden's and uBlock Origin Lite's real extensions install from the policy and work (a test
+sign-in filled; a test ad blocked); memory with two extensions.
+**The owner's checklist:** Oracle on the Vivobook: save and fill a password; Bitwarden (or the owner's manager) signed
+in and filling; uBlock Origin Lite on a busy site; a Tor window without them.
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
@@ -194,3 +229,4 @@ update of Rudolf OS; removal and Extend Volume back.
 - Part 4: after 1.6.2 is stable.
 - Part 5: last, after 1.6.2 is stable.
 - Part 6: after Part 3 (native Settings), before the Office apps if the owner wants it sooner.
+- Part 7: step 1 (the built-in password manager) early; step 2 after it.
