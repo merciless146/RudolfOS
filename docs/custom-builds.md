@@ -14,7 +14,8 @@ the tools it uses (`iso/qt/host/custombuild_t.sh`), so they stay correct.
 4. Run the workflow **Rudolf OS release** (Actions › Rudolf OS release › Run workflow). It builds a beta from your
    fork's `main` and publishes it to your `beta/` channel. With `promote` set to a beta's serial, it copies that beta
    to `stable/`. It also runs by itself every 6 hours (only when something changed).
-5. The disc image comes from the workflow **Disc image (whole)**.
+5. Promoting a release (`promote`) also publishes its install release: the disc image, the boot image, their
+   checksums, README.TXT and INSTALL.TXT (`disc-X.Y.Z`).
 
 Your build knows where it comes from: the workflow writes your repository into `/etc/rudolf/origin`
 (`iso/systools/origin.sh`, from GitHub's own `GITHUB_REPOSITORY`). From it, your computers take:

@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New: README.TXT has a section on Developer mode and making your own build (in short, with where the full guide is),
+  and the guide says where your own disc image comes from.
 - Fixed: Oracle's status line stays one line: a long "Goes To:" address is cut with … instead of wrapping onto a second
   line, which made the page above it jump.
 
