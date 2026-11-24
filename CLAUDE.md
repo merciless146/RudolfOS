@@ -13,7 +13,8 @@ finishing, it updates that file. Neither this file nor the handoff ever holds a 
 ## Keys and secrets
 - **Never share, upload, commit or handle a private key.** Claude never handles one.
 - The release key `rudolf-signing.pem` lives only in the GitHub secret `RPK_SIGNING_KEY`. Only its public key may appear
-  anywhere: `UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=`.
+  anywhere: `UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=`. Its replacement (1.6.3 Part 0, made offline by the owner on
+  2026-11-24; the "release" environment's `RPK_SIGNING_KEY`): public key `IcNJiy4zFkKUU3g3jalcgTQlneiDXv3E0/bbJt19cVg=`.
 - The Secure Boot key `rudolf-sb.key` stays offline with the owner and in the secret `RUDOLF_SB_KEY`.
 - The Library's key: its private key only in rudolfos-library's secret `RPK_LIBRARY_KEY` and the owner's offline backup.
   Its public key: `kRBDN3Ys6i49gblu504quUt7NZHGZj/kexNTb6uoenY=`.

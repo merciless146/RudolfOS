@@ -30,13 +30,20 @@ holds the keys. Nothing is in hardware; a copy works anywhere.
    GitHub. The Secure Boot key and the Library's key have offline copies: the owner pastes them as environment secrets
    of the same names. The release key exists only as the secret, so it is **replaced**, which also gives Rudolf its key
    replacement plan:
-   a. The owner makes a new Ed25519 key on their own computer (`openssl genpkey -algorithm ed25519 -out
-      rudolf-signing-2.pem`; its public half: `openssl pkey -in rudolf-signing-2.pem -pubout -outform DER | tail -c 32 |
-      base64`), keeps it offline, and adds it as the environment's RPK_SIGNING_KEY. Claude never sees or handles it.
-   b. A PR adds the new public half to iso/trusted-keys.txt **beside** the old one; a release signed by the old key ships
-      it, so every computer trusts both (Recovery Mode's stable included once promoted).
-   c. From then on the release workflow signs with the environment's key; the old repository secret is deleted.
-   d. Later, once every supported release trusts the new key, the old public half can leave trusted-keys.txt.
+   a. **Done 2026-11-24:** the owner made a new Ed25519 key offline (on the Vivobook's Terminal: `openssl genpkey
+      -algorithm ed25519`) and keeps it offline; its public half `IcNJiy4zFkKUU3g3jalcgTQlneiDXv3E0/bbJt19cVg=`. Claude
+      never saw or handled it.
+   b. A PR adds the new public half to iso/trusted-keys.txt **after** the old one, and lets recovery.efi carry both
+      (mkuki.py: one to four official keys); a release still signed by the old key ships it, so every computer that
+      updates trusts both, Recovery Mode included.
+   c. **Only the first key in trusted-keys.txt signs** (keycheck.py refuses any other, so a release a not-yet-updated
+      computer would refuse can't be published by mistake). So until the switch the new key must **not** be the
+      environment's RPK_SIGNING_KEY: the old repository secret keeps signing.
+   d. **The switch,** once the release trusting both has been the stable release for a while (the owner decides; a
+      few weeks lets computers that update rarely catch up): one PR puts the new key first in trusted-keys.txt; at the
+      same time the owner adds the new key as the "release" environment's RPK_SIGNING_KEY and deletes the repository
+      secret. The next release is signed by the new key.
+   e. Later, once every supported release trusts the new key, the old public half can leave trusted-keys.txt.
    Developer mode and custom builds are unaffected (their own keys).
 4. **The GitHub account:** two-factor with a hardware security key; no long-lived tokens beyond what each tool needs.
 **Checks:** a workflow run on a branch other than main that asks for the environment is refused by GitHub (tried once

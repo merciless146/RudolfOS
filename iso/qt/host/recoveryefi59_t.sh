@@ -100,11 +100,14 @@ if [ -f "$STUB" ] && command -v objcopy >/dev/null && command -v cpio >/dev/null
 	ok "11. mkuki.py --recovery: the bundle's .initrd holds the mark, the official key alone and the empty initramfs for the handover; its options say recovery" $(grep -q 'official recovery start-up file' $W/x/etc/rudolf-recovery && cmp -s $W/x/etc/rudolf-official-key $W/official.pub && [ "$(ls $W/x/etc | wc -l)" = 3 ] && [ "$(head -c 6 $W/x/etc/rudolf-kexec-initrd)" = 070701 ] && grep -qa 'rudolf.boot=uefi rudolf.recovery=1' $W/cl; echo $?) "$(cat $W/e; ls -R $W/x)"
 	python3 $R/systools/mkuki.py "$STUB" $W/k 1.5.9 $W/n.efi >/dev/null && ! objcopy -O binary --only-section=.initrd $W/n.efi $W/ird2 2>/dev/null || [ ! -s $W/ird2 ]
 	ok "...the normal bundle (rudolf.efi) has none" $? ""
-	cat $W/official.pub $W/dev.pub > $W/two
-	python3 $R/systools/mkuki.py "$STUB" $W/k 1.5.9 $W/t.efi --recovery $W/two >/dev/null 2>$W/e2
-	ok "...a key file with two keys is refused (exactly one)" $([ $? != 0 ] && grep -q 'exactly one public key' $W/e2; echo $?) "$(cat $W/e2)"
-	python3 $R/systools/mkuki.py "$STUB" $W/k 1.5.9 $W/o.efi --recovery $R/trusted-keys.txt >/dev/null 2>&1
-	ok "...the repository's trusted-keys.txt is one key, the official one" $([ $? = 0 ] && grep -qx 'UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=' $R/trusted-keys.txt; echo $?) ""
+	cat $W/official.pub $W/official.pub $W/official.pub $W/official.pub $W/official.pub > $W/five
+	python3 $R/systools/mkuki.py "$STUB" $W/k 1.5.9 $W/t.efi --recovery $W/five >/dev/null 2>$W/e2
+	ok "...a key file with five keys is refused (one to four: 1.6.3 Part 0)" $([ $? != 0 ] && grep -q 'one to four public keys' $W/e2; echo $?) "$(cat $W/e2)"
+	printf -- '-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n-----END PRIVATE KEY-----\n' > $W/priv
+	python3 $R/systools/mkuki.py "$STUB" $W/k 1.5.9 $W/t.efi --recovery $W/priv >/dev/null 2>&1
+	ok "...a private key is refused" $([ $? != 0 ]; echo $?) ""
+	python3 $R/systools/mkuki.py "$STUB" $W/k 1.5.9 $W/o.efi --recovery $R/trusted-keys.txt >/dev/null 2>&1 && objcopy -O binary --only-section=.initrd $W/o.efi $W/ird3 && mkdir $W/y && (cd $W/y && cpio -id --quiet < $W/ird3)
+	ok "...the repository's trusted-keys.txt: the official keys only (the release key and, 1.6.3 Part 0, its replacement), both in recovery.efi" $([ $? = 0 ] && [ "$(grep -v '^#' $R/trusted-keys.txt | grep -c .)" = 2 ] && grep -qx 'UqTqXIW8vtITjwoMix+MkFVZ0GAee9+kOS1WBIs/3mo=' $W/y/etc/rudolf-official-key && grep -qx 'IcNJiy4zFkKUU3g3jalcgTQlneiDXv3E0/bbJt19cVg=' $W/y/etc/rudolf-official-key; echo $?) ""
 else echo "SKIP mkuki.py's checks: no systemd stub (linuxx64.efi.stub), objcopy or cpio"; fi
 grep -q '^efi /EFI/rudolf/recovery.efi$' $R/boot/sb/loader/entries/rudolf-recovery.conf && grep -q 'EFI/rudolf/recovery.efi' $R/systools/mkefi.sh
 ok "12. the boot menu's Recovery mode starts recovery.efi, which mkefi.sh makes and signs beside rudolf.efi" $? ""
