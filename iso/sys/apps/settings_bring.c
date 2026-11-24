@@ -55,8 +55,8 @@ static void jw(GString *b, RuiJ *v)
 	else if (t == 5) { g_string_append_c(b, '{'); for (int i = 0; i < rui_jlen(v); i++) { const char *k = rui_jkey(v, i); char *e = jesc(k); if (i) g_string_append_c(b, ','); g_string_append_printf(b, "\"%s\":", e); g_free(e); jw(b, rui_jprop(v, k)); } g_string_append_c(b, '}'); }
 	else g_string_append(b, "null");
 }
-/* (logEvt: the security log's list, the last 100) */
-static void log_evt(const char *k, const char *m)
+/* (logEvt: the security log's list, the last 100; Multimedia's plugins log there too) */
+void set_log_evt(const char *k, const char *m)
 {
 	RuiJ *o = ls_get("bd95seclog"), *L = rui_jprop(o, "x"); GString *b = g_string_new("{"); int n = 0, found = 0;
 	for (int i = 0; i < rui_jlen(L); i++) { const char *key = rui_jkey(L, i); char *e = jesc(key); if (n++) g_string_append_c(b, ','); g_string_append_printf(b, "\"%s\":", e); g_free(e);
@@ -98,7 +98,7 @@ static int av_scan(const char *rel)
 	g_free(h); g_ptr_array_unref(parts); int bad = 0;
 	if (hits->len) { GString *u = g_string_new(NULL); for (guint i = 0; i < hits->len; i++) { const char *x = g_ptr_array_index(hits, i); int dup = 0; for (guint k = 0; k < i; k++) if (!strcmp(g_ptr_array_index(hits, k), x)) dup = 1; if (!dup) g_string_append_printf(u, "%s%s", u->len ? ", " : "", x); }
 		char *a = qe(ACCT), *p = qe(rel), path[1400]; snprintf(path, sizeof path, "/api/home/delete?acct=%s&path=%s", a, p); g_free(a); g_free(p);
-		if (post(path, NULL, NULL, 0) == 200) { char *m = g_strdup_printf("Blocked %s (brought in from the old computer): %s", nm, u->str); log_evt("av", m); g_free(m); bad = 1; } g_string_free(u, TRUE); }
+		if (post(path, NULL, NULL, 0) == 200) { char *m = g_strdup_printf("Blocked %s (brought in from the old computer): %s", nm, u->str); set_log_evt("av", m); g_free(m); bad = 1; } g_string_free(u, TRUE); }
 	g_ptr_array_free(hits, TRUE); g_free(nm); return bad;
 }
 

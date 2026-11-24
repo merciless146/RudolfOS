@@ -337,7 +337,8 @@ static gboolean check_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	if (c->on) { cairo_set_source_rgb(cr, 0, 117 / 255.0, 1); rrect(cr, bx, by, s, s, 2); cairo_fill(cr);
 		cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 1.8); cairo_set_line_cap(cr, CAIRO_LINE_CAP_SQUARE); cairo_set_line_join(cr, CAIRO_LINE_JOIN_MITER);
 		cairo_move_to(cr, bx + 3.2, by + 6.8); cairo_line_to(cr, bx + 5.4, by + 9.2); cairo_line_to(cr, bx + 9.9, by + 3.9); cairo_stroke(cr); }
-	else { cairo_set_source_rgb(cr, RUI.dark ? .23 : 1, RUI.dark ? .23 : 1, RUI.dark ? .23 : 1); rrect(cr, bx + .5, by + .5, s - 1, s - 1, 2); cairo_fill_preserve(cr); cairo_set_source_rgb(cr, .46, .46, .46); cairo_set_line_width(cr, 1); cairo_stroke(cr); }
+	else { double al = gtk_widget_is_sensitive(w) ? 1 : .3;   /* (a disabled one, as Chromium draws it: faded) */
+		cairo_set_source_rgb(cr, RUI.dark ? .23 : 1, RUI.dark ? .23 : 1, RUI.dark ? .23 : 1); rrect(cr, bx + .5, by + .5, s - 1, s - 1, 2); cairo_fill_preserve(cr); cairo_set_source_rgba(cr, .46, .46, .46, al); cairo_set_line_width(cr, 1); cairo_stroke(cr); }
 	cairo_restore(cr);
 	/* the words: 8 px after the box (gap 8 px, the box's own 3 px margins) */
 	GtkStyleContext *sc = gtk_widget_get_style_context(w); GdkRGBA fg; gtk_style_context_get_color(sc, gtk_style_context_get_state(sc), &fg); gdk_cairo_set_source_rgba(cr, &fg);
