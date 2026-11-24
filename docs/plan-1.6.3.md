@@ -132,6 +132,22 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   written by the desktop's page when it next starts (mmEnsure), and a removed plugin's launcher stays until then; Emu and Flash
   Player open as the Start menu opens them (asking to install or enable a plugin that is not ready); the firewall's check of a new
   Ruffle address is the page's alone.
+- **PR 5 (in progress, branch `native-settings-6`, based on PR 4's `native-settings-5` for its helpers): Display Properties.** What the
+  page is, read from it (the probe of 2026-11-24): about 2,600 px. Its first .r2 has Dynamic Backgrounds and Static Backgrounds
+  (base_v24.html dispPanelS: the .dynb buttons in a 4-column grid, 8 px apart, 2 px border, radius 8, the accent's ring when chosen;
+  .dth thumbnails 'center/cover' from DYN's tl/td, which the built page holds as a/*.jpg). Then Appearance (dm, its .dmi line at 12 px
+  #4b5563, Latitude when automatic: dynResolve's sunrise and sunset), Northern lights (aurora58.js: aur, aurm; ACMODES Normal, Negative,
+  Complementary), Spirit Falls statue (statue58.js: stm, lnm, and the animal's sentence from ST_NAMES and stAnimal()), Background
+  style, Picture (wallpaper31.js: wpimg, wpfit, wpname; Choose from my files…, From this computer…), Color 1 / Color 2, then Lock and
+  sign-in screen inside the grid (lock58.js: an h4 and rows shown with display:contents; the administrator's), Font, Font size,
+  Window text color, Icon text color and Icon size. After it come .sp25's sections: Taskbar (settings31.js, tbbtn59.js,
+  tbprog61.js), Title bars (titlebar59.js), Colours and theme (settings25.js, accent56.js, litepoint60.js), Night light, Screen and
+  Graphics (native25.js: display, power; gpudrv61.js: gpu/driver/*), Screen saver (saver31.js), Tablet mode (tablet58.js) and
+  Displays (mon61.js: screen, screen/arrange). Search in Settings has 66 rows for it. Its footer covers DKEYS as the page has them
+  after every module: bs b1 b2 ff fs tx ic tb is dyn dm lat accent nl nlv nlsched darkui icons tbgroup rot scale icstyle icdyn wpimg
+  wpfit wpname tbac tbacm icac icacm tbstyle tablet aur aurm stm lnm gmsleep gamemode twstyle twacm tbbstyle tbbac tbbacm lpac lpacm lpbr
+  tbpcol (DEFS.disp gives each default; mksettings.py reads the lists the modules push). To be built in two halves: up to Icon size,
+  then Taskbar to the end. It goes to the owner as one PR, once every view of the whole page holds under 2 %.
 - **Left:** Display (PR 5, the memory with Display open); Network, Mobile network, Bluetooth, Oracle, Remote; Devices, Storage,
   Apps, Notifications; Privacy, Security, System health, Users; the switch.
 - **The owner's checklist for PR 4 (Vivobook; `rudolf-settings vol`, `mm`, `acc` from a terminal on the native desktop until the
