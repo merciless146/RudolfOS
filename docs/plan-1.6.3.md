@@ -36,8 +36,13 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
 - **Settings › Users:** an account's fingerprints added and removed there, kept with that account, never shared.
 - **How:** libfprint and fprintd (about 2-3 MB), run so that only rudolfd asks them (confinement and the listeners list
   as for every daemon). A reader libfprint does not support is named plainly in Settings › Users.
-- **The Vivobook's reader:** (checked read-only on 2026-11-23 at 18:35 CST; filled in below).
-- **The owner's checklist:** enrol a finger; the lock screen and an administrator prompt with it; five wrong fingers,
+- **The Vivobook has no fingerprint reader** (checked read-only on 2026-11-23, devlink 000582): a Vivobook Go E1404FA; its
+  USB devices are a hub, the Realtek Bluetooth radio (13d3:3556) and the webcam (3277:0034), its I2C devices the touchpad
+  (ASUP1411, a HID touchpad) and the system's buses; nothing on SPI, no reader's ACPI id, nothing in the kernel's log. So
+  this part is tested on the owner's hardware only with a USB reader from libfprint's supported list
+  (https://fprint.freedesktop.org/supported-devices.html), and in host tests with fprintd's virtual device
+  (libfprint's "virtual_image" driver) until then.
+- **The owner's checklist** (with a supported USB reader): enrol a finger; the lock screen and an administrator prompt with it; five wrong fingers,
   then the password; after a restart the password is asked.
 
 ### Part 3. Native Settings, finished (moved from 1.6.2 Part 39, item 3)
