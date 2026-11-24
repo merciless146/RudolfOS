@@ -135,7 +135,8 @@ function blzBoxPreview(code){const W=win('Blitzen preview','🧩',520,460);W.bod
 
 /* ---------- links in answers ---------- */
 /* Rudolf OS's own documents: the official repository's pages, with nothing after the path */
-function blzLinkOwn(u){try{const x=new URL(u);return x.protocol=='https:'&&x.hostname=='github.com'&&/^\/merciless146\/RudolfOS(\/(blob|tree)\/[\w.\/-]*)?\/?$/i.test(x.pathname)&&!x.search&&!x.hash&&!x.username&&!x.password}catch(e){return false}}
+/* (1.6.3: this build's own repository, ORIGIN.repo: the official one, or a fork's for a fork's build; origin60_t.sh 15) */
+function blzLinkOwn(u){try{const x=new URL(u),r=String(ORIGIN.repo).replace(/[.]/g,'\\.');return x.protocol=='https:'&&x.hostname=='github.com'&&new RegExp('^/'+r+'(/(blob|tree)/[\\w./-]*)?/?$','i').test(x.pathname)&&!x.search&&!x.hash&&!x.username&&!x.password}catch(e){return false}}
 function blzLinkTrusted(u,know){if(know&&Array.isArray(know.sources)&&know.sources.some(s=>s&&s.kind=='web'&&s.url===u))return true;return blzLinkOwn(u)}
 const BLZ_URL_RE=/\bhttps?:\/\/[^\s<>"'`\\]+/gi;
 /* an answer's addresses as links (made as elements: the text stays text); the sources it was given decide which open at once */
