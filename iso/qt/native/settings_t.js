@@ -424,7 +424,7 @@ async function checkMob() {
   { mark = c0(); await scrollTo('moblim0'); click(rect('moblim0')); xdo('key ctrl+a'); xdo('type 2000'); xdo('key Return'); await set(/k=limit&v=2000/);
     /* (28 days: the menu is not all on the screen; the select's own Down key, as Chromium's, picks the next) */
     await scrollTo('mobsd0'); click(rect('mobsd0')); await until(() => line('menu'), 3000); xdo('key Escape'); await until(() => !line('menu'), 3000); xdo('key Down'); await set(/k=startday&v=2/);
-    ok('M2. Monthly limit 2000 (Enter) and the month starting on day 2: k=limit&v=2000, k=startday&v=2', /POST mobile\/settings\?id=0&k=limit&v=2000/.test(since()) && /k=startday&v=2/.test(since()), [since(), nst().split('\n').filter(x => /^act|^rect mob|^menu|^focus/.test(x)).slice(-25)]) }
+    ok('M2. Monthly limit 2000 (Enter) and the month starting on day 2: k=limit&v=2000, k=startday&v=2', /POST mobile\/settings\?id=0&k=limit&v=2000/.test(since()) && /k=startday&v=2/.test(since()), since()) }
   { mark = c0(); await scrollTo('mobmode0'); await pick('mobmode0', 2, 4); await set(/k=mode&v=4g/);
     ok('M3. Network type 4G (LTE) only: k=mode&v=4g', /POST mobile\/settings\?id=0&k=mode&v=4g/.test(since()), since()) }
   { mark = c0(); await scrollTo('mobcust0'); click(rect('mobcust0')); await until(() => rect('mobapn0'), 3000); click(rect('mobapn0')); xdo('type Inet.Example'); await scrollTo('mobsave0'); click(rect('mobsave0')); await set(/k=apnuser/);
