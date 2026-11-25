@@ -573,6 +573,10 @@ unless the item is Native's own (then Native is made to match Chromium, never th
         over them only when as new; the hidden page's actions are done once the icons are given.
      **Test:** the account on the disk and each picture 500 ms late (about 20 s a catalogue): **before 3/12, changes 3.5 to
      37 s; after 12/12, 0.02 to 0.9 s**; as before (files in the browser's storage) 11/11 both; appsbeh_t.js 27/27.
+     **Follow-up (PR "Desktop icons: done before the icons"):** with the icons given before the hidden page's "done", the
+     shell's Rename dialog was still open for a moment after a file's new icon showed, and a click meant for the desktop or the
+     taskbar then was taken by the dialog (native59_t.sh's 62, 65-68 failed now and then: a pin clicked opened nothing). The
+     icons are now given just after "done". native59_t.sh 79/79 three times (main: 62, 67, 68 failing in each of three).
 5. **Make a stick refined, moved to Backup.** "'Make a stick' needs further refinement and to be moved from
    update/recovery to backup settings." Settings › Backup gains "Make a stick" (Update and recovery keeps a link to it
    while people learn the new place; Search in Settings finds it there); refined: the stick's size and model shown, the

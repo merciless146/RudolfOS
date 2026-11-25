@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/5b4f5548aee8624d.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=5b4f5548aee8624d'+location.hash)}catch(e){}})()</script>
+<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/d0e72e0b9ef1b134.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=d0e72e0b9ef1b134'+location.hash)}catch(e){}})()</script>
 <!-- 1.6.2 (docs/plan-1.6.2.md Part 14): no script from another site runs in this page or its own frames (it holds rudolfd's token); rudolfd sends the same policy (serve_index) -->
 <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:">
 <script>/* (1.6.0, the owner's Vivobook report 1) an app's own window (#app=NAME: oneapp59.js, the native desktop's windows): from its first paint
@@ -21860,7 +21860,7 @@ __svcMod("deskquick63.js");
    keys are the ones the catalogue gives (EMO2IC's, a program's own oaImgKey), whose pictures the shell has from before; one it does
    not have yet is drawn as its emoji until the catalogue brings it. As the catalogue, after the apps rudolfd knows are in
    (oaAppsReady), so a window that has not got them yet never takes their icons away. ===== */
-const OA_DQ={last:'',n:0};
+const OA_DQ={last:'',n:0,hold:0,held:null};
 async function oaDeskQuick(){if(!ONEAPP||typeof oaNative!='function'||!oaNative()||!USER||typeof RD=='undefined'||!RD||OA.done)return;
  try{await oaAppsReady()}catch(e){}if(!USER||OA.done)return;
  /* (an app's window gives nothing that is what was given last, as its catalogue: lean61.js) */
@@ -21874,13 +21874,16 @@ async function oaDeskQuick(){if(!ONEAPP||typeof oaNative!='function'||!oaNative(
  let cells={};try{cells=JSON.parse(localStorage.getItem(typeof cellKey=='function'?cellKey():'bd95cells')||'{}')}catch(e){}
  const place=typeof dkPlaceFresh=='function'?dkPlaceFresh():null,body={acct:uid(),is:+S.is||100,desk,cells,place};
  const j=JSON.stringify(body);if(j===OA_DQ.last)return;OA_DQ.last=j;OA_DQ.n++;
- oaPost({op:'desk',j:JSON.stringify(Object.assign(body,{dt}))})}
+ const m={op:'desk',j:JSON.stringify(Object.assign(body,{dt}))};if(OA_DQ.hold){OA_DQ.held=m;return}oaPost(m)}
 let OA_DQP=null;
 if(ONEAPP&&typeof oaCatalog=='function'){const _c=oaCatalog;oaCatalog=function(){try{OA_DQP=oaDeskQuick()}catch(e){OA_DQP=null}return _c.apply(this,arguments)}}
 /* (the hidden page's actions, oneapp59.js oaCatSoon: done once the desktop's icons are given, not after the whole catalogue, which a busy
    computer gave minutes later while the next action waited for this one; the catalogue goes on, and the shell is told when it is in) */
-if(ONEAPP&&typeof oaCatSoon=='function'){oaCatSoon=function(){const p=oaCatalog(),q=OA_DQP||Promise.resolve();p.then(()=>{if(!OA.done)oaPost({op:'cat'})}).catch(()=>{});
- return Promise.race([p,q.then(()=>new Promise(r=>setTimeout(r,50)))])}}
+/* (the icons given just after "done", not before: the shell's dialog (a Rename) is closed by "done", and with the icons first a click
+   meant for the desktop came while it was still open and was taken by it: native59_t.sh 62, 65-68 now and then) */
+if(ONEAPP&&typeof oaCatSoon=='function'){oaCatSoon=function(){OA_DQ.hold=1;OA_DQ.held=null;const p=oaCatalog(),q=OA_DQP||Promise.resolve();p.then(()=>{if(!OA.done)oaPost({op:'cat'})}).catch(()=>{});
+ const rel=()=>{if(!OA_DQ.hold)return;OA_DQ.hold=0;const m=OA_DQ.held;OA_DQ.held=null;if(m)setTimeout(()=>oaPost(m),0)};
+ return Promise.race([p,q]).then(rel,e=>{rel();throw e})}}
 window.__oaDeskQuick=()=>({n:OA_DQ.n});
 /* (and the files of an account on the disk, home56.js, in every window as they are on the disk: a page that saved tells the others
    (oneapp59.js's "rudolf-fs" channel), which read the disk again; a page still signing in when told, or told before its files were
