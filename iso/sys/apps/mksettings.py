@@ -405,5 +405,8 @@ out.append('static const char *const MDMSTATE[][2] = {' + ','.join('{ %s, %s }' 
 mtk = jsconst(rd('mobile58.js'), 'MTR_KIND', 'mobile58.js'); vpol = jsconst(rd('vpn62.js'), 'VPN_POL', 'vpn62.js')
 out.append('static const char *const MTRKIND[][3] = {' + ','.join('{ %s, %s, %s }' % (cstr(k), cstr(v[0]), cstr(v[1])) for k, v in mtk.items()) + '};')
 out.append('static const char *const VPNPOL[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in vpol.items()) + '};')
+websites = jsconst(rd('web25.js'), 'WEB_SITES', 'web25.js'); sibanks = jsconst(rd('signin26.js'), 'SI_BANKS', 'signin26.js')
+out.append('static const char *const WEBSITES[] = {' + ','.join(cstr(x) for x in websites) + '};')
+out.append('static const char *const SIBANKS[] = {' + ','.join(cstr(x) for x in sibanks) + '};')
 out.append('static const char *const MOBMODE[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in mobm.items()) + '};')
 open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')

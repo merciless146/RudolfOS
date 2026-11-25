@@ -56,6 +56,8 @@ void p_block(GtkWidget *w, double mt, double mb);     /* a block of the page's o
 void p_space(double mt);
 typedef void (*SetFoot)(int what /* 0 apply 1 revert 2 reset */);
 void p_footer(int (*dirty)(void), SetFoot act);      /* .sfoot: Apply, Revert, Reset to defaults, at the page's bottom */
+void p_footer_box(void);                              /* (1.6.3) the top of the box a sticky footer stays in */
+void p_footer_here(void);                             /* (1.6.3) the footer's place in the page: sticky there (position: sticky; bottom: 0) */
 void p_footer_update(void);                           /* the footer's state again (after a change) */
 void p_footer_note(const char *t);                    /* "✓ t" in the footer, then its state again */
 void p_relayout(void);                                /* (a block's size changed: laid out again) */
@@ -122,6 +124,13 @@ void page_bt(void);    /* settings_bt.c (1.6.3 PR 6) */
 void page_remote(void); /* settings_remote.c (1.6.3 PR 6) */
 void page_mob(void);   /* settings_mob.c (1.6.3 PR 6) */
 void page_net(void);   /* settings_net.c (1.6.3 PR 6) */
+void page_web(void);   /* settings_web.c (1.6.3 PR 6): Oracle */
+/* (settings_net.c: the Web search and Downloads rows, shown on Network Settings and Oracle: one working copy, one footer) */
+void net_search_rows(const char *pfx, int part);       /* part 1: Web search, 2: Downloads, 0: both */
+void net_search_msg(void);
+void net_search_forget(void);
+int net_dirty(void);
+void net_foot(int what);
 /* (settings_vol.c) sound through PulseAudio's simple API, opened when first needed: 16-bit mono at rate, played in a thread of its own */
 void set_play_pcm(const short *pcm, size_t n, int rate);
 void sec_bring(void); /* settings_bring.c */

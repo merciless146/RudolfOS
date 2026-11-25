@@ -516,7 +516,7 @@ static void plain_entry(GtkWidget *e)
 		: g_strdup_printf("entry { padding: %.2fpx %.2fpx; min-height: 0; border: %.2fpx solid #767676; border-radius: %.2fpx; background: #ffffff; box-shadow: none; }", 1 * z, 2 * z, 1 * z, 2 * z);
 	gtk_css_provider_load_from_data(c, css, -1, NULL); gtk_style_context_add_provider(gtk_widget_get_style_context(e), GTK_STYLE_PROVIDER(c), GTK_STYLE_PROVIDER_PRIORITY_USER + 10); g_object_unref(c); g_free(css);
 }
-void net_search_rows(const char *pfx)
+void net_search_rows(const char *pfx, int part)
 {
 	if (!NWSET) { nc_load(); NW = NC; NWSET = 1; }
 	int adm = set_admin(); char nm[24], n[8], mx[8]; snprintf(n, sizeof n, "%d", NW.n); snprintf(mx, sizeof mx, "%d", NW.max);
@@ -525,22 +525,29 @@ void net_search_rows(const char *pfx)
 	const char *ev[2] = { "ask", "block" }, *el[2] = { "Ask for permission (administrator approval)", "Always block" };
 	const char *mv[7] = { "100", "500", "1024", "2048", "4096", "8192", "16384" }, *ml[7] = { "100 MB", "500 MB", "1 GB", "2 GB", "4 GB", "8 GB", "16 GB" };
 	NOSAVE = 1;
-	Cell *c = p_r2("Search service"); SV[0] = s_select(pv, pl, 3, NW.prov, nw_sel, GINT_TO_POINTER(0)); c_add(c, SV[0], 0, 0, 1); p_r2_more(c);
+	Cell *c = NULL;
+	if (part != 2) {
+	c = p_r2("Search service"); SV[0] = s_select(pv, pl, 3, NW.prov, nw_sel, GINT_TO_POINTER(0)); c_add(c, SV[0], 0, 0, 1); p_r2_more(c);
 	c = p_r2("Custom address"); SV[1] = rui_entry("https://search.example/search?q={q}&format=json"); gtk_entry_set_text(GTK_ENTRY(SV[1]), NW.url); c_add(c, SV[1], 0, 0, 1); p_r2_more(c);
 	c = p_r2("API key"); SV[2] = rui_entry("Used for {key} in the address"); gtk_entry_set_visibility(GTK_ENTRY(SV[2]), FALSE); plain_entry(SV[2]); gtk_entry_set_text(GTK_ENTRY(SV[2]), NW.key); c_add(c, SV[2], 0, 0, 1); p_r2_more(c);
 	c = p_r2("Results"); SV[3] = s_select(nv, nv, 3, n, nw_sel, GINT_TO_POINTER(3)); c_add(c, SV[3], 0, 0, 1); p_r2_more(c);
 	c = p_r2("CORS relay"); SV[4] = s_select(rv, rl, 3, NW.relay, nw_sel, GINT_TO_POINTER(4)); c_add(c, SV[4], 0, 0, 1); p_r2_more(c);
 	c = p_r2("Relay address"); SV[5] = rui_entry("https://relay.example/?url={urlenc}"); gtk_entry_set_text(GTK_ENTRY(SV[5]), NW.relayUrl); c_add(c, SV[5], 0, 0, 1); p_r2_more(c);
 	c = p_r2("Test"); GtkWidget *t = rui_button("Test search", 0); g_signal_connect(t, "clicked", G_CALLBACK(on_test), NULL); c_add(c, t, 0, 0, 0); snprintf(nm, sizeof nm, "%snts", pfx); p_label_named(nm, t);
+	}
+	if (part != 1) {
 	c = p_r2("Program files"); SV[6] = s_select(ev, el, 2, NW.exe, nw_sel, GINT_TO_POINTER(6)); c_add(c, SV[6], 0, 0, 1); p_r2_more(c);
 	c = p_r2("Largest download"); SV[7] = s_select(mv, ml, 7, mx, nw_sel, GINT_TO_POINTER(7)); c_add(c, SV[7], 0, 0, 1);
+	}
 	static const char *N[8] = { "prov", "url", "key", "n", "relay", "relayUrl", "exe", "dlmax" };
-	for (int i = 0; i < 8; i++) { if (!adm) gtk_widget_set_sensitive(SV[i], FALSE); if (i == 1 || i == 2 || i == 5) g_signal_connect(SV[i], "changed", G_CALLBACK(nw_ent), GINT_TO_POINTER(i));
+	for (int i = part == 2 ? 6 : 0; i < (part == 1 ? 6 : 8); i++) { if (!adm) gtk_widget_set_sensitive(SV[i], FALSE); if (i == 1 || i == 2 || i == 5) g_signal_connect(SV[i], "changed", G_CALLBACK(nw_ent), GINT_TO_POINTER(i));
 		snprintf(nm, sizeof nm, "%s%s", pfx, N[i]); p_label_named(nm, SV[i]); }
 	NOSAVE = 0;
 }
 void net_search_msg(void) { NSM = p_msg("", 0); p_label_named("nsm", NSM); }
 void net_search_forget(void) { NWSET = 0; }
+int net_dirty(void);
+void net_foot(int what);
 
 /* ================================================================== Metered connection (mobile58.js: net/metered) */
 static void on_mtr(const char *v, void *d)
@@ -968,7 +975,7 @@ void page_net(void)
 		GtkWidget *b = rui_button("Save proxy", 0); g_signal_connect(b, "clicked", G_CALLBACK(on_proxy), NULL); p_put(b); p_label_named("npa", b); p_custom(btn_lay, b, 0, 0); }
 	p_msg("The saved \"Connections\" and \"Add a connection\" of the browser version are not shown here: on this computer, Wi-Fi and Manual address above set up the real network.", 2);
 	/* (what settings31.js hides but the page's CSS still shows: the Web search and Downloads rows, without their headings and words) */
-	net_search_rows("");
+	net_search_rows("", 0);
 	net_search_msg();
 	p_msg("Connections here are profiles that control whether Rudolf OS may use the network. Actual connectivity is provided by the device you are using; the OS cannot join real Wi‑Fi networks itself.", 1);
 	{ GtkWidget *w = gtk_drawing_area_new(); gtk_widget_add_events(w, GDK_BUTTON_PRESS_MASK); g_signal_connect(w, "draw", G_CALLBACK(lnk_draw), NULL); g_signal_connect(w, "button-press-event", G_CALLBACK(lnk_press), NULL); p_put(w); p_label_named("nsmoved", w); p_custom(lnk_lay, w, 10, 0); }

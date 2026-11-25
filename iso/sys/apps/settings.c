@@ -216,6 +216,7 @@ typedef struct { int k; GtkWidget *w; double gap, dy, mt, mb; int full; char *te
 struct Cell { char *label; GPtrArray *items; int more; double lx, ly, lw, lh, y, h, ltop; };   /* (ltop > 0: the label at the row's top, ltop - 1 px down: align-self start) */
 typedef struct { int k; char *text; int grey; double mt, mb, x, y, w, h; GtkWidget *wg; Cell *cell; GtkWidget *btn[8]; int nb; double minh; double (*lay)(void *d, double x, double y, double w); void *ld; } Item;
 static GPtrArray *ITEMS; static GtkWidget *FX, *SCR, *FOOT, *FOOTST, *FOOTB[3], *AREA, *OUTER, *SIDE, *SBAR, *SQ, *DD; static int (*FDIRTY)(void); static SetFoot FACT; static double FX_W = 587;
+static int FOOT_FLOW; static double FOOT_FY, FOOT_CT;   /* (1.6.3) a footer sticky in its own box (position: sticky; bottom: 0), its place in the page */
 static char CUR[16];
 static void item_free(gpointer p) { Item *i = p; g_free(i->text); if (i->cell) { g_free(i->cell->label); for (guint k = 0; k < i->cell->items->len; k++) g_free(((CItem *)g_ptr_array_index(i->cell->items, k))->text); g_ptr_array_unref(i->cell->items); g_free(i->cell); } g_free(i); }
 static Item *add_item(int k, const char *t, double mt, double mb) { Item *i = g_new0(Item, 1); i->k = k; i->text = g_strdup(t ? rui_tr(t) : NULL); i->mt = mt; i->mb = mb; g_ptr_array_add(ITEMS, i); return i; }
@@ -308,6 +309,17 @@ static double cell_lay(Cell *c, double x, double y, double w)
 	if (inl) cy = lt + lhh;
 	return cy - y;
 }
+/* (1.6.3 Part 3) a footer sticky at the bottom of its own box (Oracle's: settings31.js puts Network Settings' footer in the page's Web
+   search part, where position: sticky keeps it within that part): at the window's bottom while its place in the page is under it, at
+   its place once the page is scrolled past it, never above its box's top */
+static GtkAdjustment *fx_adj(void);
+static void foot_place(void)
+{
+	if (!FOOT || !FOOT_FLOW || !AREA) return; double z = Z(), sb = gtk_adjustment_get_value(fx_adj()) / z, vh = gtk_widget_get_allocated_height(AREA) / z, h = nat_h(FOOT, -1);
+	double want = fmin(FOOT_FY - sb, fmax(FOOT_CT - sb, vh - h)), m = vh - h - want; gtk_widget_set_margin_bottom(FOOT, m > 0 ? R(m) : 0);
+}
+static double fbox_lay(void *d, double x, double y, double w) { (void)d; (void)x; (void)w; FOOT_CT = y; return 0; }
+static double fhere_lay(void *d, double x, double y, double w) { (void)d; (void)x; (void)w; FOOT_FY = y; return FOOT ? nat_h(FOOT, -1) + LK->sfoot_m[2] : 0; }
 static void lay_all(void)
 {
 	if (!ITEMS || !FX) return;
@@ -333,9 +345,9 @@ static void lay_all(void)
 		y += i->h; pmb = i->mb;
 	}
 	double total;
-	if (FOOT) { y += fmax(pmb, LK->sfoot_m[0]); total = y + nat_h(FOOT, -1) + LK->sfoot_m[2] + LK->sc_pad[2]; }
+	if (FOOT && !FOOT_FLOW) { y += fmax(pmb, LK->sfoot_m[0]); total = y + nat_h(FOOT, -1) + LK->sfoot_m[2] + LK->sc_pad[2]; }
 	else total = y + pmb + LK->sc_pad[2];
-	gtk_widget_set_size_request(FX, -1, R(total)); gtk_widget_queue_draw(FX); set_state_soon();
+	gtk_widget_set_size_request(FX, -1, R(total)); gtk_widget_queue_draw(FX); foot_place(); set_state_soon();
 }
 static guint RELAY;
 static gboolean relay_go(gpointer d) { (void)d; RELAY = 0; lay_all(); return G_SOURCE_REMOVE; }
@@ -393,6 +405,8 @@ void p_footer(int (*dirty)(void), SetFoot act)
 }
 static guint FNOTE;
 static gboolean fnote_end(gpointer d) { (void)d; FNOTE = 0; p_footer_update(); return G_SOURCE_REMOVE; }
+void p_footer_box(void) { p_custom(fbox_lay, NULL, 0, 0); }
+void p_footer_here(void) { FOOT_FLOW = 1; p_custom(fhere_lay, NULL, LK->sfoot_m[0], 0); }
 void p_footer_update(void)
 {
 	if (!FOOT || FNOTE) return; int d = FDIRTY && FDIRTY();
@@ -587,7 +601,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "net", page_net }, { "mob", page_mob }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "web", page_web }, { "net", page_net }, { "mob", page_mob }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;
@@ -911,7 +925,7 @@ static void page_todo(void)
 }
 static void page_build(void)
 {
-	HIT = NULL; HITC = NULL; if (FOOT) { gtk_widget_destroy(FOOT); FOOT = NULL; } FDIRTY = NULL; FACT = NULL; if (NAMED) g_hash_table_remove_all(NAMED);
+	HIT = NULL; HITC = NULL; FOOT_FLOW = 0; if (FOOT) { gtk_widget_destroy(FOOT); FOOT = NULL; } FDIRTY = NULL; FACT = NULL; if (NAMED) g_hash_table_remove_all(NAMED);
 	if (FX) { GList *c = gtk_container_get_children(GTK_CONTAINER(FX)); for (GList *l = c; l; l = l->next) gtk_widget_destroy(l->data); g_list_free(c); }
 	if (ITEMS) g_ptr_array_unref(ITEMS); ITEMS = g_ptr_array_new_with_free_func(item_free);
 	PageFn f = page_fn(CUR); if (f) f(); else page_todo();
@@ -986,7 +1000,7 @@ int main(int argc, char **argv)
 	{ GList *c = gtk_container_get_children(GTK_CONTAINER(OUTER)); g_signal_connect(c->data, "size-allocate", G_CALLBACK(outer_alloc), NULL); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(c->data), GTK_POLICY_EXTERNAL, GTK_POLICY_EXTERNAL); g_list_free(c); }
 	/* (the page as wide as its view: what it holds laid out in that width, never making the window wider: CSS's block width) */
 	{ GList *c = gtk_container_get_children(GTK_CONTAINER(SCR)); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(c->data), GTK_POLICY_EXTERNAL, GTK_POLICY_EXTERNAL); g_list_free(c); }
-	g_signal_connect_swapped(fx_adj(), "value-changed", G_CALLBACK(set_state_soon), NULL);
+	g_signal_connect_swapped(fx_adj(), "value-changed", G_CALLBACK(set_state_soon), NULL); g_signal_connect_swapped(fx_adj(), "value-changed", G_CALLBACK(foot_place), NULL);
 	/* the search's drop-down (.ssdd), over the window's body */
 	DD = gtk_event_box_new(); gtk_widget_set_halign(DD, GTK_ALIGN_START); gtk_widget_set_valign(DD, GTK_ALIGN_START); gtk_widget_set_app_paintable(DD, TRUE); g_signal_connect(DD, "draw", G_CALLBACK(dd_frame), NULL);
 	DDA = gtk_drawing_area_new(); gtk_widget_add_events(DDA, GDK_BUTTON_PRESS_MASK | GDK_POINTER_MOTION_MASK); g_signal_connect(DDA, "draw", G_CALLBACK(dd_draw), NULL);
