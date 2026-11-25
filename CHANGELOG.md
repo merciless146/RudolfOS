@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New: Oracle has its own password manager. After you sign in to a site, Oracle's bar asks "Save your password for
+  example.com?"; on that site's sign-in form "🔑 Fill" fills it, only after your click, only on that exact site and never in
+  a frame of another one or on an http: page; "Use a strong password" for new accounts. The passwords are kept in your
+  account's keyring and locked when you sign out; Guest, private and Tor windows never keep any. ☰ › Passwords shows them
+  (Show and Copy after your password), changes and removes them. The same on Chromium, Native and Lite (plan 1.6.3 Part 7).
 - Fixed: on Native, a right-click menu (the desktop's, the taskbar's, a window's) closes when you click anywhere outside it,
   press Esc or Tab, or switch windows, as in Chromium mode; it closed only when a row was chosen.
 - Changed: the plan (docs/plan-1.6.3.md Part 8): six fixes from the owner's use: Paint asks to save, Native's transitions,

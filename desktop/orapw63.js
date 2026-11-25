@@ -113,7 +113,7 @@ function opwEvent(tid, w, ev, m) {
 function opwAsk(reason) {
   return new Promise(res => {
     const o = document.createElement('div'); o.className = 'rmodal';
-    o.innerHTML = `<div class='rmbox' role='alertdialog' aria-label='Your password'><h3>🔑 Your password</h3><p class='rmr'></p><div class='r2'><label>Password of ${''}</label><input class='ep' autocomplete='off'></div><div class='rmmsg'></div><div class='rmb'><button class='en'>Cancel</button> <button class='ey pri'>OK</button></div></div>`;
+    o.innerHTML = `<div class='rmbox' role='alertdialog' aria-label='Your password'><h3>🔑 Your password</h3><p class='rmr'></p><div class='r2'><label>Password</label><input class='ep' autocomplete='off'></div><div class='rmmsg'></div><div class='rmb'><button class='en'>Cancel</button> <button class='ey pri'>OK</button></div></div>`;
     o.querySelector('.rmr').textContent = reason; o.querySelector('label').textContent = 'Password of ' + USER.n;
     const P = typeof maskInput == 'function' ? maskInput(o.querySelector('.ep')) : {get: () => o.querySelector('.ep').value};
     document.body.appendChild(o); setTimeout(() => o.querySelector('.ep').focus(), 30);
