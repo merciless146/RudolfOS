@@ -833,6 +833,7 @@ static void harvest(void)
 }
 /* (a label of the cell that Search in Settings finds, as the page's <label>: "After") */
 GtkWidget *c_label(Cell *c, const char *t, double dy);
+void c_dy(GtkWidget *w, double dy) { CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); if (x) x->dy = dy; }
 void p_r2_top(Cell *c, double mt) { c->ltop = mt + 1; }
 void c_gap(GtkWidget *w, double gap) { CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); if (x) x->gap = gap; }
 GtkWidget *c_label(Cell *c, const char *t, double dy) { GtkWidget *w = c_text(c, rui_tr(t), 1); CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); x->dy = dy; return w; }

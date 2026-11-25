@@ -200,6 +200,88 @@ static void row_pic(void)
 	p_put(PIC.none); p_put(PIC.bf); p_put(PIC.bc); p_put(PIC.msg); p_label_named("wpf", PIC.bf); p_label_named("wpc", PIC.bc); row("Picture", pic_lay, NULL, 10);
 }
 
+
+/* ================================================================== Lock and sign-in screen (lock58.js), inside the grid after the colours:
+   for everyone (bd95sys's lk, saved at once by an administrator), Choose a picture… (bd95lkpic: a JPEG at most 1920 x 1080) */
+static const char *const LKK[7] = { "bg", "color", "blur", "dim", "clock", "pos", "user" }, *const LKD[7] = { "\"desktop\"", "\"#1e3a8a\"", "0", "30", "\"large\"", "\"center\"", "true" };
+static char *LKV[7]; static GtkWidget *LKBV, *LKDV;
+static void lk_load(void)
+{
+	RuiJ *o = set_ls_get("bd95sys"), *l = rui_jprop(rui_jprop(o, "x"), "lk");
+	for (int i = 0; i < 7; i++) { g_free(LKV[i]); RuiJ *v = rui_jprop(l, LKK[i]); LKV[i] = v ? jv(v) : NULL; if (!LKV[i]) LKV[i] = g_strdup(LKD[i]); } rui_jfree(o);
+}
+static char *lks(int i) { char *w = g_strdup_printf("{\"x\":%s}", LKV[i]); RuiJ *o = rui_jparse(w); g_free(w); char *r = g_strdup(rui_jtype(rui_jprop(o, "x")) == 3 ? set_jstr(o, "x", "") : LKV[i]); rui_jfree(o); return r; }
+/* (any JSON value written again as it was) */
+static void jw(GString *b, RuiJ *v)
+{
+	int t = rui_jtype(v);
+	if (t == 1) g_string_append(b, rui_jval(v) ? "true" : "false"); else if (t == 2) { char nb[40]; g_ascii_formatd(nb, sizeof nb, "%.17g", rui_jval(v)); g_string_append(b, nb); }
+	else if (t == 3) { char *e = set_jesc(rui_jsval(v)); g_string_append_printf(b, "\"%s\"", e); g_free(e); }
+	else if (t == 4) { g_string_append_c(b, '['); for (int i = 0; i < rui_jlen(v); i++) { if (i) g_string_append_c(b, ','); jw(b, rui_jat(v, i)); } g_string_append_c(b, ']'); }
+	else if (t == 5) { g_string_append_c(b, '{'); for (int i = 0; rui_jkey(v, i); i++) { const char *k = rui_jkey(v, i); char *e = set_jesc(k); if (i) g_string_append_c(b, ','); g_string_append_printf(b, "\"%s\":", e); g_free(e); jw(b, rui_jprop(v, k)); } g_string_append_c(b, '}'); }
+	else g_string_append(b, "null");
+}
+/* (sysSave: bd95sys with its lk replaced, the rest kept as it is) */
+static void lk_save(void)
+{
+	RuiJ *o = set_ls_get("bd95sys"), *x = rui_jprop(o, "x"); GString *b = g_string_new("{"); int n = 0;
+	for (int i = 0; rui_jtype(x) == 5 && rui_jkey(x, i); i++) { const char *k = rui_jkey(x, i); if (!strcmp(k, "lk")) continue; char *e = set_jesc(k); g_string_append_printf(b, "%s\"%s\":", n++ ? "," : "", e); g_free(e); jw(b, rui_jprop(x, k)); }
+	g_string_append_printf(b, "%s\"lk\":{", n ? "," : ""); for (int i = 0; i < 7; i++) g_string_append_printf(b, "%s\"%s\":%s", i ? "," : "", LKK[i], LKV[i]); g_string_append(b, "}}");
+	set_ls_set("bd95sys", b->str); set_note("sysSave lk %s", b->str); g_string_free(b, TRUE); rui_jfree(o);
+}
+static void lk_set(int i, char *json) { if (!set_admin()) { g_free(json); return; } g_free(LKV[i]); LKV[i] = json; lk_save(); }
+static void on_lksel(const char *v, void *d) { int i = GPOINTER_TO_INT(d); char *e = set_jesc(v); lk_set(i, g_strdup_printf("\"%s\"", e)); g_free(e); if (i == 0) { KEEP = 1; set_show("disp"); } }
+static void on_lkrng(double v, void *d) { int i = GPOINTER_TO_INT(d); char b[16]; snprintf(b, sizeof b, "%g", v); lk_set(i, g_strdup(b)); char t[24]; snprintf(t, sizeof t, i == 2 ? "%g px" : "%g %%", v); p_text_set(i == 2 ? LKBV : LKDV, t); }
+static void on_lkuser(int on, void *d) { (void)d; lk_set(6, g_strdup(on ? "true" : "false")); }
+static void lk_pick(GtkButton *b, gpointer d)
+{
+	(void)b; (void)d; GtkWidget *dl = gtk_file_chooser_dialog_new(rui_tr("Choose a picture…"), GTK_WINDOW(SW->win), GTK_FILE_CHOOSER_ACTION_OPEN, rui_tr("Cancel"), GTK_RESPONSE_CANCEL, rui_tr("Open"), GTK_RESPONSE_ACCEPT, NULL);
+	GtkFileFilter *f = gtk_file_filter_new(); gtk_file_filter_add_pixbuf_formats(f); gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dl), f);
+	if (gtk_dialog_run(GTK_DIALOG(dl)) == GTK_RESPONSE_ACCEPT) { char *fn = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dl)); GdkPixbuf *pb = fn ? gdk_pixbuf_new_from_file(fn, NULL) : NULL; g_free(fn);
+		if (!pb) set_notify("Lock and sign-in screen", "That file is not a picture.", 1);
+		else { int w = gdk_pixbuf_get_width(pb), h = gdk_pixbuf_get_height(pb); double sc = fmin(1, fmin(1920.0 / w, 1080.0 / h)); GdkPixbuf *s2 = gdk_pixbuf_scale_simple(pb, MAX(1, (int)lround(w * sc)), MAX(1, (int)lround(h * sc)), GDK_INTERP_BILINEAR);
+			gchar *buf = NULL; gsize n = 0; if (gdk_pixbuf_save_to_buffer(s2, &buf, &n, "jpeg", NULL, "quality", "85", NULL)) { char *b64 = g_base64_encode((guchar *)buf, n), *j = g_strdup_printf("\"data:image/jpeg;base64,%s\"", b64);
+				if (set_ls_set("bd95lkpic", j)) { lk_set(0, g_strdup("\"picture\"")); set_notify("Lock and sign-in screen", "Picture set.", 0); } else set_notify("Lock and sign-in screen", "The picture is too large to keep.", 1); g_free(j); g_free(b64); g_free(buf); }
+			g_object_unref(s2); g_object_unref(pb); KEEP = 1; set_show("disp"); } }
+	gtk_widget_destroy(dl);
+}
+static gboolean lkcol_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)d; double z = s_z(), W = gtk_widget_get_allocated_width(w) / z, H = gtk_widget_get_allocated_height(w) / z, r, gg, b; char *v = lks(1); cairo_save(cr); cairo_scale(cr, z, z);
+	cairo_set_source_rgb(cr, 0xef / 255.0, 0xef / 255.0, 0xef / 255.0); s_rrect(cr, .5, .5, W - 1, H - 1, 2); cairo_fill_preserve(cr); cairo_set_source_rgb(cr, .46, .46, .46); cairo_set_line_width(cr, 1); cairo_stroke(cr);
+	rgb_of(v, &r, &gg, &b); cairo_set_source_rgb(cr, r, gg, b); cairo_rectangle(cr, 7, 5, W - 14, H - 10); cairo_fill(cr); cairo_restore(cr); g_free(v); return TRUE; }
+static gboolean lkcol_press(GtkWidget *w, GdkEventButton *e, gpointer d)
+{
+	(void)d; if (e->button != 1 || e->type != GDK_BUTTON_PRESS || !set_admin()) return FALSE; GtkWidget *dl = gtk_color_chooser_dialog_new(rui_tr("A colour"), GTK_WINDOW(SW->win)); char *v = lks(1); GdkRGBA c; gdk_rgba_parse(&c, v); g_free(v);
+	gtk_color_chooser_set_use_alpha(GTK_COLOR_CHOOSER(dl), FALSE); gtk_color_chooser_set_rgba(GTK_COLOR_CHOOSER(dl), &c);
+	if (gtk_dialog_run(GTK_DIALOG(dl)) == GTK_RESPONSE_OK) { gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(dl), &c); char h[16]; snprintf(h, sizeof h, "\"#%02x%02x%02x\"", (int)lround(c.red * 255), (int)lround(c.green * 255), (int)lround(c.blue * 255)); lk_set(1, g_strdup(h)); gtk_widget_queue_draw(w); }
+	gtk_widget_destroy(dl); return TRUE;
+}
+static GtkWidget *lksel(int i, const char *id) { const SetDSel *s = NULL; for (guint k = 0; k < G_N_ELEMENTS(DSELS); k++) if (!strcmp(DSELS[k].id, id)) s = &DSELS[k]; if (!s) return gtk_label_new(id);
+	const char **v = g_new0(const char *, s->n), **l = g_new0(const char *, s->n); for (int k = 0; k < s->n; k++) { v[k] = s->o[k][0]; l[k] = s->o[k][1]; }
+	char *cur = lks(i); GtkWidget *w = s_select(v, l, s->n, cur, on_lksel, GINT_TO_POINTER(i)); g_free(cur); g_free(v); g_free(l); p_label_named(id, w); gtk_widget_set_sensitive(w, set_admin()); return w; }
+static void lk_prev(GtkButton *b, gpointer d) { (void)b; (void)d; set_note("lock preview todo"); }
+/* (the heading, as lock58.js's .sh4 in the grid: 14 px above it, 2 under, the grid's 10 px gap after it) */
+static double lkh_lay(void *d, double x, double y, double w) { p_place(d, x, y, w, s_lh(13, 700)); return s_lh(13, 700); }
+static gboolean lkh_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; if (RUI.dark) s_col(cr, "msg", 1); else cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); char *u = g_utf8_strup(rui_tr("Lock and sign-in screen"), -1);
+	PangoLayout *l = s_layout(u, 13, 700, 0); PangoAttrList *al = pango_attr_list_new(); pango_attr_list_insert(al, pango_attr_letter_spacing_new((int)lround(.04 * 13 * s_z() * PANGO_SCALE))); pango_layout_set_attributes(l, al); pango_attr_list_unref(al);
+	double de, a = s_asc(13, 700, &de); cairo_move_to(cr, 0, round(a * s_z())); pango_cairo_show_layout_line(cr, pango_layout_get_line_readonly(l, 0)); g_object_unref(l); g_free(u); return TRUE; }
+static void rows_lock(void)
+{
+	lk_load(); int adm = set_admin(); char *bg = lks(0);
+	GtkWidget *h = gtk_drawing_area_new(); g_signal_connect(h, "draw", G_CALLBACK(lkh_draw), NULL); p_put(h); p_custom(lkh_lay, h, 24, 12); p_custom_find("Lock and sign-in screen", 1);
+	{ Cell *c = p_r2("Background"); c_add(c, lksel(0, "lkbg"), 0, 0, 0);
+		if (!strcmp(bg, "picture")) { GtkWidget *b = rui_button("Choose a picture…", 0); gtk_widget_set_sensitive(b, adm); g_signal_connect(b, "clicked", G_CALLBACK(lk_pick), NULL); c_add(c, b, wordw("a a") - wordw("aa"), 1, 0); p_label_named("lkpic", b); }
+		if (!strcmp(bg, "color")) { GtkWidget *a = gtk_drawing_area_new(); gtk_widget_add_events(a, GDK_BUTTON_PRESS_MASK); gtk_widget_set_size_request(a, (int)lround(50 * s_z()), (int)lround(27 * s_z())); g_signal_connect(a, "draw", G_CALLBACK(lkcol_draw), NULL); g_signal_connect(a, "button-press-event", G_CALLBACK(lkcol_press), NULL); c_add(c, a, wordw("a a") - wordw("aa"), -1, 0); p_label_named("lkcol", a); }
+		p_r2_more(c); }
+	for (int i = 2; i <= 3; i++) { Cell *c = p_r2(i == 2 ? "Blur" : "Darken"); GtkWidget *r = s_range(0, i == 2 ? 20 : 80, 1, atof(LKV[i]), on_lkrng, GINT_TO_POINTER(i)); gtk_widget_set_size_request(r, (int)lround(129 * s_z()), (int)lround(16 * s_z())); gtk_widget_set_sensitive(r, adm);
+		c_add(c, r, 2, 2, 0); p_label_named(i == 2 ? "lkblur" : "lkdim", r); char t[24]; snprintf(t, sizeof t, i == 2 ? "%s px" : "%s %%", LKV[i]); GtkWidget *v = c_text(c, t, 400); c_gap(v, 2 + wordw("a a") - wordw("aa")); c_dy(v, 6); if (i == 2) LKBV = v; else LKDV = v; c_line(c, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Clock"); c_add(c, lksel(4, "lkck"), 0, 0, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Position"); c_add(c, lksel(5, "lkpos"), 0, 0, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Account"); GtkWidget *k = c_check(c, "Show the account’s picture and name when locked", !strcmp(LKV[6], "true"), on_lkuser, NULL); gtk_widget_set_sensitive(k, adm); p_label_named("lkuser", k); p_r2_more(c); }
+	{ Cell *c = p_r2(""); GtkWidget *b = rui_button("Preview", 0); g_signal_connect(b, "clicked", G_CALLBACK(lk_prev), NULL); c_add(c, b, 0, 0, 0); p_label_named("lkprev", b); }
+	{ char *t = g_strdup_printf("%s%s", rui_tr("For everyone on this computer, on the lock screen and the sign-in page."), adm ? "" : rui_tr(" Only administrators can change it.")); p_msg_m(t, 0, 10, 16); g_free(t); }
+	g_free(bg);
+}
+
 /* ================================================================== the footer */
 static void act(int what)
 {
@@ -223,7 +305,7 @@ void page_disp(void)
 	{ Cell *c = p_r2("Background style"); c_add(c, dsel("bs", "bs"), 0, 0, 1); p_r2_more(c); }
 	row_pic();
 	{ Cell *c = p_r2("Color 1 / Color 2"); c_add(c, colour("b1", 50), 0, 0, 0); c_add(c, colour("b2", 50), 4.1, 0, 0); p_r2_more(c); }
-	/* (to come: Lock and sign-in screen, inside the grid) */
+	rows_lock();
 	{ Cell *c = p_r2("Font"); c_add(c, dsel("ff", "ff"), 0, 0, 1); p_r2_more(c); }
 	{ Cell *c = p_r2("Font size"); c_add(c, dsel("fs", "fs"), 0, 0, 1); p_r2_more(c); }
 	{ Cell *c = p_r2("Window text color"); c_add(c, colour("tx", 52), 0, 0, 0); p_r2_more(c); }
