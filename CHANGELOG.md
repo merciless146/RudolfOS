@@ -11,6 +11,10 @@ Summary: In progress.
   (plan 1.6.3 Part 4).
 - Changed: the plan (docs/plan-1.6.3.md Part 7), as the owner chose ("Option C"): Oracle's own password manager in its tabs,
   and extensions only in a Chromium window opened from Oracle, never in the desktop's own Chromium.
+- Fixed: on Native, a right-click menu (the desktop's, the taskbar's, a window's) closes when you click anywhere outside it,
+  press Esc or Tab, or switch windows, as in Chromium mode; it closed only when a row was chosen.
+- Changed: the plan (docs/plan-1.6.3.md Part 8): six fixes from the owner's use: Paint asks to save, Native's transitions,
+  Xbox Cloud Gaming and GeForce NOW opening, desktop icons on Native, Make a stick in Backup, Native's menus closing.
 - New: Oracle frees the memory of tabs you have not looked at for 30 minutes (Settings › Oracle › Memory: 15 minutes to
   2 hours, or Never), and at once when memory runs low: each freed tab keeps its address and scroll (💤) and loads again
   when chosen; tabs playing sound or holding typed text stay. About 80-95 MB saved a background tab with real websites
@@ -19,6 +23,14 @@ Summary: In progress.
   through a root helper of its own (no service, nothing that listens). An account's fingerprints are kept encrypted
   with its files' key, so a finger is never the first sign-in after a restart, and they are removed with the account;
   five fingers not recognised, then the password. Settings and the lock screen use it in the next steps.
+- New: Settings › User Settings › Sign-in options › Fingerprints (plan 1.6.3 Part 2, step 2): add a fingerprint (your
+  password, then the reader's scans shown as they come) and remove one; an administrator adds or removes another
+  account's (with the administrator's permission; adding while that account's files are open). A reader Rudolf OS
+  cannot use is named, and so is a missing one.
+- New: a fingerprint unlocks the lock screen and answers administrator prompts, on the Chromium, Lite and native
+  desktops alike (plan 1.6.3 Part 2, step 3). The password always works too. After a restart or signing out the password
+  is asked first, an authenticator app's code is still asked after a finger, and after five fingers not recognised only
+  the password works.
 - Changed: the plan (docs/plan-1.6.3.md Part 7): Chromium's own password manager and extensions do not work in Oracle's tabs,
   which are Controlled Frames in Oracle's own Chromium too (measured with Chromium 158); the ways on are set out for the
   owner, and a check notices if a Chromium release changes this.

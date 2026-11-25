@@ -119,10 +119,33 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
     the files not on the disk), matching, another account's finger refused, an administrator's prompt, five tries, the
     password giving the finger back, Guest, cancelling, the first sign-in after a restart, signing out, the prints
     unreadable once signed out, removing, an account removed, a release build ignoring the virtual reader.
-- **Left:** step 2, Settings › Users (add and remove fingers, the administrator's prompt for another account's, a reader
-  libfprint does not support named, no reader said); step 3, the lock screen (Chromium, Lite and Native the same) and the
-  administrator prompts taking a finger (the password always still; the code or the key of two-step sign-in still asked
-  after a finger; an administrator's finger in rudolfd-checked prompts by a one-time answer from `fp/verify`).
+- **Step 2 (branch `fingerprints-2`, after step 1): Settings › Users** (desktop/fprint63.js): User Settings › Sign-in
+  options › Fingerprints: the account's own fingers (added with its password: a finger chosen, the reader's scans shown
+  as they come from `fp/progress`, Cancel; removed with its password); an administrator's "Other accounts' fingerprints"
+  (each account's Fingerprints…, the administrator's prompt; adding only while that account's files are open, its owner's
+  finger on the reader). The row says plainly: no reader (a touchpad or touchscreen cannot read one), a reader libfprint
+  does not support (its name and USB id), the files not on the disk, five tries. Guest none. Test:
+  iso/qt/shell2/fprint63_t.js (15/15, a stand-in rudolfd). The native Settings' Users page is Part 3's: a note there.
+- **Step 3 (branch `fingerprints-3`, after step 2): the lock screen and administrator prompts.**
+  - **The page (Chromium and Lite, the same page):** the lock screen says "Or put your finger on the reader" while rudolfd
+    says a finger is taken now, and asks the reader again after a finger not recognised (the tries left said); a match
+    unlocks as a right password does. The password always still works and tells rudolfd (`fp/password`, the count starts
+    again). After a finger, two-step sign-in's code is still asked (the authenticator's secret opened with the password's
+    key the session holds, as after the password); an account with security keys is not offered a finger (its key's step
+    needs the password). The administrator's prompt offers the signed-in administrator's finger; where rudolfd checks the
+    answer itself (`{cred:1}`), the finger's one-time answer (`fp/verify`'s `"t"`, 60 s, once) goes in place of the
+    password (`"fp:"+t`, taken by desk_admin_check and desktop/admin). Small hooks in core25.js (`__lockOpened`,
+    `__elevOpened`, `__lockPw`); the rest in fprint63.js.
+  - **Native (rudolf-native.c, fp_*):** the same line on its lock screen; desktop/unlock `{"f":true}` waits (20 s, again
+    and again) for the session account's finger; an authenticator app: 401 `{"need":"code","ft"}` and the code sent with
+    that one-time answer (`{"ft","c"}`: a wrong code asks again without the finger, a used answer is refused); five
+    tries: rudolfd's reason shown, the reader left alone; the password unlocking gives the reader up (`fp/cancel`).
+  - **Tests:** fprint163_t.sh 50/50 (adds Native's unlock with a finger, the code after it, one-time answers, an
+    administrator's finger for desktop/admin once and only in its own name); fprint63_t.js 25/25 (the lock screen and
+    the prompt); nativefp163_t.sh 11/11 (Xvfb, a stand-in rudolfd).
+- **Left:** the native apps' own administrator prompt (librudolf-ui, iso/sys/ui/rudolf-ui.c, used by the native apps that
+  are still switched off with the native Settings, Part 3): a finger there too, by the same one-time answer, when the
+  native Settings is switched on; the owner's checklist with a real reader.
 
 ### Part 3. Native Settings, finished (moved from 1.6.2 Part 39, item 3)
 `/usr/bin/rudolf-settings` (iso/sys/apps/settings*.c), one PR per group of pages, as begun in 1.6.2 and kept there switched off:
@@ -136,6 +159,10 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   Chromium and Lite keep the web Settings.
 - Also in main from 1.6.2 (switched off): Keyboard, Mouse and touchpad (#676).
 #### Status (2026-11-24, scheduled task)
+- **Note from Part 2 (fingerprint readers, 2026-11-25):** the web User Settings › Sign-in options has a Fingerprints row
+  (desktop/fprint63.js, branch `fingerprints-2`): the account's own fingers and, for an administrator, other accounts'
+  Fingerprints…, all through rudolfd's `fp/*` (docs/api.md). The native Users page needs the same row when it is built
+  (Part 3's own work: Part 2 does not touch iso/sys/apps/settings*.c).
 - **PR 4 (branch `native-settings-5`): Volume Controls, Multimedia Settings, Accessibility.** `settings_vol.c`: the system volume
   (rudolfd's volume: Mute, the slider, followed every 5 s while the page is open), "Use one style everywhere", All desktop sounds and
   the 18 categories (each one's switch, style, volume and ▶; a working copy until Apply, saved as `snd` in bd95set:ACCT; Revert; Reset
@@ -436,6 +463,44 @@ on a busy site; a Tor window without them; the reminder and about:safety in the 
 - This plan rewritten for option C (PR "Oracle's tab tooltip shows its memory", with Part 4's tooltip). Step 1 (the password
   manager) and step 2 (the Chromium window, with about:safety from oracle-safety-page) follow, one PR each.
 
+### Part 8. Fixes from the owner's use (the owner, 2026-11-24 22:51 CST)
+"Some items to add to 1.6.3:" each fixed with a test that fails before the fix, the same on Native, Chromium and Lite
+unless the item is Native's own (then Native is made to match Chromium, never the other way: the owner's rule).
+1. **Paint doesn't ask to save.** "Paint app does not prompt user to save after unsaved changes are made to images."
+   Closing Paint's window, opening another picture or New with unsaved changes asks "Save changes to NAME?" (Save, Don't
+   save, Cancel), as Notepad and WordPro do; signing out or shutting down with Paint changed lists it like the other
+   apps' unsaved work.
+2. **Native's transitions are rough.** "Transitions on Native are rough/blocky." Native's window animations (open, close,
+   minimize, restore, maximize, the Start menu, menus, pop-ups, LitePoint) drawn smoothly as Chromium's: measured frame
+   by frame against Chromium mode (frames dropped, steps visible, the animation's length), on the Vivobook's integrated
+   graphics as well as without acceleration; the soft-drawing mode kept for weak machines.
+3. **Xbox Cloud Gaming and GeForce NOW don't respond.** "Xbox gaming and GeForce apps do not respond when clicked."
+   (desktop/game51.js: each opens in Oracle.) Clicking either in the Start menu, the Games tab, a pin or the desktop
+   opens it, on every desktop engine (Lite: in Chromium if WebKit can't play them, said plainly); a test for each place.
+4. **Desktop icons are slow on Native.** "Desktop icon removal/changes still take several minutes on Native." A desktop
+   icon removed, renamed, added or changed shows within a second on Native, as on Chromium; find what Native waits for
+   (a poll, a watch, the hidden page's sync) and measure before and after.
+5. **Make a stick refined, moved to Backup.** "'Make a stick' needs further refinement and to be moved from
+   update/recovery to backup settings." Settings › Backup gains "Make a stick" (Update and recovery keeps a link to it
+   while people learn the new place; Search in Settings finds it there); refined: the stick's size and model shown, the
+   full image or boot files only explained in plain words, a stick too small refused before anything is written, the
+   progress and the time left, a check of what was written, the stick safe to remove at the end; the native Settings'
+   pages carry it in its new place.
+6. **Native's desktop menu stays open.** "Desktop right-click menu does not disappear if clicked outside of while open on
+   Native. Will only close after an option is selected." On Native, a right-click menu (the desktop's, the taskbar's,
+   a window's) closes when clicking anywhere outside it, pressing Esc, or switching windows, as on Chromium.
+   - **Status (2026-11-25, scheduled task): fixed** (PR "Native's menus close on a click outside"). The cause: the menu's
+     grab (cm_open) leaves the desktop's own windows their presses (so a right-click elsewhere opens the next menu at once),
+     and the desktop, the taskbar and the apps' pages are GTK's windows, their presses and keys coming by XInput 2: none of
+     them reached the menu, which closed only on a press in another program's window. Now any press outside the menu (the
+     desktop, the taskbar, a title bar, inside a window, another monitor) closes it first and then goes on, as the page's
+     pointerdown; Esc and Tab close it wherever the keyboard's focus is; another window chosen (Alt+Tab, a window coming up)
+     closes it, as the page's blur. **Test:** `iso/qt/native/cmclose163_t.js` (menus163-check.yml): 12 steps on Chromium
+     mode's page and Native, **3/12 before, 12/12 after**; tbbeh_t.js and keybeh_t.js unchanged (tbbeh's step 9 fails
+     before and after: Command Prompt's key, `terminal` and `prompt`, a test of its own). Found: on Chromium mode's page
+     (Playwright, one window) the menu stays open over the page's own Alt+Tab; Native closes it, the owner's words.
+**The owner's checklist:** each item on the Vivobook (Native and Chromium).
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
@@ -446,3 +511,4 @@ on a busy site; a Tor window without them; the reminder and about:safety in the 
 - Part 6: after Part 3 (native Settings), before the Office apps if the owner wants it sooner.
 - Part 7 (option C): step 1 (Oracle's own password manager) early; step 2 (extensions in a Chromium window opened from
   Oracle, with about:safety) after it.
+- Part 8: alongside the others; each item its own PR.
