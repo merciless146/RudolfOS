@@ -216,6 +216,7 @@ typedef struct { int k; GtkWidget *w; double gap, dy, mt, mb; int full; char *te
 struct Cell { char *label; GPtrArray *items; int more; double lx, ly, lw, lh, y, h, ltop; };   /* (ltop > 0: the label at the row's top, ltop - 1 px down: align-self start) */
 typedef struct { int k; char *text; int grey; double mt, mb, x, y, w, h; GtkWidget *wg; Cell *cell; GtkWidget *btn[8]; int nb; double minh; double (*lay)(void *d, double x, double y, double w); void *ld; } Item;
 static GPtrArray *ITEMS; static GtkWidget *FX, *SCR, *FOOT, *FOOTST, *FOOTB[3], *AREA, *OUTER, *SIDE, *SBAR, *SQ, *DD; static int (*FDIRTY)(void); static SetFoot FACT; static double FX_W = 587;
+static int FOOT_FLOW; static double FOOT_FY, FOOT_CT;   /* (1.6.3) a footer sticky in its own box (position: sticky; bottom: 0), its place in the page */
 static char CUR[16];
 static void item_free(gpointer p) { Item *i = p; g_free(i->text); if (i->cell) { g_free(i->cell->label); for (guint k = 0; k < i->cell->items->len; k++) g_free(((CItem *)g_ptr_array_index(i->cell->items, k))->text); g_ptr_array_unref(i->cell->items); g_free(i->cell); } g_free(i); }
 static Item *add_item(int k, const char *t, double mt, double mb) { Item *i = g_new0(Item, 1); i->k = k; i->text = g_strdup(t ? rui_tr(t) : NULL); i->mt = mt; i->mb = mb; g_ptr_array_add(ITEMS, i); return i; }
@@ -287,6 +288,7 @@ static double cell_lay(Cell *c, double x, double y, double w)
 			if (!inl) { cy += pmb; pmb = 0; lt = cy; lx = 0; lhh = 0; inl = 1; }
 			double ww, hh;
 			if (it->k == 3) { double tw; text_lines(it->text, RUI.fs, it->weight == 700 ? 700 : 400, 0, 0, &tw); ww = tw; hh = lh_of(RUI.fs, 400); it->wd = ww; it->h = hh; gtk_widget_set_size_request(it->w, R(ww), R(hh)); }
+			else if (it->full == 2) { double rest = 0; for (guint j = k + 1; j < c->items->len; j++) { CItem *n = g_ptr_array_index(c->items, j); if (n->k != 0) break; rest += n->gap + nat_w(n->w); } ww = w - lx - rest; hh = nat_h(it->w, ww); }   /* (1.6.3: flex 1, the rest of its line after it) */
 			else { ww = it->full ? w : nat_w(it->w); hh = nat_h(it->w, ww); }
 			it->x = x + lx + it->gap; it->y = lt + it->dy; place(it->w, it->x, it->y, it->full ? ww : 0, 0); lx += it->gap + ww; lhh = fmax(lhh, it->dy + hh); cy = lt + lhh;
 			first = 0; continue; }
@@ -294,7 +296,7 @@ static double cell_lay(Cell *c, double x, double y, double w)
 		/* a block */
 		if (inl) { cy = lt + lhh; inl = 0; }
 		cy += first ? it->mt : fmax(pmb, it->mt); first = 0; it->x = x; it->y = cy; it->wd = w;
-		if (it->k == 2) { double fs = it->grey >= 2 ? 12 : LK->msg_fs[0], lh = lh_of(fs, 400); int n = text_lines(it->text, fs, 400, w, 0, NULL); it->h = it->grey == 3 ? n * lh : fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }   /* (grey 3, .dmi: no .msg's min-height) */
+		if (it->k == 2) { double fs = it->grey >= 2 ? 12 : LK->msg_fs[0], lh = lh_of(fs, 400); int n = text_lines(it->text, fs, 400, w, 0, NULL); it->h = it->grey >= 3 ? n * lh : fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }   /* (grey 3, .dmi: no .msg's min-height; grey 4, a span of 12px #6b7280) */
 		else if (it->k == 4) { double lh, h = ck_lines(it->text, w, &lh); it->h = fmax(19, h); rui_check_wrap(it->w, w, it->h); place(it->w, x, cy, 0, 0); }
 		else if (it->k == 6) { PangoLayout *l = lay(pctx(), it->text, 11, 400, w, 0); PangoFontDescription *f = pango_font_description_from_string("monospace"); pango_font_description_set_absolute_size(f, 11 * Z() * PANGO_SCALE); pango_layout_set_font_description(l, f); pango_font_description_free(f);
 			int n = pango_layout_get_line_count(l); g_object_unref(l); it->h = fmin(160, n * pre_lh()); place(it->w, x, cy, w, it->h); }
@@ -307,6 +309,17 @@ static double cell_lay(Cell *c, double x, double y, double w)
 	if (inl) cy = lt + lhh;
 	return cy - y;
 }
+/* (1.6.3 Part 3) a footer sticky at the bottom of its own box (Oracle's: settings31.js puts Network Settings' footer in the page's Web
+   search part, where position: sticky keeps it within that part): at the window's bottom while its place in the page is under it, at
+   its place once the page is scrolled past it, never above its box's top */
+static GtkAdjustment *fx_adj(void);
+static void foot_place(void)
+{
+	if (!FOOT || !FOOT_FLOW || !AREA) return; double z = Z(), sb = gtk_adjustment_get_value(fx_adj()) / z, vh = gtk_widget_get_allocated_height(AREA) / z, h = nat_h(FOOT, -1);
+	double want = fmin(FOOT_FY - sb, fmax(FOOT_CT - sb, vh - h)), m = vh - h - want; gtk_widget_set_margin_bottom(FOOT, m > 0 ? R(m) : 0);
+}
+static double fbox_lay(void *d, double x, double y, double w) { (void)d; (void)x; (void)w; FOOT_CT = y; return 0; }
+static double fhere_lay(void *d, double x, double y, double w) { (void)d; (void)x; (void)w; FOOT_FY = y; return FOOT ? nat_h(FOOT, -1) + LK->sfoot_m[2] : 0; }
 static void lay_all(void)
 {
 	if (!ITEMS || !FX) return;
@@ -332,9 +345,9 @@ static void lay_all(void)
 		y += i->h; pmb = i->mb;
 	}
 	double total;
-	if (FOOT) { y += fmax(pmb, LK->sfoot_m[0]); total = y + nat_h(FOOT, -1) + LK->sfoot_m[2] + LK->sc_pad[2]; }
+	if (FOOT && !FOOT_FLOW) { y += fmax(pmb, LK->sfoot_m[0]); total = y + nat_h(FOOT, -1) + LK->sfoot_m[2] + LK->sc_pad[2]; }
 	else total = y + pmb + LK->sc_pad[2];
-	gtk_widget_set_size_request(FX, -1, R(total)); gtk_widget_queue_draw(FX); set_state_soon();
+	gtk_widget_set_size_request(FX, -1, R(total)); gtk_widget_queue_draw(FX); foot_place(); set_state_soon();
 }
 static guint RELAY;
 static gboolean relay_go(gpointer d) { (void)d; RELAY = 0; lay_all(); return G_SOURCE_REMOVE; }
@@ -362,7 +375,7 @@ static gboolean fx_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 			{ double fs = i->grey == 2 ? 12 : LK->msg_fs[0]; text_draw(cr, i->text, i->x, i->y, fs, 400, i->w, 0, lh_of(fs, 400)); } break;
 		case I_R2: { Cell *c = i->cell; fgc(cr, 1); text_draw(cr, c->label, c->lx, c->ly, RUI.fs, 400, c->lw, 0, lh_of(RUI.fs, 400));
 			for (guint q = 0; q < c->items->len; q++) { CItem *it = g_ptr_array_index(c->items, q);
-				if (it->k == 2) { if (it->grey == 3 && !RUI.dark) cairo_set_source_rgb(cr, 0x4b / 255.0, 0x55 / 255.0, 0x63 / 255.0); else if (it->grey >= 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (it->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
+				if (it->k == 2) { if (it->grey == 3 && !RUI.dark) cairo_set_source_rgb(cr, 0x4b / 255.0, 0x55 / 255.0, 0x63 / 255.0); else if (it->grey == 4) s_col(cr, "grey", 1); else if (it->grey >= 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (it->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
 					{ double fs = it->grey >= 2 ? 12 : LK->msg_fs[0]; text_draw(cr, it->text, it->x, it->y, fs, 400, it->wd, 0, lh_of(fs, 400)); } }
 				if (it->k == 3) { fgc(cr, 1); text_draw(cr, it->text, it->x, it->y, RUI.fs, it->weight == 700 ? 700 : 400, 0, 0, it->h); }
 				if (it->k == 6) { fgc(cr, 1); PangoLayout *l = lay(pctx(), it->text, 11, 400, it->wd, 0); PangoFontDescription *f = pango_font_description_from_string("monospace"); pango_font_description_set_absolute_size(f, 11 * Z() * PANGO_SCALE); pango_layout_set_font_description(l, f); pango_font_description_free(f);
@@ -392,6 +405,8 @@ void p_footer(int (*dirty)(void), SetFoot act)
 }
 static guint FNOTE;
 static gboolean fnote_end(gpointer d) { (void)d; FNOTE = 0; p_footer_update(); return G_SOURCE_REMOVE; }
+void p_footer_box(void) { p_custom(fbox_lay, NULL, 0, 0); }
+void p_footer_here(void) { FOOT_FLOW = 1; p_custom(fhere_lay, NULL, LK->sfoot_m[0], 0); }
 void p_footer_update(void)
 {
 	if (!FOOT || FNOTE) return; int d = FDIRTY && FDIRTY();
@@ -586,7 +601,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "web", page_web }, { "net", page_net }, { "mob", page_mob }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;
@@ -835,6 +850,25 @@ static void harvest(void)
 GtkWidget *c_label(Cell *c, const char *t, double dy);
 void c_dy(GtkWidget *w, double dy) { CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); if (x) x->dy = dy; }
 void p_r2_top(Cell *c, double mt) { c->ltop = mt + 1; }
+void p_r2_mt(Cell *c, double mt) { for (guint k = 0; k < ITEMS->len; k++) { Item *i = g_ptr_array_index(ITEMS, k); if (i->k == I_R2 && i->cell == c) i->mt = mt; } }
+/* (1.6.3 Part 3) an HTTPS GET of this program's own (Oracle's Test search): the status, the body (free it); RUDOLF_SET_HTTPS for the tests
+   ("STATUS FILE": that answer, no network) */
+int set_https_get(const char *url, char **body, char *err, size_t en)
+{
+	*body = NULL; if (err && en) *err = 0;
+	const char *tt = getenv("RUDOLF_SET_HTTPS"); if (tt) { int st = atoi(tt); const char *f = strchr(tt, ' '); gsize n = 0; if (f && g_file_get_contents(f + 1, body, &n, NULL)) return st; return st; }
+	if (g_ascii_strncasecmp(url, "https://", 8)) { snprintf(err, en, "The address must start with https://."); return 0; }
+	const char *h = url + 8, *sl = strchr(h, '/'); char *host = sl ? g_strndup(h, sl - h) : g_strdup(h), *path = g_strdup(sl ? sl : "/"); int port = 443; char *co = strchr(host, ':'); if (co) { *co = 0; port = atoi(co + 1); }
+	GSocketClient *sc = g_socket_client_new(); g_socket_client_set_tls(sc, TRUE); g_socket_client_set_timeout(sc, 20); GError *e = NULL; int st = 0;
+	GSocketConnection *cn = g_socket_client_connect_to_host(sc, host, port, NULL, &e);
+	if (cn) { char *rq = g_strdup_printf("GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: Rudolf OS Settings\r\nAccept: application/json\r\nConnection: close\r\n\r\n", path, host);
+		GOutputStream *os = g_io_stream_get_output_stream(G_IO_STREAM(cn)); GInputStream *is = g_io_stream_get_input_stream(G_IO_STREAM(cn)); GByteArray *all = g_byte_array_new(); char b[16384]; gssize n;
+		if (g_output_stream_write_all(os, rq, strlen(rq), NULL, NULL, &e)) while ((n = g_input_stream_read(is, b, sizeof b, NULL, NULL)) > 0 && all->len < 4 * 1024 * 1024) g_byte_array_append(all, (guint8 *)b, n);
+		g_byte_array_append(all, (guint8 *)"", 1); char *r = (char *)all->data; if (!strncmp(r, "HTTP/", 5)) { const char *sp = strchr(r, ' '); st = sp ? atoi(sp + 1) : 0; char *bd = strstr(r, "\r\n\r\n"); if (bd) *body = g_strdup(bd + 4); }
+		g_byte_array_free(all, TRUE); g_free(rq); g_object_unref(cn); }
+	if (e) { if (err) snprintf(err, en, "%s", e->message); g_error_free(e); }
+	g_object_unref(sc); g_free(host); g_free(path); return st;
+}
 void c_gap(GtkWidget *w, double gap) { CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); if (x) x->gap = gap; }
 GtkWidget *c_label(Cell *c, const char *t, double dy) { GtkWidget *w = c_text(c, rui_tr(t), 1); CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); x->dy = dy; return w; }
 static GtkAdjustment *fx_adj(void) { GList *c = gtk_container_get_children(GTK_CONTAINER(SCR)); GtkAdjustment *a = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(c->data)); g_list_free(c); return a; }
@@ -849,6 +883,8 @@ static void show_now(const char *k)
 	snprintf(CUR, sizeof CUR, "%s", k); page_build(); if (SIDE) gtk_widget_queue_draw(SIDE); set_note("show %s", k);
 }
 void set_show(const char *k) { show_now(k); }
+/* (1.6.3 Part 3) the page built again where it is (the page's draw(): its parts replaced, the page not scrolled) */
+void set_show_keep(const char *k) { double v = gtk_adjustment_get_value(fx_adj()); show_now(k); gtk_adjustment_set_value(fx_adj(), v); }
 /* (the page's W.guard: unapplied changes asked about first) */
 static char NEXT[16];
 static void guard_do(int i, void *d)
@@ -889,7 +925,7 @@ static void page_todo(void)
 }
 static void page_build(void)
 {
-	HIT = NULL; HITC = NULL; if (FOOT) { gtk_widget_destroy(FOOT); FOOT = NULL; } FDIRTY = NULL; FACT = NULL; if (NAMED) g_hash_table_remove_all(NAMED);
+	HIT = NULL; HITC = NULL; FOOT_FLOW = 0; if (FOOT) { gtk_widget_destroy(FOOT); FOOT = NULL; } FDIRTY = NULL; FACT = NULL; if (NAMED) g_hash_table_remove_all(NAMED);
 	if (FX) { GList *c = gtk_container_get_children(GTK_CONTAINER(FX)); for (GList *l = c; l; l = l->next) gtk_widget_destroy(l->data); g_list_free(c); }
 	if (ITEMS) g_ptr_array_unref(ITEMS); ITEMS = g_ptr_array_new_with_free_func(item_free);
 	PageFn f = page_fn(CUR); if (f) f(); else page_todo();
@@ -964,7 +1000,7 @@ int main(int argc, char **argv)
 	{ GList *c = gtk_container_get_children(GTK_CONTAINER(OUTER)); g_signal_connect(c->data, "size-allocate", G_CALLBACK(outer_alloc), NULL); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(c->data), GTK_POLICY_EXTERNAL, GTK_POLICY_EXTERNAL); g_list_free(c); }
 	/* (the page as wide as its view: what it holds laid out in that width, never making the window wider: CSS's block width) */
 	{ GList *c = gtk_container_get_children(GTK_CONTAINER(SCR)); gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(c->data), GTK_POLICY_EXTERNAL, GTK_POLICY_EXTERNAL); g_list_free(c); }
-	g_signal_connect_swapped(fx_adj(), "value-changed", G_CALLBACK(set_state_soon), NULL);
+	g_signal_connect_swapped(fx_adj(), "value-changed", G_CALLBACK(set_state_soon), NULL); g_signal_connect_swapped(fx_adj(), "value-changed", G_CALLBACK(foot_place), NULL);
 	/* the search's drop-down (.ssdd), over the window's body */
 	DD = gtk_event_box_new(); gtk_widget_set_halign(DD, GTK_ALIGN_START); gtk_widget_set_valign(DD, GTK_ALIGN_START); gtk_widget_set_app_paintable(DD, TRUE); g_signal_connect(DD, "draw", G_CALLBACK(dd_frame), NULL);
 	DDA = gtk_drawing_area_new(); gtk_widget_add_events(DDA, GDK_BUTTON_PRESS_MASK | GDK_POINTER_MOTION_MASK); g_signal_connect(DDA, "draw", G_CALLBACK(dd_draw), NULL);
@@ -1067,11 +1103,32 @@ void s_col(cairo_t *cr, const char *w, double a)
 	else if (!strcmp(w, "th")) { if (RUI.dark) cairo_set_source_rgba(cr, 0x1e / 255.0, 0x29 / 255.0, 0x3b / 255.0, a); else rui_color(cr, "bg2", a); }
 	else rui_color(cr, w, a);
 }
+/* (1.6.3 Part 3) any JSON value written again as it was: a number as JavaScript writes it (the shortest that reads back the same) */
+void set_jw(GString *b, RuiJ *v)
+{
+	int t = rui_jtype(v);
+	if (t == 1) g_string_append(b, rui_jval(v) ? "true" : "false");
+	else if (t == 2) { double x = rui_jval(v); char nb[40]; if (!isfinite(x)) g_string_append(b, "null"); else if (x == floor(x) && fabs(x) < 1e21) g_string_append_printf(b, "%.0f", x == 0 ? 0.0 : x); else { for (int p = 1; p <= 17; p++) { char f[8]; snprintf(f, sizeof f, "%%.%dg", p); g_ascii_formatd(nb, sizeof nb, f, x); if (g_ascii_strtod(nb, NULL) == x) break; } g_string_append(b, nb); } }
+	else if (t == 3) { char *e = set_jesc(rui_jsval(v)); g_string_append_printf(b, "\"%s\"", e); g_free(e); }
+	else if (t == 4) { g_string_append_c(b, '['); for (int i = 0; i < rui_jlen(v); i++) { if (i) g_string_append_c(b, ','); set_jw(b, rui_jat(v, i)); } g_string_append_c(b, ']'); }
+	else if (t == 5) { g_string_append_c(b, '{'); for (int i = 0; rui_jkey(v, i); i++) { const char *k = rui_jkey(v, i); char *e = set_jesc(k); if (i) g_string_append_c(b, ','); g_string_append_printf(b, "\"%s\":", e); g_free(e); set_jw(b, rui_jprop(v, k)); } g_string_append_c(b, '}'); }
+	else g_string_append(b, "null");
+}
 double s_z(void) { return RUI.z; }
 /* (1.6.3 Part 3) a text laid out as the page's (its font, wrapped at w CSS px; 0: one line), for a page that draws its lines itself */
 PangoLayout *s_layout(const char *t, double px, int wt, double w) { return lay(pctx(), t, px, wt, w, 0); }
 double s_asc(double px, int wt, double *desc) { return asc_of(px, wt, desc); }
 /* Chromium's check box (13 px; its blue when on, greyed when disabled), its top left corner at (x, y) CSS px */
+/* (1.6.3 Part 3) Chromium's radio button at (x, y) CSS px (13 px) */
+void s_radio(cairo_t *cr, double x, double y, int on, int sens)
+{
+	double c = 6.5, cx = x + c, cy = y + c, a = sens ? 1 : .5; cairo_save(cr); cairo_scale(cr, RUI.z, RUI.z); cairo_new_path(cr);
+	if (on) { cairo_set_source_rgba(cr, 0, 117 / 255.0, 1, a); cairo_arc(cr, cx, cy, c, 0, 2 * G_PI); cairo_fill(cr);
+		double g = RUI.dark ? .23 : 1; cairo_set_source_rgba(cr, g, g, g, 1); cairo_arc(cr, cx, cy, c - 1.6, 0, 2 * G_PI); cairo_fill(cr);
+		cairo_set_source_rgba(cr, 0, 117 / 255.0, 1, a); cairo_arc(cr, cx, cy, c - 3.4, 0, 2 * G_PI); cairo_fill(cr); }
+	else { double g = RUI.dark ? .23 : 1; cairo_set_source_rgba(cr, g, g, g, a); cairo_arc(cr, cx, cy, c - .5, 0, 2 * G_PI); cairo_fill_preserve(cr); cairo_set_source_rgba(cr, .46, .46, .46, a); cairo_set_line_width(cr, 1); cairo_stroke(cr); }
+	cairo_restore(cr);
+}
 void s_ckbox(cairo_t *cr, double x, double y, int on, int sens)
 {
 	double s = 13; cairo_save(cr); cairo_scale(cr, RUI.z, RUI.z);

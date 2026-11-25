@@ -25,6 +25,7 @@ const char *set_jstr(RuiJ *o, const char *k, const char *dflt);
 RuiJ *set_ls_get(const char *k);                      /* the page's ld(k): {"x": the value} (NULL: none) */
 int set_ls_set(const char *k, const char *json);      /* the page's svj(k, value): the value as JSON */
 char *set_jesc(const char *s);                        /* a string's JSON escapes (without its quotes) */
+void set_jw(GString *b, RuiJ *v);                    /* (1.6.3) a JSON value written again as it was (numbers as JavaScript writes them) */
 
 /* ---- building a page (between set_page_begin and set_page_end, called by settings.c) */
 typedef struct Cell Cell;
@@ -34,12 +35,14 @@ void p_sgrp(const char *t);                           /* .sh4.sgrp: a group of s
 GtkWidget *p_msg(const char *t, int grey);            /* .msg (grey: the page's color:#6b7280, else the page's own colour) */
 Cell *p_r2(const char *label);                        /* a row of .r2: its label, its controls in the cell (each row of the page's grid) */
 void p_r2_more(Cell *c);                              /* (the next row is in the same .r2: no margin between) */
-void c_add(Cell *c, GtkWidget *w, double gap, double dy, int full);   /* a control in the cell's line: after gap px, dy px down; full: the cell's width */
+void c_add(Cell *c, GtkWidget *w, double gap, double dy, int full);   /* a control in the cell's line: after gap px, dy px down; full: the cell's width (2: what its line leaves) */
 void c_line(Cell *c, double mt);                      /* the next controls on a line of their own, mt px under */
 GtkWidget *c_msg(Cell *c, const char *t, int grey);   /* a .msg in the cell */
 GtkWidget *c_text(Cell *c, const char *t, int weight);
 void c_gap(GtkWidget *w, double gap);
 void c_dy(GtkWidget *w, double dy);                   /* (1.6.3) a writing's place below its line's top (a range's value beside it) */
+void p_r2_mt(Cell *c, double mt);                    /* (1.6.3) the row's own margin above it */
+int set_https_get(const char *url, char **body, char *err, size_t en);   /* (1.6.3) the status; *body (free it) */
 void p_r2_top(Cell *c, double mt);                   /* (1.6.3) the row's label at its top, mt px down (align-self: start; margin-top) */
 /* (1.6.3) a .msg of .sp25 (settings25.js's sections: 12 px, --mut): p_msg / c_msg's grey 2; a button 12 px, 1px 8px (class set-small) */                 /* (1.6.3) a writing's room before it in its line (a space: the page's inline .msg after a select) */   /* plain writing in the cell (the Preview's: 700 bold, 400) */
 GtkWidget *c_label(Cell *c, const char *t, double dy); /* a <label> in the cell's line ("After"), dy px down: found by Search in Settings */
@@ -53,6 +56,8 @@ void p_block(GtkWidget *w, double mt, double mb);     /* a block of the page's o
 void p_space(double mt);
 typedef void (*SetFoot)(int what /* 0 apply 1 revert 2 reset */);
 void p_footer(int (*dirty)(void), SetFoot act);      /* .sfoot: Apply, Revert, Reset to defaults, at the page's bottom */
+void p_footer_box(void);                              /* (1.6.3) the top of the box a sticky footer stays in */
+void p_footer_here(void);                             /* (1.6.3) the footer's place in the page: sticky there (position: sticky; bottom: 0) */
 void p_footer_update(void);                           /* the footer's state again (after a change) */
 void p_footer_note(const char *t);                    /* "✓ t" in the footer, then its state again */
 void p_relayout(void);                                /* (a block's size changed: laid out again) */
@@ -75,6 +80,7 @@ void s_range_on_change(GtkWidget *w, void (*cb)(double v, void *d));   /* the pa
 PangoLayout *s_layout(const char *t, double px, int wt, double w);   /* (1.6.3 Part 3) the page's writing laid out (free with g_object_unref) */
 double s_asc(double px, int wt, double *desc);
 void s_ckbox(cairo_t *cr, double x, double y, int on, int sens);   /* Chromium's check box at (x, y) CSS px */
+void s_radio(cairo_t *cr, double x, double y, int on, int sens);   /* (1.6.3) Chromium's radio button at (x, y) CSS px */
 
 /* ---- the pages: each a function that builds its blocks (settings_PAGE.c) */
 void page_about(void);
@@ -84,6 +90,7 @@ typedef int (*SetDirty)(void);
 void set_note(const char *fmt, ...) G_GNUC_PRINTF(1, 2);
 void set_state_soon(void);
 void set_show(const char *k);                         /* another page (the page's W.show) */
+void set_show_keep(const char *k);                    /* (1.6.3) the page built again, not scrolled */
 void set_notify(const char *title, const char *body, int error);
 
 /* (About's blocks) */
@@ -113,6 +120,17 @@ void page_disp(void);  /* settings_disp.c (1.6.3 PR 5: in progress) */
 void page_vol(void);   /* settings_vol.c */
 void page_mm(void);    /* settings_mm.c */
 void page_acc(void);   /* settings_acc.c */
+void page_bt(void);    /* settings_bt.c (1.6.3 PR 6) */
+void page_remote(void); /* settings_remote.c (1.6.3 PR 6) */
+void page_mob(void);   /* settings_mob.c (1.6.3 PR 6) */
+void page_net(void);   /* settings_net.c (1.6.3 PR 6) */
+void page_web(void);   /* settings_web.c (1.6.3 PR 6): Oracle */
+/* (settings_net.c: the Web search and Downloads rows, shown on Network Settings and Oracle: one working copy, one footer) */
+void net_search_rows(const char *pfx, int part);       /* part 1: Web search, 2: Downloads, 0: both */
+void net_search_msg(void);
+void net_search_forget(void);
+int net_dirty(void);
+void net_foot(int what);
 /* (settings_vol.c) sound through PulseAudio's simple API, opened when first needed: 16-bit mono at rate, played in a thread of its own */
 void set_play_pcm(const short *pcm, size_t n, int rate);
 void sec_bring(void); /* settings_bring.c */

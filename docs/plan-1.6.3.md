@@ -235,7 +235,34 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   - The screen saver's moving preview and Preview.
   - Displays' arrangement for two or three monitors (screen/arrange); one display is said as the page says it.
   - Changes before Apply show in Settings only.
-- **Left:** Network, Mobile network, Bluetooth, Oracle, Remote; Devices, Storage,
+- **PR 6, done (2026-11-25, scheduled task): Network Settings, Mobile network, Bluetooth, Oracle, Remote access** (`settings_net.c`,
+  `settings_mob.c`, `settings_bt.c`, `settings_web.c`, `settings_remote.c`). Each page as the web one builds it, from the same rudolfd
+  requests and the page's own storage, with the administrator's prompt (rui_elevate) or the administrator's name and password in the
+  request (rui_elevate_cred) exactly where the page asks for them:
+  - Bluetooth: bt, bt/power, bt/scan, bt/visible, bt/pair|connect|disconnect|remove, the pairing question (bt/ask, bt/answer) while
+    the page is open;
+  - Remote access: remote, remote?on=, remote/end, remote/accounts, bd95user's ru (the rest of the accounts kept), System health's note;
+  - Mobile network: mobile/status, mobile/airplane, mobile/settings, mobile/signal (every 5 s), mobile/connect, mobile/pin and
+    mobile/puk; MDM_STATE and MOB_MODE read from the page at build time;
+  - Network Settings: wifi/* (the password form, joining a hidden network, the radios, this computer's bands, saved networks with
+    Metered and Forget, the country), net, net/static, net/dhcp, proxy, the Web search and Downloads rows with the footer (bd95net),
+    net/metered, mobile/fcc, net/hotspot, vpn/*; MTR_KIND and VPN_POL read from the page;
+  - Oracle: shell, shell?on=, shell/switch, siAsk, webSites (siDomain), WEB_SITES and SI_BANKS read from the page, the Web search and
+    Downloads rows (one working copy with Network Settings), desktop/owenc, oraFree.
+  settings.c gained set_show_keep, s_radio, set_jw, p_r2_mt, set_https_get (Test search), c_add's full 2 (flex 1), and a footer sticky
+  in its own box (p_footer_box, p_footer_here: Oracle's, as the page's position: sticky within its Web search part).
+  Against the web one: every view under 2 % in light, dark, light-green and dark-pink; Search the same rows; the checklists B1-B7,
+  R1-R3, M1-M7, N1-N10, O1-O6. The test's rudolfd answers these pages' requests (settings_rd.json, same_rd.py).
+  **Known differences (PR 6):**
+  - The pairing question of a Bluetooth device and the remote-access prompt and marker are the desktop's (bt51.js btAsk, remote50.js
+    rmPoll): the native shell does not ask them yet; Settings asks the pairing question only while its Bluetooth page is open.
+  - Why does the Wi-Fi drop? opens Blitzen without the question filled in (the shell cannot hand it on yet).
+  - Test search asks the service from Settings itself, never through the relay (the relay is a browser's workaround).
+  - Add a VPN… asks for its file with the file chooser, then its name (and an OpenVPN file's login) in small dialogs, instead of the
+    page's one dialog with a field to paste the file's text into.
+  - Oracle shows the page's layout without real tabs (rtOn() is the page's own shell connection); on a desktop whose page has real
+    tabs the page shows the same settings under "Without real tabs".
+- **Left:** Devices, Storage,
   Apps, Notifications; Privacy, Security, System health, Users; the switch.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in

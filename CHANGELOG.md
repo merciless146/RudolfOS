@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New (native desktop, not switched on yet): the native Settings has Network Settings (Wi-Fi, the hardware, a manual address, the
+  proxy, metered connections, cellular modems, sharing the connection, VPNs), Mobile network (the SIM's PIN, the operator's
+  settings, this month's data, roaming), Bluetooth, Oracle and Remote access, each as the web Settings has it, with the
+  administrator's password where the web Settings asks for it (plan 1.6.3 Part 3).
 - New (native desktop, not switched on yet): the native Settings has Display Properties, every section as the web
   Settings has it, from the backgrounds and your own picture to the lock screen, the screen saver, the resolution and the
   graphics card (plan 1.6.3 Part 3).

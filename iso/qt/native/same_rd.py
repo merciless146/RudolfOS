@@ -164,7 +164,7 @@ class H(http.server.BaseHTTPRequestHandler):
         # same for the page's Task Manager and the native one); the actions taken answered as rudolfd answers them (and noted in DIR/calls)
         if rd('tm') is not None:
             T = json.loads(rd('tm'))
-            if w in T and (m == 'GET' or w in ('apps/running',)): return self.j(T[w])
+            if w in T and w not in ('bt', 'remote') and not (w == 'job' and rd('wifijob')) and (m == 'GET' or w in ('apps/running', 'wifi/scan')): return self.j(T[w])
             if w == 'proc/end' and m == 'POST': return self.j({'ok': True, 'message': 'proc', 'ended': 3, 'kept': 0} if 'tree=1' in q else {'ok': True, 'message': 'proc'})
             if w in ('service/restart', 'apps/end', 'apps/kill', 'shell/switch') and m == 'POST': return self.j({'ok': True, 'message': w})
             if w == 'memory/dropcache' and m == 'POST': return self.j({'ok': True, 'freed': 104857600})
@@ -175,6 +175,56 @@ class H(http.server.BaseHTTPRequestHandler):
             # (Settings › Volume Controls, settings_t.js V-checklist: the sound card, the microphone, the echo canceller, as rudolfd answers them)
             if w in ('audio', 'audio/mic') and m == 'POST': return self.j({'ok': True, 'message': 'sound card set' if w == 'audio' else 'microphone chosen'})
             if w == 'sound/echo' and m == 'POST': return self.j({'ok': True, 'on': 'on=1' in q, 'active': 'on=1' in q})
+            # (Settings › Network, settings_t.js N-checklist: rudolfd's wifi/*, net/static, net/dhcp, proxy, net/metered, net/hotspot and vpn/* answered as rudolfd does,
+            # each body kept in DIR/body-NAME; a Wi-Fi connection's job finished at once)
+            if m == 'POST' and 'net' in T and (w.startswith('wifi/') or w.startswith('vpn/') or w in ('net/static', 'net/dhcp', 'proxy', 'net/metered', 'net/hotspot')):
+                open(os.path.join(D, 'body-' + w.replace('/', '_')), 'wb').write(b)
+                if w == 'wifi/connect': open(os.path.join(D, 'wifijob'), 'w').write(b.decode().split('\n')[0])
+                if w.startswith('vpn/') and w != 'vpn/on' and w != 'vpn/off':
+                    o = json.loads(b or b'{}'); k = KEYS.get('Ann')
+                    if not k or o.get('n') != 'Ann' or o.get('p') != k['pw']: return self.err(403, 'Wrong password.')
+                return self.j({'ok': True, 'message': {'wifi/forget': 'Forgotten.', 'net/static': 'Manual address set.', 'net/dhcp': 'Automatic address.', 'proxy': 'Proxy saved.', 'net/hotspot': 'Sharing.'}.get(w, 'Done.')})
+            if w == 'job' and m == 'GET' and rd('wifijob'):
+                n = rd('wifijob').decode(); os.unlink(os.path.join(D, 'wifijob')); return self.j({'ok': True, 'running': False, 'name': 'wifi', 'status': 0, 'log': 'Connected to ' + n})
+            # (Settings › Oracle, settings_t.js O-checklist: rudolfd's shell?on= and shell/switch)
+            if m == 'POST' and w in ('shell', 'shell/switch') and 'net' in T and not rd('engine'): return self.j({'ok': True, 'on': 'on=1' in q, 'message': 'saved'})
+            # (Settings › Mobile network, settings_t.js M-checklist: rudolfd's mobile/settings, mobile/pin, mobile/puk as rudolfd answers them; the PIN's body kept in DIR/mobpin)
+            if w in ('mobile/settings', 'mobile/pin', 'mobile/puk') and m == 'POST' and 'mobile/settings' in T:
+                if w == 'mobile/settings': return self.j({'ok': True, 'message': 'saved'})
+                open(os.path.join(D, 'mobpin'), 'wb').write(b); o = json.loads(b or b'{}'); k = KEYS.get('Ann')
+                if not k or o.get('n') != 'Ann' or o.get('p') != k['pw']: return self.err(403, 'Wrong password.')
+                return self.j({'ok': True, 'message': 'PIN accepted: the SIM is unlocked.'}) if o.get('pin') == '1234' else self.err(409, 'Wrong PIN. 1 tries left before the SIM asks for its PUK.')
+            # (Settings › Remote access, settings_t.js R-checklist: rudolfd's remote, remote?on=, remote/end, remote/accounts (kept in DIR/remote-accounts) and health)
+            if (w == 'remote' or w.startswith('remote/')) and 'remote' in T:
+                rp = os.path.join(D, 'remote.json'); S = json.loads(rd('remote.json') or json.dumps(T['remote']))
+                if m == 'GET': return self.j(S)
+                if w == 'remote/accounts': open(os.path.join(D, 'remote-accounts'), 'wb').write(b); return self.j({'ok': True, 'message': 'stored'})
+                if w == 'remote/end': S['session'] = None; open(rp, 'w').write(json.dumps(S)); return self.j({'ok': True, 'message': 'ending'})
+                if w == 'remote':
+                    S['on'] = 'on=1' in q; S['running'] = S['on']; open(rp, 'w').write(json.dumps(S)); return self.j({'ok': True, 'message': 'ok'})
+            if w == 'health' and m == 'POST' and 'remote' in T: open(os.path.join(D, 'health'), 'ab').write(b + b'\n'); return self.j({'ok': True})
+            # (Settings › Bluetooth, settings_t.js B-checklist: rudolfd's bt/* as rudolf-devices answers them, the status kept in DIR/bt.json from settings_rd.json's)
+            if w.startswith('bt') and 'bt' in T:
+                bp = os.path.join(D, 'bt.json'); S = json.loads(rd('bt.json') or json.dumps(T['bt']))
+                def bsave(): open(bp, 'w').write(json.dumps(S))
+                import urllib.parse; Q = dict(urllib.parse.parse_qsl(q)); dv = next((x for x in S['devices'] if x['mac'] == Q.get('mac')), None)
+                if w == 'bt': return self.j(S)
+                if w == 'bt/ask': return self.j({'ok': True, 'ask': json.loads(rd('btask')) if rd('btask') else None})
+                if m != 'POST': return self.err(404, 'unknown Bluetooth request')
+                if w == 'bt/answer':
+                    try: os.unlink(os.path.join(D, 'btask'))
+                    except OSError: pass
+                    return self.j({'ok': True})
+                if w == 'bt/power': S['powered'] = Q.get('on') == '1'; bsave(); return self.j(S)
+                if w == 'bt/visible': S['visible'] = True; bsave(); return self.j(S)
+                if w == 'bt/scan': time.sleep(.5); bsave(); return self.j(S)
+                if w in ('bt/pair', 'bt/connect', 'bt/disconnect', 'bt/remove'):
+                    if not dv: return self.j({'ok': False, 'message': '', 'error': 'it did not work', 'status': S}, 409)
+                    if w == 'bt/pair': dv['paired'] = dv['connected'] = True
+                    elif w == 'bt/connect': dv['connected'] = True
+                    elif w == 'bt/disconnect': dv['connected'] = False
+                    else: S['devices'].remove(dv)
+                    bsave(); return self.j({'ok': True, 'message': '', 'error': '', 'status': S})
             if w in ('home/read', 'home/delete'):
                 import urllib.parse; rel = urllib.parse.parse_qs(q).get('path', [''])[0]; f = os.path.normpath(os.path.join(D, 'home', rel))
                 if not f.startswith(os.path.join(D, 'home') + os.sep) or not os.path.isfile(f): return self.err(404, 'no such file')

@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -90,7 +90,7 @@ async function natShots(mode, pages) {
   return out;
 }
 // ---- Search in Settings: the same results for the same words (the page's ssMatch over its pages, with System and About harvested as shown)
-const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7']};
+const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5'], web: ['mid2', 'mid3']};
 const QUERIES = ['time zone', 'sound', 'date', 'wifi', 'dark', 'idle', 'about', 'desktop page', 'lang', 'xyzzy'];
 async function pageSearch() {
   const {ctx, p} = await signin('light');
@@ -132,7 +132,7 @@ async function checklist(P) {
     ok('5. ...Enter opens the result: System, its Time zone row lit and its control focused', line('page') == 'sys' && line('hit') == 'Time zone' && line('focus') == 'tz', [line('page'), line('hit'), line('focus')]) }
   { click(rect('search')); xdo("type --delay 15 'x'"); await until(() => +line('res') >= 0, 3000); xdo('key Escape'); await until(() => line('res') == '-1', 3000); const a = line('res') == '-1'; xdo('key Escape'); await until(() => line('q') == '', 3000);
     ok('6. ...Escape closes the list, then empties the box', a && line('q') == '') }
-  { click(rect('side-sys')); await until(() => line('page') == 'sys', 4000); await wait(500); focusWin(); xdo('key Up Up Return'); await until(() => line('page') == 'bt', 4000); ok('3. the keyboard: Up, Up and Enter in the sidebar show Bluetooth (not native yet: it says so)', line('page') == 'bt' && line('native') == '0', [line('page'), line('focus'), line('sidefoc'), nst().split('\n').filter(x => /^act/.test(x)).join(' / '), NP && NP.log.slice(-300)]) }
+  { click(rect('side-sys')); await until(() => line('page') == 'sys', 4000); await wait(500); focusWin(); xdo('key Up Up Return'); await until(() => line('page') == 'bt', 4000); ok('3. the keyboard: Up, Up and Enter in the sidebar show Bluetooth (native since 1.6.3 PR 6)', line('page') == 'bt' && line('native') == '1', [line('page'), line('focus'), line('sidefoc'), nst().split('\n').filter(x => /^act/.test(x)).join(' / '), NP && NP.log.slice(-300)]) }
   click(rect('side-sys')); await until(() => line('page') == 'sys', 4000); await wait(800);
   /* System: the working copy, Apply, Revert, Reset */
   mark = c0();
@@ -251,7 +251,7 @@ async function checkKbdMouse() {
   natStart('kbd'); await until(() => rect('body') && line('page') == 'kbd', 20000); await wait(1500);
   { await pick('kbla', 2, 16); click(rect('kbadd')); await until(() => /"de"/.test(LS()['bd95kbl:uAnnA1b2'] || ''), 4000);
     ok('K1. Add a layout: Deutsch chosen, Add: the account\'s layouts ["us","de"] (bd95kbl:ACCT)', LS()['bd95kbl:uAnnA1b2'] == '["us","de"]', LS()['bd95kbl:uAnnA1b2']) }
-  { await until(() => rect('kbup1'), 3000); click(rect('kbup1')); await until(() => LS()['bd95kbl:uAnnA1b2'] == '["de","us"]', 4000); const a = LS()['bd95kbl:uAnnA1b2'];
+  { await until(() => rect('kbup1'), 3000); await wait(500); /* (the page built again after Add: its buttons placed) */ click(rect('kbup1')); await until(() => LS()['bd95kbl:uAnnA1b2'] == '["de","us"]', 4000); const a = LS()['bd95kbl:uAnnA1b2'];
     await until(() => rect('kbrm1'), 3000); await wait(300); click(rect('kbrm0')); await until(() => LS()['bd95kbl:uAnnA1b2'] == '["us"]', 4000);
     ok('K2. ▲ moves Deutsch first (["de","us"]), Remove takes it away (["us"])', a == '["de","us"]' && LS()['bd95kbl:uAnnA1b2'] == '["us"]', [a, LS()['bd95kbl:uAnnA1b2']]) }
   { await wait(500); await pick('kbime', 1, 4); await until(() => SET().ime == 'ja', 4000); await scrollTo('kbch'); click(rect('kbch')); await until(() => SET().cliphist === false, 4000);
@@ -367,6 +367,145 @@ async function checkDisp() {
     ok('D6. Graphics card: Use it for games and the desktop (display?mode=full)', /POST display\?mode=full/.test(since()), since()) }
   natStop();
 }
+// ---- Bluetooth (bt51.js btPanel; the stand-in's bt/* keep the status in DIR/bt.json): each device's buttons, Search, found, the pairing question, Off
+async function checkBt() {
+  ST.state(D, MODES.light, MORE); for (const f of ['bt.json', 'btask']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
+  const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const press = async (n, re) => { mark = c0(); await until(() => rect(n), 4000); click(rect(n)); await until(() => re.test(since()), 6000); await wait(900) };
+  natStart('bt'); await until(() => rect('body') && line('page') == 'bt', 20000); await wait(1500);
+  await press('btm1.0', /POST bt\/connect\?mac=AA:BB:CC:DD:EE:02/); await until(() => /btmsg Headphones "Pro" is connected\./.test(acts()), 3000);
+  ok('B1. Headphones "Pro": Connect (bt/connect?mac=), "… is connected.", its row then offers Disconnect', /POST bt\/connect\?mac=AA:BB:CC:DD:EE:02/.test(since()) && /btmsg Headphones "Pro" is connected\./.test(acts()) && /bt adapter 2 2/.test(acts()), since());
+  await press('btm0.1', /POST bt\/remove\?mac=AA:BB:CC:DD:EE:01/); await until(() => /bt adapter 1 2/.test(lines('act').pop() || ''), 3000);
+  ok('B2. Game controller: Forget (bt/remove?mac=), "… is forgotten. Pair it again to use it.", one device left paired', /btmsg Game controller is forgotten\. Pair it again to use it\./.test(acts()) && /bt adapter 1 2/.test(acts()), since());
+  await press('btn0.0', /POST bt\/pair\?mac=AA:BB:CC:DD:EE:04/); await until(() => /btmsg Keyboard K3 is paired and connected\./.test(acts()), 3000);
+  ok('B3. Keyboard K3 (the nearest first): Pair (bt/pair?mac=), "Pairing with …" then "… is paired and connected."', /btmsg Pairing with Keyboard K3… keep it in pairing mode/.test(acts()) && /btmsg Keyboard K3 is paired and connected\./.test(acts()), since());
+  await press('btf', /POST bt\/scan\?s=15/);
+  ok('B4. Search for devices: bt/scan?s=15', /POST bt\/scan\?s=15/.test(since()), since());
+  await press('btv', /POST bt\/visible/);
+  ok('B5. Let this computer be found: bt/visible', /POST bt\/visible/.test(since()), since());
+  mark = c0(); fs.writeFileSync(path.join(D, 'btask'), JSON.stringify({t: 1764063600, kind: 'confirm', name: 'Phone', code: '482913'}));
+  await until(() => rect('dialog'), 5000); const asked = /ask bt confirm 482913/.test(acts()); xdo('key Return'); await until(() => /POST bt\/answer/.test(since()), 4000);
+  ok('B6. A phone\'s pairing question (bt/ask) asked with its code; Yes, pair: bt/answer?ok=1', asked && /POST bt\/answer\?ok=1/.test(since()), [asked, since()]);
+  await wait(500); await press('bto', /POST bt\/power\?on=0/);
+  ok('B7. Bluetooth Off: bt/power?on=0', /POST bt\/power\?on=0/.test(since()), since());
+  natStop(); for (const f of ['bt.json', 'btask']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
+}
+// ---- Remote access (remote50.js remotePanel; the stand-in keeps the state in DIR/remote.json, rudolf-remote's accounts in DIR/remote-accounts)
+async function checkRemote() {
+  ST.state(D, MODES.light, MORE); for (const f of ['remote.json', 'remote-accounts', 'health']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
+  const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const rdf = f => { try { return fs.readFileSync(path.join(D, f), 'utf8') } catch (e) { return '' } };
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data;
+  const pw = () => { const d = rect('dialog'); if (d) xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); xdo('key Return') };
+  const bottom = async () => { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 30; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(600) };
+  natStart('remote'); await until(() => rect('body') && line('page') == 'remote', 20000); await wait(1500);
+  { await bottom(); mark = c0(); click(rect('rmu1')); await until(() => rect('dialog'), 3000); pw(); await until(() => /POST health/.test(since()), 5000); await wait(500);
+    const u = JSON.parse(LS().bd95user || '{}'), bob = (u.accts || []).find(a => a.n == 'Bob') || {}, ra = rdf('remote-accounts');
+    ok('R1. Bob\'s unattended access, with the administrator\'s permission: bd95user\'s Bob.ru true (the rest kept), rudolf-remote\'s accounts "Bob\\tHASH\\tuser\\t1", a note in System health', bob.ru === true && bob.h && /^Bob\t[^\t]+\tuser\t1$/m.test(ra) && /^Ann\t[^\t]+\tadmin\t0$/m.test(ra) && /unattended access turned on for an account/.test(rdf('health')), {bob: Object.keys(bob), ra: ra.replace(/\t[^\t]{20,}\t/g, '\tHASH\t'), h: rdf('health')}) }
+  { mark = c0(); await until(() => rect('rme'), 3000); click(rect('rme')); await until(() => /POST remote\/end/.test(since()), 3000); await until(() => !rect('rme'), 4000);
+    ok('R2. End the session: remote/end, then "Nobody."', /POST remote\/end/.test(since()) && !rect('rme'), since()) }
+  { mark = c0(); const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 30; i++) xdo('click 4'); await wait(600); click(rect('rmo')); await until(() => rect('dialog'), 3000); pw(); await until(() => /POST remote\?on=0/.test(since()), 5000); await wait(600);
+    const log = (JSON.parse(LS().bd95seclog || '{}').sys || []).map(e => e.m);
+    ok('R3. Remote access off, with the administrator\'s permission: remote?on=0, "Remote access off" in the security log', /POST remote\?on=0/.test(since()) && log.includes('Remote access off') && /remote off/.test(lines('act').join('\n')), [since(), log.slice(-2)]) }
+  natStop(); for (const f of ['remote.json', 'remote-accounts', 'health']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
+}
+// ---- Mobile network (mobile60.js mobPanelS; the stand-in's modems: 0 connected with its SIM's settings, 1 locked with its PIN)
+async function checkMob() {
+  ST.state(D, MODES.light, MORE); try { fs.unlinkSync(path.join(D, 'mobpin')) } catch (e) {}
+  const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const pw = () => { const d = rect('dialog'); if (d) xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); xdo('key Return') };
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(250) } await wait(300) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  const set = re => until(() => re.test(since()), 4000);
+  natStart('mob'); await until(() => rect('body') && line('page') == 'mob', 20000); await wait(1500);
+  { mark = c0(); await scrollTo('mobroam0'); click(rect('mobroam0')); await set(/POST mobile\/settings\?id=0&k=roaming&v=1/);
+    ok('M1. Use mobile data when roaming: mobile/settings?id=0&k=roaming&v=1', /POST mobile\/settings\?id=0&k=roaming&v=1/.test(since()), since()) }
+  { mark = c0(); await scrollTo('moblim0'); click(rect('moblim0')); xdo('key ctrl+a'); xdo('type 2000'); xdo('key Return'); await set(/k=limit&v=2000/);
+    /* (28 days: the menu is not all on the screen; the select's own Down key, as Chromium's, picks the next) */
+    await scrollTo('mobsd0'); click(rect('mobsd0')); await until(() => line('menu'), 3000); xdo('key Escape'); await until(() => !line('menu'), 3000); xdo('key Down'); await set(/k=startday&v=2/);
+    ok('M2. Monthly limit 2000 (Enter) and the month starting on day 2: k=limit&v=2000, k=startday&v=2', /POST mobile\/settings\?id=0&k=limit&v=2000/.test(since()) && /k=startday&v=2/.test(since()), since()) }
+  { mark = c0(); await scrollTo('mobmode0'); await pick('mobmode0', 2, 4); await set(/k=mode&v=4g/);
+    ok('M3. Network type 4G (LTE) only: k=mode&v=4g', /POST mobile\/settings\?id=0&k=mode&v=4g/.test(since()), since()) }
+  { mark = c0(); await scrollTo('mobcust0'); click(rect('mobcust0')); await until(() => rect('mobapn0'), 3000); click(rect('mobapn0')); xdo('type Inet.Example'); await scrollTo('mobsave0'); click(rect('mobsave0')); await set(/k=apnuser/);
+    ok('M4. Typed in: the APN Inet.Example (its capitals kept), Save: k=apn&v=Inet.Example, then k=apnuser', /POST mobile\/settings\?id=0&k=apn&v=Inet\.Example/.test(since()) && /k=apnuser&v=/.test(since()), since()) }
+  { mark = c0(); await scrollTo('mobauto0'); click(rect('mobauto0')); await set(/k=apn&v=(&|$)/m);
+    ok('M5. Automatic again: k=apn&v= (empty)', /POST mobile\/settings\?id=0&k=apn&v=( |$)/m.test(since()), since()) }
+  { mark = c0(); await scrollTo('mobpin1'); click(rect('mobpin1')); xdo('type 123'); click(rect('mobpinb1')); await until(() => /mobmsg A PIN is 4 to 8 digits\./.test(acts()), 3000);
+    const short = /mobmsg A PIN is 4 to 8 digits\./.test(acts()) && !/mobile\/pin/.test(since());
+    click(rect('mobpin1')); xdo('key ctrl+a'); xdo('type 1234'); click(rect('mobpinb1')); await until(() => rect('dialog'), 3000); pw(); await set(/POST mobile\/pin\?id=1/); await wait(500);
+    let b = {}; try { b = JSON.parse(fs.readFileSync(path.join(D, 'mobpin'), 'utf8')) } catch (e) {}
+    ok('M6. The SIM\'s PIN: 123 refused ("A PIN is 4 to 8 digits."), 1234 with the administrator\'s name and password: mobile/pin?id=1 {n, p, pin}', short && /POST mobile\/pin\?id=1/.test(since()) && b.n == 'Ann' && b.p == PW && b.pin == '1234', [short, since(), Object.keys(b)]) }
+  { mark = c0(); await scrollTo('mobcb0'); click(rect('mobcb0')); await set(/POST mobile\/connect\?id=0&on=0/);
+    ok('M7. Disconnect: mobile/connect?id=0&on=0', /POST mobile\/connect\?id=0&on=0/.test(since()), since()) }
+  natStop(); try { fs.unlinkSync(path.join(D, 'mobpin')) } catch (e) {} try { fs.unlinkSync(path.join(D, 'mobile')) } catch (e) {}
+}
+// ---- Network Settings (settings25.js, wifi26.js, settings31.js, mobile58.js, hotspot59.js, vpn62.js; the stand-in keeps each body in DIR/body-NAME)
+async function checkNet() {
+  ST.state(D, MODES.light, MORE); const B = n => { try { return fs.readFileSync(path.join(D, 'body-' + n), 'utf8') } catch (e) { return null } };
+  for (const f of fs.readdirSync(D)) if (/^body-|^wifijob$/.test(f)) fs.unlinkSync(path.join(D, f));
+  const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n'); const dbg = () => lines('act').slice(-12);
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data;
+  const pw = () => { const d = rect('dialog'); if (d) xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); xdo('key Return') };
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 90; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 500) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 500 ? 5 : 4}`); await wait(200) } await wait(300) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  let FOC = []; const typeIn = async (n, t) => { await scrollTo(n); click(rect(n)); await wait(300); FOC.push(n + ':' + line('focus') + ':' + JSON.stringify(rect(n))); xdo('key ctrl+a'); xdo(`type --delay 20 '${t}'`); await wait(200) };
+  natStart('net'); await until(() => rect('body') && line('page') == 'net', 20000); await wait(2000);
+  { mark = c0(); await scrollTo('wfc1'); click(rect('wfc1')); await until(() => B('wifi_connect') != null, 4000); await until(() => /POST \/api\/job|GET job/.test(since()) && !/wifijob/.test(''), 3000); await wait(1500);
+    ok('N1. Cafe Guest (open, saved): Connect: wifi/connect "Cafe Guest\\n\\nsaved", then rudolfd\'s job followed', B('wifi_connect') == 'Cafe Guest\n\nsaved' && /GET job/.test(since()), [B('wifi_connect'), since().slice(-300)]) }
+  { mark = c0(); await scrollTo('wfc2'); click(rect('wfc2')); await until(() => rect('wfp'), 3000); click(rect('wfp')); xdo('type abc'); FOC.push('wfgo:' + JSON.stringify(rect('wfgo')) + JSON.stringify(rect('wfp'))); click(rect('wfgo')); await until(() => /wfe A Wi-Fi password has 8 to 63 characters\./.test(acts()), 3000);
+    const short = /wfe A Wi-Fi password has 8 to 63 characters\./.test(acts()); click(rect('wfp')); xdo('key ctrl+a'); xdo('type longpassword1'); xdo('key Return'); await until(() => B('wifi_connect') && B('wifi_connect').startsWith('Neighbour'), 4000); await wait(1500);
+    ok('N2. Neighbour 5G (WPA2/WPA3, not saved): its password asked; "abc" refused (8 to 63 characters); then wifi/connect "Neighbour 5G\\nlongpassword1\\npsk"', short && B('wifi_connect') == 'Neighbour 5G\nlongpassword1\npsk', [[short, B('wifi_connect')], FOC]) }
+  { await scrollTo('wfmt0'); click(rect('wfmt0')); await until(() => (LS().bd95metered || '').includes('Home'), 3000);
+    ok('N3. Saved network Home: Metered: bd95metered ["Home"], as appSetMetered keeps it', LS().bd95metered == '["Home"]', [LS().bd95metered, dbg()]) }
+  { await scrollTo('wff1'); click(rect('wff1')); await wait(400); click(rect('wff1')); await until(() => B('wifi_forget') != null, 3000);
+    ok('N4. Cafe Guest: Forget, tapped twice ("Tap again to forget"): wifi/forget "Cafe Guest"', B('wifi_forget') == 'Cafe Guest' && /forget sure Cafe Guest/.test(acts()), [[B('wifi_forget')], dbg()]) }
+  { mark = c0(); await typeIn('nad', '192.168.1.50/24'); await typeIn('ngw', '192.168.1.1'); await typeIn('ndn', '1.1.1.1'); await scrollTo('nst'); click(rect('nst')); await until(() => /net\/static/.test(since()), 3000);
+    ok('N5. Manual address 192.168.1.50/24, gateway, DNS, Apply: net/static?if=wlan0&addr=192.168.1.50%2F24&gw=192.168.1.1&dns=1.1.1.1', /POST net\/static\?if=wlan0&addr=192\.168\.1\.50%2F24&gw=192\.168\.1\.1&dns=1\.1\.1\.1/.test(since()), [since(), dbg()]) }
+  { mark = c0(); await typeIn('npx', 'proxy.example:3128'); click(rect('npa')); await until(() => /POST proxy/.test(since()), 3000);
+    ok('N6. Proxy proxy.example:3128, Save proxy: proxy?server=proxy.example%3A3128', /POST proxy\?server=proxy\.example%3A3128/.test(since()), [since(), FOC, rect('body')]) }
+  { await scrollTo('prov'); await pick('prov', 1, 3); await scrollTo('n'); await pick('n', 2, 3); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /"prov":"ddg"/.test(LS().bd95net || ''), 3000);
+    const nc = JSON.parse(LS().bd95net || '{}'), log = (JSON.parse(LS().bd95seclog || '{}').sys || []).map(e => e.m);
+    ok('N7. Web search DuckDuckGo, 20 results, Apply (the footer): bd95net.search {prov ddg, n 20}, the rest as it was; "Ann changed network settings" in the security log', nc.search && nc.search.prov == 'ddg' && nc.search.n === 20 && nc.dl && nc.dl.max === 4096 && Array.isArray(nc.conns) && log.includes('Ann changed network settings'), [[nc, log.slice(-2)], dbg()]) }
+  { mark = c0(); await scrollTo('mtrsel'); await pick('mtrsel', 1, 3); await until(() => /net\/metered\?/.test(since()), 3000);
+    ok('N8. This network: Metered: net/metered?if=wlan0&v=on', /POST net\/metered\?if=wlan0&v=on/.test(since()), [since(), dbg()]) }
+  { mark = c0(); await scrollTo('hst'); click(rect('hst')); await until(() => rect('dialog'), 3000); pw(); await until(() => B('net_hotspot') != null, 4000);
+    ok('N9. Share this connection, Turn on, with the administrator\'s permission: net/hotspot "Rudolf-Home\\n\\n2.4" (the saved password kept)', B('net_hotspot') == 'Rudolf-Home\n\n2.4', B('net_hotspot')) }
+  { mark = c0(); await scrollTo('vpnb0'); click(rect('vpnb0')); await until(() => /vpn\/on/.test(since()), 3000);
+    await scrollTo('vpnk0'); const k = rect('vpnk0'); xdo(`mousemove ${k[0] + 10} ${k[1] + 9} click 1`); await until(() => rect('dialog'), 3000); pw(); await until(() => B('vpn_set') != null, 4000); let b = {}; try { b = JSON.parse(B('vpn_set')) || {} } catch (e) {}
+    ok('N10. VPN Home router: Connect (anyone may): vpn/on?id=v1; its kill switch with the administrator\'s name and password: vpn/set {n, p, id v1, kill true}', /POST vpn\/on\?id=v1/.test(since()) && b.n == 'Ann' && b.p == PW && b.id == 'v1' && b.kill === true, [since(), Object.keys(b), JSON.stringify(rect('vpnk0')), dbg()]) }
+  natStop(); for (const f of fs.readdirSync(D)) if (/^body-|^wifijob$/.test(f)) fs.unlinkSync(path.join(D, f));
+}
+// ---- Oracle (signin26.js signinPanel, settings31.js, orasleep63.js)
+async function checkWeb() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 480) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 480 ? 5 : 4}`); await wait(200) } await wait(300) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  const typeIn = async (n, t) => { await scrollTo(n); click(rect(n)); await wait(200); xdo('key ctrl+a'); xdo(`type --delay 20 '${t}'`); await wait(200) };
+  natStart('web'); await until(() => rect('body') && line('page') == 'web', 20000); await wait(1500);
+  { mark = c0(); click(rect('sishell')); await until(() => /POST shell\?on=1/.test(since()), 3000); await wait(300);
+    ok('O1. Open websites as real browser tabs (unticked, as the page shows it while the shell has not said): ticked, shell?on=1', /POST shell\?on=1/.test(since()), since()) }
+  { click(rect('siask')); await until(() => SET().siAsk === false, 3000);
+    ok('O2. When a page asks for a password: Ask first off, kept at once (siAsk false)', SET().siAsk === false, SET().siAsk) }
+  { await typeIn('sin', 'not a site'); xdo('key Return'); await until(() => /sim bad/.test(acts()), 3000); const bad = /sim bad/.test(acts());
+    await typeIn('sin', 'https://Mail.Example.co.uk/login'); xdo('key Return'); await until(() => (SET().webSites || []).length, 3000);
+    ok('O3. Your sign-in sites: "not a site" refused; https://Mail.Example.co.uk/login added as example.co.uk (siDomain)', bad && JSON.stringify(SET().webSites) == '["example.co.uk"]', [bad, SET().webSites]) }
+  { await until(() => rect('sirm0'), 3000); click(rect('sirm0')); await until(() => (SET().webSites || ['x']).length == 0, 3000);
+    ok('O4. ...its Remove: webSites []', JSON.stringify(SET().webSites) == '[]', SET().webSites) }
+  { mark = c0(); await scrollTo('oprov'); await pick('oprov', 2, 3); await typeIn('ourl', 'http://search.example/?q={q}'); await scrollTo('apply'); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return');
+    await until(() => /nsm The custom search address/.test(acts()), 3000); const bad = /nsm The custom search address must start with https:\/\/ and contain \{q\}\./.test(acts());
+    await typeIn('ourl', 'https://search.example/?q={q}'); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /"prov":"custom"/.test(LS().bd95net || ''), 3000);
+    const nc = JSON.parse(LS().bd95net || '{}');
+    ok('O5. Web search: Custom with http:// refused at Apply; https://search.example/?q={q} applied: bd95net.search {prov custom, url}', bad && nc.search && nc.search.prov == 'custom' && nc.search.url == 'https://search.example/?q={q}', [bad, nc.search]) }
+  { await scrollTo('ofreesel'); await pick('ofreesel', 2, 5); await until(() => SET().oraFree === 60, 3000); const log = (JSON.parse(LS().bd95seclog || '{}').sys || []).map(e => e.m);
+    ok('O6. Memory: Free tabs after 1 hour, kept at once (oraFree 60), "Ann set Oracle to free tabs not looked at for 1 hour" in the security log', SET().oraFree === 60 && log.includes('Ann set Oracle to free tabs not looked at for 1 hour'), [SET().oraFree, log.slice(-2)]) }
+  natStop();
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -412,6 +551,11 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('km-checklist')) await checkKbdMouse();
   if (only('checklist') || only('vam-checklist')) await checkVolAccMm();
   if (only('checklist') || only('disp-checklist')) await checkDisp();
+  if (only('checklist') || only('bt-checklist')) await checkBt();
+  if (only('checklist') || only('remote-checklist')) await checkRemote();
+  if (only('checklist') || only('mob-checklist')) await checkMob();
+  if (only('checklist') || only('net-checklist')) await checkNet();
+  if (only('checklist') || only('web-checklist')) await checkWeb();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');
