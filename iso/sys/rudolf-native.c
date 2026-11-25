@@ -830,7 +830,7 @@ typedef struct Client { Window w, frame, rz[4]; int x, y, cw, ch, min, max, full
 	int csd, gl, gr, gt, gb, nodeco, tbcut;
 	int pg; double pgf, pgt; gint64 pgb0, pgch, pgend; char nk[24]; } Client;   /* (nk: 1.6.2 Part 39, a native app's window: its app, as the page's k) */   /* (1.6.1 Part 25: its page's progress, for its minimized taskbar button: pg 0 none, 1 a percentage (pgt; drawn from pgf, changed at pgch), 2 busy since pgb0, 3 ended at pgend) */   /* (1.6.1 Part 15: csd, the app draws its own title bar (_MOTIF_WM_HINTS, no decorations): Rudolf's frame keeps only its edge; gl..gb, GTK's
 	   invisible margins around it (_GTK_FRAME_EXTENTS), cut away by the clip window as Oracle's own bar is) */   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
-static void wopen_start(Client *c);
+static void wopen_start(Client *c); static void wopen_pre(Client *c);
 static void tbp_set(Client *c, const char *v); static int oracle_at(Client *c, int x, int y, int w, int h);   /* (1.6.1 Part 25, below) */
 static int mon_k(Client *c), mon_ox(Client *c), mon_oy(Client *c), mon_of_ws(int n); static void mon_go(int n), mon_move(Client *c, int n), mon_show(int k, int n, int focus), mon_keep(void), mon_drop(Client *c);
 static void csd_extents(Client *c); static void csd_read(Client *c, XWindowAttributes *wa); static void tb_cut_apply(Client *c); static void csd_update(Client *c); static void net_state_sync(Client *c); static void csd_max_first(Client *c); static void csd_frame_draw(Client *c);   /* (1.6.1 Part 15, below) */
@@ -962,7 +962,7 @@ static void wm_focus(Client *c)
 	if (c && c->app && c->app->rest) appwin_wake(c->app);   /* (1.6.1 Part 23 C: its page loaded again, back where it was) */
 	if (c) {
 		c->used = g_get_monotonic_time();   /* (the page's MRU: item 5) */
-		if (c->min) { c->min = 0; if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); net_state_sync(c); lp_unmin(c); }   /* (Part 17: the drop backward) */
+		if (c->min) { c->min = 0; lp_unmin(c); if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); net_state_sync(c); }   /* (Part 17: the drop backward; its first moment set before the window is shown, so it never shows whole first: 1.6.3 Part 8, item 2) */
 		XRaiseWindow(DPY, c->frame);
 		/* its dialogs stay above it */
 		for (GList *l = CLIENTS; l; l = l->next) { Client *d = l->data; if (d->trans == c->w && !d->min) XRaiseWindow(DPY, d->frame); }
@@ -2012,7 +2012,7 @@ static void appwin_reveal(AppWin *a)
 	if (!c || !c->wait) return; int was = c->wait; c->wait = 0;
 	if (was == 2) { cover_gone(c); state_write(); return; }   /* (shown already, covered: its page now) */
 	/* (the page's picture is drawn into its window as X shows it: until then the app's colour there, not what was on the screen before) */
-	if (c->hidden && !a->hidden && !LOCKED && a->modal != 2) { XSetWindowBackground(DPY, c->w, app_bg_pixel()); c->hidden = 0; if (!c->off && !c->min) { XMapWindow(DPY, c->frame); XSync(DPY, False); frame_draw(c); } wm_focus(c); }
+	if (c->hidden && !a->hidden && !LOCKED && a->modal != 2) { XSetWindowBackground(DPY, c->w, app_bg_pixel()); c->hidden = 0; if (!c->off && !c->min) { wopen_pre(c); XMapWindow(DPY, c->frame); XSync(DPY, False); frame_draw(c); } wm_focus(c); }
 	if (a->view) gtk_widget_queue_draw(a->view);
 	bar_redraw(); state_write();
 	if (!c->opened && !c->hidden) wopen_start(c);
@@ -2851,9 +2851,26 @@ static void btn_rects(Client *c, int r[3][4])
 	for (int i = 2; i >= 0; i--) { r[i][0] = (int)lround(x * Z); r[i][1] = (int)lround((eb + g.by) * Z); r[i][2] = (int)lround(g.bw * Z); r[i][3] = (int)lround(g.bh * Z); x -= g.bw + 3 + (candy ? 2 : 0); }
 }
 /* the frame's outline: round corners (X's shape: no compositor needed) */
+/* 1.6.3 Part 8, item 2 ("Transitions on Native are rough/blocky"): GDK does not shape a window it did not make (a foreign one, as the frames
+   are: gdk_window_shape_combine_region set nothing on them, measured with xwininfo -shape), so no transition showed only its part of the
+   window (a window opening showed whole at once, the light drawn around it). X's own SHAPE request, from libXext,
+   which GTK has loaded (taken as libXcomposite is, without a new library to link); GDK's call kept where it is not there */
+typedef int (*XShRects)(Display *, Window, int, int, int, XRectangle *, int, int, int);
+static XShRects xshape_fn(void)
+{
+	static XShRects f; static int tried; if (tried) return f; tried = 1;
+	void *h = dlopen("libXext.so.6", RTLD_NOW | RTLD_LOCAL); if (h) f = (XShRects)dlsym(h, "XShapeCombineRectangles"); return f;
+}
+static int xshape_set(Window w, cairo_region_t *rg)
+{
+	XShRects f = xshape_fn(); if (!f || !DPY) return 0;
+	int n = cairo_region_num_rectangles(rg); XRectangle *r = g_new0(XRectangle, n ? n : 1);
+	for (int i = 0; i < n; i++) { cairo_rectangle_int_t rc; cairo_region_get_rectangle(rg, i, &rc); r[i].x = rc.x; r[i].y = rc.y; r[i].width = rc.width; r[i].height = rc.height; }
+	f(DPY, w, 0 /* ShapeBounding */, 0, 0, r, n, 0 /* ShapeSet */, 3 /* YXBanded */); g_free(r); return 1;
+}
 static void frame_shape(Client *c)
 {
-	GdkWindow *g = gdk_x11_window_foreign_new_for_display(gdk_display_get_default(), c->frame); if (!g) return;
+	GdkWindow *g = xshape_fn() ? NULL : gdk_x11_window_foreign_new_for_display(gdk_display_get_default(), c->frame); if (!g && !xshape_fn()) return;
 	int fw = fw_of(c), fh = fh_of(c); double r = c->full ? 0 : tw_rad() * Z;
 	cairo_region_t *rg = cairo_region_create();
 	for (int y = 0; y < fh; y++) { double dy = y < r ? r - y - .5 : y >= fh - r ? y - (fh - r) + .5 : 0, in = dy > 0 ? r - sqrt(fmax(0, r * r - dy * dy)) : 0;
@@ -2861,7 +2878,10 @@ static void frame_shape(Client *c)
 	/* (1.6.0 Part 17: during a window transition only the part of it the scene shows: X's shape again, no compositor) */
 	if (c->lpclip) { int x0 = (int)floor(c->lpcr.x - c->x), y0 = (int)floor(c->lpcr.y - c->y), x1 = (int)ceil(c->lpcr.x + c->lpcr.w - c->x), y1 = (int)ceil(c->lpcr.y + c->lpcr.h - c->y), none = c->lpcr.w < .5 || c->lpcr.h < .5;
 		cairo_rectangle_int_t rc = { x0, y0, none ? 0 : x1 - x0, none ? 0 : y1 - y0 }; cairo_region_intersect_rectangle(rg, &rc); }
-	gdk_window_shape_combine_region(g, rg, 0, 0); cairo_region_destroy(rg); g_object_unref(g);
+	/* (at rest the frame stays whole, as it was in fact: the rounded corners cut by X's shape would also cut its corners' resize grips,
+	   which the page's and native59_t.sh's corner drag take 2 px from the corner; only a transition's part of the window is shaped) */
+	if (!c->lpclip) { cairo_region_destroy(rg); cairo_rectangle_int_t all = { 0, 0, fw, fh }; rg = cairo_region_create_rectangle(&all); }
+	if (!xshape_set(c->frame, rg) && g) gdk_window_shape_combine_region(g, rg, 0, 0); cairo_region_destroy(rg); if (g) g_object_unref(g);
 }
 /* (the owner's photo) Settings › Accessibility › Color vision, which the page puts on the whole screen (base_v24.html applyCB: html's
    filter): grayscale(1), contrast(1.35) saturate(1.2) for High contrast, or the colour-blindness correction's matrix (cbValues), in
@@ -2976,7 +2996,7 @@ static void csd_frame_draw(Client *c)
 static void frames_shadow(cairo_t *cr)
 {
 	if (!WM_OK || LOCKED) return;
-	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->full || c->hidden || c->trans) continue;   /* (a maximised window's too, as the page's .win.max) */
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->full || c->hidden || c->trans || c->lpclip) continue;   /* (a maximised window's too, as the page's .win.max; none while a transition shows part of it, as the page's clip-path cuts its box-shadow: 1.6.3 Part 8, item 2) */
 		if (NMON > 1 && (c->off || mon_k(c) != MON_DRAWK)) continue;   /* (1.6.1 Part 1: each monitor's own windows) */
 		double x = c->x / Z, y = c->y / Z, w = fw_of(c) / Z, h = fh_of(c) / Z; int pad = 40;
 		cairo_surface_t *m = cairo_image_surface_create(CAIRO_FORMAT_A8, (int)ceil((w + 2 * pad) * Z), (int)ceil((h + 2 * pad) * Z)); cairo_t *mc = cairo_create(m);
@@ -6672,7 +6692,7 @@ static void toast_place(void)
    smaller (no see-through without a compositor); at 0 there is no light, and the windows still fill, clear and drop on time.
    None with Reduce motion, on the lock screen, for a full-screen window and the shell's own unseen pages (do-*). This replaces
    test finding N15's fade (a window of the shell's over the new one, drawn from the windows' pictures). */
-typedef struct { int on, kind, back, sw, max_on; Client *c; gint64 t0; LPGeo g; GtkWidget *pw; int wx, wy, pclip; LPRect pcr; } LPRun;   /* (sw: its new size given; max_on: maximized after; pw: a menu of the shell's own, its window at wx wy: Part 17b) */
+typedef struct { int on, kind, back, sw, max_on; Client *c; gint64 t0; LPGeo g; GtkWidget *pw; int wx, wy, pclip; LPRect pcr; int nf; gint64 tl, gmax, work; } LPRun;   /* (nf, tl, gmax, work: its frames, the last one's time, the longest gap and the time drawing took, 1.6.3 Part 8 item 2) */   /* (sw: its new size given; max_on: maximized after; pw: a menu of the shell's own, its window at wx wy: Part 17b) */
 #define LP_RUNS 8
 #define LP_PL (LP_NL * 2)
 #define LP_PP (LP_NP * 2)
@@ -6752,10 +6772,20 @@ static void lp_draw_clip(cairo_t *cr, GtkWidget *pw, int wx, int wy)
 	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].pw == pw && LPR[r].pclip) { const LPRect *c = &LPR[r].pcr;
 		cairo_rectangle(cr, c->x - wx, c->y - wy, c->w < .5 || c->h < .5 ? 0 : c->w, c->w < .5 || c->h < .5 ? 0 : c->h); cairo_clip(cr); return; }
 }
+/* (1.6.3 Part 8, item 2, "Transitions on Native are rough/blocky": each transition's frames measured, as the page's are with
+   requestAnimationFrame: how many, the longest gap between two and the time the shell took drawing them; the last 16 in the state
+   file, "lpstat KIND FRAMES MS GAP-MS WORK-MS", and the native log) */
+static char LPSTAT[16][64]; static int NLPSTAT;
+static void lp_stat(LPRun *R)
+{
+	gint64 now = g_get_monotonic_time(); char *l = LPSTAT[NLPSTAT++ % 16];
+	snprintf(l, sizeof LPSTAT[0], "%s%s %d %d %d %d", LP_NAME[R->kind], R->back ? "<" : "", R->nf, (int)((now - R->t0) / 1000), (int)(R->gmax / 1000), (int)(R->work / 1000));
+	if (getenv("RUDOLF_LP_LOG")) fprintf(stderr, "rudolf-native: litepoint %s\n", l);
+}
 static void lp_finish(LPRun *R)
 {
-	if (!R->on) return; if (R->pw) { lp_pw_shape(R, NULL); R->pw = NULL; } R->on = 0; LP_DONE++; Client *c = R->c; if (!c || !g_list_find(CLIENTS, c)) return;
-	lp_switch(R); c->lpclip = 0;
+	if (!R->on) return; lp_stat(R); if (R->pw) { lp_pw_shape(R, NULL); R->pw = NULL; } R->on = 0; LP_DONE++; Client *c = R->c; if (!c || !g_list_find(CLIENTS, c)) return;
+	lp_switch(R); c->lpclip = 0; desk_shadows();
 	if (R->kind == LP_MIN && !R->back && c->min) XUnmapWindow(DPY, c->frame);   /* (minimized: gone once it has dropped into its button) */
 	frame_shape(c); state_write();
 }
@@ -6767,10 +6797,12 @@ static void lp_state(GString *s)
 	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on) { double t = fmin(1, (now - LPR[r].t0) / (LP_MS[LPR[r].kind] * 1000.0));
 		g_string_append_printf(s, "lp %s%s %lx %.2f\n", LP_NAME[LPR[r].kind], LPR[r].back ? "<" : "", LPR[r].c ? (unsigned long)LPR[r].c->w : 0UL, LPR[r].back ? 1 - t : t); }
 	g_string_append_printf(s, "lpdone %d\nlplit %lx %.2f\n", LP_DONE, (unsigned long)LP_LITW, LP_LITA);
+	for (int i = NLPSTAT > 16 ? NLPSTAT - 16 : 0; i < NLPSTAT; i++) g_string_append_printf(s, "lpstat %s\n", LPSTAT[i % 16]);
 }
 static gboolean lp_tick(gpointer d)
 {
 	(void)d; gint64 now = g_get_monotonic_time(); RGB glow, core; lp_cols(&glow, &core); LP_CORE = core; double br = lp_br();
+	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on) { LPRun *R = &LPR[r]; if (R->tl && now - R->tl > R->gmax) R->gmax = now - R->tl; R->tl = now; R->nf++; }
 	static double L[LP_PL][5], P[LP_PP][4]; int nl = 0, np = 0, any = 0; Window litw = 0; double lita = 0;
 	for (int r = 0; r < LP_RUNS; r++) { LPRun *R = &LPR[r]; if (!R->on) continue;
 		if (R->c && !g_list_find(CLIENTS, R->c)) { R->on = 0; continue; }
@@ -6789,6 +6821,7 @@ static gboolean lp_tick(gpointer d)
 	for (int i = 0; i < LP_PP; i++) { if (i < np) lp_point_put(i, P[i], glow, br); else if (LPPM[i]) { XUnmapWindow(DPY, LPPW[i]); LPPM[i] = 0; } }
 	lita *= br; if (litw != LP_LITW || fabs(lita - LP_LITA) > .01) { LP_LITW = litw; LP_LITA = lita; bar_redraw(); }
 	XFlush(DPY);
+	{ gint64 w = g_get_monotonic_time() - now; for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on) LPR[r].work += w; }
 	if (!any) { LP_TICK = 0; lp_unmap(LPLW, LPLM, LP_PL); lp_unmap(LPPW, LPPM, LP_PP); if (LP_LITW) { LP_LITW = 0; LP_LITA = 0; bar_redraw(); } state_write(); return G_SOURCE_REMOVE; }
 	return G_SOURCE_CONTINUE;
 }
@@ -6799,7 +6832,7 @@ static int lp_start(Client *c, int kind, int back, const LPGeo *g, int max_on)
 	if (c) lp_stop(c);
 	LPRun *R = NULL; for (int r = 0; r < LP_RUNS; r++) if (!LPR[r].on) { R = &LPR[r]; break; } if (!R) return 0;
 	memset(R, 0, sizeof *R); R->on = 1; R->kind = kind; R->back = back; R->c = c; R->g = *g; R->max_on = max_on; R->t0 = g_get_monotonic_time(); LP_LAST = R;
-	if (c) { LPScene sc; lp_scene(kind, back ? 1 : 0, g, &sc); c->lpclip = sc.clip; c->lpcr = sc.cr; frame_shape(c); }   /* (its first moment at once) */
+	if (c) { LPScene sc; lp_scene(kind, back ? 1 : 0, g, &sc); c->lpclip = sc.clip; c->lpcr = sc.cr; frame_shape(c); desk_shadows(); }   /* (its first moment at once; its shadow with it) */
 	if (!LP_TICK) LP_TICK = g_timeout_add(16, lp_tick, NULL);
 	state_write(); return 1;
 }
@@ -6819,8 +6852,15 @@ static void lp_button(Client *c, const LPRect *f, double *x, double *y)
 static void wopen_start(Client *c)
 {
 	if (!c || c->opened) return; c->opened = 1;
-	LPGeo g; memset(&g, 0, sizeof g); if (lp_off(c) || c->min || !lp_viewable(c, &g.f)) return;
-	lp_start(c, c->trans || (c->app && c->app->s2s) ? LP_S2S : LP_C2C, 0, &g, 0);
+	LPGeo g; memset(&g, 0, sizeof g);
+	if (lp_off(c) || c->min || !lp_viewable(c, &g.f) || !lp_start(c, c->trans || (c->app && c->app->s2s) ? LP_S2S : LP_C2C, 0, &g, 0)) { if (c->lpclip) { c->lpclip = 0; frame_shape(c); } }   /* (no transition: whole, as before) */
+}
+/* (1.6.3 Part 8, item 2) an app's window about to be shown for the first time: nothing of it shown until its transition starts (wopen_start, at
+   once after: its first moment then; whole again if there is none), so it does not show whole for a moment first */
+static void wopen_pre(Client *c)
+{
+	if (!c || c->opened || lp_off(c) || c->min) return;
+	c->lpclip = 1; memset(&c->lpcr, 0, sizeof c->lpcr); frame_shape(c);
 }
 /* minimizing: the window stays mapped (minimized for everything else at once) until the point has dropped into its button */
 static int lp_min(Client *c)
