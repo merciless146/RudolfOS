@@ -25,6 +25,7 @@ const char *set_jstr(RuiJ *o, const char *k, const char *dflt);
 RuiJ *set_ls_get(const char *k);                      /* the page's ld(k): {"x": the value} (NULL: none) */
 int set_ls_set(const char *k, const char *json);      /* the page's svj(k, value): the value as JSON */
 char *set_jesc(const char *s);                        /* a string's JSON escapes (without its quotes) */
+void set_jw(GString *b, RuiJ *v);                    /* (1.6.3) a JSON value written again as it was (numbers as JavaScript writes them) */
 
 /* ---- building a page (between set_page_begin and set_page_end, called by settings.c) */
 typedef struct Cell Cell;
@@ -114,6 +115,7 @@ void page_vol(void);   /* settings_vol.c */
 void page_mm(void);    /* settings_mm.c */
 void page_acc(void);   /* settings_acc.c */
 void page_bt(void);    /* settings_bt.c (1.6.3 PR 6) */
+void page_remote(void); /* settings_remote.c (1.6.3 PR 6) */
 /* (settings_vol.c) sound through PulseAudio's simple API, opened when first needed: 16-bit mono at rate, played in a thread of its own */
 void set_play_pcm(const short *pcm, size_t n, int rate);
 void sec_bring(void); /* settings_bring.c */

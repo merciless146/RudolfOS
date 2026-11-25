@@ -164,7 +164,7 @@ class H(http.server.BaseHTTPRequestHandler):
         # same for the page's Task Manager and the native one); the actions taken answered as rudolfd answers them (and noted in DIR/calls)
         if rd('tm') is not None:
             T = json.loads(rd('tm'))
-            if w in T and w != 'bt' and (m == 'GET' or w in ('apps/running',)): return self.j(T[w])
+            if w in T and w not in ('bt', 'remote') and (m == 'GET' or w in ('apps/running',)): return self.j(T[w])
             if w == 'proc/end' and m == 'POST': return self.j({'ok': True, 'message': 'proc', 'ended': 3, 'kept': 0} if 'tree=1' in q else {'ok': True, 'message': 'proc'})
             if w in ('service/restart', 'apps/end', 'apps/kill', 'shell/switch') and m == 'POST': return self.j({'ok': True, 'message': w})
             if w == 'memory/dropcache' and m == 'POST': return self.j({'ok': True, 'freed': 104857600})
@@ -175,6 +175,15 @@ class H(http.server.BaseHTTPRequestHandler):
             # (Settings › Volume Controls, settings_t.js V-checklist: the sound card, the microphone, the echo canceller, as rudolfd answers them)
             if w in ('audio', 'audio/mic') and m == 'POST': return self.j({'ok': True, 'message': 'sound card set' if w == 'audio' else 'microphone chosen'})
             if w == 'sound/echo' and m == 'POST': return self.j({'ok': True, 'on': 'on=1' in q, 'active': 'on=1' in q})
+            # (Settings › Remote access, settings_t.js R-checklist: rudolfd's remote, remote?on=, remote/end, remote/accounts (kept in DIR/remote-accounts) and health)
+            if (w == 'remote' or w.startswith('remote/')) and 'remote' in T:
+                rp = os.path.join(D, 'remote.json'); S = json.loads(rd('remote.json') or json.dumps(T['remote']))
+                if m == 'GET': return self.j(S)
+                if w == 'remote/accounts': open(os.path.join(D, 'remote-accounts'), 'wb').write(b); return self.j({'ok': True, 'message': 'stored'})
+                if w == 'remote/end': S['session'] = None; open(rp, 'w').write(json.dumps(S)); return self.j({'ok': True, 'message': 'ending'})
+                if w == 'remote':
+                    S['on'] = 'on=1' in q; S['running'] = S['on']; open(rp, 'w').write(json.dumps(S)); return self.j({'ok': True, 'message': 'ok'})
+            if w == 'health' and m == 'POST' and 'remote' in T: open(os.path.join(D, 'health'), 'ab').write(b + b'\n'); return self.j({'ok': True})
             # (Settings › Bluetooth, settings_t.js B-checklist: rudolfd's bt/* as rudolf-devices answers them, the status kept in DIR/bt.json from settings_rd.json's)
             if w.startswith('bt') and 'bt' in T:
                 bp = os.path.join(D, 'bt.json'); S = json.loads(rd('bt.json') or json.dumps(T['bt']))

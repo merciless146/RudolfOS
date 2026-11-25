@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -390,6 +390,24 @@ async function checkBt() {
   ok('B7. Bluetooth Off: bt/power?on=0', /POST bt\/power\?on=0/.test(since()), since());
   natStop(); for (const f of ['bt.json', 'btask']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
 }
+// ---- Remote access (remote50.js remotePanel; the stand-in keeps the state in DIR/remote.json, rudolf-remote's accounts in DIR/remote-accounts)
+async function checkRemote() {
+  ST.state(D, MODES.light, MORE); for (const f of ['remote.json', 'remote-accounts', 'health']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
+  const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const rdf = f => { try { return fs.readFileSync(path.join(D, f), 'utf8') } catch (e) { return '' } };
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data;
+  const pw = () => { const d = rect('dialog'); if (d) xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); xdo('key Return') };
+  const bottom = async () => { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 30; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(600) };
+  natStart('remote'); await until(() => rect('body') && line('page') == 'remote', 20000); await wait(1500);
+  { await bottom(); mark = c0(); click(rect('rmu1')); await until(() => rect('dialog'), 3000); pw(); await until(() => /POST health/.test(since()), 5000); await wait(500);
+    const u = JSON.parse(LS().bd95user || '{}'), bob = (u.accts || []).find(a => a.n == 'Bob') || {}, ra = rdf('remote-accounts');
+    ok('R1. Bob\'s unattended access, with the administrator\'s permission: bd95user\'s Bob.ru true (the rest kept), rudolf-remote\'s accounts "Bob\\tHASH\\tuser\\t1", a note in System health', bob.ru === true && bob.h && /^Bob\t[^\t]+\tuser\t1$/m.test(ra) && /^Ann\t[^\t]+\tadmin\t0$/m.test(ra) && /unattended access turned on for an account/.test(rdf('health')), {bob: Object.keys(bob), ra: ra.replace(/\t[^\t]{20,}\t/g, '\tHASH\t'), h: rdf('health')}) }
+  { mark = c0(); await until(() => rect('rme'), 3000); click(rect('rme')); await until(() => /POST remote\/end/.test(since()), 3000); await until(() => !rect('rme'), 4000);
+    ok('R2. End the session: remote/end, then "Nobody."', /POST remote\/end/.test(since()) && !rect('rme'), since()) }
+  { mark = c0(); const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 30; i++) xdo('click 4'); await wait(600); click(rect('rmo')); await until(() => rect('dialog'), 3000); pw(); await until(() => /POST remote\?on=0/.test(since()), 5000); await wait(600);
+    const log = (JSON.parse(LS().bd95seclog || '{}').sys || []).map(e => e.m);
+    ok('R3. Remote access off, with the administrator\'s permission: remote?on=0, "Remote access off" in the security log', /POST remote\?on=0/.test(since()) && log.includes('Remote access off') && /remote off/.test(lines('act').join('\n')), [since(), log.slice(-2)]) }
+  natStop(); for (const f of ['remote.json', 'remote-accounts', 'health']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -436,6 +454,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('vam-checklist')) await checkVolAccMm();
   if (only('checklist') || only('disp-checklist')) await checkDisp();
   if (only('checklist') || only('bt-checklist')) await checkBt();
+  if (only('checklist') || only('remote-checklist')) await checkRemote();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

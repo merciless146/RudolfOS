@@ -586,7 +586,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;
@@ -1066,6 +1066,17 @@ void s_col(cairo_t *cr, const char *w, double a)
 	else if (!strcmp(w, "acr")) { if (RUI.dark) rui_color(cr, "bd", a); else cairo_set_source_rgba(cr, 0xee / 255.0, 0xf0 / 255.0, 0xf3 / 255.0, a); }
 	else if (!strcmp(w, "th")) { if (RUI.dark) cairo_set_source_rgba(cr, 0x1e / 255.0, 0x29 / 255.0, 0x3b / 255.0, a); else rui_color(cr, "bg2", a); }
 	else rui_color(cr, w, a);
+}
+/* (1.6.3 Part 3) any JSON value written again as it was: a number as JavaScript writes it (the shortest that reads back the same) */
+void set_jw(GString *b, RuiJ *v)
+{
+	int t = rui_jtype(v);
+	if (t == 1) g_string_append(b, rui_jval(v) ? "true" : "false");
+	else if (t == 2) { double x = rui_jval(v); char nb[40]; if (!isfinite(x)) g_string_append(b, "null"); else if (x == floor(x) && fabs(x) < 1e21) g_string_append_printf(b, "%.0f", x == 0 ? 0.0 : x); else { for (int p = 1; p <= 17; p++) { char f[8]; snprintf(f, sizeof f, "%%.%dg", p); g_ascii_formatd(nb, sizeof nb, f, x); if (g_ascii_strtod(nb, NULL) == x) break; } g_string_append(b, nb); } }
+	else if (t == 3) { char *e = set_jesc(rui_jsval(v)); g_string_append_printf(b, "\"%s\"", e); g_free(e); }
+	else if (t == 4) { g_string_append_c(b, '['); for (int i = 0; i < rui_jlen(v); i++) { if (i) g_string_append_c(b, ','); set_jw(b, rui_jat(v, i)); } g_string_append_c(b, ']'); }
+	else if (t == 5) { g_string_append_c(b, '{'); for (int i = 0; rui_jkey(v, i); i++) { const char *k = rui_jkey(v, i); char *e = set_jesc(k); if (i) g_string_append_c(b, ','); g_string_append_printf(b, "\"%s\":", e); g_free(e); set_jw(b, rui_jprop(v, k)); } g_string_append_c(b, '}'); }
+	else g_string_append(b, "null");
 }
 double s_z(void) { return RUI.z; }
 /* (1.6.3 Part 3) a text laid out as the page's (its font, wrapped at w CSS px; 0: one line), for a page that draws its lines itself */

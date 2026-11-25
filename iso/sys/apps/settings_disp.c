@@ -295,16 +295,7 @@ static void lk_load(void)
 	for (int i = 0; i < 7; i++) { g_free(LKV[i]); RuiJ *v = rui_jprop(l, LKK[i]); LKV[i] = v ? jv(v) : NULL; if (!LKV[i]) LKV[i] = g_strdup(LKD[i]); } rui_jfree(o);
 }
 static char *lks(int i) { char *w = g_strdup_printf("{\"x\":%s}", LKV[i]); RuiJ *o = rui_jparse(w); g_free(w); char *r = g_strdup(rui_jtype(rui_jprop(o, "x")) == 3 ? set_jstr(o, "x", "") : LKV[i]); rui_jfree(o); return r; }
-/* (any JSON value written again as it was) */
-static void jw(GString *b, RuiJ *v)
-{
-	int t = rui_jtype(v);
-	if (t == 1) g_string_append(b, rui_jval(v) ? "true" : "false"); else if (t == 2) { char nb[40]; g_ascii_formatd(nb, sizeof nb, "%.17g", rui_jval(v)); g_string_append(b, nb); }
-	else if (t == 3) { char *e = set_jesc(rui_jsval(v)); g_string_append_printf(b, "\"%s\"", e); g_free(e); }
-	else if (t == 4) { g_string_append_c(b, '['); for (int i = 0; i < rui_jlen(v); i++) { if (i) g_string_append_c(b, ','); jw(b, rui_jat(v, i)); } g_string_append_c(b, ']'); }
-	else if (t == 5) { g_string_append_c(b, '{'); for (int i = 0; rui_jkey(v, i); i++) { const char *k = rui_jkey(v, i); char *e = set_jesc(k); if (i) g_string_append_c(b, ','); g_string_append_printf(b, "\"%s\":", e); g_free(e); jw(b, rui_jprop(v, k)); } g_string_append_c(b, '}'); }
-	else g_string_append(b, "null");
-}
+#define jw set_jw
 /* (sysSave: bd95sys with its lk replaced, the rest kept as it is) */
 static void lk_save(void)
 {

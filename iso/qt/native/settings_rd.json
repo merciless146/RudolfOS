@@ -287,5 +287,26 @@
     "rssi": -60
    }
   ]
+ },
+ "remote": {
+  "ok": true,
+  "on": true,
+  "running": true,
+  "port": 8443,
+  "live": false,
+  "code": "483 192",
+  "fingerprint": "9F:3A:61:0C:D2:7B:44:E8:15:A9:C0:3E:72:B6:58:01:EE:4D:90:2F:A3:6C:17:B8:5D:E2:09:C4:31:7F:86:AB",
+  "addresses": [
+   "192.168.1.5",
+   "10.8.0.2"
+  ],
+  "session": {
+   "user": "Ann",
+   "from": "192.168.1.23",
+   "since": 1794648960,
+   "unattended": false
+  },
+  "pending": null,
+  "devices": 2
  }
 }
