@@ -478,6 +478,34 @@ async function checkNet() {
     ok('N10. VPN Home router: Connect (anyone may): vpn/on?id=v1; its kill switch with the administrator\'s name and password: vpn/set {n, p, id v1, kill true}', /POST vpn\/on\?id=v1/.test(since()) && b.n == 'Ann' && b.p == PW && b.id == 'v1' && b.kill === true, [since(), Object.keys(b), JSON.stringify(rect('vpnk0')), dbg()]) }
   natStop(); for (const f of fs.readdirSync(D)) if (/^body-|^wifijob$/.test(f)) fs.unlinkSync(path.join(D, f));
 }
+// ---- Oracle (signin26.js signinPanel, settings31.js, orasleep63.js)
+async function checkWeb() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 480) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 480 ? 5 : 4}`); await wait(200) } await wait(300) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  const typeIn = async (n, t) => { await scrollTo(n); click(rect(n)); await wait(200); xdo('key ctrl+a'); xdo(`type --delay 20 '${t}'`); await wait(200) };
+  natStart('web'); await until(() => rect('body') && line('page') == 'web', 20000); await wait(1500);
+  { mark = c0(); click(rect('sishell')); await until(() => /POST shell\?on=1/.test(since()), 3000); await wait(300);
+    ok('O1. Open websites as real browser tabs (unticked, as the page shows it while the shell has not said): ticked, shell?on=1', /POST shell\?on=1/.test(since()), since()) }
+  { click(rect('siask')); await until(() => SET().siAsk === false, 3000);
+    ok('O2. When a page asks for a password: Ask first off, kept at once (siAsk false)', SET().siAsk === false, SET().siAsk) }
+  { await typeIn('sin', 'not a site'); xdo('key Return'); await until(() => /sim bad/.test(acts()), 3000); const bad = /sim bad/.test(acts());
+    await typeIn('sin', 'https://Mail.Example.co.uk/login'); xdo('key Return'); await until(() => (SET().webSites || []).length, 3000);
+    ok('O3. Your sign-in sites: "not a site" refused; https://Mail.Example.co.uk/login added as example.co.uk (siDomain)', bad && JSON.stringify(SET().webSites) == '["example.co.uk"]', [bad, SET().webSites]) }
+  { await until(() => rect('sirm0'), 3000); click(rect('sirm0')); await until(() => (SET().webSites || ['x']).length == 0, 3000);
+    ok('O4. ...its Remove: webSites []', JSON.stringify(SET().webSites) == '[]', SET().webSites) }
+  { mark = c0(); await scrollTo('oprov'); await pick('oprov', 2, 3); await typeIn('ourl', 'http://search.example/?q={q}'); await scrollTo('apply'); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return');
+    await until(() => /nsm The custom search address/.test(acts()), 3000); const bad = /nsm The custom search address must start with https:\/\/ and contain \{q\}\./.test(acts());
+    await typeIn('ourl', 'https://search.example/?q={q}'); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /"prov":"custom"/.test(LS().bd95net || ''), 3000);
+    const nc = JSON.parse(LS().bd95net || '{}');
+    ok('O5. Web search: Custom with http:// refused at Apply; https://search.example/?q={q} applied: bd95net.search {prov custom, url}', bad && nc.search && nc.search.prov == 'custom' && nc.search.url == 'https://search.example/?q={q}', [bad, nc.search]) }
+  { await scrollTo('ofreesel'); await pick('ofreesel', 2, 5); await until(() => SET().oraFree === 60, 3000); const log = (JSON.parse(LS().bd95seclog || '{}').sys || []).map(e => e.m);
+    ok('O6. Memory: Free tabs after 1 hour, kept at once (oraFree 60), "Ann set Oracle to free tabs not looked at for 1 hour" in the security log', SET().oraFree === 60 && log.includes('Ann set Oracle to free tabs not looked at for 1 hour'), [SET().oraFree, log.slice(-2)]) }
+  natStop();
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -527,6 +555,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('remote-checklist')) await checkRemote();
   if (only('checklist') || only('mob-checklist')) await checkMob();
   if (only('checklist') || only('net-checklist')) await checkNet();
+  if (only('checklist') || only('web-checklist')) await checkWeb();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

@@ -186,6 +186,8 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self.j({'ok': True, 'message': {'wifi/forget': 'Forgotten.', 'net/static': 'Manual address set.', 'net/dhcp': 'Automatic address.', 'proxy': 'Proxy saved.', 'net/hotspot': 'Sharing.'}.get(w, 'Done.')})
             if w == 'job' and m == 'GET' and rd('wifijob'):
                 n = rd('wifijob').decode(); os.unlink(os.path.join(D, 'wifijob')); return self.j({'ok': True, 'running': False, 'name': 'wifi', 'status': 0, 'log': 'Connected to ' + n})
+            # (Settings › Oracle, settings_t.js O-checklist: rudolfd's shell?on= and shell/switch)
+            if m == 'POST' and w in ('shell', 'shell/switch') and 'net' in T and not rd('engine'): return self.j({'ok': True, 'on': 'on=1' in q, 'message': 'saved'})
             # (Settings › Mobile network, settings_t.js M-checklist: rudolfd's mobile/settings, mobile/pin, mobile/puk as rudolfd answers them; the PIN's body kept in DIR/mobpin)
             if w in ('mobile/settings', 'mobile/pin', 'mobile/puk') and m == 'POST' and 'mobile/settings' in T:
                 if w == 'mobile/settings': return self.j({'ok': True, 'message': 'saved'})
