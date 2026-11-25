@@ -25,6 +25,12 @@ jobs:
           gcc -O2 -Wall -Wno-misleading-indentation -Wno-deprecated-declarations -o $RUNNER_TEMP/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
       - name: "trans163_t.js: the transitions, frame by frame"
         run: mkdir -p out/t && NODE_PATH=$PWD/node_modules SAME_SCRIPT=trans163_t.js SAME_PORT=8748 SAME_DSP=:94 sh iso/qt/native/same_t.sh $PWD/out/t "" $RUNNER_TEMP/rudolf-native
+      - name: "same_t.js: the title bars with main's rudolf-native (for comparison: the runner's own differences)"
+        continue-on-error: true
+        run: |
+          git fetch -q --depth 1 origin main && git show origin/main:iso/sys/rudolf-native.c > $RUNNER_TEMP/main-native.c && git show origin/main:iso/sys/litepoint.h > $RUNNER_TEMP/litepoint.h
+          gcc -O2 -Wno-misleading-indentation -Wno-deprecated-declarations -I iso/sys -o $RUNNER_TEMP/rudolf-native-main $RUNNER_TEMP/main-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+          mkdir -p out/m && NODE_PATH=$PWD/node_modules SAME_PORT=8746 SAME_DSP=:93 sh iso/qt/native/same_t.sh $PWD/out/m title-standard,title-candy,title-dark $RUNNER_TEMP/rudolf-native-main
       - name: "same_t.js: the title bars against Chromium mode"
         run: mkdir -p out/s && NODE_PATH=$PWD/node_modules SAME_PORT=8749 SAME_DSP=:95 sh iso/qt/native/same_t.sh $PWD/out/s title-standard,title-candy,title-dark $RUNNER_TEMP/rudolf-native
       - name: "titlebeh_t.js: the title bars' behaviour"
