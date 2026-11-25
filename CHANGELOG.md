@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Fixed: Paint asks "Save changes to …?" (Save, Don't save, Cancel) before closing its window or starting a new picture
+  when the picture has changed; New starts an untitled picture instead of keeping the old file's name.
 - Changed: the plan (docs/plan-1.6.3.md Part 8): six fixes from the owner's use: Paint asks to save, Native's transitions,
   Xbox Cloud Gaming and GeForce NOW opening, desktop icons on Native, Make a stick in Backup, Native's menus closing.
 - New: Oracle frees the memory of tabs you have not looked at for 30 minutes (Settings › Oracle › Memory: 15 minutes to

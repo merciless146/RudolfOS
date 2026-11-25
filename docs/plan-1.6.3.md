@@ -414,6 +414,16 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    Closing Paint's window, opening another picture or New with unsaved changes asks "Save changes to NAME?" (Save, Don't
    save, Cancel), as Notepad and WordPro do; signing out or shutting down with Paint changed lists it like the other
    apps' unsaved work.
+   - **Status (2026-11-25, scheduled task): asked at close and New** (PR "Paint asks to save"). Paint now knows when its
+     picture changed (a stroke, a shape, a fill, Undo, Redo, Resize) since it was opened, saved or started: its window's ✕
+     (and the taskbar's Close, the native frame's ✕) and New ask "Save changes to NAME?" (Save: the name asked when it has
+     none, then the file written and the window closed; Don't save; Cancel or Esc); New starts an untitled picture (it kept
+     the old file's name, so Save wrote the blank picture over it). Opening another picture opens a window of its own, as
+     before, so nothing is lost there. **Test:** `iso/qt/native/paintsave163_t.js` (paintsave163-check.yml): Chromium mode
+     11, Native 5; **before 2/8 (the rest could not run: the window had closed), after 16/16.** **Not done, a step of its
+     own:** signing out or shutting down lists no app's unsaved work today, on either engine (Notepad's and WordPro's
+     neither: Chromium mode saves the session, Native closes the windows at once, rudolf-native `power("logout")`); Paint
+     now says what it has unsaved (`W.unsaved()`) for that list when it is built.
 2. **Native's transitions are rough.** "Transitions on Native are rough/blocky." Native's window animations (open, close,
    minimize, restore, maximize, the Start menu, menus, pop-ups, LitePoint) drawn smoothly as Chromium's: measured frame
    by frame against Chromium mode (frames dropped, steps visible, the animation's length), on the Vivobook's integrated
