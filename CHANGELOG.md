@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Fixed: on Native, a right-click menu (the desktop's, the taskbar's, a window's) closes when you click anywhere outside it,
+  press Esc or Tab, or switch windows, as in Chromium mode; it closed only when a row was chosen.
 - Changed: the plan (docs/plan-1.6.3.md Part 8): six fixes from the owner's use: Paint asks to save, Native's transitions,
   Xbox Cloud Gaming and GeForce NOW opening, desktop icons on Native, Make a stick in Backup, Native's menus closing.
 - New: Oracle frees the memory of tabs you have not looked at for 30 minutes (Settings › Oracle › Memory: 15 minutes to

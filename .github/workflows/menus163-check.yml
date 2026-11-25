@@ -1,0 +1,31 @@
+name: Native's menus close (1.6.3 Part 8, item 6)
+# A right-click menu on Native (the desktop's, the taskbar's, a window's) closed by a press outside it, Esc, Tab, Alt+Tab or
+# another right-click, as on Chromium mode's page (iso/qt/native/cmclose163_t.js), and the taskbar's menus and the keyboard
+# still as before (tbbeh_t.js, keybeh_t.js).
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fixes163-menus']
+  pull_request:
+    paths: ['iso/sys/rudolf-native.c', 'iso/qt/native/cmclose163_t.js', '.github/workflows/menus163-check.yml']
+permissions: {contents: read}
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil gcc xvfb xdotool imagemagick libwebkit2gtk-4.1-dev fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: "cmclose163_t.js: the menus closed, Native against Chromium"
+        run: mkdir -p out/cm && NODE_PATH=$PWD/node_modules SAME_SCRIPT=cmclose163_t.js SAME_PORT=8740 SAME_DSP=:87 sh iso/qt/native/same_t.sh $PWD/out/cm
+      - name: "keybeh_t.js: the keyboard, unchanged"
+        run: mkdir -p out/kb && NODE_PATH=$PWD/node_modules SAME_SCRIPT=keybeh_t.js SAME_PORT=8741 SAME_DSP=:88 sh iso/qt/native/same_t.sh $PWD/out/kb
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: menus163, retention-days: 7, path: out}

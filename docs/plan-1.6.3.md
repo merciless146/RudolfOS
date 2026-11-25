@@ -433,6 +433,16 @@ unless the item is Native's own (then Native is made to match Chromium, never th
 6. **Native's desktop menu stays open.** "Desktop right-click menu does not disappear if clicked outside of while open on
    Native. Will only close after an option is selected." On Native, a right-click menu (the desktop's, the taskbar's,
    a window's) closes when clicking anywhere outside it, pressing Esc, or switching windows, as on Chromium.
+   - **Status (2026-11-25, scheduled task): fixed** (PR "Native's menus close on a click outside"). The cause: the menu's
+     grab (cm_open) leaves the desktop's own windows their presses (so a right-click elsewhere opens the next menu at once),
+     and the desktop, the taskbar and the apps' pages are GTK's windows, their presses and keys coming by XInput 2: none of
+     them reached the menu, which closed only on a press in another program's window. Now any press outside the menu (the
+     desktop, the taskbar, a title bar, inside a window, another monitor) closes it first and then goes on, as the page's
+     pointerdown; Esc and Tab close it wherever the keyboard's focus is; another window chosen (Alt+Tab, a window coming up)
+     closes it, as the page's blur. **Test:** `iso/qt/native/cmclose163_t.js` (menus163-check.yml): 12 steps on Chromium
+     mode's page and Native, **3/12 before, 12/12 after**; tbbeh_t.js and keybeh_t.js unchanged (tbbeh's step 9 fails
+     before and after: Command Prompt's key, `terminal` and `prompt`, a test of its own). Found: on Chromium mode's page
+     (Playwright, one window) the menu stays open over the page's own Alt+Tab; Native closes it, the owner's words.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ## Steps
