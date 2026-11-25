@@ -390,6 +390,34 @@ in and filling; uBlock Origin Lite on a busy site; a Tor window without them.
   real Chromium and says what it means before the policy lands.
 - **Tests:** oraframes63_t.js 8/8 with each Chromium (the runner); Lite: none (WebKit has neither).
 
+### Part 8. Fixes from the owner's use (the owner, 2026-11-24 22:51 CST)
+"Some items to add to 1.6.3:" each fixed with a test that fails before the fix, the same on Native, Chromium and Lite
+unless the item is Native's own (then Native is made to match Chromium, never the other way: the owner's rule).
+1. **Paint doesn't ask to save.** "Paint app does not prompt user to save after unsaved changes are made to images."
+   Closing Paint's window, opening another picture or New with unsaved changes asks "Save changes to NAME?" (Save, Don't
+   save, Cancel), as Notepad and WordPro do; signing out or shutting down with Paint changed lists it like the other
+   apps' unsaved work.
+2. **Native's transitions are rough.** "Transitions on Native are rough/blocky." Native's window animations (open, close,
+   minimize, restore, maximize, the Start menu, menus, pop-ups, LitePoint) drawn smoothly as Chromium's: measured frame
+   by frame against Chromium mode (frames dropped, steps visible, the animation's length), on the Vivobook's integrated
+   graphics as well as without acceleration; the soft-drawing mode kept for weak machines.
+3. **Xbox Cloud Gaming and GeForce NOW don't respond.** "Xbox gaming and GeForce apps do not respond when clicked."
+   (desktop/game51.js: each opens in Oracle.) Clicking either in the Start menu, the Games tab, a pin or the desktop
+   opens it, on every desktop engine (Lite: in Chromium if WebKit can't play them, said plainly); a test for each place.
+4. **Desktop icons are slow on Native.** "Desktop icon removal/changes still take several minutes on Native." A desktop
+   icon removed, renamed, added or changed shows within a second on Native, as on Chromium; find what Native waits for
+   (a poll, a watch, the hidden page's sync) and measure before and after.
+5. **Make a stick refined, moved to Backup.** "\"Make a stick\" needs further refinement and to be moved from
+   update/recovery to backup settings." Settings › Backup gains "Make a stick" (Update and recovery keeps a link to it
+   while people learn the new place; Search in Settings finds it there); refined: the stick's size and model shown, the
+   full image or boot files only explained in plain words, a stick too small refused before anything is written, the
+   progress and the time left, a check of what was written, the stick safe to remove at the end; the native Settings'
+   pages carry it in its new place.
+6. **Native's desktop menu stays open.** "Desktop right-click menu does not disappear if clicked outside of while open on
+   Native. Will only close after an option is selected." On Native, a right-click menu (the desktop's, the taskbar's,
+   a window's) closes when clicking anywhere outside it, pressing Esc, or switching windows, as on Chromium.
+**The owner's checklist:** each item on the Vivobook (Native and Chromium).
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
@@ -399,3 +427,4 @@ in and filling; uBlock Origin Lite on a busy site; a Tor window without them.
 - Part 5: last, after 1.6.2 is stable.
 - Part 6: after Part 3 (native Settings), before the Office apps if the owner wants it sooner.
 - Part 7: step 1 (the built-in password manager) early; step 2 after it.
+- Part 8: alongside the others; each item its own PR.
