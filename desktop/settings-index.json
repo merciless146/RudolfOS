@@ -321,6 +321,7 @@
 ["Authenticator app","Family and parental controls"],
 ["Security keys","Family and parental controls"],
 ["Require a security key (protects your files)","Family and parental controls"],
+["Fingerprints","Family and parental controls"],
 ["Files and administrators","",1],
 ["Administrators can open this account's files","Files and administrators"],
 ["Developer: publisher key","",1]],"remote":

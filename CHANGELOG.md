@@ -13,6 +13,10 @@ Summary: In progress.
   through a root helper of its own (no service, nothing that listens). An account's fingerprints are kept encrypted
   with its files' key, so a finger is never the first sign-in after a restart, and they are removed with the account;
   five fingers not recognised, then the password. Settings and the lock screen use it in the next steps.
+- New: Settings › User Settings › Sign-in options › Fingerprints (plan 1.6.3 Part 2, step 2): add a fingerprint (your
+  password, then the reader's scans shown as they come) and remove one; an administrator adds or removes another
+  account's (with the administrator's permission; adding while that account's files are open). A reader Rudolf OS
+  cannot use is named, and so is a missing one.
 - Changed: the plan (docs/plan-1.6.3.md Part 7): Chromium's own password manager and extensions do not work in Oracle's tabs,
   which are Controlled Frames in Oracle's own Chromium too (measured with Chromium 158); the ways on are set out for the
   owner, and a check notices if a Chromium release changes this.
