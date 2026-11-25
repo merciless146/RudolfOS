@@ -24,5 +24,9 @@ jobs:
           CHROME=$(node -e "console.log(require('playwright').chromium.executablePath())") POLICY_DIR=/etc/opt/chrome_for_testing/policies/managed xvfb-run -a -s "-screen 0 1280x800x24" sh iso/qt/native/oraextpol63_t.sh
       - name: The Chromium snap (the releases')
         run: |
-          sudo mkdir -p /etc/chromium/policies/managed && sudo chmod 777 /etc/chromium/policies/managed
-          CHROME=/snap/bin/chromium POLICY_DIR=/etc/chromium/policies/managed xvfb-run -a -s "-screen 0 1280x800x24" sh iso/qt/native/oraextpol63_t.sh
+          for d in /etc/chromium/policies/managed /etc/chromium-browser/policies/managed; do sudo mkdir -p $d && sudo chmod 777 $d; done
+          mkdir -p shots; CHROME=/snap/bin/chromium POLICY_DIR="/etc/chromium/policies/managed /etc/chromium-browser/policies/managed" WAIT=25 SHOTS=$PWD/shots xvfb-run -a -s "-screen 0 1280x800x24" sh iso/qt/native/oraextpol63_t.sh
+      - name: The screens
+        if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: oraextpol-shots, path: shots, if-no-files-found: ignore}

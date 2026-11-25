@@ -8,14 +8,14 @@
 #   BlockExternalExtensions, the Web Store's addresses blocked).
 # Prints FOUND lines and a screenshot's text when a dialog stops Chromium; PASS when the findings are as recorded in the plan (the day a
 # Chromium release changes them, this fails with what changed). A writable policy folder, Xvfb (xvfb-run), python3, openssl, ImageMagick's import optional.
-#   CHROME=... POLICY_DIR=... sh oraextpol63_t.sh     (Chromium for Testing: /etc/opt/chrome_for_testing/policies/managed; the snap and
+#   CHROME=... POLICY_DIR="DIR..." [WAIT=SECONDS] [SHOTS=DIR] sh oraextpol63_t.sh     (Chromium for Testing: /etc/opt/chrome_for_testing/policies/managed; the snap and
 #   Debian's Chromium: /etc/chromium/policies/managed). Port 8722.
 CH=${CHROME:-$(ls -d /opt/pw-browsers/chromium-*/chrome-linux*/chrome 2>/dev/null | tail -1)}; PD=${POLICY_DIR:-/etc/opt/chrome_for_testing/policies/managed}
-mkdir -p $PD 2>/dev/null; [ -w "$PD" ] || { echo "SKIP: the policy folder $PD is not writable (root, or made writable for the test)"; exit 0; }
+for d in $PD; do mkdir -p $d 2>/dev/null; done; for d in $PD; do [ -w "$d" ] || { echo "SKIP: the policy folder $d is not writable (root, or made writable for the test)"; exit 0; }; done; [ -n "$PD" ] || { echo "SKIP: the policy folder $PD is not writable (root, or made writable for the test)"; exit 0; }
 [ -x "$CH" ] || [ -x "$(command -v "$CH")" ] || { echo "SKIP: no Chromium"; exit 0; }
-T=$(mktemp -d /tmp/oraextpol.XXXXXX); mkdir -p $T/ext $PD; chmod 755 $T
+T=$(mktemp -d /tmp/oraextpol.XXXXXX); mkdir -p $T/ext; chmod 755 $T
 case "$CH" in /snap/*) NOSB=''; [ "$(id -u)" = 0 ] && NOSB=--no-sandbox; H=$HOME; T2=$(mktemp -d $H/oraextpol.XXXXXX); cp -r $T/ext $T2/; T=$T2;; *) NOSB=--no-sandbox;; esac
-trap 'rm -f $PD/oraextpol63.json; kill $S 2>/dev/null; rm -rf $T' EXIT
+trap 'for d in $PD; do rm -f $d/oraextpol63.json; done; kill $S 2>/dev/null; rm -rf $T' EXIT
 openssl genrsa -out $T/k.pem 2048 2>/dev/null && openssl rsa -in $T/k.pem -pubout -outform DER -out $T/k.der 2>/dev/null; rm -f $T/k.pem
 KEY=$(base64 -w0 $T/k.der); ID=$(python3 -c "import hashlib,sys;h=hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest()[:32];print(''.join(chr(97+int(c,16)) for c in h))" $T/k.der)
 printf '{"manifest_version":3,"key":"%s","name":"Stand-in","version":"1.0","content_scripts":[{"matches":["http://127.0.0.1/*"],"js":["c.js"],"run_at":"document_start"}]}\n' "$KEY" > $T/ext/manifest.json
@@ -31,7 +31,7 @@ P
 S=$!; timeout 1 tail -f /dev/null
 R=''
 for c in none neutral block settings allow allowset sources; do
-	rm -f $PD/oraextpol63.json $T/log
+	for d in $PD; do rm -f $d/oraextpol63.json; done; rm -f $T/log
 	case $c in
 		neutral) echo '{"ShowHomeButton":true}';;
 		block) echo '{"ExtensionInstallBlocklist":["*"]}';;
@@ -40,10 +40,10 @@ for c in none neutral block settings allow allowset sources; do
 		allowset) echo "{\"ExtensionSettings\":{\"*\":{\"installation_mode\":\"blocked\"},\"$ID\":{\"installation_mode\":\"allowed\"}}}";;
 		sources) echo '{"ExtensionInstallSources":[],"BlockExternalExtensions":true,"URLBlocklist":["chromewebstore.google.com","chrome.google.com/webstore"]}';;
 		*) echo '';;
-	esac > $T/pol; [ -s $T/pol ] && cp $T/pol $PD/oraextpol63.json
+	esac > $T/pol; [ -s $T/pol ] && for d in $PD; do cp $T/pol $d/oraextpol63.json; done
 	$CH --user-data-dir=$T/prof-$c --no-first-run --no-default-browser-check $NOSB --load-extension=$T/ext http://127.0.0.1:8722/page >$T/err-$c 2>&1 & C=$!
-	timeout 12 tail -f /dev/null
-	command -v import >/dev/null && import -window root $T/shot-$c.png 2>/dev/null
+	timeout ${WAIT:-12} tail -f /dev/null
+	command -v import >/dev/null && import -window root ${SHOTS:-$T}/shot-$c.png 2>/dev/null
 	kill $C 2>/dev/null; timeout 3 tail -f /dev/null; kill -9 $C 2>/dev/null
 	p=$(grep -c '^/page' $T/log 2>/dev/null); r=$(grep -c '^/ran' $T/log 2>/dev/null); p=${p:-0}; r=${r:-0}
 	echo "FOUND $c: the page loaded $p, the --load-extension's script ran $r"; R="$R $c=$p$r"
