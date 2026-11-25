@@ -8,7 +8,9 @@
  * Font, Font size, Window and Icon text colour, Icon size. GPL-2.0-or-later.
  */
 #define _GNU_SOURCE
+#include <dlfcn.h>
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -59,7 +61,7 @@ static gboolean th_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	cairo_save(cr); cairo_scale(cr, z, z);
 	if (on) { s_col(cr, "ac", .267); s_rrect(cr, -2, -2, W + 4, H + 4, 10); cairo_fill(cr); }
 	if (RUI.dark) s_col(cr, "bg2", 1); else cairo_set_source_rgb(cr, 1, 1, 1); s_rrect(cr, 0, 0, W, H, 8); cairo_fill(cr);
-	if (on) s_col(cr, "ac", 1); else s_col(cr, "bd", 1); cairo_set_line_width(cr, 2); s_rrect(cr, 1, 1, W - 2, H - 2, 7); cairo_stroke(cr);
+	if (on && !RUI.dark) s_col(cr, "ac", 1); else s_col(cr, "bd", 1); cairo_set_line_width(cr, 2); s_rrect(cr, 1, 1, W - 2, H - 2, 7); cairo_stroke(cr);
 	/* (.dth: 111.8 x 79.8 from (5, 5), its picture 'cover' over its whole box, radius 5; the button's padding box, radius 6, clips its right side) */
 	double tx = 5, ty = 5, tw = W - 10 + 16, th = 79.8; cairo_save(cr); s_rrect(cr, 2, 2, W - 4, H - 4, 6); cairo_clip(cr); s_rrect(cr, tx, ty, tw, th, 5); cairo_clip(cr);
 	cairo_set_source_rgb(cr, 0xe5 / 255.0, 0xe7 / 255.0, 0xeb / 255.0); cairo_paint(cr);
@@ -77,12 +79,22 @@ static gboolean th_press(GtkWidget *w, GdkEventButton *e, gpointer d)
 	(void)w; Thumb *t = d; if (e->button != 1 || e->type != GDK_BUTTON_PRESS) return FALSE; sets("dyn", t->k);
 	if (*t->k) { char *wp = gs("wpimg"); if (*wp) sets("wpimg", ""); g_free(wp); } th_redraw(); return TRUE;
 }
+/* (a .webp thumbnail: libwebp, opened when first needed, as GTK's picture loaders may have no WebP) */
+static void px_free(guchar *p, gpointer d) { (void)d; free(p); }
+static GdkPixbuf *webp_load(const char *f)
+{
+	static void *lib; static int tried; typedef uint8_t *(*Dec)(const uint8_t *, size_t, int *, int *);
+	if (!tried) { tried = 1; lib = dlopen("libwebp.so.7", RTLD_NOW | RTLD_LOCAL); }
+	Dec dec = lib ? (Dec)dlsym(lib, "WebPDecodeRGBA") : NULL; gchar *b = NULL; gsize n = 0; if (!dec || !g_file_get_contents(f, &b, &n, NULL)) return NULL;
+	int w = 0, h = 0; uint8_t *px = dec((const uint8_t *)b, n, &w, &h); g_free(b); if (!px) return NULL;
+	return gdk_pixbuf_new_from_data(px, GDK_COLORSPACE_RGB, TRUE, 8, w, h, w * 4, px_free, NULL);
+}
 static void th_free(gpointer p) { Thumb *t = p; if (t->pb) g_object_unref(t->pb); g_free(t); }
 static void th_load(Thumb *t, int light)
 {
 	const SetDyn *d = NULL; for (guint i = 0; i < G_N_ELEMENTS(DYNS); i++) if (!strcmp(DYNS[i].k, t->k)) d = &DYNS[i];
 	if (!d) return; const char *rel = light ? d->tl : d->td; if (!*rel) return; char *f = g_build_filename(www(), rel, NULL);
-	t->pb = gdk_pixbuf_new_from_file(f, NULL); g_free(f);
+	t->pb = g_str_has_suffix(f, ".webp") ? webp_load(f) : gdk_pixbuf_new_from_file(f, NULL); g_free(f);
 }
 static double grid_lay(void *d, double x, double y, double w)
 {
