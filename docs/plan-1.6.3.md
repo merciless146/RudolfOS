@@ -487,6 +487,17 @@ unless the item is Native's own (then Native is made to match Chromium, never th
 3. **Xbox Cloud Gaming and GeForce NOW don't respond.** "Xbox gaming and GeForce apps do not respond when clicked."
    (desktop/game51.js: each opens in Oracle.) Clicking either in the Start menu, the Games tab, a pin or the desktop
    opens it, on every desktop engine (Lite: in Chromium if WebKit can't play them, said plainly); a test for each place.
+   - **Status (2026-11-25, scheduled task): fixed** (PR "Xbox Cloud Gaming and GeForce NOW open from the Start menu"). The
+     cause: in Chromium mode the Start menu's rows call the menu's own table of actions (base_v24.html `A`), which had
+     neither game (nor the Library's games of games58.js), so a click there threw "A[a] is not a function" and did
+     nothing; the pins, the desktop icons, the Games tab and the right-click Open went through `launch` and worked. A row
+     without an action of its own now opens through `launch`, as its pin does. With Lite, WebKitGTK has no WebRTC, which
+     both streams need: they open in Chromium's window (rudolfd's web/open, as the call sites, oracle58.js), with a
+     notification saying so. **Test:** `iso/qt/native/cloudgames163_t.js` (cloudgames163-check.yml): Chromium mode 10
+     places (the Start menu, its right-click Open, the Games tab, a pin, a desktop icon, for each game) and the Library
+     games' rows, Lite 2, Native 6 (the Start menu, a pin, a desktop icon: Oracle's window at the game's address);
+     **15/19 before, 24/24 after**. Native opened both from every place already in the test (Oracle's WebKit window);
+     on the Vivobook Native's Oracle is Rudolf's Chromium: the owner's checklist.
 4. **Desktop icons are slow on Native.** "Desktop icon removal/changes still take several minutes on Native." A desktop
    icon removed, renamed, added or changed shows within a second on Native, as on Chromium; find what Native waits for
    (a poll, a watch, the hidden page's sync) and measure before and after.

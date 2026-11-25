@@ -9,7 +9,13 @@ window.__game51=1;
 const CLOUD_GAMES=[
  {k:'xcloud',name:'Xbox Cloud Gaming',icon:'🎮',url:'https://www.xbox.com/play',desc:'Play Xbox games streamed from Microsoft\'s servers: Fortnite is free with a Microsoft account, others need Game Pass Ultimate. Plug in a controller, or use the keyboard and mouse where the game allows it. Needs a fast connection (about 20 Mbps).'},
  {k:'gfn',name:'GeForce NOW',icon:'☁️',url:'https://play.geforcenow.com/',desc:'Play games you own on Steam, Epic and others, streamed from NVIDIA\'s servers. The free tier has a queue and sessions of about an hour. Needs a fast connection (about 20 Mbps).'}];
-CLOUD_GAMES.forEach(g=>{regApp(g.k,{name:g.name,icon:g.icon,open:()=>browser(g.url),re:new RegExp('^'+g.name)});
+/* (1.6.3 Part 8, item 3, "Xbox gaming and GeForce apps do not respond when clicked": their Start menu rows called the menu's own
+   table, which had neither, so the click did nothing; the rows open through launch now, base_v24.html) With Lite, WebKitGTK has no
+   WebRTC, which both streams need: they open in Chromium's window, as the call sites do (oracle58.js), and the desktop says why */
+function cloudOpen(g){if(typeof RD!='undefined'&&RD&&RD.engine=='webkit'&&typeof RTCPeerConnection=='undefined'&&typeof webOpenChromium=='function'){
+  notify(g.name,g.name+' opens in Chromium’s window: the Lite desktop’s web engine cannot play streamed games.');webOpenChromium(g.url);return null}
+ return browser(g.url)}
+CLOUD_GAMES.forEach(g=>{regApp(g.k,{name:g.name,icon:g.icon,open:()=>cloudOpen(g),re:new RegExp('^'+g.name)});
  if(typeof GAMES_BUILTIN!='undefined'&&!GAMES_BUILTIN.some(x=>x[0]==g.k))GAMES_BUILTIN.unshift([g.k,g.desc])});
 (function(){const ul=typeof $=='function'&&$('#menu ul');if(!ul)return;const ref=ul.querySelector('li[data-a=settings]');
  CLOUD_GAMES.forEach(g=>{if(ul.querySelector(`li[data-a=${g.k}]`))return;const li=document.createElement('li');li.dataset.a=g.k;li.textContent=g.icon+' '+g.name;ul.insertBefore(li,ref||null)})})();
