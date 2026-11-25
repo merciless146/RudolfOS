@@ -90,6 +90,39 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   (libfprint's "virtual_image" driver) until then.
 - **The owner's checklist** (with a supported USB reader): enrol a finger; the lock screen and an administrator prompt with it; five wrong fingers,
   then the password; after a restart the password is asked.
+#### Status (2026-11-25, scheduled task)
+- **Step 1 (branch `fingerprints-1`): the system's side.** One change to the design above, for the owner to see: **no
+  fprintd.** fprintd is a D-Bus service that checks each caller with polkit; with only rudolfd asking, it would add a
+  system bus name, polkit (which Rudolf OS does not have) and a daemon, and protect nothing more. Instead a root helper,
+  `fprint` (iso/sys/rudolf-fprint.c, /usr/lib/rudolf/root/fprint, run by rudolf-rootd for rudolfd like the other root
+  helpers), talks to libfprint itself for each request and ends: nothing listens, there is no service to ask (the
+  listeners list says so). Its capabilities: CAP_DAC_READ_SEARCH only (to read the account's folder's key identifier),
+  dropped with no_new_privs before the reader is opened; Landlock with the confinement switch on.
+  - **The prints** are each account's own, in PERSIST/fprint/ACCOUNT (root's 0700), **encrypted by the kernel under the
+    account's file key** (the same fscrypt key as its home folder, as Oracle's encrypted folder is). The password unwraps
+    that key, so the prints can be read only while the account's files are open: after a restart or a sign-out nobody,
+    root included, can read or use them, and a copy of the disk holds them encrypted. Removed with the account
+    (au_sync_ids), with the reader's own copies for readers that keep prints in themselves (by their name,
+    "rudolf:ACCOUNT").
+  - **rudolfd** (iso/sys/rudolfd-fprint.inc; docs/api.md `fp/*`): `fp/status` (the reader, a reader libfprint does not
+    support named from libfprint's own list, the account's fingers and whether a finger is taken now and why not),
+    `fp/enroll` and `fp/remove` (the account's own password or an administrator's), `fp/verify` (`"for":"admin"`: an
+    administrator's finger only), `fp/cancel`, `fp/password`. A finger is taken only for an account that signed in with
+    its password since the start (the page's home/unlock?session=1, Native's desktop/login; signing out ends it), never
+    after five fingers not recognised in a row until the password is used, never for Guest. An account whose files are
+    not on the disk (older accounts) cannot have fingerprints: Settings will say so.
+  - **The size: 972 KB** added to the base layer (fprint-check.yml's `size` job against beta 2026112422: libfprint with what
+    it links that the base layer lacked, and its list of unsupported readers); ci_release.sh fails over its own budget,
+    3 MB (systools/mkfprint.sh).
+  - **Tests:** iso/qt/host/fprint163_t.sh (fprint-check.yml): libfprint's virtual reader with made-up fingerprints
+    (fixtures/vfinger.py draws them from a number; never anyone's finger) on an encrypted ext4 drive: adding (passwords,
+    the files not on the disk), matching, another account's finger refused, an administrator's prompt, five tries, the
+    password giving the finger back, Guest, cancelling, the first sign-in after a restart, signing out, the prints
+    unreadable once signed out, removing, an account removed, a release build ignoring the virtual reader.
+- **Left:** step 2, Settings › Users (add and remove fingers, the administrator's prompt for another account's, a reader
+  libfprint does not support named, no reader said); step 3, the lock screen (Chromium, Lite and Native the same) and the
+  administrator prompts taking a finger (the password always still; the code or the key of two-step sign-in still asked
+  after a finger; an administrator's finger in rudolfd-checked prompts by a one-time answer from `fp/verify`).
 
 ### Part 3. Native Settings, finished (moved from 1.6.2 Part 39, item 3)
 `/usr/bin/rudolf-settings` (iso/sys/apps/settings*.c), one PR per group of pages, as begun in 1.6.2 and kept there switched off:

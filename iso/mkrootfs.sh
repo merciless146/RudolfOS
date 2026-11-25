@@ -130,6 +130,11 @@ mkdir -p usr/lib/rudolf/root && chmod 755 usr/lib/rudolf/root
 for h in drives updates accounts power network devices procs logs screen sound vpn; do gcc -O2 $HARD -o usr/lib/rudolf/root/$h "$SYS/rudolf-$h.c" -Wl,-Bstatic -lz -Wl,-Bdynamic && chmod 700 usr/lib/rudolf/root/$h; done   # (root's: mklayers.sh makes the layer with -all-root; zlib for the ones built from rudolfd.c)
 # (1.6.1 drives part 2: the accounts' folders and sessions, rudolfd's own functions run by the drives helper only)
 gcc -O2 $HARD -o usr/lib/rudolf/root/drives-home "$SYS/rudolf-drives-home.c" -Wl,-Bstatic -lz -Wl,-Bdynamic && chmod 700 usr/lib/rudolf/root/drives-home
+# 1.6.3 (docs/plan-1.6.3.md Part 2): fingerprint readers: libfprint and its list of readers it does not support
+# (systools/mkfprint.sh), and the fprint helper built against it
+sh "$HERE/systools/mkfprint.sh" "$OUT" >/dev/null   # (libfprint-2-dev installed on the build machine when missing)
+gcc -O2 $HARD -o usr/lib/rudolf/root/fprint "$SYS/rudolf-fprint.c" $(pkg-config --cflags --libs libfprint-2) && chmod 700 usr/lib/rudolf/root/fprint
+copy_deps usr/lib/rudolf/root/fprint
 gcc -O2 $HARD -o usr/bin/rpk "$SYS/rpk.c" -lcrypto
 gcc -O2 $HARD -o usr/bin/rudolf-update "$SYS/rudolf-update.c" -lcrypto -ldl
 gcc -O2 $HARD -o usr/bin/rudolf-print "$SYS/rudolf-print.c" -ldl

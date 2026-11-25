@@ -3,6 +3,8 @@
 # line here does not name; qt/host/listeners59_t.sh fails when the sources start a listener this list does not name.
 # Columns, separated by tabs: KIND (tcp, tcp6, udp, unix) WHERE (address:port or a path; * matches anything in a
 # name, @ is an abstract socket) PROGRAM (as the sources name it) WHEN, WHO may use it, and HOW it checks.
+# (1.6.3, docs/plan-1.6.3.md Part 2: fingerprint readers listen on nothing: the fprint root helper talks to libfprint for
+# rudolfd only, started for each request; there is no fprintd, no D-Bus name and no socket for the reader.)
 tcp	127.0.0.1:8080	rudolfd	always	the desktop's processes (its memory group) and root; /lib/ /pkg/ /dlf/ and the page's files: every program on the computer	the page and /api/ only for the desktop's memory group (15.1) or root, /api/ with the per-boot token too; loopback only
 tcp	127.0.0.1:8099	llama-server	while Blitzen's model is loaded (rudolf-ai)	rudolfd	runs as the "ai" user; answers only requests with the random key in /run/rudolf/ai/key (root only), which rudolfd adds; loopback only
 tcp	0.0.0.0:8443	rudolf-remote	only while remote access is on (Settings › Remote access)	people on the network with the pairing code, then a Rudolf OS account	TLS (the computer's own certificate); the 6-digit pairing code once per browser, an account's password (PBKDF2), five wrong tries lock it a minute; the person at the computer approves unless the account may connect unattended; the firewall
