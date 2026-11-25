@@ -119,8 +119,14 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
     the files not on the disk), matching, another account's finger refused, an administrator's prompt, five tries, the
     password giving the finger back, Guest, cancelling, the first sign-in after a restart, signing out, the prints
     unreadable once signed out, removing, an account removed, a release build ignoring the virtual reader.
-- **Left:** step 2, Settings › Users (add and remove fingers, the administrator's prompt for another account's, a reader
-  libfprint does not support named, no reader said); step 3, the lock screen (Chromium, Lite and Native the same) and the
+- **Step 2 (branch `fingerprints-2`, after step 1): Settings › Users** (desktop/fprint63.js): User Settings › Sign-in
+  options › Fingerprints: the account's own fingers (added with its password: a finger chosen, the reader's scans shown
+  as they come from `fp/progress`, Cancel; removed with its password); an administrator's "Other accounts' fingerprints"
+  (each account's Fingerprints…, the administrator's prompt; adding only while that account's files are open, its owner's
+  finger on the reader). The row says plainly: no reader (a touchpad or touchscreen cannot read one), a reader libfprint
+  does not support (its name and USB id), the files not on the disk, five tries. Guest none. Test:
+  iso/qt/shell2/fprint63_t.js (15/15, a stand-in rudolfd). The native Settings' Users page is Part 3's: a note there.
+- **Left:** step 3, the lock screen (Chromium, Lite and Native the same) and the
   administrator prompts taking a finger (the password always still; the code or the key of two-step sign-in still asked
   after a finger; an administrator's finger in rudolfd-checked prompts by a one-time answer from `fp/verify`).
 
@@ -136,6 +142,10 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   Chromium and Lite keep the web Settings.
 - Also in main from 1.6.2 (switched off): Keyboard, Mouse and touchpad (#676).
 #### Status (2026-11-24, scheduled task)
+- **Note from Part 2 (fingerprint readers, 2026-11-25):** the web User Settings › Sign-in options has a Fingerprints row
+  (desktop/fprint63.js, branch `fingerprints-2`): the account's own fingers and, for an administrator, other accounts'
+  Fingerprints…, all through rudolfd's `fp/*` (docs/api.md). The native Users page needs the same row when it is built
+  (Part 3's own work: Part 2 does not touch iso/sys/apps/settings*.c).
 - **PR 4 (branch `native-settings-5`): Volume Controls, Multimedia Settings, Accessibility.** `settings_vol.c`: the system volume
   (rudolfd's volume: Mute, the slider, followed every 5 s while the page is open), "Use one style everywhere", All desktop sounds and
   the 18 categories (each one's switch, style, volume and ▶; a working copy until Apply, saved as `snd` in bd95set:ACCT; Revert; Reset
