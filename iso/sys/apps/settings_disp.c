@@ -179,6 +179,27 @@ static void rows_ext(void)
 	p_put(STA.ck); p_put(STA.sel); p_put(STA.msg); p_put(STA.lab2); p_put(STA.sel2); row("Spirit Falls statue", ext_lay, &STA, 10);
 }
 
+
+/* ================================================================== Picture (wallpaper31.js): "None" or the picture, Choose from my files…,
+   From this computer…, its message under (TO DO: the picture itself is kept in the page's IndexedDB, mirrored by rudolfd's idbm/put) */
+typedef struct { GtkWidget *none, *bf, *bc, *msg; char *t; } Pic;
+static Pic PIC;
+static gboolean pic_msg_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)d; s_col(cr, "msg", 1); s_text(cr, PIC.t ? PIC.t : "", 0, 0, 13, 400, gtk_widget_get_allocated_width(w) / s_z(), 0); return TRUE; }
+static gboolean pic_none_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)d; s_col(cr, "msg", 1); s_text(cr, rui_tr("None"), 0, (gtk_widget_get_allocated_height(w) / s_z() - s_lh(13, 400)) / 2, 13, 400, 0, 0); return TRUE; }
+static double pic_lay(void *d, double x, double y, double w)
+{
+	(void)d; double nw = wordw("None"), bh = p_nat_h(PIC.bf); p_place(PIC.none, x, y + (bh - 18) / 2, nw + 1, 18);
+	double bx = x + nw + 8; p_place(PIC.bf, bx, y, 0, 0); p_place(PIC.bc, bx + p_nat_w(PIC.bf) + 8, y, 0, 0);
+	double mh = fmax(18, PIC.t && *PIC.t ? s_lines(PIC.t, 13, 400, w, NULL) * s_lh(13, 400) : 0); p_place(PIC.msg, x, y + bh + 4, w, mh); return bh + 4 + mh;
+}
+static void pic_todo(GtkButton *b, gpointer d) { (void)b; (void)d; g_free(PIC.t); PIC.t = g_strdup("(native: not yet)"); gtk_widget_queue_draw(PIC.msg); set_note("picture todo"); }
+static void row_pic(void)
+{
+	PIC.none = gtk_drawing_area_new(); g_signal_connect(PIC.none, "draw", G_CALLBACK(pic_none_draw), NULL); PIC.msg = gtk_drawing_area_new(); g_signal_connect(PIC.msg, "draw", G_CALLBACK(pic_msg_draw), NULL);
+	g_free(PIC.t); PIC.t = NULL; PIC.bf = rui_button("Choose from my files…", 0); PIC.bc = rui_button("From this computer…", 0); g_signal_connect(PIC.bf, "clicked", G_CALLBACK(pic_todo), NULL); g_signal_connect(PIC.bc, "clicked", G_CALLBACK(pic_todo), NULL);
+	p_put(PIC.none); p_put(PIC.bf); p_put(PIC.bc); p_put(PIC.msg); p_label_named("wpf", PIC.bf); p_label_named("wpc", PIC.bc); row("Picture", pic_lay, NULL, 10);
+}
+
 /* ================================================================== the footer */
 static void act(int what)
 {
@@ -200,7 +221,7 @@ void page_disp(void)
 	{ Cell *c = p_r2("Appearance"); c_add(c, dsel("dm", "dm"), 0, 0, 0); DMI = c_msg_m(c, "Choose a dynamic or static background to use it in light or dark mode.", 3, 6, 0);   /* (.dmi: 12 px; its colour #4b5563 to be matched) */ p_r2_more(c); }
 	rows_ext();
 	{ Cell *c = p_r2("Background style"); c_add(c, dsel("bs", "bs"), 0, 0, 1); p_r2_more(c); }
-	/* (to come: Picture) */
+	row_pic();
 	{ Cell *c = p_r2("Color 1 / Color 2"); c_add(c, colour("b1", 50), 0, 0, 0); c_add(c, colour("b2", 50), 4.1, 0, 0); p_r2_more(c); }
 	/* (to come: Lock and sign-in screen, inside the grid) */
 	{ Cell *c = p_r2("Font"); c_add(c, dsel("ff", "ff"), 0, 0, 1); p_r2_more(c); }

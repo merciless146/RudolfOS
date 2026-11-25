@@ -294,7 +294,7 @@ static double cell_lay(Cell *c, double x, double y, double w)
 		/* a block */
 		if (inl) { cy = lt + lhh; inl = 0; }
 		cy += first ? it->mt : fmax(pmb, it->mt); first = 0; it->x = x; it->y = cy; it->wd = w;
-		if (it->k == 2) { double fs = it->grey >= 2 ? 12 : LK->msg_fs[0], lh = lh_of(fs, 400); int n = text_lines(it->text, fs, 400, w, 0, NULL); it->h = fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }
+		if (it->k == 2) { double fs = it->grey >= 2 ? 12 : LK->msg_fs[0], lh = lh_of(fs, 400); int n = text_lines(it->text, fs, 400, w, 0, NULL); it->h = it->grey == 3 ? n * lh : fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }   /* (grey 3, .dmi: no .msg's min-height) */
 		else if (it->k == 4) { double lh, h = ck_lines(it->text, w, &lh); it->h = fmax(19, h); rui_check_wrap(it->w, w, it->h); place(it->w, x, cy, 0, 0); }
 		else if (it->k == 6) { PangoLayout *l = lay(pctx(), it->text, 11, 400, w, 0); PangoFontDescription *f = pango_font_description_from_string("monospace"); pango_font_description_set_absolute_size(f, 11 * Z() * PANGO_SCALE); pango_layout_set_font_description(l, f); pango_font_description_free(f);
 			int n = pango_layout_get_line_count(l); g_object_unref(l); it->h = fmin(160, n * pre_lh()); place(it->w, x, cy, w, it->h); }
