@@ -596,5 +596,41 @@
   "devices": [],
   "kept": [],
   "dma": false
+ },
+ "print/usb": {
+  "ok": true,
+  "printers": [
+   {
+    "name": "Laser Printer 110",
+    "model": "Laser Printer 110 (IPP)",
+    "usb": "ipp",
+    "ready": true
+   }
+  ]
+ },
+ "print/jobs": {
+  "ok": true,
+  "queue": true,
+  "jobs": [
+   {
+    "id": "12",
+    "name": "Letter.pdf",
+    "printer": "Laser Printer 110",
+    "state": "printing",
+    "mine": true,
+    "made": 1794649140,
+    "cancel": true
+   },
+   {
+    "id": "11",
+    "name": "",
+    "printer": "Laser Printer 110",
+    "state": "sent",
+    "mine": false,
+    "made": 1794648360,
+    "done": 1794648420,
+    "cancel": false
+   }
+  ]
  }
 }
