@@ -255,8 +255,10 @@ says none; two tabs of one site.
   one JSON object); the request stays narrow (no signal sent: liveness from /proc). No new request: confinepure.py and winapi.py
   current.
 - **Tests:** oratip63_t.js 24/24 (every case of the line, asked only while shown, the page cut around it; Oracle's own Chromium's
-  file; Lite's own way; the browser version); oratabmem63_t.js 20/20 here (Playwright's Chromium 153, root: --no-sandbox) and on
-  the runner with each Chromium (sandboxed); confine161_t.sh 26/26 (15c: oframes, narrow); Oracle's page tests as before.
+  file; Lite's own way; the browser version); oratabmem63_t.js 20/20 here (Playwright's Chromium 153) and on the runner with
+  Playwright's Chromium 153 and the Chromium snap's 158.0.8127.36 (the releases', **sandboxed**, as on Rudolf OS: its renderers'
+  Pss readable by the same user; a 150 MB page's process 175 MB Pss, a 80 MB frame of another site its own process, 106 MB);
+  confine161_t.sh 26/26 (15c: oframes, narrow); Oracle's page tests as before (oracle-memory-check.yml).
   **Lite:** WebKit does not say which page process shows which tab (WebKitGTK has no way to ask), so its tooltip says so and gives
   its page processes together (resident memory, from rudolfd's list); tested with the stand-in, not yet with WebKit itself (the
   owner's checklist).
