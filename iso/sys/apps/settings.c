@@ -925,7 +925,7 @@ static void page_todo(void)
 }
 static void page_build(void)
 {
-	HIT = NULL; HITC = NULL; FOOT_FLOW = 0; if (FOOT) { gtk_widget_destroy(FOOT); FOOT = NULL; } FDIRTY = NULL; FACT = NULL; if (NAMED) g_hash_table_remove_all(NAMED);
+	HIT = NULL; HITC = NULL; FOOT_FLOW = 0; if (FOOT) { gtk_widget_destroy(FOOT); FOOT = NULL; } FOOTST = NULL; memset(FOOTB, 0, sizeof FOOTB);   /* (its label and buttons went with it: never read again) */ FDIRTY = NULL; FACT = NULL; if (NAMED) g_hash_table_remove_all(NAMED);
 	if (FX) { GList *c = gtk_container_get_children(GTK_CONTAINER(FX)); for (GList *l = c; l; l = l->next) gtk_widget_destroy(l->data); g_list_free(c); }
 	if (ITEMS) g_ptr_array_unref(ITEMS); ITEMS = g_ptr_array_new_with_free_func(item_free);
 	PageFn f = page_fn(CUR); if (f) f(); else page_todo();
@@ -956,7 +956,7 @@ static gboolean win_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 static void state_more(GString *s)
 {
 	g_string_append_printf(s, "page %s\nnative %d\ndirty %d\nscroll %.0f\n", CUR, page_fn(CUR) != NULL, FDIRTY && FDIRTY(), FX ? gtk_adjustment_get_value(fx_adj()) / Z() : 0);
-	if (FOOTST) g_string_append_printf(s, "foot %s\n", gtk_label_get_text(GTK_LABEL(FOOTST)));
+	if (FOOT && FOOTST) g_string_append_printf(s, "foot %s\n", gtk_label_get_text(GTK_LABEL(FOOTST)));
 	if (FOOT) g_string_append_printf(s, "footen %d %d\n", gtk_widget_is_sensitive(FOOTB[0]), gtk_widget_is_sensitive(FOOTB[1]));
 	rect_line(s, "body", SW->body); rect_line(s, "search", SQ); rect_line(s, "side", SIDE); rect_line(s, "page", FX); if (DD && gtk_widget_get_visible(DD)) rect_line(s, "dd", DD);
 	g_string_append_printf(s, "q %s\nres %d\nrcur %d\n", gtk_entry_get_text(GTK_ENTRY(SQ)), RES && dd_open() ? (int)RES->len : -1, RCUR);
