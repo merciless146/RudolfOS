@@ -168,8 +168,8 @@ freed tab coming back as it was.
   typed text, the shown one or a game's. **Under memory pressure** (the memory guard's warning, outside game mode, whose
   own freeing stays) the background tabs are freed at once, with a notification.
 - **Not changed:** site isolation, Chromium's sandbox, the Tor and private windows' separation, the encrypted folders,
-  the disk cache's size. No Chromium setting was found that frees a live tab's own caches on Linux without one of those
-  (Chromium's memory-pressure purge is ChromeOS's): what memory pressure frees is the background tabs.
+  the disk cache's size. No Chromium setting was found that frees a live tab's own caches on Linux without one of those,
+  so what memory pressure frees is the background tabs.
 - **The desktops:** Chromium and Native (the same shell and page): as above. Lite: its WebKit tabs are freed the same way
   and come back at their address, at the top (rudolf-webkit does not say how far a page was scrolled).
 - **Tests:** orasleep63_t.js 19/19; Oracle's page tests as before (oracle58, private59, tor59, orahover61, orasession61,
