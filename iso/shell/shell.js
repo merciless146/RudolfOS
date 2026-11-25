@@ -166,6 +166,57 @@ let t=null;const tt=()=>{if(document.title!==t){t=document.title;say({title:t})}
 /* 1.6.1 (Part 10): F9 shows the page's article in Oracle's reader mode (and back), before the page sees it */
 addEventListener('keydown',e=>{if(e.isTrusted&&e.key=='F9'&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&!e.shiftKey){e.preventDefault();e.stopImmediatePropagation();say({k:'f9'})}},true);
 addEventListener('DOMContentLoaded',tt);addEventListener('load',tt);setInterval(tt,1500)})()`;
+/* 1.6.3 (docs/plan-1.6.3.md Part 7, step 1): Oracle's own password manager, in the page's top frame (isolated world: the page's own
+   scripts cannot see or call it), on https: pages only, never in a private window's or Guest's tabs (their partitions, priv-...).
+   It tells Oracle when a password field gets the keyboard ({pwf}: the page's origin, whether it is a new password) and, when a
+   sign-in is sent (the form's submit, Enter in the password field, or a click on its button), the user name and password typed,
+   encrypted with a pad of random bytes only this world and the shell hold ({pws}: a one-time pad, never used twice; the console
+   message that carries it, which Chromium's log may keep, is unreadable without it). The shell gives a new pad with each page and
+   after each use. Nothing is filled from here: Oracle fills (pwFill) only after the person's click in Oracle's own bar. */
+const PW_JS = `(()=>{if(window.__rudolfPw||window.top!==window||location.protocol!=='https:')return;window.__rudolfPw=1;
+const N=${JSON.stringify(NONCE)},say=o=>{try{console.debug(N+JSON.stringify(o))}catch(e){}};
+const vis=e=>!!(e&&e.isConnected&&!e.disabled&&e.type!=='hidden'&&(e.offsetWidth||e.offsetHeight||e.getClientRects().length));
+const pws=r=>[...(r||document).querySelectorAll('input[type=password]')].filter(vis);
+const isNew=p=>/new-password/i.test(p.autocomplete||'')||pws(p.form).length>1;
+const userOf=p=>{const r=p.form||document,L=[...r.querySelectorAll('input')].filter(e=>vis(e)&&/^(text|email|tel|)$/i.test(e.type||'')&&e.value);
+ const before=L.filter(e=>e.compareDocumentPosition(p)&Node.DOCUMENT_POSITION_FOLLOWING);const u=(before.length?before[before.length-1]:L[0]);return u?String(u.value).slice(0,200):''};
+let last='';
+const sent=p=>{if(!p||!p.value)return;const L=pws(p.form);const pw=(isNew(p)&&L.length>1?L.filter(x=>x.value).pop()||p:p).value;if(!pw||pw.length>500)return;
+ const u=userOf(p),k=u+'\\n'+pw;if(k===last)return;const pad=window.__rudolfPwPad;if(!pad)return;
+ const b=new TextEncoder().encode(JSON.stringify([u,pw]));if(b.length>pad.length)return;window.__rudolfPwPad=null;last=k;
+ let h='';for(let i=0;i<b.length;i++)h+=((b[i]^pad[i])&255).toString(16).padStart(2,'0');say({pws:h})};
+addEventListener('focusin',e=>{const p=e.target;if(e.isTrusted&&p&&p.tagName==='INPUT'&&p.type==='password')say({pwf:isNew(p)?2:1})},true);
+addEventListener('submit',e=>{const f=e.target;if(!f||!f.querySelectorAll)return;const L=pws(f).filter(x=>x.value);if(L.length)sent(L[L.length-1])},true);
+addEventListener('keydown',e=>{const p=e.target;if(e.isTrusted&&e.key==='Enter'&&p&&p.tagName==='INPUT'&&p.type==='password')sent(p)},true);
+addEventListener('click',e=>{if(!e.isTrusted)return;const b=e.target&&e.target.closest&&e.target.closest('button,input[type=submit],input[type=button],[role=button]');if(!b)return;
+ /* (a form's own submit button; outside a form, a button that says it signs in: never a show-password eye or another button) */
+ const sub=(b.form&&(b.type==='submit'))||(!b.form&&/log ?in|sign ?in|continue|next|submit|anmelden|connexion|entrar|iniciar|accedi/i.test(b.textContent||b.value||b.getAttribute('aria-label')||''));if(!sub)return;
+ const L=pws(b.form||document).filter(x=>x.value);if(L.length)sent(L[L.length-1])},true)})()`;
+/* the fill, after the person's click in Oracle's bar (pwfill): only into this page's top frame, only while it is still at that origin;
+   the user name too unless the person has typed one; a new password (Oracle's strong one) into every new-password field */
+const PW_FILL = o => { if (location.origin !== o.o || location.protocol !== 'https:') return 'origin';
+  const vis = e => !!(e && e.isConnected && !e.disabled && e.type !== 'hidden' && (e.offsetWidth || e.offsetHeight || e.getClientRects().length));
+  const set = (e, v) => { const d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value'); d.set.call(e, v); e.dispatchEvent(new Event('input', {bubbles: true})); e.dispatchEvent(new Event('change', {bubbles: true})) };
+  const L = [...document.querySelectorAll('input[type=password]')].filter(vis); if (!L.length) return 'none';
+  const a = document.activeElement, p = L.includes(a) ? a : L[0], F = p.form || document;
+  if (o.g) { const N = [...F.querySelectorAll('input[type=password]')].filter(vis).filter(e => e !== F.querySelector('input[autocomplete=current-password]')); N.forEach(e => set(e, o.p)); return 'ok' }
+  set(p, o.p);
+  if (o.u) { const U = [...F.querySelectorAll('input')].filter(e => vis(e) && /^(text|email|tel|)$/i.test(e.type || '') && e.compareDocumentPosition(p) & Node.DOCUMENT_POSITION_FOLLOWING); const u = U[U.length - 1]; if (u && !u.value) set(u, o.u) }
+  return 'ok' };
+const pwPrivate = t => /^priv-/.test(t.part || '');
+const pwPad = t => { t.pad = crypto.getRandomValues(new Uint8Array(1024)); return 'window.__rudolfPwPad=new Uint8Array(' + JSON.stringify(Array.from(t.pad)) + ');' };
+function pwPage(t, url) { if (pwPrivate(t) || !/^https:/i.test(url || '')) { t.pad = null; return } t.f.executeScript({code: pwPad(t) + PW_JS}).catch(() => {}) }
+/* a sign-in sent ({pws}): undone with the pad, given a new one; told to the desktop only for this tab's own https: origin */
+function pwSent(t, h) {
+  const pad = t.pad; t.pad = null; if (!pad || typeof h != 'string' || h.length > 2048 || h.length % 2 || !/^[0-9a-f]*$/.test(h) || pwPrivate(t)) return;
+  const b = new Uint8Array(h.length / 2); for (let i = 0; i < b.length; i++) b[i] = parseInt(h.substr(i * 2, 2), 16) ^ pad[i];
+  pad.fill(0); let o = null; try { o = JSON.parse(new TextDecoder().decode(b)) } catch (e) {} b.fill(0);
+  t.f.executeScript({code: pwPad(t)}).catch(() => {});
+  let origin = ''; try { const u = new URL(t.url); if (u.protocol == 'https:') origin = u.origin } catch (e) {}
+  if (!origin || !Array.isArray(o) || typeof o[0] != 'string' || typeof o[1] != 'string' || !o[1]) return;
+  toTab(t.tid, 'pwsave', {origin, user: o[0].slice(0, 200), pw: o[1].slice(0, 500)});
+}
+function pwFocus(t, k) { if (pwPrivate(t)) return; let origin = ''; try { const u = new URL(t.url); if (u.protocol == 'https:') origin = u.origin } catch (e) {} if (origin) toTab(t.tid, 'pwfocus', {origin, newpw: k === 2}) }
 /* 1.6.1 (the owner, 2026-11-20): in every frame of a page, where a link (or a form's submit button) goes, while the mouse is
    over it or it has the keyboard's focus: Oracle's status line says "Goes To: <address>" (tabs26.js hover). Only the
    address is sent ('' when it leaves); javascript: links are not shown. */
@@ -208,7 +259,7 @@ function tabEvents(t) {
   /* (1.6.0) PAGE_JS in every page of the tab: the content scripts reached only the first tab of an account's partition,
      so in Oracle's other website tabs Ctrl+T, Ctrl+W and the other keys did nothing (and their titles were not told);
      PAGE_JS runs once in a page, whichever gives it first */
-  f.addEventListener('loadcommit', e => { if (e.isTopLevel) { t.url = e.url; navState(); if (/^https?:/i.test(e.url || '')) f.executeScript({code: PAGE_JS}).catch(() => {}); f.executeScript({code: HOVER_JS, allFrames: true}).catch(() => {}) } });
+  f.addEventListener('loadcommit', e => { if (e.isTopLevel) { t.url = e.url; navState(); if (/^https?:/i.test(e.url || '')) f.executeScript({code: PAGE_JS}).catch(() => {}); f.executeScript({code: HOVER_JS, allFrames: true}).catch(() => {}); pwPage(t, e.url) } });   // (1.6.3: pwPage, Oracle's passwords)
   f.addEventListener('loadstart', e => {
     if (!e.isTopLevel) return;
     const why = fwWhy(e.url || '');
@@ -233,6 +284,8 @@ function tabEvents(t) {
     else if (typeof o.title == 'string') toTab(t.tid, 'title', {title: o.title.slice(0, 300)});
     else if (typeof o.hov == 'string') toTab(t.tid, 'hover', {url: o.hov.slice(0, 2000)});   // (1.6.1: where a link goes, for the status line)
     else if (typeof o.notice == 'number') toTab(t.tid, 'notice', {id: o.notice});
+    else if (typeof o.pws == 'string') pwSent(t, o.pws);   // (1.6.3, plan Part 7: a sign-in sent, under its pad)
+    else if (o.pwf === 1 || o.pwf === 2) pwFocus(t, o.pwf);   // (1.6.3: a password field has the keyboard)
     else if (typeof o.tel == 'string') toTab(t.tid, 'tel', {num: o.tel.slice(0, 80)});   // (1.5.9, plan 7.3: a phone number clicked)   // (1.5.9: its button was pressed, by a person: isTrusted)
   });
   f.addEventListener('focus', () => toTab(t.tid, 'focus'));
@@ -474,6 +527,12 @@ const TAB_OPS = {
   readhtml: (m, t) => { t.f.executeScript({code: READHTML_JS}).then(r => { let o = {}; try { o = JSON.parse((r && r[0]) || '{}') } catch (e) {} toTab(t.tid, 'readhtml', {id: m.id | 0, html: String(o.h || ''), url: String(o.u || ''), title: String(o.t || '').slice(0, 300)}) }).catch(() => toTab(t.tid, 'readhtml', {id: m.id | 0, html: ''})) },   // (1.6.1: reader mode)
   find: (m, t) => tabFind(t, m),   // (1.6.1: find in page)
   findstop: (m, t) => tabFindStop(t),
+  /* 1.6.3 (plan Part 7): Oracle's bar's Fill (or a strong password), after the person's click there: into the page's top frame, only
+     while it is still at that origin (checked here and in the page) */
+  pwfill: (m, t) => { let origin = ''; try { const u = new URL(t.url); if (u.protocol == 'https:') origin = u.origin } catch (e) {}
+    if (!origin || m.origin !== origin || pwPrivate(t) || typeof m.pw != 'string' || !m.pw || m.pw.length > 500) { toTab(t.tid, 'pwfilled', {id: m.id | 0, r: 'origin'}); return }
+    t.f.executeScript({code: '(' + PW_FILL.toString() + ')(' + JSON.stringify({o: origin, u: typeof m.user == 'string' ? m.user.slice(0, 200) : '', p: m.pw, g: !!m.gen}) + ')'})
+      .then(r => toTab(t.tid, 'pwfilled', {id: m.id | 0, r: String(r && r[0] || 'none')})).catch(() => toTab(t.tid, 'pwfilled', {id: m.id | 0, r: 'none'})) },
   findsel: (m, t) => { t.f.executeScript({code: '(' + FIND_FN.toString() + ')({sel:1})'}).then(r => { const x = r && r[0]; if (x && typeof x.sel == 'string') toTab(t.tid, 'find', {id: m.id | 0, sel: x.sel.slice(0, 200)}) }).catch(() => {}) },
   place: (m, t) => place(t, rect(m.r), Array.isArray(m.vis) ? m.vis.map(rect).filter(Boolean) : null, m.z),
 };
