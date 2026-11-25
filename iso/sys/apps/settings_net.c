@@ -115,6 +115,8 @@ static void card(cairo_t *cr, double W_, double H, double r, double lr, double l
 static GtkWidget *big(const char *l, int pri) { GtkWidget *b = rui_button(l, pri); p_put(b); return b; }
 static double big_w(GtkWidget *b) { return p_nat_w(b) - 20 + 28; }
 static double btn_lay(void *d, double x, double y, double w) { (void)w; p_place(d, x, y, 0, 0); return p_nat_h(d); }
+/* (.rmrow of two buttons, 8px apart) */
+static double two_lay(void *d, double x, double y, double w) { (void)w; GtkWidget *b2 = g_object_get_data(G_OBJECT(d), "b2"); p_place(d, x, y, 0, 0); p_place(b2, x + p_nat_w(d) + 8, y, 0, 0); return MAX(p_nat_h(d), p_nat_h(b2)); }
 
 /* ================================================================== Wi-Fi: the network in use (.wfcur) */
 typedef struct { GtkWidget *a, *b; } Cur;
@@ -187,10 +189,12 @@ static void pw_go(GtkWidget *w, gpointer d)
 {
 	(void)w; PwF *f = d; const char *s = f->hidden ? g_strstrip(g_strdup(gtk_entry_get_text(GTK_ENTRY(f->name)))) : g_strdup(f->ssid), *kk = f->sel ? s_select_get(f->sel) : f->kind, *p = gtk_entry_get_text(GTK_ENTRY(f->pw));
 	const char *e = !*s ? "Type the network name." : !strcmp(kk, "psk") && (g_utf8_strlen(p, -1) < 8 || g_utf8_strlen(p, -1) > 63) ? "A Wi-Fi password has 8 to 63 characters." : strpbrk(s, "\r\n") || strpbrk(p, "\r\n") ? "Line breaks cannot be used." : NULL;
-	if (e) { p_text_set(f->err, rui_tr(e)); set_note("wfe %s", e); set_state_soon(); g_free((char *)s); return; }
+	if (e) { g_object_set_data_full(G_OBJECT(f->err), "t", g_strdup(rui_tr(e)), g_free); gtk_widget_queue_draw(f->err); set_note("wfe %s", e); set_state_soon(); g_free((char *)s); return; }
 	char *ss = g_strdup(s), *pp = g_strdup(!strcmp(kk, "psk") ? p : ""), *k2 = g_strdup(kk); int h = f->hidden; g_free((char *)s);
 	connect_go(ss, pp, k2, h); explicit_bzero(pp, strlen(pp)); g_free(ss); g_free(pp); g_free(k2);
 }
+/* (.msg.wfe: 12px, #dc2626, 14px at least) */
+static gboolean wfe_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)d; const char *t = g_object_get_data(G_OBJECT(w), "t"); if (!t) return TRUE; cairo_set_source_rgb(cr, 0xdc / 255.0, 0x26 / 255.0, 0x26 / 255.0); s_text(cr, t, 0, 0, 12, 400, gtk_widget_get_allocated_width(w) / s_z(), s_lh(12, 400)); return TRUE; }
 static void pw_cancel(GtkButton *b, gpointer d) { (void)b; (void)d; OPEN[0] = 0; redraw(); }
 static void pw_show(int on, void *d) { gtk_entry_set_visibility(GTK_ENTRY(((PwF *)d)->pw), on); }
 static void pw_kind(const char *v, void *d) { PwF *f = d; (void)v; (void)f; redraw(); }
@@ -216,7 +220,7 @@ static void pw_form(const char *ssid, const char *kind, int hidden)
 	GtkWidget *sh = rui_check("Show", 0, pw_show, f); p_put(sh);
 	if (hidden) { const char *v[2] = { "psk", "open" }, *l[2] = { "WPA2/WPA3 password", "No password" }; f->sel = s_select(v, l, 2, "psk", pw_kind, f); p_put(f->sel); p_label_named("wfk", f->sel); }
 	if (!strcmp(kind, "open") || !strcmp(kind, "owe")) { gtk_widget_set_no_show_all(f->pw, TRUE); gtk_widget_set_no_show_all(sh, TRUE); }
-	f->err = p_msg_m("", 0, 0, 0); gtk_widget_set_no_show_all(f->err, FALSE);
+	f->err = gtk_drawing_area_new(); g_signal_connect(f->err, "draw", G_CALLBACK(wfe_draw), NULL); p_put(f->err); p_label_named("wfe", f->err);
 	GtkWidget *go = rui_button("Connect", 0), *cx = rui_button("Cancel", 0); g_signal_connect(go, "clicked", G_CALLBACK(pw_go), f); g_signal_connect(cx, "clicked", G_CALLBACK(pw_cancel), f); p_put(go); p_put(cx); p_label_named("wfgo", go);
 	g_object_set_data(G_OBJECT(f->pw), "box", box); g_object_set_data(G_OBJECT(f->pw), "show", sh); g_object_set_data(G_OBJECT(f->pw), "go", go); g_object_set_data(G_OBJECT(f->pw), "cancel", cx);
 	p_custom(pwf_lay, f, 0, 0);
@@ -350,7 +354,7 @@ static void on_why(GtkButton *b, gpointer d) { (void)b; (void)d; rui_shell(SW, "
 typedef struct { GtkWidget *a, *ck, *b; char *ssid, *t; int sure; guint t2; } SRow;
 static double srow_lay(void *d, double x, double y, double w)
 {
-	SRow *r = d; double h = 4 + 44 + 4 + 1, c1 = w - 8 - 110 - 8 - 90; p_place(r->a, x, y, w, h); p_place(r->ck, x + c1 + 8, y + 4 + (44 - 19) / 2, 104, 19); p_place(r->b, x + c1 + 8 + 110 + 8, y + 4 + 4, 90, 36); return h;   /* (.wfrow: min-height 44px) */
+	SRow *r = d; double h = 4 + 44 + 4 + 1, c1 = w - 8 - 110 - 8 - 90; p_place(r->a, x, y, w, h); p_place(r->ck, x + c1 + 8, y + 4 + (44 - 19) / 2, 104, 19); double bw = MAX(90, p_nat_w(r->b) - 20 + 28); p_place(r->b, x + w - bw, y + 4 + 4, bw, 36); return h;   /* (.wfrow: min-height 44px; "Tap again to forget" wider than its 90px column, out to the left: never past the page) */
 }
 static gboolean srow_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
@@ -640,11 +644,14 @@ static gboolean card_draw(GtkWidget *w, cairo_t *cr, gpointer p)
 	if (c->ok) card(cr, Wd, H, 8, 0x16 / 255.0, 0xa3 / 255.0, 0x4a / 255.0); else { double r, g, b; if (RUI.dark) { r = 0x33 / 255.0; g = 0x41 / 255.0; b = 0x55 / 255.0; } else { r = 0xd1 / 255.0; g = 0xd5 / 255.0; b = 0xdb / 255.0; } card(cr, Wd, H, 8, r, g, b); }
 	cairo_save(cr); cairo_translate(cr, (4 + 10) * z, (1 + 8) * z); if (c->draw) c->draw(c->d, cr, Wd - 4 - 10 - 10 - 1); cairo_restore(cr); return TRUE;
 }
-static Card *card_add(int ok, double (*inner)(void *, double, double, double), void (*draw)(void *, cairo_t *, double), void *d, const char *name)
+/* (the card's own drawing first, so the controls put on it after it stay above it and get their clicks; then card_done) */
+static Card *card_new(int ok, double (*inner)(void *, double, double, double), void (*draw)(void *, cairo_t *, double), void *d, const char *name)
 {
 	Card *c = g_new0(Card, 1); c->ok = ok; c->inner = inner; c->draw = draw; c->d = d; c->a = gtk_drawing_area_new(); g_object_set_data_full(G_OBJECT(c->a), "card", c, g_free);
-	g_signal_connect(c->a, "draw", G_CALLBACK(card_draw), c); p_put(c->a); if (name) p_label_named(name, c->a); p_custom(card_lay, c, 4, 8); return c;
+	g_signal_connect(c->a, "draw", G_CALLBACK(card_draw), c); p_put(c->a); if (name) p_label_named(name, c->a); return c;
 }
+static void card_done(Card *c) { p_custom(card_lay, c, 4, 8); }
+static Card *card_add(int ok, double (*inner)(void *, double, double, double), void (*draw)(void *, cairo_t *, double), void *d, const char *name) { Card *c = card_new(ok, inner, draw, d, name); card_done(c); return c; }
 /* a line of text asked for (askText), as a small dialog of this window */
 static char *ask_text(const char *title, const char *init, int secret)
 {
@@ -843,6 +850,7 @@ static void vpn_part(void)
 	p_msg("Oracle's Tor windows then run inside the VPN: Tor connects through it, and the VPN sees only that Tor is used.", 0);
 	if (!rui_jlen(vs)) p_msg("No VPN yet. Add one from your VPN provider's or your home router's WireGuard file.", 0);
 	for (int i = 0; i < rui_jlen(vs); i++) { RuiJ *v = rui_jat(vs, i); VCard *c = g_new0(VCard, 1); const char *id = set_jstr(v, "id", ""); char nm[32]; c->adm = adm;
+		Card *cd = card_new(rui_jbool(v, "on") && !strcmp(set_jstr(v, "state", ""), "connected"), vc_inner, vc_draw, c, NULL); g_object_set_data_full(G_OBJECT(cd->a), "vc", c, vc_free);
 		c->nm = g_strdup(set_jstr(v, "name", "")); c->st = g_strdup(rui_tr(vpn_state(v)));
 		if (rui_jbool(v, "broken")) c->in = g_strdup("Its file could not be read: remove it and add it again.");
 		else { GString *g = g_string_new(NULL); const char *sv = set_jstr(v, "server", ""); RuiJ *ad = rui_jprop(v, "addresses"), *dn = rui_jprop(v, "dns"); if (*sv) g_string_append_printf(g, "Server %s", sv);
@@ -866,7 +874,7 @@ static void vpn_part(void)
 			snprintf(nm, sizeof nm, "vpnr%d", i); p_label_named(nm, c->rn); snprintf(nm, sizeof nm, "vpnx%d", i); p_label_named(nm, c->rm);
 			Kck *k = g_new0(Kck, 1); k->on = rui_jbool(v, "kill"); k->cb = on_vpnk; k->d = g_strdup(id); k->t = g_strdup(c->kt); c->ck = gtk_drawing_area_new(); gtk_widget_add_events(c->ck, GDK_BUTTON_PRESS_MASK); gtk_widget_set_can_focus(c->ck, TRUE);
 			g_object_set_data_full(G_OBJECT(c->ck), "kck", k, kck_free); g_object_set_data_full(G_OBJECT(c->ck), "id", k->d, g_free); g_signal_connect(c->ck, "draw", G_CALLBACK(kck_draw), k); g_signal_connect(c->ck, "button-press-event", G_CALLBACK(kck_press), k); p_put(c->ck); snprintf(nm, sizeof nm, "vpnk%d", i); p_label_named(nm, c->ck); }
-		Card *cd = card_add(rui_jbool(v, "on") && !strcmp(set_jstr(v, "state", ""), "connected"), vc_inner, vc_draw, c, NULL); g_object_set_data_full(G_OBJECT(cd->a), "vc", c, vc_free);
+		card_done(cd);
 		if (adm) { p_custom_find("Who may turn it on and off", 0); } }
 	{ GtkWidget *a = rui_button("Add a VPN…", 0); g_signal_connect(a, "clicked", G_CALLBACK(on_vpna), NULL); gtk_widget_set_sensitive(a, adm && !(rui_jtype(rui_jprop(VS, "wireguard")) == 1 && !rui_jbool(VS, "wireguard"))); p_put(a); p_label_named("vpna", a); p_custom(btn_lay, a, 14, 0); }
 	if (!adm) p_msg("Only an administrator can add, rename or remove a VPN.", 0);
@@ -953,7 +961,8 @@ void page_net(void)
 		c = p_r2("Address/prefix"); NAD = rui_entry("192.168.1.50/24"); c_add(c, NAD, 0, 0, 1); p_label_named("nad", NAD); p_r2_more(c);
 		c = p_r2("Gateway"); NGW = rui_entry("192.168.1.1"); c_add(c, NGW, 0, 0, 1); p_label_named("ngw", NGW); p_r2_more(c);
 		c = p_r2("DNS server"); NDN = rui_entry("1.1.1.1"); c_add(c, NDN, 0, 0, 1); p_label_named("ndn", NDN);
-		const char *L[2] = { "Apply manual address", "Use automatic (DHCP)" }; GCallback C[2] = { G_CALLBACK(on_static), G_CALLBACK(on_dhcp) }; p_buttons(L, 2, C, NULL); }
+		GtkWidget *b1 = rui_button("Apply manual address", 0), *b2 = rui_button("Use automatic (DHCP)", 0); g_signal_connect(b1, "clicked", G_CALLBACK(on_static), NULL); g_signal_connect(b2, "clicked", G_CALLBACK(on_dhcp), NULL);
+		p_put(b1); p_put(b2); p_label_named("nst", b1); p_label_named("ndh", b2); g_object_set_data(G_OBJECT(b1), "b2", b2); p_custom(two_lay, b1, 14, 0); }
 	p_h4("Proxy");
 	{ Cell *c = p_r2("Proxy server"); NPX = rui_entry("host:port (empty = none)"); c_add(c, NPX, 0, 0, 1); p_label_named("npx", NPX);
 		GtkWidget *b = rui_button("Save proxy", 0); g_signal_connect(b, "clicked", G_CALLBACK(on_proxy), NULL); p_put(b); p_label_named("npa", b); p_custom(btn_lay, b, 0, 0); }

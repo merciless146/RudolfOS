@@ -440,6 +440,44 @@ async function checkMob() {
     ok('M7. Disconnect: mobile/connect?id=0&on=0', /POST mobile\/connect\?id=0&on=0/.test(since()), since()) }
   natStop(); try { fs.unlinkSync(path.join(D, 'mobpin')) } catch (e) {} try { fs.unlinkSync(path.join(D, 'mobile')) } catch (e) {}
 }
+// ---- Network Settings (settings25.js, wifi26.js, settings31.js, mobile58.js, hotspot59.js, vpn62.js; the stand-in keeps each body in DIR/body-NAME)
+async function checkNet() {
+  ST.state(D, MODES.light, MORE); const B = n => { try { return fs.readFileSync(path.join(D, 'body-' + n), 'utf8') } catch (e) { return null } };
+  for (const f of fs.readdirSync(D)) if (/^body-|^wifijob$/.test(f)) fs.unlinkSync(path.join(D, f));
+  const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n'); const dbg = () => lines('act').slice(-12);
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data;
+  const pw = () => { const d = rect('dialog'); if (d) xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); xdo('key Return') };
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 90; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 500) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 500 ? 5 : 4}`); await wait(200) } await wait(300) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  let FOC = []; const typeIn = async (n, t) => { await scrollTo(n); click(rect(n)); await wait(300); FOC.push(n + ':' + line('focus') + ':' + JSON.stringify(rect(n))); xdo('key ctrl+a'); xdo(`type --delay 20 '${t}'`); await wait(200) };
+  natStart('net'); await until(() => rect('body') && line('page') == 'net', 20000); await wait(2000);
+  { mark = c0(); await scrollTo('wfc1'); click(rect('wfc1')); await until(() => B('wifi_connect') != null, 4000); await until(() => /POST \/api\/job|GET job/.test(since()) && !/wifijob/.test(''), 3000); await wait(1500);
+    ok('N1. Cafe Guest (open, saved): Connect: wifi/connect "Cafe Guest\\n\\nsaved", then rudolfd\'s job followed', B('wifi_connect') == 'Cafe Guest\n\nsaved' && /GET job/.test(since()), [B('wifi_connect'), since().slice(-300)]) }
+  { mark = c0(); await scrollTo('wfc2'); click(rect('wfc2')); await until(() => rect('wfp'), 3000); click(rect('wfp')); xdo('type abc'); FOC.push('wfgo:' + JSON.stringify(rect('wfgo')) + JSON.stringify(rect('wfp'))); click(rect('wfgo')); await until(() => /wfe A Wi-Fi password has 8 to 63 characters\./.test(acts()), 3000);
+    const short = /wfe A Wi-Fi password has 8 to 63 characters\./.test(acts()); click(rect('wfp')); xdo('key ctrl+a'); xdo('type longpassword1'); xdo('key Return'); await until(() => B('wifi_connect') && B('wifi_connect').startsWith('Neighbour'), 4000); await wait(1500);
+    ok('N2. Neighbour 5G (WPA2/WPA3, not saved): its password asked; "abc" refused (8 to 63 characters); then wifi/connect "Neighbour 5G\\nlongpassword1\\npsk"', short && B('wifi_connect') == 'Neighbour 5G\nlongpassword1\npsk', [[short, B('wifi_connect')], FOC]) }
+  { await scrollTo('wfmt0'); click(rect('wfmt0')); await until(() => (LS().bd95metered || '').includes('Home'), 3000);
+    ok('N3. Saved network Home: Metered: bd95metered ["Home"], as appSetMetered keeps it', LS().bd95metered == '["Home"]', [LS().bd95metered, dbg()]) }
+  { await scrollTo('wff1'); click(rect('wff1')); await wait(400); click(rect('wff1')); await until(() => B('wifi_forget') != null, 3000);
+    ok('N4. Cafe Guest: Forget, tapped twice ("Tap again to forget"): wifi/forget "Cafe Guest"', B('wifi_forget') == 'Cafe Guest' && /forget sure Cafe Guest/.test(acts()), [[B('wifi_forget')], dbg()]) }
+  { mark = c0(); await typeIn('nad', '192.168.1.50/24'); await typeIn('ngw', '192.168.1.1'); await typeIn('ndn', '1.1.1.1'); await scrollTo('nst'); click(rect('nst')); await until(() => /net\/static/.test(since()), 3000);
+    ok('N5. Manual address 192.168.1.50/24, gateway, DNS, Apply: net/static?if=wlan0&addr=192.168.1.50%2F24&gw=192.168.1.1&dns=1.1.1.1', /POST net\/static\?if=wlan0&addr=192\.168\.1\.50%2F24&gw=192\.168\.1\.1&dns=1\.1\.1\.1/.test(since()), [since(), dbg()]) }
+  { mark = c0(); await typeIn('npx', 'proxy.example:3128'); click(rect('npa')); await until(() => /POST proxy/.test(since()), 3000);
+    ok('N6. Proxy proxy.example:3128, Save proxy: proxy?server=proxy.example%3A3128', /POST proxy\?server=proxy\.example%3A3128/.test(since()), [since(), FOC, rect('body')]) }
+  { await scrollTo('prov'); await pick('prov', 1, 3); await scrollTo('n'); await pick('n', 2, 3); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /"prov":"ddg"/.test(LS().bd95net || ''), 3000);
+    const nc = JSON.parse(LS().bd95net || '{}'), log = (JSON.parse(LS().bd95seclog || '{}').sys || []).map(e => e.m);
+    ok('N7. Web search DuckDuckGo, 20 results, Apply (the footer): bd95net.search {prov ddg, n 20}, the rest as it was; "Ann changed network settings" in the security log', nc.search && nc.search.prov == 'ddg' && nc.search.n === 20 && nc.dl && nc.dl.max === 4096 && Array.isArray(nc.conns) && log.includes('Ann changed network settings'), [[nc, log.slice(-2)], dbg()]) }
+  { mark = c0(); await scrollTo('mtrsel'); await pick('mtrsel', 1, 3); await until(() => /net\/metered\?/.test(since()), 3000);
+    ok('N8. This network: Metered: net/metered?if=wlan0&v=on', /POST net\/metered\?if=wlan0&v=on/.test(since()), [since(), dbg()]) }
+  { mark = c0(); await scrollTo('hst'); click(rect('hst')); await until(() => rect('dialog'), 3000); pw(); await until(() => B('net_hotspot') != null, 4000);
+    ok('N9. Share this connection, Turn on, with the administrator\'s permission: net/hotspot "Rudolf-Home\\n\\n2.4" (the saved password kept)', B('net_hotspot') == 'Rudolf-Home\n\n2.4', B('net_hotspot')) }
+  { mark = c0(); await scrollTo('vpnb0'); click(rect('vpnb0')); await until(() => /vpn\/on/.test(since()), 3000);
+    await scrollTo('vpnk0'); const k = rect('vpnk0'); xdo(`mousemove ${k[0] + 10} ${k[1] + 9} click 1`); await until(() => rect('dialog'), 3000); pw(); await until(() => B('vpn_set') != null, 4000); let b = {}; try { b = JSON.parse(B('vpn_set')) || {} } catch (e) {}
+    ok('N10. VPN Home router: Connect (anyone may): vpn/on?id=v1; its kill switch with the administrator\'s name and password: vpn/set {n, p, id v1, kill true}', /POST vpn\/on\?id=v1/.test(since()) && b.n == 'Ann' && b.p == PW && b.id == 'v1' && b.kill === true, [since(), Object.keys(b), JSON.stringify(rect('vpnk0')), dbg()]) }
+  natStop(); for (const f of fs.readdirSync(D)) if (/^body-|^wifijob$/.test(f)) fs.unlinkSync(path.join(D, f));
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -488,6 +526,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('bt-checklist')) await checkBt();
   if (only('checklist') || only('remote-checklist')) await checkRemote();
   if (only('checklist') || only('mob-checklist')) await checkMob();
+  if (only('checklist') || only('net-checklist')) await checkNet();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

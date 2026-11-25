@@ -164,7 +164,7 @@ class H(http.server.BaseHTTPRequestHandler):
         # same for the page's Task Manager and the native one); the actions taken answered as rudolfd answers them (and noted in DIR/calls)
         if rd('tm') is not None:
             T = json.loads(rd('tm'))
-            if w in T and w not in ('bt', 'remote') and (m == 'GET' or w in ('apps/running', 'wifi/scan')): return self.j(T[w])
+            if w in T and w not in ('bt', 'remote') and not (w == 'job' and rd('wifijob')) and (m == 'GET' or w in ('apps/running', 'wifi/scan')): return self.j(T[w])
             if w == 'proc/end' and m == 'POST': return self.j({'ok': True, 'message': 'proc', 'ended': 3, 'kept': 0} if 'tree=1' in q else {'ok': True, 'message': 'proc'})
             if w in ('service/restart', 'apps/end', 'apps/kill', 'shell/switch') and m == 'POST': return self.j({'ok': True, 'message': w})
             if w == 'memory/dropcache' and m == 'POST': return self.j({'ok': True, 'freed': 104857600})
@@ -175,6 +175,17 @@ class H(http.server.BaseHTTPRequestHandler):
             # (Settings › Volume Controls, settings_t.js V-checklist: the sound card, the microphone, the echo canceller, as rudolfd answers them)
             if w in ('audio', 'audio/mic') and m == 'POST': return self.j({'ok': True, 'message': 'sound card set' if w == 'audio' else 'microphone chosen'})
             if w == 'sound/echo' and m == 'POST': return self.j({'ok': True, 'on': 'on=1' in q, 'active': 'on=1' in q})
+            # (Settings › Network, settings_t.js N-checklist: rudolfd's wifi/*, net/static, net/dhcp, proxy, net/metered, net/hotspot and vpn/* answered as rudolfd does,
+            # each body kept in DIR/body-NAME; a Wi-Fi connection's job finished at once)
+            if m == 'POST' and 'net' in T and (w.startswith('wifi/') or w.startswith('vpn/') or w in ('net/static', 'net/dhcp', 'proxy', 'net/metered', 'net/hotspot')):
+                open(os.path.join(D, 'body-' + w.replace('/', '_')), 'wb').write(b)
+                if w == 'wifi/connect': open(os.path.join(D, 'wifijob'), 'w').write(b.decode().split('\n')[0])
+                if w.startswith('vpn/') and w != 'vpn/on' and w != 'vpn/off':
+                    o = json.loads(b or b'{}'); k = KEYS.get('Ann')
+                    if not k or o.get('n') != 'Ann' or o.get('p') != k['pw']: return self.err(403, 'Wrong password.')
+                return self.j({'ok': True, 'message': {'wifi/forget': 'Forgotten.', 'net/static': 'Manual address set.', 'net/dhcp': 'Automatic address.', 'proxy': 'Proxy saved.', 'net/hotspot': 'Sharing.'}.get(w, 'Done.')})
+            if w == 'job' and m == 'GET' and rd('wifijob'):
+                n = rd('wifijob').decode(); os.unlink(os.path.join(D, 'wifijob')); return self.j({'ok': True, 'running': False, 'name': 'wifi', 'status': 0, 'log': 'Connected to ' + n})
             # (Settings › Mobile network, settings_t.js M-checklist: rudolfd's mobile/settings, mobile/pin, mobile/puk as rudolfd answers them; the PIN's body kept in DIR/mobpin)
             if w in ('mobile/settings', 'mobile/pin', 'mobile/puk') and m == 'POST' and 'mobile/settings' in T:
                 if w == 'mobile/settings': return self.j({'ok': True, 'message': 'saved'})
