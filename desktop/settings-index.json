@@ -333,10 +333,10 @@
 ["The Trash","",1],
 ["Delete items in the Trash for good once they are older than","The Trash"],
 ["Backup","",1],
-["Keep files on this drive","",1],
 ["Make a Rudolf OS USB stick","",1],
 ["Rudolf OS to put on it","Make a Rudolf OS USB stick"],
-["Also copy my files and settings (Linux apps are not copied)","Make a Rudolf OS USB stick"]],"apps":
+["Also copy my files and settings (Linux apps are not copied)","Make a Rudolf OS USB stick"],
+["Keep files on this drive","",1]],"apps":
 [["Default apps","",1],
 ["Links","",1],
 ["Installed apps","",1],

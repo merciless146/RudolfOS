@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Changed: Make a Rudolf OS USB stick is in Settings › Storage and backup's Backup part (Update and recovery links to it):
+  it says in plain words what each choice puts on the stick, refuses a stick too small for the chosen image before
+  anything is written, shows the step and the time left, and at the end what was checked and that the stick can be removed.
 - New: Oracle has its own password manager. After you sign in to a site, Oracle's bar asks "Save your password for
   example.com?"; on that site's sign-in form "🔑 Fill" fills it, only after your click, only on that exact site and never in
   a frame of another one or on an http: page; "Use a strong password" for new accounts. The passwords are kept in your

@@ -194,6 +194,11 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   Ruffle address is the page's alone.
 - **Left:** Display (PR 5, the memory with Display open); Network, Mobile network, Bluetooth, Oracle, Remote; Devices, Storage,
   Apps, Notifications; Privacy, Security, System health, Users; the switch.
+- **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
+  within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in
+  plain words, a stick too small for the chosen image refused before anything is written, a bar with the step and the time
+  left, and at the end what was checked and that the stick can be removed; Update and recovery keeps a line linking to it
+  (`.stkmoved`). Native Settings' Storage page (still to come) carries it there, in Backup, and Update and recovery the link.
 - **The owner's checklist for PR 4 (Vivobook; `rudolf-settings vol`, `mm`, `acc` from a terminal on the native desktop until the
   switch):** 1. each page against Chromium mode's, light and dark. 2. Volume Controls: Mute and the system volume follow the keys;
   ▶ on each sound and a style chosen play the same sound as Chromium mode's (they play only once the switch makes Settings a native
@@ -556,6 +561,20 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    full image or boot files only explained in plain words, a stick too small refused before anything is written, the
    progress and the time left, a check of what was written, the stick safe to remove at the end; the native Settings'
    pages carry it in its new place.
+   - **Status (2026-11-25, scheduled task): done for the page's Settings** (PR "Make a stick in Backup"; Chromium mode and
+     Lite, desktop/stick30.js). Found: on the page it was at the end of Storage and backup, after "Keep files on this drive",
+     its words about the rescue stick and Recovery mode being why it read as Update and recovery's. Now in Backup's part,
+     after "Back up to a USB stick"; Update and recovery has a line "Make a Rudolf OS USB stick (a rescue stick) is now in
+     Storage and backup › Backup" that opens it there; Search in Settings finds it in Storage and backup
+     (settings-index.json written again). Refined: each stick with its name, model and size (as before); what each choice
+     puts on it in plain words (this Rudolf OS, the update address's, a whole disc image, boot files only); a stick too
+     small for the chosen image refused before anything is asked or written (its button off and why said; mkstick.sh still
+     checks this Rudolf OS's own size before writing); a bar with the step (from mkstick.sh's and install.sh's lines) and
+     the time left (estimated from the time so far); at the end "Checked: what is on the stick matches. It is safe to
+     remove the stick now." **Test:** `iso/qt/shell2/stick163_t.js` (stick163-check.yml, rudolfd's answers given by the
+     test): **3/10 before, 10/10 after.** Native Settings' pages (Part 3) carry it when their Storage page is made: a
+     note left in Part 3's status. The bar moves by steps: install.sh's copy (step 1) says nothing until it is done, so
+     the time left is rough during it.
 6. **Native's desktop menu stays open.** "Desktop right-click menu does not disappear if clicked outside of while open on
    Native. Will only close after an option is selected." On Native, a right-click menu (the desktop's, the taskbar's,
    a window's) closes when clicking anywhere outside it, pressing Esc, or switching windows, as on Chromium.
