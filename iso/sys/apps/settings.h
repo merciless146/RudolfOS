@@ -35,12 +35,14 @@ void p_sgrp(const char *t);                           /* .sh4.sgrp: a group of s
 GtkWidget *p_msg(const char *t, int grey);            /* .msg (grey: the page's color:#6b7280, else the page's own colour) */
 Cell *p_r2(const char *label);                        /* a row of .r2: its label, its controls in the cell (each row of the page's grid) */
 void p_r2_more(Cell *c);                              /* (the next row is in the same .r2: no margin between) */
-void c_add(Cell *c, GtkWidget *w, double gap, double dy, int full);   /* a control in the cell's line: after gap px, dy px down; full: the cell's width */
+void c_add(Cell *c, GtkWidget *w, double gap, double dy, int full);   /* a control in the cell's line: after gap px, dy px down; full: the cell's width (2: what its line leaves) */
 void c_line(Cell *c, double mt);                      /* the next controls on a line of their own, mt px under */
 GtkWidget *c_msg(Cell *c, const char *t, int grey);   /* a .msg in the cell */
 GtkWidget *c_text(Cell *c, const char *t, int weight);
 void c_gap(GtkWidget *w, double gap);
 void c_dy(GtkWidget *w, double dy);                   /* (1.6.3) a writing's place below its line's top (a range's value beside it) */
+void p_r2_mt(Cell *c, double mt);                    /* (1.6.3) the row's own margin above it */
+int set_https_get(const char *url, char **body, char *err, size_t en);   /* (1.6.3) the status; *body (free it) */
 void p_r2_top(Cell *c, double mt);                   /* (1.6.3) the row's label at its top, mt px down (align-self: start; margin-top) */
 /* (1.6.3) a .msg of .sp25 (settings25.js's sections: 12 px, --mut): p_msg / c_msg's grey 2; a button 12 px, 1px 8px (class set-small) */                 /* (1.6.3) a writing's room before it in its line (a space: the page's inline .msg after a select) */   /* plain writing in the cell (the Preview's: 700 bold, 400) */
 GtkWidget *c_label(Cell *c, const char *t, double dy); /* a <label> in the cell's line ("After"), dy px down: found by Search in Settings */

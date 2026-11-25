@@ -287,6 +287,7 @@ static double cell_lay(Cell *c, double x, double y, double w)
 			if (!inl) { cy += pmb; pmb = 0; lt = cy; lx = 0; lhh = 0; inl = 1; }
 			double ww, hh;
 			if (it->k == 3) { double tw; text_lines(it->text, RUI.fs, it->weight == 700 ? 700 : 400, 0, 0, &tw); ww = tw; hh = lh_of(RUI.fs, 400); it->wd = ww; it->h = hh; gtk_widget_set_size_request(it->w, R(ww), R(hh)); }
+			else if (it->full == 2) { double rest = 0; for (guint j = k + 1; j < c->items->len; j++) { CItem *n = g_ptr_array_index(c->items, j); if (n->k != 0) break; rest += n->gap + nat_w(n->w); } ww = w - lx - rest; hh = nat_h(it->w, ww); }   /* (1.6.3: flex 1, the rest of its line after it) */
 			else { ww = it->full ? w : nat_w(it->w); hh = nat_h(it->w, ww); }
 			it->x = x + lx + it->gap; it->y = lt + it->dy; place(it->w, it->x, it->y, it->full ? ww : 0, 0); lx += it->gap + ww; lhh = fmax(lhh, it->dy + hh); cy = lt + lhh;
 			first = 0; continue; }
@@ -835,6 +836,25 @@ static void harvest(void)
 GtkWidget *c_label(Cell *c, const char *t, double dy);
 void c_dy(GtkWidget *w, double dy) { CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); if (x) x->dy = dy; }
 void p_r2_top(Cell *c, double mt) { c->ltop = mt + 1; }
+void p_r2_mt(Cell *c, double mt) { for (guint k = 0; k < ITEMS->len; k++) { Item *i = g_ptr_array_index(ITEMS, k); if (i->k == I_R2 && i->cell == c) i->mt = mt; } }
+/* (1.6.3 Part 3) an HTTPS GET of this program's own (Oracle's Test search): the status, the body (free it); RUDOLF_SET_HTTPS for the tests
+   ("STATUS FILE": that answer, no network) */
+int set_https_get(const char *url, char **body, char *err, size_t en)
+{
+	*body = NULL; if (err && en) *err = 0;
+	const char *tt = getenv("RUDOLF_SET_HTTPS"); if (tt) { int st = atoi(tt); const char *f = strchr(tt, ' '); gsize n = 0; if (f && g_file_get_contents(f + 1, body, &n, NULL)) return st; return st; }
+	if (g_ascii_strncasecmp(url, "https://", 8)) { snprintf(err, en, "The address must start with https://."); return 0; }
+	const char *h = url + 8, *sl = strchr(h, '/'); char *host = sl ? g_strndup(h, sl - h) : g_strdup(h), *path = g_strdup(sl ? sl : "/"); int port = 443; char *co = strchr(host, ':'); if (co) { *co = 0; port = atoi(co + 1); }
+	GSocketClient *sc = g_socket_client_new(); g_socket_client_set_tls(sc, TRUE); g_socket_client_set_timeout(sc, 20); GError *e = NULL; int st = 0;
+	GSocketConnection *cn = g_socket_client_connect_to_host(sc, host, port, NULL, &e);
+	if (cn) { char *rq = g_strdup_printf("GET %s HTTP/1.0\r\nHost: %s\r\nUser-Agent: Rudolf OS Settings\r\nAccept: application/json\r\nConnection: close\r\n\r\n", path, host);
+		GOutputStream *os = g_io_stream_get_output_stream(G_IO_STREAM(cn)); GInputStream *is = g_io_stream_get_input_stream(G_IO_STREAM(cn)); GByteArray *all = g_byte_array_new(); char b[16384]; gssize n;
+		if (g_output_stream_write_all(os, rq, strlen(rq), NULL, NULL, &e)) while ((n = g_input_stream_read(is, b, sizeof b, NULL, NULL)) > 0 && all->len < 4 * 1024 * 1024) g_byte_array_append(all, (guint8 *)b, n);
+		g_byte_array_append(all, (guint8 *)"", 1); char *r = (char *)all->data; if (!strncmp(r, "HTTP/", 5)) { const char *sp = strchr(r, ' '); st = sp ? atoi(sp + 1) : 0; char *bd = strstr(r, "\r\n\r\n"); if (bd) *body = g_strdup(bd + 4); }
+		g_byte_array_free(all, TRUE); g_free(rq); g_object_unref(cn); }
+	if (e) { if (err) snprintf(err, en, "%s", e->message); g_error_free(e); }
+	g_object_unref(sc); g_free(host); g_free(path); return st;
+}
 void c_gap(GtkWidget *w, double gap) { CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); if (x) x->gap = gap; }
 GtkWidget *c_label(Cell *c, const char *t, double dy) { GtkWidget *w = c_text(c, rui_tr(t), 1); CItem *x = g_object_get_data(G_OBJECT(w), "set-citem"); x->dy = dy; return w; }
 static GtkAdjustment *fx_adj(void) { GList *c = gtk_container_get_children(GTK_CONTAINER(SCR)); GtkAdjustment *a = gtk_scrolled_window_get_vadjustment(GTK_SCROLLED_WINDOW(c->data)); g_list_free(c); return a; }

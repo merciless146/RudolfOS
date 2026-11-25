@@ -402,5 +402,8 @@ out.append('static const unsigned char LOGO_PNG[] = {' + ','.join(str(b) for b i
 # ---------------------------------------------------------------- (1.6.3 Part 3, PR 6) Mobile network: modem59.js's MDM_STATE, mobile60.js's MOB_MODE
 mdm = jsconst(rd('modem59.js'), 'MDM_STATE', 'modem59.js'); mobm = jsconst(rd('mobile60.js'), 'MOB_MODE', 'mobile60.js')
 out.append('static const char *const MDMSTATE[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in mdm.items()) + '};')
+mtk = jsconst(rd('mobile58.js'), 'MTR_KIND', 'mobile58.js'); vpol = jsconst(rd('vpn62.js'), 'VPN_POL', 'vpn62.js')
+out.append('static const char *const MTRKIND[][3] = {' + ','.join('{ %s, %s, %s }' % (cstr(k), cstr(v[0]), cstr(v[1])) for k, v in mtk.items()) + '};')
+out.append('static const char *const VPNPOL[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in vpol.items()) + '};')
 out.append('static const char *const MOBMODE[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in mobm.items()) + '};')
 open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')
