@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.3.md Part 7, step 2): measured that a Chromium policy blocking extensions also stops the
+  desktop's own Ruffle extension (Chromium does not start); the ways to keep every other extension out are set out for the owner.
 - Fixed: on Native, the desktop's icons show a change within a second (an icon removed or put back, a file or folder made,
   renamed or deleted, the icon size), even while the computer is busy; with your files on the disk, a window no longer takes
   away the icons another window made.
@@ -16,6 +18,8 @@ Summary: In progress.
   a frame of another one or on an http: page; "Use a strong password" for new accounts. The passwords are kept in your
   account's keyring and locked when you sign out; Guest, private and Tor windows never keep any. ☰ › Passwords shows them
   (Show and Copy after your password), changes and removes them. The same on Chromium, Native and Lite (plan 1.6.3 Part 7).
+- Fixed: on Native, opening, minimizing and restoring a window draw it filling out and clearing as in Chromium mode; before, a
+  window appeared or vanished whole at once with the light drawn around it.
 - New: each of Oracle's tabs says in its tooltip how much memory it uses (its process's, as Task Manager counts it, with the
   frames of other sites it holds said apart; "shares a process with 2 other tabs" when it does; none for a freed tab 💤),
   measured when the tooltip opens and while it shows; the same on Chromium and Native, and Lite says what WebKit lets it know

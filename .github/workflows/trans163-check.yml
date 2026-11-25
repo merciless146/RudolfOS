@@ -1,0 +1,34 @@
+name: Native's transitions (1.6.3 Part 8, item 2)
+# The window transitions recorded frame by frame (ffmpeg x11grab, 60 a second) on Chromium mode and Native under Xvfb
+# (iso/qt/native/trans163_t.js), the title bars' behaviour (titlebeh_t.js) and the native desktop's host test (native59_t.sh).
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fixes163-transitions']
+  pull_request:
+    paths: ['iso/sys/rudolf-native.c', 'iso/qt/host/native59_t.sh', 'iso/sys/litepoint.h', 'iso/qt/native/trans163_t.js', 'iso/qt/native/trans163_an.py', '.github/workflows/trans163-check.yml']
+permissions: {contents: read}
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil python3-numpy gcc xvfb xdotool x11-utils imagemagick ffmpeg libwebkit2gtk-4.1-dev fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page and rudolf-native
+        run: |
+          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..
+          gcc -O2 -Wall -Wno-misleading-indentation -Wno-deprecated-declarations -o $RUNNER_TEMP/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+      - name: "trans163_t.js: the transitions, frame by frame"
+        run: mkdir -p out/t && NODE_PATH=$PWD/node_modules SAME_SCRIPT=trans163_t.js SAME_PORT=8748 SAME_DSP=:94 sh iso/qt/native/same_t.sh $PWD/out/t "" $RUNNER_TEMP/rudolf-native
+      - name: "titlebeh_t.js: the title bars' behaviour"
+        run: mkdir -p out/b && NODE_PATH=$PWD/node_modules SAME_SCRIPT=titlebeh_t.js SAME_PORT=8747 SAME_DSP=:96 sh iso/qt/native/same_t.sh $PWD/out/b "" $RUNNER_TEMP/rudolf-native
+      - name: "native59_t.sh: the native desktop, its window manager"
+        run: NATIVE59_PORT=8745 NATIVE59_DSP=:93 sh iso/qt/host/native59_t.sh $RUNNER_TEMP/rudolf-native
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: trans163, retention-days: 7, path: out}
