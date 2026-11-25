@@ -139,7 +139,7 @@ static void rgb_of(const char *h, double *r, double *g2, double *b) { unsigned v
 static gboolean colour_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
 	double z = s_z(), W = gtk_widget_get_allocated_width(w) / z, H = gtk_widget_get_allocated_height(w) / z, r, gg, b; char *v = gs(d); cairo_save(cr); cairo_scale(cr, z, z);
-	if (RUI.dark) cairo_set_source_rgb(cr, .23, .23, .23); else cairo_set_source_rgb(cr, 0xef / 255.0, 0xef / 255.0, 0xef / 255.0); s_rrect(cr, .5, .5, W - 1, H - 1, 2); cairo_fill_preserve(cr);
+	cairo_set_source_rgb(cr, 0xef / 255.0, 0xef / 255.0, 0xef / 255.0); s_rrect(cr, .5, .5, W - 1, H - 1, 2); cairo_fill_preserve(cr);   /* (the page's colour inputs: Chromium's light button in dark too) */
 	cairo_set_source_rgb(cr, 0x76 / 255.0, 0x76 / 255.0, 0x76 / 255.0); cairo_set_line_width(cr, 1); cairo_stroke(cr);
 	rgb_of(v, &r, &gg, &b); cairo_set_source_rgb(cr, r, gg, b); cairo_rectangle(cr, 7, 5, W - 14, H - 10); cairo_fill_preserve(cr); cairo_set_source_rgb(cr, 0x77 / 255.0, 0x77 / 255.0, 0x77 / 255.0); cairo_stroke(cr);
 	cairo_restore(cr); g_free(v); return TRUE;
@@ -330,12 +330,16 @@ static void sec_taskbar(void)
 static GtkWidget *TWPREV;
 static gboolean twprev_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 {
-	(void)w; (void)d; double z = s_z();
-	for (int k = 0; k < 2; k++) { double y = k * 40; cairo_save(cr); cairo_scale(cr, z, z);
-		cairo_set_source_rgb(cr, 1, 1, 1); s_rrect(cr, 0, y, 320, 36, 8); cairo_fill(cr);
-		s_col(cr, "ac", 1); cairo_new_path(cr); cairo_move_to(cr, 1, y + 35); cairo_line_to(cr, 1, y + 8); cairo_arc(cr, 8, y + 8, 7, M_PI, 1.5 * M_PI); cairo_line_to(cr, 312, y + 1); cairo_arc(cr, 312, y + 8, 7, 1.5 * M_PI, 2 * M_PI); cairo_line_to(cr, 319, y + 35); cairo_close_path(cr); cairo_fill(cr);
-		cairo_set_source_rgb(cr, 156 / 255.0, 163 / 255.0, 175 / 255.0); cairo_set_line_width(cr, 1); s_rrect(cr, .5, y + .5, 319, 35, 7.5); cairo_stroke(cr); cairo_restore(cr);
-		cairo_set_source_rgb(cr, 1, 1, 1); s_text(cr, rui_tr(k ? "Another window" : "Active window"), 28, y + 11, 12, 600, 0, 14);
+	(void)w; (void)d; double z = s_z(); int dk = RUI.dark;
+	for (int k = 0; k < 2; k++) { double y = k * 40; int act = k == 0; cairo_save(cr); cairo_scale(cr, z, z);
+		if (dk) cairo_set_source_rgb(cr, 15 / 255.0, 23 / 255.0, 42 / 255.0); else cairo_set_source_rgb(cr, 1, 1, 1); s_rrect(cr, 0, y, 320, 36, 8); cairo_fill(cr);
+		if (act || !dk) s_col(cr, "ac", 1); else cairo_set_source_rgb(cr, 30 / 255.0, 41 / 255.0, 59 / 255.0);
+		cairo_new_path(cr); cairo_move_to(cr, 1, y + 35); cairo_line_to(cr, 1, y + 8); cairo_arc(cr, 8, y + 8, 7, M_PI, 1.5 * M_PI); cairo_line_to(cr, 312, y + 1); cairo_arc(cr, 312, y + 8, 7, 1.5 * M_PI, 2 * M_PI); cairo_line_to(cr, 319, y + 35); cairo_close_path(cr); cairo_fill(cr);
+		if (dk) cairo_set_source_rgb(cr, 51 / 255.0, 65 / 255.0, 85 / 255.0); else cairo_set_source_rgb(cr, 156 / 255.0, 163 / 255.0, 175 / 255.0); cairo_set_line_width(cr, 1); s_rrect(cr, .5, y + .5, 319, 35, 7.5); cairo_stroke(cr);
+		if (dk) for (int b = 0; b < 3; b++) { cairo_set_source_rgb(cr, 30 / 255.0, 41 / 255.0, 59 / 255.0); s_rrect(cr, 233 + b * 27, y + 7, 24, 22, 4); cairo_fill(cr); }
+		cairo_restore(cr);
+		if (dk && !act) cairo_set_source_rgb(cr, 203 / 255.0, 213 / 255.0, 225 / 255.0); else cairo_set_source_rgb(cr, 1, 1, 1); s_text(cr, rui_tr(act ? "Active window" : "Another window"), 28, y + 11, 12, 600, 0, 14);
+		if (dk) cairo_set_source_rgb(cr, 226 / 255.0, 232 / 255.0, 240 / 255.0); else cairo_set_source_rgb(cr, 1, 1, 1);
 		const char *B[3] = { "_", "□", "✕" }; for (int b = 0; b < 3; b++) { double bw; s_lines(B[b], 12, 600, 0, &bw); s_text(cr, B[b], 233 + b * 27 + (24 - bw) / 2, y + 7 + 5, 12, 600, 0, 12); } }
 	return TRUE;
 }
