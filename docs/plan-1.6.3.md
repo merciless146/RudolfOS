@@ -407,7 +407,7 @@ unless the item is Native's own (then Native is made to match Chromium, never th
 4. **Desktop icons are slow on Native.** "Desktop icon removal/changes still take several minutes on Native." A desktop
    icon removed, renamed, added or changed shows within a second on Native, as on Chromium; find what Native waits for
    (a poll, a watch, the hidden page's sync) and measure before and after.
-5. **Make a stick refined, moved to Backup.** "\"Make a stick\" needs further refinement and to be moved from
+5. **Make a stick refined, moved to Backup.** "'Make a stick' needs further refinement and to be moved from
    update/recovery to backup settings." Settings › Backup gains "Make a stick" (Update and recovery keeps a link to it
    while people learn the new place; Search in Settings finds it there); refined: the stick's size and model shown, the
    full image or boot files only explained in plain words, a stick too small refused before anything is written, the
