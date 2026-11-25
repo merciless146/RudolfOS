@@ -4560,10 +4560,14 @@ static void api_vault(struct req *r, const char *what, int post)
 static int au_session_start(const char *id);   /* rudolfd-users.inc (1.5.9, plan 15.3) */
 static void au_session_stop(const char *id);
 static unsigned au_uid(const char *id);
+static void fp_signed_in(const char *acct);   /* rudolfd-fprint.inc (1.6.3 Part 2) */
+static void fp_signed_out(const char *acct);
+static void fp_acct_gone(const char *acct);
 #include "rudolfd-webkey.inc"    /* 1.6.1: the website data's key in the TPM (plan-1.6.1 Part 20) */
 #include "rudolfd-home.inc"
 #include "rudolfd-desktop.inc"   /* 1.5.9: the native desktop's API (plan Part 12) */
 #include "rudolfd-fido.inc"      /* 1.6.1: security keys that unlock the files (plan-1.6.1 Part 18) */
+#include "rudolfd-fprint.inc"    /* 1.6.3: fingerprint readers (plan-1.6.3 Part 2) */
 #include "rudolfd-peer.inc"      /* 1.5.9: only the desktop gets the page and the API (plan Part 15.1) */
 #include "rudolfd-users.inc"     /* 1.5.9: each account is its own Linux user (plan Part 15.3) */
 #include "rudolfd-mobile.inc"    /* 1.6.0: cellular modems (plan Parts 1 to 6) */
@@ -4951,6 +4955,7 @@ static void api(struct req *r)
 	   (/persist/etc), which rudolf-init takes at the next start-up */
 	if (!strcmp(p, "desktop/dropped")) { if (post) reply_err(r->fd, 405, "GET"); else api_desktop_dropped(r); return; }   /* 1.6.1: rudolfd-drop.inc */
 	if (!strncmp(p, "desktop/keys", 12) && (!p[12] || p[12] == '/')) { api_keys(r, p + 12, post); return; }   /* 1.6.1: rudolfd-fido.inc */
+	if (!strncmp(p, "fp/", 3)) { api_fp(r, p + 3, post); return; }   /* 1.6.3: rudolfd-fprint.inc */
 	if (!strncmp(p, "desktop/", 8) && api_desktop(r, p + 8, post)) return;   /* 1.5.9: rudolfd-desktop.inc */
 	if (!strcmp(p, "desktop/engine")) {
 		int have = !access("/usr/bin/rudolf-webkit", X_OK), native = !access("/usr/bin/rudolf-native", X_OK);   /* 1.5.9: Native (test), plan Part 12 */

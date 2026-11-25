@@ -601,7 +601,7 @@ static void api_desktop_login(struct req *r)
 	free(list); dls_close(&l);
 	char lp[300]; dpath(lp, sizeof lp, "native-locked"); unlink(lp);
 	if (dsess_write(&s)) { explicit_bzero(&s, sizeof s); reply_err(r->fd, 500, "the session could not be kept"); return; }
-	dfail_note(1);
+	dfail_note(1); if (strcmp(s.id, "guest")) fp_signed_in(s.id);   /* (1.6.3 Part 2) */
 	str o = {0}; sadd(&o, "{\"ok\":true,\"id\":"); sjson(&o, s.id); sadd(&o, ",\"n\":"); sjson(&o, s.n); sadd(&o, ",\"r\":"); sjson(&o, s.r);
 	{ char wp[400]; if (strcmp(s.id, "guest") && oweb_ready(s.id, wp, sizeof wp) && owenc_get(s.id) != 0) { sadd(&o, ",\"web\":"); sjson(&o, wp); } }   /* (1.6.0 Part 22: Oracle's encrypted folder, unless the account turned it off; Native's default is on) */
 	sadd(&o, "}");

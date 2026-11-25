@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New: fingerprint readers, the system's side (plan 1.6.3 Part 2, step 1): libfprint in the system, asked only by rudolfd
+  through a root helper of its own (no service, nothing that listens). An account's fingerprints are kept encrypted
+  with its files' key, so a finger is never the first sign-in after a restart, and they are removed with the account;
+  five fingers not recognised, then the password. Settings and the lock screen use it in the next steps.
 - Changed: the plan (docs/plan-1.6.3.md Part 7): Chromium's own password manager and extensions do not work in Oracle's tabs,
   which are Controlled Frames in Oracle's own Chromium too (measured with Chromium 158); the ways on are set out for the
   owner, and a check notices if a Chromium release changes this.

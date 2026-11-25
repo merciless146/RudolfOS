@@ -38,6 +38,7 @@ static const char *const CONFINE_PURE[] = {
 };
 static const char *const CONFINE_ROOTD[] = {
 	"eject",
+	"fp/*",
 	"heartbeat",
 	"memory/dropcache",
 	"mount",

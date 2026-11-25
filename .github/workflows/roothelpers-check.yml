@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Host tests
         run: |
-          sudo apt-get update -qq; sudo apt-get install -y -qq zlib1g-dev curl >/dev/null
+          sudo apt-get update -qq; sudo apt-get install -y -qq zlib1g-dev curl libfprint-2-dev >/dev/null
           python3 iso/qt/host/rootbuild161_t.py
           sudo sh iso/qt/host/roothelpers161_t.sh
           sudo env RH_CONFINE=on sh iso/qt/host/roothelpers161_t.sh   # (Part 20: each helper confined by rudolf-rootd)
