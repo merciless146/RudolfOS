@@ -517,6 +517,34 @@ on a busy site; a Tor window without them; the reminder and about:safety in the 
   on the releases' Chromium before the policy lands (a first probe with Playwright's Chromium for Testing did not start its
   debugging port with a managed policy file present: to be measured on the runner with the snap's Chromium).
 
+#### Status (2026-11-25, scheduled task): step 2 waits on the owner's decision (the desktop's own extensions and the policy)
+- **Measured** (`iso/qt/native/oraextpol63_t.sh`, oracle-extensions-check.yml; the same with Chromium for Testing 153 and the
+  Chromium snap's 158.0.8127.36, the releases', on the runner; the snap reads /etc/chromium-browser/policies/managed): a stand-in extension loaded with `--load-extension`, as the desktop loads Ruffle for Oracle and the web frames extension,
+  under each kind of managed policy. **Any policy that blocks extensions** (ExtensionInstallBlocklist "*", or ExtensionSettings "*"
+  blocked) **refuses every `--load-extension` one, even with its own ID allowed** (by either policy): Chromium says "Failed to load
+  extension … Loading of unpacked extensions is disabled by the administrator" in a dialog **that stops its start** (the page never
+  loads). So the policy written above ("ExtensionInstallBlocklist '*', no allowlist" on the desktop's profile) would stop the
+  desktop itself. A policy unrelated to extensions, or ExtensionInstallSources empty + BlockExternalExtensions + the Web Store's
+  addresses blocked, leaves it running.
+- **Also:** Chromium's managed policy is one folder for the whole computer (/etc/chromium/policies/managed), read by every Chromium
+  Rudolf OS starts (the desktop's, Oracle's own, Tor windows', the browser window), so the Chromium window opened from Oracle needs
+  its own policy folder (a mount namespace of its own, by rudolfd, before it becomes the account's user).
+- **The ways on, for the owner to choose** (nothing of step 2 changed in Rudolf OS yet):
+  - **1. The desktop's own extensions packaged and force-installed** (Ruffle and the web frames extension as signed CRX files,
+    ExtensionInstallForcelist from a local update address served by rudolfd), and **every other extension blocked by policy**
+    (ExtensionSettings "*": blocked) on the desktop's Chromium: the owner's rule enforced by Chromium itself. Needs **a new signing key
+    for those CRX files** (their IDs come from it): made offline by the owner and kept as a "release" environment secret, as the
+    others; Claude never handles it.
+  - **2. No new key:** keep `--load-extension`, and on the desktop's Chromium block every way an extension could arrive
+    (ExtensionInstallSources empty, BlockExternalExtensions, the Chrome Web Store's addresses blocked, no extensions page in the
+    kiosk) plus a check at each start (rudolfd reads the desktop profile's extensions and removes any that is not Rudolf's own,
+    with a note in the health log). Weaker than 1: enforced by Rudolf OS around Chromium, not by Chromium's own "blocked" rule.
+  - **3.** Ruffle and the web frames extension out of the desktop's Chromium (Flash content in Oracle's tabs on the Chromium
+    desktop lost), and the strict policy: not recommended.
+  Recommended: **1** (Chromium itself refuses every other extension; the key is the owner's, offline, like the others).
+- The Chromium window opened from Oracle (its own policy folder, the account's own profile, the vetted list) and the reminder
+  with about:safety follow the choice; about:safety's text (oracle-safety-page) is made true of it then.
+
 ### Part 8. Fixes from the owner's use (the owner, 2026-11-24 22:51 CST)
 "Some items to add to 1.6.3:" each fixed with a test that fails before the fix, the same on Native, Chromium and Lite
 unless the item is Native's own (then Native is made to match Chromium, never the other way: the owner's rule).
