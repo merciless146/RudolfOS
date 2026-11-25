@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -367,6 +367,29 @@ async function checkDisp() {
     ok('D6. Graphics card: Use it for games and the desktop (display?mode=full)', /POST display\?mode=full/.test(since()), since()) }
   natStop();
 }
+// ---- Bluetooth (bt51.js btPanel; the stand-in's bt/* keep the status in DIR/bt.json): each device's buttons, Search, found, the pairing question, Off
+async function checkBt() {
+  ST.state(D, MODES.light, MORE); for (const f of ['bt.json', 'btask']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
+  const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const press = async (n, re) => { mark = c0(); await until(() => rect(n), 4000); click(rect(n)); await until(() => re.test(since()), 6000); await wait(900) };
+  natStart('bt'); await until(() => rect('body') && line('page') == 'bt', 20000); await wait(1500);
+  await press('btm1.0', /POST bt\/connect\?mac=AA:BB:CC:DD:EE:02/); await until(() => /btmsg Headphones "Pro" is connected\./.test(acts()), 3000);
+  ok('B1. Headphones "Pro": Connect (bt/connect?mac=), "… is connected.", its row then offers Disconnect', /POST bt\/connect\?mac=AA:BB:CC:DD:EE:02/.test(since()) && /btmsg Headphones "Pro" is connected\./.test(acts()) && /bt adapter 2 2/.test(acts()), since());
+  await press('btm0.1', /POST bt\/remove\?mac=AA:BB:CC:DD:EE:01/); await until(() => /bt adapter 1 2/.test(lines('act').pop() || ''), 3000);
+  ok('B2. Game controller: Forget (bt/remove?mac=), "… is forgotten. Pair it again to use it.", one device left paired', /btmsg Game controller is forgotten\. Pair it again to use it\./.test(acts()) && /bt adapter 1 2/.test(acts()), since());
+  await press('btn0.0', /POST bt\/pair\?mac=AA:BB:CC:DD:EE:04/); await until(() => /btmsg Keyboard K3 is paired and connected\./.test(acts()), 3000);
+  ok('B3. Keyboard K3 (the nearest first): Pair (bt/pair?mac=), "Pairing with …" then "… is paired and connected."', /btmsg Pairing with Keyboard K3… keep it in pairing mode/.test(acts()) && /btmsg Keyboard K3 is paired and connected\./.test(acts()), since());
+  await press('btf', /POST bt\/scan\?s=15/);
+  ok('B4. Search for devices: bt/scan?s=15', /POST bt\/scan\?s=15/.test(since()), since());
+  await press('btv', /POST bt\/visible/);
+  ok('B5. Let this computer be found: bt/visible', /POST bt\/visible/.test(since()), since());
+  mark = c0(); fs.writeFileSync(path.join(D, 'btask'), JSON.stringify({t: 1764063600, kind: 'confirm', name: 'Phone', code: '482913'}));
+  await until(() => rect('dialog'), 5000); const asked = /ask bt confirm 482913/.test(acts()); xdo('key Return'); await until(() => /POST bt\/answer/.test(since()), 4000);
+  ok('B6. A phone\'s pairing question (bt/ask) asked with its code; Yes, pair: bt/answer?ok=1', asked && /POST bt\/answer\?ok=1/.test(since()), [asked, since()]);
+  await wait(500); await press('bto', /POST bt\/power\?on=0/);
+  ok('B7. Bluetooth Off: bt/power?on=0', /POST bt\/power\?on=0/.test(since()), since());
+  natStop(); for (const f of ['bt.json', 'btask']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -412,6 +435,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('km-checklist')) await checkKbdMouse();
   if (only('checklist') || only('vam-checklist')) await checkVolAccMm();
   if (only('checklist') || only('disp-checklist')) await checkDisp();
+  if (only('checklist') || only('bt-checklist')) await checkBt();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

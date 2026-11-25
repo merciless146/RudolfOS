@@ -294,7 +294,7 @@ static double cell_lay(Cell *c, double x, double y, double w)
 		/* a block */
 		if (inl) { cy = lt + lhh; inl = 0; }
 		cy += first ? it->mt : fmax(pmb, it->mt); first = 0; it->x = x; it->y = cy; it->wd = w;
-		if (it->k == 2) { double fs = it->grey >= 2 ? 12 : LK->msg_fs[0], lh = lh_of(fs, 400); int n = text_lines(it->text, fs, 400, w, 0, NULL); it->h = it->grey == 3 ? n * lh : fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }   /* (grey 3, .dmi: no .msg's min-height) */
+		if (it->k == 2) { double fs = it->grey >= 2 ? 12 : LK->msg_fs[0], lh = lh_of(fs, 400); int n = text_lines(it->text, fs, 400, w, 0, NULL); it->h = it->grey >= 3 ? n * lh : fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }   /* (grey 3, .dmi: no .msg's min-height; grey 4, a span of 12px #6b7280) */
 		else if (it->k == 4) { double lh, h = ck_lines(it->text, w, &lh); it->h = fmax(19, h); rui_check_wrap(it->w, w, it->h); place(it->w, x, cy, 0, 0); }
 		else if (it->k == 6) { PangoLayout *l = lay(pctx(), it->text, 11, 400, w, 0); PangoFontDescription *f = pango_font_description_from_string("monospace"); pango_font_description_set_absolute_size(f, 11 * Z() * PANGO_SCALE); pango_layout_set_font_description(l, f); pango_font_description_free(f);
 			int n = pango_layout_get_line_count(l); g_object_unref(l); it->h = fmin(160, n * pre_lh()); place(it->w, x, cy, w, it->h); }
@@ -362,7 +362,7 @@ static gboolean fx_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 			{ double fs = i->grey == 2 ? 12 : LK->msg_fs[0]; text_draw(cr, i->text, i->x, i->y, fs, 400, i->w, 0, lh_of(fs, 400)); } break;
 		case I_R2: { Cell *c = i->cell; fgc(cr, 1); text_draw(cr, c->label, c->lx, c->ly, RUI.fs, 400, c->lw, 0, lh_of(RUI.fs, 400));
 			for (guint q = 0; q < c->items->len; q++) { CItem *it = g_ptr_array_index(c->items, q);
-				if (it->k == 2) { if (it->grey == 3 && !RUI.dark) cairo_set_source_rgb(cr, 0x4b / 255.0, 0x55 / 255.0, 0x63 / 255.0); else if (it->grey >= 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (it->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
+				if (it->k == 2) { if (it->grey == 3 && !RUI.dark) cairo_set_source_rgb(cr, 0x4b / 255.0, 0x55 / 255.0, 0x63 / 255.0); else if (it->grey == 4) s_col(cr, "grey", 1); else if (it->grey >= 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (it->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
 					{ double fs = it->grey >= 2 ? 12 : LK->msg_fs[0]; text_draw(cr, it->text, it->x, it->y, fs, 400, it->wd, 0, lh_of(fs, 400)); } }
 				if (it->k == 3) { fgc(cr, 1); text_draw(cr, it->text, it->x, it->y, RUI.fs, it->weight == 700 ? 700 : 400, 0, 0, it->h); }
 				if (it->k == 6) { fgc(cr, 1); PangoLayout *l = lay(pctx(), it->text, 11, 400, it->wd, 0); PangoFontDescription *f = pango_font_description_from_string("monospace"); pango_font_description_set_absolute_size(f, 11 * Z() * PANGO_SCALE); pango_layout_set_font_description(l, f); pango_font_description_free(f);
@@ -586,7 +586,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;

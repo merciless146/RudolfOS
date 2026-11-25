@@ -164,7 +164,7 @@ class H(http.server.BaseHTTPRequestHandler):
         # same for the page's Task Manager and the native one); the actions taken answered as rudolfd answers them (and noted in DIR/calls)
         if rd('tm') is not None:
             T = json.loads(rd('tm'))
-            if w in T and (m == 'GET' or w in ('apps/running',)): return self.j(T[w])
+            if w in T and w != 'bt' and (m == 'GET' or w in ('apps/running',)): return self.j(T[w])
             if w == 'proc/end' and m == 'POST': return self.j({'ok': True, 'message': 'proc', 'ended': 3, 'kept': 0} if 'tree=1' in q else {'ok': True, 'message': 'proc'})
             if w in ('service/restart', 'apps/end', 'apps/kill', 'shell/switch') and m == 'POST': return self.j({'ok': True, 'message': w})
             if w == 'memory/dropcache' and m == 'POST': return self.j({'ok': True, 'freed': 104857600})
@@ -175,6 +175,28 @@ class H(http.server.BaseHTTPRequestHandler):
             # (Settings › Volume Controls, settings_t.js V-checklist: the sound card, the microphone, the echo canceller, as rudolfd answers them)
             if w in ('audio', 'audio/mic') and m == 'POST': return self.j({'ok': True, 'message': 'sound card set' if w == 'audio' else 'microphone chosen'})
             if w == 'sound/echo' and m == 'POST': return self.j({'ok': True, 'on': 'on=1' in q, 'active': 'on=1' in q})
+            # (Settings › Bluetooth, settings_t.js B-checklist: rudolfd's bt/* as rudolf-devices answers them, the status kept in DIR/bt.json from settings_rd.json's)
+            if w.startswith('bt') and 'bt' in T:
+                bp = os.path.join(D, 'bt.json'); S = json.loads(rd('bt.json') or json.dumps(T['bt']))
+                def bsave(): open(bp, 'w').write(json.dumps(S))
+                import urllib.parse; Q = dict(urllib.parse.parse_qsl(q)); dv = next((x for x in S['devices'] if x['mac'] == Q.get('mac')), None)
+                if w == 'bt': return self.j(S)
+                if w == 'bt/ask': return self.j({'ok': True, 'ask': json.loads(rd('btask')) if rd('btask') else None})
+                if m != 'POST': return self.err(404, 'unknown Bluetooth request')
+                if w == 'bt/answer':
+                    try: os.unlink(os.path.join(D, 'btask'))
+                    except OSError: pass
+                    return self.j({'ok': True})
+                if w == 'bt/power': S['powered'] = Q.get('on') == '1'; bsave(); return self.j(S)
+                if w == 'bt/visible': S['visible'] = True; bsave(); return self.j(S)
+                if w == 'bt/scan': time.sleep(.5); bsave(); return self.j(S)
+                if w in ('bt/pair', 'bt/connect', 'bt/disconnect', 'bt/remove'):
+                    if not dv: return self.j({'ok': False, 'message': '', 'error': 'it did not work', 'status': S}, 409)
+                    if w == 'bt/pair': dv['paired'] = dv['connected'] = True
+                    elif w == 'bt/connect': dv['connected'] = True
+                    elif w == 'bt/disconnect': dv['connected'] = False
+                    else: S['devices'].remove(dv)
+                    bsave(); return self.j({'ok': True, 'message': '', 'error': '', 'status': S})
             if w in ('home/read', 'home/delete'):
                 import urllib.parse; rel = urllib.parse.parse_qs(q).get('path', [''])[0]; f = os.path.normpath(os.path.join(D, 'home', rel))
                 if not f.startswith(os.path.join(D, 'home') + os.sep) or not os.path.isfile(f): return self.err(404, 'no such file')
