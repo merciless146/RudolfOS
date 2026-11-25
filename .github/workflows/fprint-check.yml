@@ -1,0 +1,71 @@
+# Fingerprint readers (1.6.3, docs/plan-1.6.3.md Part 2). Nothing is published.
+#   host:  rudolfd's fingerprint requests (rudolfd-fprint.inc) and the fprint root helper (rudolf-fprint.c) with libfprint's
+#          virtual reader fed made-up fingerprints, on an encrypted ext4 drive (iso/qt/host/fprint163_t.sh): adding, matching,
+#          another account's finger, five tries, the first sign-in after a restart, signing out, Guest, cancelling,
+#          removing, an account removed
+#   page:  User Settings › Sign-in options › Fingerprints (desktop/fprint63.js, iso/qt/shell2/fprint63_t.js; a stand-in rudolfd)
+#   native: Native's lock screen with a finger (iso/qt/host/nativefp163_t.sh, a stand-in rudolfd)
+#   size:  what libfprint adds to the newest beta's base layer (systools/mkfprint.sh against it: its 3 MB budget), and the
+#          helper built as the release builds it (hardened, its libraries all in that base layer)
+name: Fingerprint readers check
+on:
+  pull_request:
+    paths: ['iso/sys/rudolf-fprint.c', 'iso/sys/rudolfd-fprint.inc', 'iso/sys/rudolfd.c', 'iso/sys/rudolfd-home.inc', 'iso/sys/rudolfd-users.inc',
+      'iso/sys/rudolfd-desktop.inc', 'iso/sys/rudolf-rootd.c', 'iso/sys/rudolf-rootd-confine.h', 'iso/systools/mkfprint.sh',
+      'iso/systools/ci_release.sh', 'iso/qt/host/fprint163_t.sh', 'iso/qt/host/fixtures/fpapi.c', 'iso/qt/host/fixtures/vfinger.py',
+      'iso/qt/host/fixtures/deskls.js', 'desktop/fprint63.js', 'desktop/fido61.js', 'desktop/build19.py', 'iso/qt/shell2/fprint63_t.js', 'desktop/core25.js',
+      'iso/sys/rudolf-native.c', 'iso/qt/host/nativefp163_t.sh', 'iso/qt/host/fixtures/native_rd.py',
+      '.github/workflows/fprint-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libfprint-2-dev libfprint-2-2 zlib1g-dev >/dev/null
+      - name: rudolfd's fingerprint requests and the fprint helper, with libfprint's virtual reader
+        run: sudo sh iso/qt/host/fprint163_t.sh | tee fprint163.txt; grep -q ' passed$' fprint163.txt && ! grep -q '^FAIL' fprint163.txt
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Chromium (Playwright's)
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page's side
+        run: node iso/qt/shell2/fprint63_t.js
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev xvfb xdotool >/dev/null
+      - name: Native's lock screen with a finger (a stand-in rudolfd)
+        run: sh iso/qt/host/nativefp163_t.sh
+  size:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq squashfs-tools >/dev/null
+      - name: The newest beta's base layer
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git fetch -q --depth 1 origin gh-pages
+          S=$(git show origin/gh-pages:beta/manifest.txt | sed -n 's/^serial //p'); echo "beta $S"
+          gh release download "r$S" -p base.sfs && sudo unsquashfs -q -d broot base.sfs >/dev/null && rm base.sfs
+      - name: What libfprint adds (its budget, 3 MB), and the helper built as the release builds it
+        run: |
+          cd iso && . systools/hardflags.sh
+          FPO=$(sudo sh systools/mkfprint.sh ../broot) || { echo "$FPO"; exit 1; }
+          echo "::notice title=Fingerprint readers::$FPO added to the base layer (libfprint, what it links that the base layer lacks, its list of unsupported readers)"
+          echo "added: $(cd ../broot && sudo find usr/lib usr/share/rudolf -newer ../iso/systools/mkfprint.sh -type f | tr '\n' ' ')"
+          gcc -O2 $HARD -o fprint sys/rudolf-fprint.c $(pkg-config --cflags --libs libfprint-2)
+          python3 systools/hardcheck.py fprint
+          for l in $(ldd fprint | awk '/=>/{print $3}'); do [ -e "../broot$l" ] || [ -e "../broot/usr$l" ] || { echo "fprint needs $l, which the base layer does not have"; exit 1; }; done
+          ls -la fprint; echo "the helper's libraries are all in the base layer"

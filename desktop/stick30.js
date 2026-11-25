@@ -44,19 +44,23 @@ async function stkSection(c){if(!RD)return;const box=document.createElement('div
  let info={},disks=[],imgs=[],ust={};try{info=await rd('info');disks=(await rd('disks')).disks||[]}catch(e){}try{ust=await rd('sys/status')}catch(e){}   /* (1.6.0, Part 16: the update address) */try{imgs=((await rd('install/images'+(typeof dlAcct=='function'&&USER?'?acct='+encodeURIComponent(dlAcct()):''))).images||[]).filter(x=>!x.boot)}catch(e){}
  const adm=isAdmin(),tg=stkTargets(disks,info),bp=stkBackupParts(disks,info);
  box.innerHTML=`<h4 class='sh4'>Make a Rudolf OS USB stick</h4><p class='msg'>Puts Rudolf OS on a USB stick or memory card (1.8 GB or more) that starts on any computer and keeps its files. Everything on that drive is erased.</p><p class='msg'>It is also a <b>rescue stick</b> for this computer: start from it and choose <b>Recovery mode</b> in its menu to start this computer's own Rudolf OS with safe settings (the Chromium desktop engine, no shell, safe graphics); a normal start runs the stick's own Rudolf OS. The stick gets the boot files of this Rudolf OS, downloaded when this drive's are older (Help › Starting from a USB stick).</p><p class='msg'>Each stick is a <b>full rescue stick</b>: this computer's system is copied onto it and kept a second time as its <b>rescue system</b>, which the stick's own updates never change, so it can always start. The stick's size is checked before anything is erased, and a stick that could not be finished is cleared, never left half-made.</p>
- <div class='r2'><label>Rudolf OS to put on it</label><select class='stks'>${ust&&ust.url&&info.persistent!==false?`<option value='@address'>The latest from the update address (${lxEsc(String(ust.url).replace(/^https:\/\//,''))})</option>`:''}<option value=''>This Rudolf OS ${lxEsc(RVER)}${info.updateInstalled?' (with its updates)':''}</option>${imgs.map(x=>`<option value='${lxEsc(x.path)}'>${lxEsc(imgLabel(x))} (Downloads)</option>`).join('')}</select></div><p class='msg stkbo' hidden></p>
- <label class='ck'><input type='checkbox' class='stkf'> Also copy my files and settings (Linux apps are not copied)</label><div class='stkl'></div><pre class='jl stkj' hidden></pre>
+ <div class='r2'><label>Rudolf OS to put on it</label><select class='stks'>${ust&&ust.url&&info.persistent!==false?`<option value='@address'>The latest from the update address (${lxEsc(String(ust.url).replace(/^https:\/\//,''))})</option>`:''}<option value=''>This Rudolf OS ${lxEsc(RVER)}${info.updateInstalled?' (with its updates)':''}</option>${imgs.map(x=>`<option value='${lxEsc(x.path)}'>${lxEsc(imgLabel(x))} (Downloads)</option>`).join('')}</select></div><p class='msg stkw'></p><p class='msg stkbo' hidden></p>
+ <label class='ck'><input type='checkbox' class='stkf'> Also copy my files and settings (Linux apps are not copied)</label><div class='stkl'></div><div class='stkp' hidden><progress max='100' value='0' style='width:100%'></progress><div class='msg stkpt'></div></div><p class='msg stkok' hidden></p><pre class='jl stkj' hidden></pre>
  <div class='stkbg'><p class='msg'><b>Back up to a USB stick</b>: the same backup, written straight to a plugged-in drive (in its ${STK.BDIR} folder, with a checksum). Use it before reinstalling or when moving to a new computer: a new Rudolf OS finds it and offers to restore it when it first starts.</p><div class='stkb'></div><div class='msg stkbm'></div>
  <p class='msg'><b>A Rudolf OS stick with your files</b>: “Make a Rudolf OS USB stick” below, with “Also copy my files and settings”. Use it to take Rudolf OS itself, with your files, to another computer.</p></div>`;
  /* 1.4.4: the backup ways together in Storage › Backup */
- {const g=box.querySelector('.stkbg'),a=c.querySelector('.sti3');if(g&&a)a.after(g)}
+ {const g=box.querySelector('.stkbg'),a=c.querySelector('.sti3');if(g&&a){a.after(g);g.after(box)}}   /* (1.6.3 Part 8, item 5: and Make a stick with them, in Backup) */
  const q=s=>box.querySelector(s)||c.querySelector('.stkbg '+s),L=q('.stkl'),pre=q('.stkj');
  const bo=()=>{const e=q('.stkbo');e.hidden=!(info.bootSecure===0&&!q('.stks').value);e.textContent=STK_BOOTOLD};q('.stks').addEventListener('change',bo);bo();
+ /* (1.6.3 Part 8, item 5: what each choice puts on the stick, in plain words; a stick too small for it refused before anything is written) */
+ const img=()=>imgs.find(x=>x.path==q('.stks').value)||null;
+ const what=()=>{q('.stkw').textContent=stkWhat(q('.stks').value,img(),info)};q('.stks').addEventListener('change',what);what();
+ const rows=[];const fit=()=>rows.forEach(({k,b,m})=>{const t=stkTooSmall(k,img());b.disabled=!adm||!!t;m.textContent=t;m.hidden=!t});q('.stks').addEventListener('change',fit);
  if(!tg.length)L.innerHTML="<p class='msg'>Plug in a USB stick or memory card of 1.8 GB or more (not the one Rudolf OS runs from), then open this page again.</p>";
  tg.forEach(k=>{const r=document.createElement('div');r.className='acr';r.innerHTML=`<span style='flex:1'></span><button>Make the stick…</button>`;r.firstChild.textContent=`🔌 ${k.name} — ${k.model||'USB drive'} — ${stkGB(k.bytes)}${k.partitions.some(p=>p.fs=='iso9660')?' (an older Rudolf OS stick)':''}`;
   /* 1.5.8: what an older Rudolf OS stick holds: a full rescue stick, or boot files only (which cannot start alone) */
   if(k.partitions.some(p=>p.fs=='iso9660'))rd('stick/info?disk='+encodeURIComponent(k.name)).then(j=>{const t=stkInfoText(j);if(t){const m=document.createElement('div');m.className='msg stkinfo';m.textContent=t;r.after(m)}}).catch(()=>{});
-  const b=r.lastChild;b.disabled=!adm;b.onclick=async()=>{
+  const b=r.lastChild;b.disabled=!adm;{const m=document.createElement('div');m.className='msg stksm';m.hidden=true;rows.push({k,b,m})}b.onclick=async()=>{if(stkTooSmall(k,img()))return;
    /* 1.6.0 (plan-1.6.1 Part 16, moved to 1.6.0): the update address's release: checked first (as Settings' Check this
       address), and another person's build said so before anything is erased */
    if(q('.stks').value=='@address'){pre.hidden=false;pre.textContent='Checking '+ust.url+' …';let ck=null;try{ck=await rdPost('sys/urlcheck?url='+encodeURIComponent(ust.url))}catch(e){pre.textContent=e.message;return}
@@ -65,16 +69,39 @@ async function stkSection(c){if(!RD)return;const box=document.createElement('div
     if((ck.lines||[]).some(([lv,t])=>/no boot image/.test(t))){notify('Make a stick','That release has no boot image, so a stick cannot be made from it.',{kind:'error'});return}
     if(ck.key=='other'&&!await elevate(`This is another build of Rudolf OS (Rudolf OS ${ck.version}, key ${ck.fpr}), from ${ust.url}. The stick will get its updates from there, not from this computer's. With Secure Boot on it starts only where its maker's Secure Boot key is trusted. Its Recovery mode is the official Rudolf OS. Make the stick with it?`))return}
    if(!await elevate(`Make a Rudolf OS USB stick on ${k.name} (${k.model||''}, ${stkGB(k.bytes)}). Everything on it is erased.`))return;if(!await stkConfirm(k))return;
-   L.querySelectorAll('button').forEach(x=>x.disabled=true);pre.hidden=false;pre.textContent='';
+   L.querySelectorAll('button').forEach(x=>x.disabled=true);pre.hidden=false;pre.textContent='';const P=stkProgress(q('.stkp'),q('.stkok'));
    try{await rdPost(`mkstick?disk=${k.name}&confirm=${k.name}&image=${encodeURIComponent(q('.stks').value)}&files=${q('.stkf').checked?1:0}${imgSha(q('.stks').value)?'&sha='+imgSha(q('.stks').value):''}`)}catch(e){pre.textContent=e.message;L.querySelectorAll('button').forEach(x=>x.disabled=!adm);return}
-   const j=await stkJob(pre);const ok=j.status==0;
+   const j=await stkJob(pre,P.line);const ok=j.status==0;P.end(j);
    notify(ok?'The Rudolf OS USB stick is ready':'The stick could not be made',ok?`${k.name} can be removed. Start a computer from it with its boot menu (Esc or F8 on ASUS, often F12); Recovery mode on it starts this computer's Rudolf OS with safe settings.${/Warning: the stick gets this drive/.test(j.log||'')?' (Its boot files are older than this system: connect to the internet and make it again for Recovery mode.)':''}`:((j.log||'').trim().split('\n').pop()||'See Settings › Storage and backup.'),{kind:ok?'info':'error'});
-   if(ok)r.firstChild.textContent+=' — ready';L.querySelectorAll('button').forEach(x=>x.disabled=!adm)};L.appendChild(r)});
+   if(ok)r.firstChild.textContent+=' — ready';L.querySelectorAll('button').forEach(x=>x.disabled=!adm);fit()};L.appendChild(r);r.after(rows[rows.length-1].m)});fit();
  if(!adm&&tg.length)L.insertAdjacentHTML('beforeend',"<p class='msg'>An administrator can make a stick.</p>");
  const B=q('.stkb');if(!bp.length)B.innerHTML="<p class='msg'>Plug in a USB stick or drive to back up to.</p>";
  bp.forEach(({disk,part})=>{const r=document.createElement('div');r.className='acr';r.innerHTML=`<span style='flex:1'></span><button>Back up here</button>`;
   r.firstChild.textContent=`🔌 ${part.label||part.name} — ${disk.model||'USB drive'} — ${stkGB(part.bytes)} (${part.fs})`;r.lastChild.onclick=async e=>{e.target.disabled=true;const m=q('.stkbm');m.textContent='Making the backup…';
    try{const n=await stkBackupTo(part,t=>m.textContent=t);m.textContent=`Backed up to ${part.label||part.name}: ${STK.BDIR}/${n}. You can remove the drive.`;notify('Backup saved',`${part.label||part.name}: ${STK.BDIR}/${n}`)}catch(x){m.textContent='The backup could not be saved: '+x.message}e.target.disabled=false};B.appendChild(r)})}
+/* (1.6.3 Part 8, item 5) what a choice puts on the stick, in plain words */
+function stkWhat(v,im,info){if(v=='@address')return'The newest Rudolf OS from the update address, downloaded first and checked against its signature; then the same as below.';
+ if(!v)return'This Rudolf OS as it is on this computer'+(info&&info.updateInstalled?', with its updates':'')+': the stick starts on its own on any computer and keeps its own files.';
+ if(im&&/-boot\.iso$/i.test(im.name||''))return'Boot files only ('+im.name+'): the start-up files come from that image, and Rudolf OS itself from this computer.';
+ return'A whole disc image ('+(im?im.name:v.split('/').pop())+'): everything on the stick comes from that file.'}
+/* a stick too small for the chosen image: why, or '' (the image and room for RUDOLFDATA; this Rudolf OS: mkstick.sh checks it before writing) */
+function stkTooSmall(k,im){if(!k)return'';if(k.bytes<1.8e9)return'Too small: Rudolf OS needs a stick of at least 1.8 GB. Nothing is written.';
+ if(im&&im.bytes&&k.bytes<im.bytes+256e6)return`Too small for ${im.name}: it needs about ${stkGB(im.bytes+256e6)}. Nothing is written.`;return''}
+/* the job's steps as a bar and the time left (mkstick.sh's and install.sh's lines), then what was checked and that the stick can be removed */
+const STK_STEPS=[[/^Getting the latest/,2,'Downloading the latest Rudolf OS'],[/^Step 1\/5/,5,'Writing Rudolf OS to the stick'],[/^Step 2\/5/,45,'Checking what was written'],[/^The copy matches/,70,'Checked: the copy matches'],
+ [/^Step 3\/5/,72,'Making its partitions'],[/^Step [45]\/5/,78,'Making its partitions'],[/^Checking the installed system/,84,'Checking its system'],[/^Checking the new stick/,88,'Checking the new stick'],[/^Copying your files/,92,'Copying your files and settings'],[/^Done:/,100,'Done']];
+function stkProgress(box,okEl){const bar=box.querySelector('progress'),t=box.querySelector('.stkpt'),t0=Date.now();let p=0,lab='Starting…',chk=false;box.hidden=false;okEl.hidden=true;bar.value=0;t.textContent=lab;
+ const show=()=>{bar.value=p;const s=(Date.now()-t0)/1000;let left='';if(p>=5&&p<100&&s>=10){const r=Math.max(1,Math.round(s*(100-p)/p/60));left=` · about ${r} minute${r==1?'':'s'} left`}t.textContent=`${lab} (${p} %)${left}`};
+ const iv=setInterval(()=>{if(box.isConnected)show();else clearInterval(iv)},5000);
+ return{line:l=>{for(const[re,v,w]of STK_STEPS)if(re.test(l)&&v>=p){p=v;lab=w;if(v==70)chk=true}show()},
+  end:j=>{clearInterval(iv);const ok=j&&j.status==0;if(ok){p=100;lab='Done';show()}okEl.hidden=false;
+   okEl.textContent=ok?`✅ ${chk?'Checked: what is on the stick matches. ':''}It is safe to remove the stick now.`:'❌ The stick could not be made (see the messages below). A stick that was being written is cleared, so it is never left half-made.'}}}
+/* (1.6.3 Part 8, item 5, the owner: "moved from update/recovery to backup settings") Update and recovery keeps a link to its new place while
+   people learn it */
+function stkOpenBackup(){settings('stor');let n=0;const go=()=>{const h=document.querySelector('.stk30 h4');if(h){h.scrollIntoView({block:'start'});return}if(++n<40)setTimeout(go,150)};setTimeout(go,150)}
+if(typeof updPanel=='function'){updPanel=__after(updPanel,function(c){try{if(!RD)return;const p=document.createElement('p');p.className='msg stkmoved';
+ p.innerHTML="💾 <b>Make a Rudolf OS USB stick</b> (a rescue stick) is now in <a href='#' class='lnk'>Storage and backup › Backup</a>.";p.querySelector('a').onclick=e=>{e.preventDefault();stkOpenBackup()};
+ const h=[...c.querySelectorAll('h4')].find(x=>/^Recovery/.test(x.textContent.trim()));if(h)h.after(p);else c.appendChild(p)}catch(e){}},"stick30.js");}
 /* mount (unless already mounted), write the backup and its checksum, unmount again if we mounted it */
 async function stkMount(part){if(part.mount)return{path:part.mount,mine:false};await rdPost('mount?dev='+part.name);return{path:'/media/'+part.name,mine:true}}
 async function stkUnmount(part,m){if(m&&m.mine)try{await rdPost('umount?dev='+part.name)}catch(e){}}

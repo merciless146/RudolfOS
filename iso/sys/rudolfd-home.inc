@@ -281,6 +281,7 @@ static int home_unlock(const char *acct, const unsigned char *key, int session, 
 }
 static int home_lock(const char *acct, int *busy)
 {
+	fp_signed_out(acct);   /* (1.6.3 Part 2: no finger until the password again) */
 	if (root_home_fwd()) return root_home_lock(acct, busy);   /* (1.6.1 Part 11) */
 	if (!home_acct_ok(acct)) return 400;
 	char *cur = slurp(HOME_SESSION, NULL); if (cur) { trim(cur); if (!strcmp(cur, acct)) home_unbind(); free(cur); }
@@ -486,6 +487,7 @@ static void api_home(struct req *r, const char *what, int post)
 		explicit_bzero(r->body, r->blen);
 		char err[200] = ""; int made = 0, st = home_unlock(acct, key, session, err, sizeof err, &made); explicit_bzero(key, sizeof key);
 		if (st) { if (st == 403) health_add("vault", "an account's folder was not opened: the key did not match"); reply_err(r->fd, st, err); return; }
+		if (session) fp_signed_in(acct);   /* (1.6.3 Part 2: the sign-in, with the password: a finger may unlock from now on) */
 		/* stage 4: "made" when the folder is new (the desktop then fills it from a restored backup, if it has one) */
 		{ int rt = home_root_fd(acct); if (rt >= 0) { rec_sweep(rt); close(rt); } }   /* 1.5.7: recovered items older than 7 days */
 		reply_ok(r->fd, made ? "made" : "unlocked"); return;

@@ -1,0 +1,29 @@
+name: Cloud games open (1.6.3 Part 8, item 3)
+# Xbox Cloud Gaming and GeForce NOW opened from every place they are: Chromium mode (the Start menu, its right-click Open,
+# the App Store's Games tab, a pin, a desktop icon), Lite (Chromium's window, said), Native (the Start menu, a pin, a
+# desktop icon): iso/qt/native/cloudgames163_t.js.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fixes163-cloudgames']
+  pull_request:
+    paths: ['desktop/game51.js', 'desktop/games30.js', 'desktop/games58.js', 'iso/qt/native/cloudgames163_t.js', '.github/workflows/cloudgames163-check.yml']
+permissions: {contents: read}
+jobs:
+  engines:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil gcc xvfb xdotool imagemagick libwebkit2gtk-4.1-dev fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: "cloudgames163_t.js: Chromium mode, Lite and Native"
+        run: mkdir -p out && NODE_PATH=$PWD/node_modules SAME_SCRIPT=cloudgames163_t.js SAME_PORT=8742 SAME_DSP=:89 sh iso/qt/native/same_t.sh $PWD/out
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: cloudgames163, retention-days: 7, path: out}

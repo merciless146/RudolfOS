@@ -165,7 +165,9 @@
 ["Test","Web search (Oracle)"],
 ["Downloads","",1],
 ["Program files","Downloads"],
-["Largest download","Downloads"]],"sys":
+["Largest download","Downloads"],
+["Memory","",1],
+["Free tabs you have not looked at for","Memory"]],"sys":
 [["Date, time and language","",1],
 ["Clock","",1],
 ["24-hour","Clock"],
@@ -319,6 +321,7 @@
 ["Authenticator app","Family and parental controls"],
 ["Security keys","Family and parental controls"],
 ["Require a security key (protects your files)","Family and parental controls"],
+["Fingerprints","Family and parental controls"],
 ["Files and administrators","",1],
 ["Administrators can open this account's files","Files and administrators"],
 ["Developer: publisher key","",1]],"remote":
@@ -330,10 +333,10 @@
 ["The Trash","",1],
 ["Delete items in the Trash for good once they are older than","The Trash"],
 ["Backup","",1],
-["Keep files on this drive","",1],
 ["Make a Rudolf OS USB stick","",1],
 ["Rudolf OS to put on it","Make a Rudolf OS USB stick"],
-["Also copy my files and settings (Linux apps are not copied)","Make a Rudolf OS USB stick"]],"apps":
+["Also copy my files and settings (Linux apps are not copied)","Make a Rudolf OS USB stick"],
+["Keep files on this drive","",1]],"apps":
 [["Default apps","",1],
 ["Links","",1],
 ["Installed apps","",1],

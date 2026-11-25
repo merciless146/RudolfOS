@@ -48,6 +48,10 @@ static const struct { const char *name; uint64_t keep; } HELPER_CAPS[] = {
 	   capabilities, CAP_FOWNER for their modes); OpenVPN (step 3) run by it, which becomes nobody once connected
 	   (CAP_SETUID, CAP_SETGID) and is stopped again (CAP_KILL); no CAP_SYS_ADMIN, so no mount and no_new_privs */
 	{ "vpn", CB(CAP_NET_ADMIN) | CB(CAP_NET_RAW) | CB(CAP_DAC_OVERRIDE) | CB(CAP_DAC_READ_SEARCH) | CB(CAP_FOWNER) | CB(CAP_SETUID) | CB(CAP_SETGID) | CB(CAP_KILL) },
+	/* fingerprint readers (1.6.3 Part 2): only to open the account's folder (its Linux user's) to read its key's identifier;
+	   the helper drops even that before it opens the reader (rudolf-fprint.c), and needs no other: the prints are its own
+	   (root's), the reader's device node is root's */
+	{ "fprint", CB(CAP_DAC_READ_SEARCH) },
 	{ NULL, 0 }
 };
 /* the system calls of CF_HELPER_DENY a helper may still make, by name: the power helper restarts and sets the clock */

@@ -286,7 +286,7 @@ static Mon MON[3]; static int NMON = 1, MONK_CUR, HOV_BAR, PRS_BAR, MON_DRAWK, W
 static void mon_walls_queue(void); static void mon_bars_queue(void);
 static void state_write(void); static void kb_sync(void);
 typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat); static int di_shown(void); static int di_n(void);
-static gint64 ICONS_SINCE;   /* (when the account signed in, until its desktop's icons are there: the log's line) */   /* (the desktop's icons, below) */
+static gint64 ICONS_SINCE; static double DI_T; static void desk_quick(JSCValue *v);   /* (when the account signed in, until its desktop's icons are there: the log's line) */   /* (the desktop's icons, below) */
 static gint64 UNLOCK_T; static void sys_load(JV *v); static void sc_load(JV *v); static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void jumps_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
 static int wg_shown(void); static int NWG_ALL_DIRTY;
 static gboolean wg_press(GdkEventButton *e); static gboolean wg_motion(GdkEventMotion *e); static gboolean wg_release(GdkEventButton *e); static gboolean note_key(GdkEventKey *e); static int NF;
@@ -456,6 +456,7 @@ static void pt_msg(AppWin *a, JSCValue *v); static void pt_reset(void);   /* (1.
 static void svc_msg(AppWin *a, JSCValue *v); static void svc_reset(void); static AppWin *svc_page(void); static gint64 SVC_SIGNIN;   /* (1.6.0 Part 12, item 12: the desktop's service page, below; when the account signed in, ms) */
 static void snd_page(const char *k, double v, const char *pj); static void snd_click(void);
 static int fl_outside(void); static void seat_grab(GtkWidget *w, int owner); static void qs_keep(void);
+static int cm_outside(unsigned long xw); static int cm_xkey(XKeyEvent *e); static gboolean cm_key(GtkWidget *w, GdkEventKey *e, gpointer d);   /* (1.6.3 Part 8, item 6: a right-click menu closed as the page's) */
 static int oracle_open(const char *file, const char *extra);   /* (1.5.9, 12.3c: Oracle in Rudolf's Chromium) */
 static void page_done(JSCValue *v);
 static void frame_redraw_app(AppWin *a);
@@ -660,6 +661,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "ready")) { if (!a->rest) appwin_reveal(a); }   /* (its page has drawn the app at its window's size: shown; 1.6.1: not the resting page's) */
 	else if (!strcmp(op, "login")) appwin_reveal(a);   /* (no native session: the page's own sign-in screen, which this window does need) */
 	else if (!strcmp(op, "srch")) srch_ready(a);   /* (2026-11-16: the start menu's search, Standard's: its page is ready) */
+	else if (!strcmp(op, "desk")) desk_quick(v);   /* (1.6.3 Part 8, item 4: the desktop's icons at once, before the whole catalogue) */
 	else if (!strcmp(op, "cat")) g_idle_add(apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12; read at once, as the page gave it before it said so: the owner's Vivobook, 2026-11-16) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
@@ -828,7 +830,7 @@ typedef struct Client { Window w, frame, rz[4]; int x, y, cw, ch, min, max, full
 	int csd, gl, gr, gt, gb, nodeco, tbcut;
 	int pg; double pgf, pgt; gint64 pgb0, pgch, pgend; char nk[24]; } Client;   /* (nk: 1.6.2 Part 39, a native app's window: its app, as the page's k) */   /* (1.6.1 Part 25: its page's progress, for its minimized taskbar button: pg 0 none, 1 a percentage (pgt; drawn from pgf, changed at pgch), 2 busy since pgb0, 3 ended at pgend) */   /* (1.6.1 Part 15: csd, the app draws its own title bar (_MOTIF_WM_HINTS, no decorations): Rudolf's frame keeps only its edge; gl..gb, GTK's
 	   invisible margins around it (_GTK_FRAME_EXTENTS), cut away by the clip window as Oracle's own bar is) */   /* (ws: its workspace, 1 to NWS; off: not shown, another workspace's: item 4) */   /* (ak: the app another program's window is, as Oracle's Chromium; clip and the insets: its own title bar and edges hidden) */
-static void wopen_start(Client *c);
+static void wopen_start(Client *c); static void wopen_pre(Client *c);
 static void tbp_set(Client *c, const char *v); static int oracle_at(Client *c, int x, int y, int w, int h);   /* (1.6.1 Part 25, below) */
 static int mon_k(Client *c), mon_ox(Client *c), mon_oy(Client *c), mon_of_ws(int n); static void mon_go(int n), mon_move(Client *c, int n), mon_show(int k, int n, int focus), mon_keep(void), mon_drop(Client *c);
 static void csd_extents(Client *c); static void csd_read(Client *c, XWindowAttributes *wa); static void tb_cut_apply(Client *c); static void csd_update(Client *c); static void net_state_sync(Client *c); static void csd_max_first(Client *c); static void csd_frame_draw(Client *c);   /* (1.6.1 Part 15, below) */
@@ -956,11 +958,11 @@ static void wm_focus(Client *c)
 	if (c && !c->ws) c = NULL;   /* (a window going, in no workspace: 12.3c) */
 	if (c && NMON > 1 && ws_of(c) != WSC) { if (c->off) mon_show(MAX(0, mon_of_ws(WSC)), ws_of(c), 0); else { WSC = ws_of(c); bar_redraw(); } }   /* (1.6.1 Part 1: shown on another monitor: that one is in use) */
 	else if (c && c->off && ws_of(c) != WSC) { WSC = ws_of(c); ws_apply(); bar_redraw(); g_timeout_add(80, ws_said, GINT_TO_POINTER(WSC)); }   /* (W.focus: wsGo(W.ws) first) */
-	Client *old = FOCUS; FOCUS = c;
+	Client *old = FOCUS; FOCUS = c; if (c != old) cm_outside(0);   /* (1.6.3 Part 8, item 6: switching windows closes a menu, as the page's blur) */
 	if (c && c->app && c->app->rest) appwin_wake(c->app);   /* (1.6.1 Part 23 C: its page loaded again, back where it was) */
 	if (c) {
 		c->used = g_get_monotonic_time();   /* (the page's MRU: item 5) */
-		if (c->min) { c->min = 0; if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); net_state_sync(c); lp_unmin(c); }   /* (Part 17: the drop backward) */
+		if (c->min) { c->min = 0; lp_unmin(c); if (!c->off) XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); net_state_sync(c); }   /* (Part 17: the drop backward; its first moment set before the window is shown, so it never shows whole first: 1.6.3 Part 8, item 2) */
 		XRaiseWindow(DPY, c->frame);
 		/* its dialogs stay above it */
 		for (GList *l = CLIENTS; l; l = l->next) { Client *d = l->data; if (d->trans == c->w && !d->min) XRaiseWindow(DPY, d->frame); }
@@ -1834,6 +1836,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 	switch (e->type) {
 	case KeyPress:   /* (the page's global shortcuts: item 5, sc_key) */
 		if (DRAG.c && DRAG.kbd) { drag_key(&e->xkey); return GDK_FILTER_REMOVE; }   /* (1.6.1 Part 15: an app's own Move or Size) */
+		if (cm_xkey(&e->xkey)) return GDK_FILTER_REMOVE;   /* (1.6.3 Part 8, item 6: a menu's keys, wherever the focus is) */
 		if ((c = client_of(e->xkey.window)) && c->ak[0] && e->xkey.window == c->w && oracle_key(&e->xkey)) return GDK_FILTER_REMOVE;   /* (Oracle's keys, as on Standard: 12.3c) */
 		if (sc_key(&e->xkey)) return GDK_FILTER_REMOVE;
 		break;
@@ -1882,6 +1885,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 		if ((c = client_of(e->xexpose.window)) && c->frame == e->xexpose.window) { if (!e->xexpose.count) frame_draw(c); return GDK_FILTER_REMOVE; }
 		return GDK_FILTER_CONTINUE;
 	case ButtonPress:
+		cm_outside(e->xbutton.window);   /* (1.6.3 Part 8, item 6: a press on the desktop, the taskbar or a frame closes a menu, and goes on, as the page's pointerdown) */
 		if (DRAG.c && DRAG.kbd) { drag_end(e->xbutton.time, 0); return GDK_FILTER_REMOVE; }   /* (a click ends the keyboard's move: 1.6.1 Part 15) */
 		if ((c = client_of(e->xbutton.window))) { fl_outside();
 			int ri = rz_of(c, e->xbutton.window); if (ri >= 0) { XButtonEvent b = e->xbutton; rz_to_frame(c, ri, &b.x, &b.y); frame_press(c, &b); return GDK_FILTER_REMOVE; }
@@ -2008,7 +2012,7 @@ static void appwin_reveal(AppWin *a)
 	if (!c || !c->wait) return; int was = c->wait; c->wait = 0;
 	if (was == 2) { cover_gone(c); state_write(); return; }   /* (shown already, covered: its page now) */
 	/* (the page's picture is drawn into its window as X shows it: until then the app's colour there, not what was on the screen before) */
-	if (c->hidden && !a->hidden && !LOCKED && a->modal != 2) { XSetWindowBackground(DPY, c->w, app_bg_pixel()); c->hidden = 0; if (!c->off && !c->min) { XMapWindow(DPY, c->frame); XSync(DPY, False); frame_draw(c); } wm_focus(c); }
+	if (c->hidden && !a->hidden && !LOCKED && a->modal != 2) { XSetWindowBackground(DPY, c->w, app_bg_pixel()); c->hidden = 0; if (!c->off && !c->min) { wopen_pre(c); XMapWindow(DPY, c->frame); XSync(DPY, False); frame_draw(c); } wm_focus(c); }
 	if (a->view) gtk_widget_queue_draw(a->view);
 	bar_redraw(); state_write();
 	if (!c->opened && !c->hidden) wopen_start(c);
@@ -2847,9 +2851,26 @@ static void btn_rects(Client *c, int r[3][4])
 	for (int i = 2; i >= 0; i--) { r[i][0] = (int)lround(x * Z); r[i][1] = (int)lround((eb + g.by) * Z); r[i][2] = (int)lround(g.bw * Z); r[i][3] = (int)lround(g.bh * Z); x -= g.bw + 3 + (candy ? 2 : 0); }
 }
 /* the frame's outline: round corners (X's shape: no compositor needed) */
+/* 1.6.3 Part 8, item 2 ("Transitions on Native are rough/blocky"): GDK does not shape a window it did not make (a foreign one, as the frames
+   are: gdk_window_shape_combine_region set nothing on them, measured with xwininfo -shape), so no transition showed only its part of the
+   window (a window opening showed whole at once, the light drawn around it). X's own SHAPE request, from libXext,
+   which GTK has loaded (taken as libXcomposite is, without a new library to link); GDK's call kept where it is not there */
+typedef int (*XShRects)(Display *, Window, int, int, int, XRectangle *, int, int, int);
+static XShRects xshape_fn(void)
+{
+	static XShRects f; static int tried; if (tried) return f; tried = 1;
+	void *h = dlopen("libXext.so.6", RTLD_NOW | RTLD_LOCAL); if (h) f = (XShRects)dlsym(h, "XShapeCombineRectangles"); return f;
+}
+static int xshape_set(Window w, cairo_region_t *rg)
+{
+	XShRects f = xshape_fn(); if (!f || !DPY) return 0;
+	int n = cairo_region_num_rectangles(rg); XRectangle *r = g_new0(XRectangle, n ? n : 1);
+	for (int i = 0; i < n; i++) { cairo_rectangle_int_t rc; cairo_region_get_rectangle(rg, i, &rc); r[i].x = rc.x; r[i].y = rc.y; r[i].width = rc.width; r[i].height = rc.height; }
+	f(DPY, w, 0 /* ShapeBounding */, 0, 0, r, n, 0 /* ShapeSet */, 3 /* YXBanded */); g_free(r); return 1;
+}
 static void frame_shape(Client *c)
 {
-	GdkWindow *g = gdk_x11_window_foreign_new_for_display(gdk_display_get_default(), c->frame); if (!g) return;
+	GdkWindow *g = xshape_fn() ? NULL : gdk_x11_window_foreign_new_for_display(gdk_display_get_default(), c->frame); if (!g && !xshape_fn()) return;
 	int fw = fw_of(c), fh = fh_of(c); double r = c->full ? 0 : tw_rad() * Z;
 	cairo_region_t *rg = cairo_region_create();
 	for (int y = 0; y < fh; y++) { double dy = y < r ? r - y - .5 : y >= fh - r ? y - (fh - r) + .5 : 0, in = dy > 0 ? r - sqrt(fmax(0, r * r - dy * dy)) : 0;
@@ -2857,7 +2878,10 @@ static void frame_shape(Client *c)
 	/* (1.6.0 Part 17: during a window transition only the part of it the scene shows: X's shape again, no compositor) */
 	if (c->lpclip) { int x0 = (int)floor(c->lpcr.x - c->x), y0 = (int)floor(c->lpcr.y - c->y), x1 = (int)ceil(c->lpcr.x + c->lpcr.w - c->x), y1 = (int)ceil(c->lpcr.y + c->lpcr.h - c->y), none = c->lpcr.w < .5 || c->lpcr.h < .5;
 		cairo_rectangle_int_t rc = { x0, y0, none ? 0 : x1 - x0, none ? 0 : y1 - y0 }; cairo_region_intersect_rectangle(rg, &rc); }
-	gdk_window_shape_combine_region(g, rg, 0, 0); cairo_region_destroy(rg); g_object_unref(g);
+	/* (at rest the frame stays whole, as it was in fact: the rounded corners cut by X's shape would also cut its corners' resize grips,
+	   which the page's and native59_t.sh's corner drag take 2 px from the corner; only a transition's part of the window is shaped) */
+	if (!c->lpclip) { cairo_region_destroy(rg); cairo_rectangle_int_t all = { 0, 0, fw, fh }; rg = cairo_region_create_rectangle(&all); }
+	if (!xshape_set(c->frame, rg) && g) gdk_window_shape_combine_region(g, rg, 0, 0); cairo_region_destroy(rg); if (g) g_object_unref(g);
 }
 /* (the owner's photo) Settings › Accessibility › Color vision, which the page puts on the whole screen (base_v24.html applyCB: html's
    filter): grayscale(1), contrast(1.35) saturate(1.2) for High contrast, or the colour-blindness correction's matrix (cbValues), in
@@ -2972,7 +2996,7 @@ static void csd_frame_draw(Client *c)
 static void frames_shadow(cairo_t *cr)
 {
 	if (!WM_OK || LOCKED) return;
-	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->full || c->hidden || c->trans) continue;   /* (a maximised window's too, as the page's .win.max) */
+	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->min || c->full || c->hidden || c->trans || c->lpclip) continue;   /* (a maximised window's too, as the page's .win.max; none while a transition shows part of it, as the page's clip-path cuts its box-shadow: 1.6.3 Part 8, item 2) */
 		if (NMON > 1 && (c->off || mon_k(c) != MON_DRAWK)) continue;   /* (1.6.1 Part 1: each monitor's own windows) */
 		double x = c->x / Z, y = c->y / Z, w = fw_of(c) / Z, h = fh_of(c) / Z; int pad = 40;
 		cairo_surface_t *m = cairo_image_surface_create(CAIRO_FORMAT_A8, (int)ceil((w + 2 * pad) * Z), (int)ceil((h + 2 * pad) * Z)); cairo_t *mc = cairo_create(m);
@@ -3443,7 +3467,11 @@ static char SN_NAME[128], SN_PASS[256], SN_MSG[300];
    here for the second request, the field taking the code, as the page's code box after the password */
 static int SN_CODE; static char SN_PW1[256];
 static int SN_KEY;   /* 1.6.1 (plan-1.6.1 Part 18): a security key asked for after the password (rudolfd-fido.inc) */
-static void sn_code_off(void) { SN_CODE = 0; SN_KEY = 0; explicit_bzero(SN_PW1, sizeof SN_PW1); }
+/* 1.6.3 (docs/plan-1.6.3.md Part 2): a finger at the lock screen: FP_ON while rudolfd waits for one, FP_MSG its line,
+   SN_FT rudolfd's one-time answer after a finger when the authenticator code is still to come (fp_*, below) */
+static int FP_ON, FP_FLY; static guint FP_GEN; static char FP_MSG[200], SN_FT[40];
+static void fp_lock_start(void); static void fp_lock_stop(void); static void fp_state_write(GString *s);
+static void sn_code_off(void) { SN_CODE = 0; SN_KEY = 0; explicit_bzero(SN_PW1, sizeof SN_PW1); explicit_bzero(SN_FT, sizeof SN_FT); }
 static double SRECT[5][4];   /* each focusable part's place (the page's units) */
 static void settings_load(void);
 static void apps_load(void);
@@ -3529,7 +3557,8 @@ static gboolean signin_area_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 		tw = css_width(cr, USER_N, F, 400, 20); css_text(cr, USER_N, F, 400, 20, ix + (iw - tw) / 2, by + 91, 24, ink, iw);
 		SRECT[1][0] = ix; SRECT[1][1] = by + 123; SRECT[1][2] = iw; SRECT[1][3] = 23; SRECT[0][2] = 0;
 		sign_input(cr, ix, by + 123, iw, 23, 4, 1, cx("#d1d5db", 1), F, 40 / 3.0, 6, st, SN_CODE ? "Code from your authenticator app" : "Password", SFOC == 1, ca(accent(), 1));
-		if (SN_MSG[0]) css_text(cr, SN_MSG, F, 400, 13, ix, by + 152, 15.59, cx("#fca5a5", 1), iw);
+		{ int fl = (FP_ON || FP_MSG[0]) && !SN_CODE; if (fl) css_text(cr, FP_MSG[0] ? FP_MSG : "☝️ Or put your finger on the reader.", F, 400, 13, ix, by + 150, 15.59, cx("#ffffff", .9), iw);   /* (1.6.3: as the page's .lkfp) */
+		  if (SN_MSG[0]) css_text(cr, SN_MSG, F, 400, 13, ix, by + (fl ? 166 : 152), 15.59, cx("#fca5a5", 1), iw); }
 		double uw = css_width(cr, "Unlock", F, 400, 13) + 22, sw = css_width(cr, "Switch user", F, 400, 13) + 22;
 		double *r = SRECT[2]; r[0] = ix + iw - uw; r[1] = by + 181.6; r[2] = uw; r[3] = 23; sign_button(cr, r, "Unlock", F, 13, cx("#2563eb", 1), cx("#ffffff", 1), 1, cx("#2563eb", 1), 4, SFOC == 2, SHOV == 2);
 		r = SRECT[3]; r[0] = SRECT[2][0] - 8 - sw; r[1] = by + 181.6; r[2] = sw; r[3] = 23; sign_button(cr, r, "Switch user", F, 13, cx(SHOV == 3 ? "#eaf0ff" : "#ffffff", 1), cx("#000000", 1), 1, cx(SHOV == 3 ? "#a9bff5" : "#d1d5db", 1), 4, SFOC == 3, 0);
@@ -3561,8 +3590,9 @@ static gboolean signin_done(gpointer p)
 		snd_play("login");   /* (as the page's sign-in and unlock: report 2) */
 		if (!SIGN_LOCK) { jstr(v, "id", USER_ID, sizeof USER_ID); jstr(v, "n", USER_N, sizeof USER_N); jstr(v, "r", USER_R, sizeof USER_R); WEB_DIR[0] = 0; jstr(v, "web", WEB_DIR, sizeof WEB_DIR); }
 		if (SIGN_LOCK && LOCKED) UNLOCK_T = g_get_monotonic_time();   /* (UNLOCKED_AT: no saver or lock for a minute: item 6) */
+		fp_lock_stop();   /* (1.6.3: the reader given up) */
 		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); sn_code_off(); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
-		if (!SIGN_LOCK) ICONS_SINCE = g_get_monotonic_time();
+		if (!SIGN_LOCK) { ICONS_SINCE = g_get_monotonic_time(); DI_T = 0; }
 		settings_load(); apps_load(); if (BAR) gtk_widget_show_all(BAR); wm_restack();
 		if (!SIGN_LOCK) { svc_reset(); SVC_SIGNIN = g_get_real_time() / 1000; start_page(); }   /* (1.6.1: the time first: the hidden page's since=) */
 		if (WM_OK) wm_hide_all(0); else for (GList *l = WINS; l; l = l->next) gtk_widget_show(((AppWin *)l->data)->win);
@@ -3571,6 +3601,7 @@ static gboolean signin_done(gpointer p)
 		snprintf(SN_MSG, sizeof SN_MSG, "%s", m[0] ? m : j->code ? "The sign-in did not work." : "Rudolf OS's system service did not answer.");
 		/* (1.6.0: the code is asked for: the password kept for the second request, the field cleared for the code) */
 		if (!strcmp(nd, "key") && j->code != 429) sn_key_step(j->code == 401);
+		else if (!strcmp(nd, "code") && j->code != 429 && SN_FT[0]) { char ft[40] = ""; jstr(v, "ft", ft, sizeof ft); snprintf(SN_FT, sizeof SN_FT, "%s", ft); if (!ft[0]) { sn_code_off(); fp_lock_start(); } }   /* (1.6.3: a wrong code after a finger: rudolfd's new answer; none: the finger again) */
 		else if (!strcmp(nd, "code") && j->code != 429) { if (!SN_CODE) { SN_CODE = 1; snprintf(SN_PW1, sizeof SN_PW1, "%s", SN_PASS); } }
 		else sn_code_off();
 		explicit_bzero(SN_PASS, sizeof SN_PASS); SFOC = 1; sign_caret();
@@ -3598,11 +3629,59 @@ static void signin_go(int guest)
 	if (guest) g_string_append(b, "\"guest\":true");
 	else { if (!SIGN_LOCK) { g_string_append(b, "\"n\":"); json_esc(b, SN_NAME); g_string_append_c(b, ','); }
 		if (SN_KEY) { g_string_append(b, "\"p\":"); json_esc(b, SN_PW1); g_string_append(b, ",\"k\":true"); }   /* (1.6.1: waits for the touch) */
+		else if (SN_CODE && SN_FT[0] && SIGN_LOCK) { g_string_append(b, "\"ft\":"); json_esc(b, SN_FT); g_string_append(b, ",\"c\":"); json_esc(b, SN_PASS); }   /* (1.6.3: the code after a finger) */
 		else if (SN_CODE) { g_string_append(b, "\"p\":"); json_esc(b, SN_PW1); g_string_append(b, ",\"c\":"); json_esc(b, SN_PASS); }
 		else { g_string_append(b, "\"p\":"); json_esc(b, SN_PASS); } }
 	g_string_append_c(b, '}'); j->body = g_string_free(b, FALSE); j->path = g_strdup(SIGN_LOCK ? "/api/desktop/unlock" : "/api/desktop/login");
 	g_thread_unref(g_thread_new("signin", signin_thread, j));
 }
+/* ---- 1.6.3 (docs/plan-1.6.3.md Part 2): a finger at the lock screen, as the page's lock screen takes one (fprint63.js).
+   While rudolfd says a finger is taken now (fp/status: signed in with the password since the start, fewer than five
+   not recognised; none for an account with security keys, whose key needs the password), "Or put your finger on the
+   reader" under the password, and desktop/unlock {"f":true} waits for it, again and again: a match unlocks; an account
+   with an authenticator app is asked its code (rudolfd's one-time answer kept in SN_FT, the field taking the code);
+   a finger not recognised says so; rudolfd needing the password (five tries) ends it. The password always works:
+   unlocking gives the reader up (fp/cancel). */
+typedef struct { guint gen; int code, ready; char *reply; } FpJob;
+static gboolean fp_lock_done(gpointer p);
+static gpointer fp_lock_thread(gpointer p)
+{
+	FpJob *j = p; GByteArray *b = NULL;
+	if (j->ready < 0) { char path[200]; snprintf(path, sizeof path, "/api/fp/status?acct=%s", USER_ID); JV *v = jget(path); j->ready = v && jbool(v, "ready"); if (v) jfree(v);
+		if (!j->ready) { j->code = -1; g_idle_add(fp_lock_done, j); return NULL; } }
+	j->code = http("POST", "/api/desktop/unlock", "{\"f\":true}", 10, &b); j->reply = b ? (char *)g_byte_array_free(b, FALSE) : NULL;
+	g_idle_add(fp_lock_done, j); return NULL;
+}
+static void fp_lock_go(int first) { FP_FLY = 1; FpJob *j = g_new0(FpJob, 1); j->gen = FP_GEN; j->ready = first ? -1 : 1; g_thread_unref(g_thread_new("fprint", fp_lock_thread, j)); }
+static gboolean fp_again(gpointer p) { guint g = GPOINTER_TO_UINT(p); if (g == FP_GEN && FP_ON && LOCKED && SIGN_LOCK) fp_lock_go(0); return G_SOURCE_REMOVE; }
+static void fp_lock_start(void) { FP_GEN++; FP_ON = 0; FP_MSG[0] = 0; if (USER_ID[0]) fp_lock_go(1); }
+static gpointer fp_cancel_thread(gpointer p) { (void)p; GByteArray *b = NULL; http("POST", "/api/fp/cancel", "{}", 2, &b); if (b) g_byte_array_free(b, TRUE); return NULL; }
+static void fp_lock_stop(void) { int was = FP_ON || FP_FLY; FP_FLY = 0; FP_GEN++; FP_ON = 0; FP_MSG[0] = 0; if (was) g_thread_unref(g_thread_new("fpcancel", fp_cancel_thread, NULL)); }
+static gboolean fp_lock_done(gpointer p)
+{
+	FpJob *j = p; JV *v = j->reply ? jparse(j->reply) : NULL;
+	if (j->gen != FP_GEN || !LOCKED || !SIGN_LOCK) goto out;
+	FP_FLY = 0;
+	if (j->code == -1) { FP_ON = 0; goto draw; }
+	FP_ON = 1;
+	if (j->code == 200) {   /* (unlocked by rudolfd: as a right password's answer) */
+		FP_ON = 0; Job *u = g_new0(Job, 1); u->code = 200; u->reply = g_strdup("{\"ok\":true}"); u->path = g_strdup(""); signin_done(u); goto out;
+	}
+	char m[200] = "", nd[16] = "", ft[40] = ""; if (v) { jstr(v, "error", m, sizeof m); jstr(v, "need", nd, sizeof nd); jstr(v, "ft", ft, sizeof ft); }
+	if (j->code == 401 && !strcmp(nd, "code") && ft[0]) {   /* (the finger matched; the code still to come) */
+		FP_ON = 0; FP_MSG[0] = 0; SN_CODE = 1; SN_KEY = 0; explicit_bzero(SN_PW1, sizeof SN_PW1); snprintf(SN_FT, sizeof SN_FT, "%s", ft);
+		explicit_bzero(SN_PASS, sizeof SN_PASS); snprintf(SN_MSG, sizeof SN_MSG, "%s", m[0] ? m : "Enter the 6-digit code from your authenticator app."); SFOC = 1; sign_caret(); goto draw;
+	}
+	if (j->code == 403) { int left = v ? (int)jnum(v, "left", 0) : 0; snprintf(FP_MSG, sizeof FP_MSG, "☝️ That finger was not recognised: try again (%d %s left), or type the password.", left, left == 1 ? "try" : "tries"); snd_play("error"); fp_lock_go(0); goto draw; }
+	if (j->code == 408) { fp_lock_go(0); goto out; }
+	if (j->code == 409 || j->code == 0) { g_timeout_add(1000, fp_again, GUINT_TO_POINTER(FP_GEN)); goto out; }
+	FP_ON = 0; snprintf(FP_MSG, sizeof FP_MSG, "☝️ %s", m[0] ? m : "The fingerprint reader is not available: type the password.");
+draw:
+	if (SAREA) gtk_widget_queue_draw(SAREA); state_write();
+out:
+	if (v) jfree(v); g_free(j->reply); g_free(j); return G_SOURCE_REMOVE;
+}
+static void fp_state_write(GString *s) { g_string_append_printf(s, "signfp %d %s\n", FP_ON, FP_MSG[0] ? FP_MSG : SN_FT[0] ? "code" : "-"); }
 static int sign_at(double x, double y) { x /= Z; y = (y - TOPRES) / Z; for (int i = 0; i < 5; i++) { double *r = SRECT[i]; if (r[2] > 0 && x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3]) return i; } return -1; }
 static void sign_act(int i)
 {
@@ -3671,6 +3750,7 @@ static void signin_show(int lock)
 	snprintf(SN_NAME, sizeof SN_NAME, "%s", lock ? USER_N : pre); explicit_bzero(SN_PASS, sizeof SN_PASS);
 	snprintf(SN_MSG, sizeof SN_MSG, "%s", SETUP || lock ? "" : "Rudolf OS is not set up yet: start it once with the Chromium desktop engine.");
 	SFOC = 1; SHOV = -1;
+	if (!(lock && FP_FLY)) { fp_lock_stop(); if (lock && strcmp(USER_R, "guest")) fp_lock_start(); }   /* (1.6.3 Part 2; shown again while one waits: that one goes on) */
 	gtk_widget_show_all(SIGN); gtk_window_move(GTK_WINDOW(SIGN), 0, 0); gtk_window_present(GTK_WINDOW(SIGN));
 	GdkWindow *gw = gtk_widget_get_window(SIGN); if (gw) gdk_window_focus(gw, GDK_CURRENT_TIME);
 	gtk_widget_grab_focus(SAREA); sign_caret();
@@ -3756,7 +3836,8 @@ static void apps_load(void)
 		GdkPixbuf *px = pix_from_bytes(b); g_byte_array_free(b, TRUE); if (px) g_hash_table_insert(ICONS, g_strdup(ics->k[i]), px);
 	}
 	VER[0] = 0; jstr(v, "ver", VER, sizeof VER);
-	di_load(v); menu_rows_load(v); jumps_load(v); if (DESKAREA) desk_dirty();
+	{ double cdt = jnum(v, "dt", 0); if (!cdt || cdt >= DI_T) { if (cdt) DI_T = cdt; di_load(v); } }   /* (1.6.3 Part 8, item 4: not over newer icons a page gave at once) */
+	menu_rows_load(v); jumps_load(v); if (DESKAREA) desk_dirty();
 	/* (2026-11-17, the owner's Vivobook: "the desktop still takes several minutes to add icons") the log says when they came, for the
 	   owner's checks: the first catalogue with the account's icons after each sign-in */
 	if (ICONS_SINCE && di_shown()) { fprintf(stderr, "rudolf-native: the desktop's icons shown %.1f s after the sign-in (%d icons)\n", (g_get_monotonic_time() - ICONS_SINCE) / 1e6, di_n()); ICONS_SINCE = 0; }
@@ -3882,6 +3963,54 @@ static int cm_at(double px, double py)
 	return -1;
 }
 static void cm_close(void) { if (CMWIN && gtk_widget_get_visible(CMWIN)) { gdk_seat_ungrab(gdk_display_get_default_seat(gdk_display_get_default())); gtk_widget_hide(CMWIN); pop_gone(CMBG, CMWX, CMWY); } if (CMBG) { g_object_unref(CMBG); CMBG = NULL; } CMHOV = -1; state_write(); }
+/* (1.6.3 Part 8, item 6, "the desktop right-click menu does not disappear if clicked outside of while open on Native") the menu's grab
+   leaves the desktop's own windows their presses (owner events, so a right-click elsewhere opens the next menu at once), and so a press on
+   the desktop, the taskbar or a window's frame never came to cm_press: closed here, from the X filter, for a press on any window but the
+   menu's (and from wm_focus with 0: another window chosen), the press then going on as the page's pointerdown does; Esc and Tab close it
+   wherever the keyboard's focus is (the desktop's own window holds it, so its keys did not come to cm_key), and Alt+Tab closes it and
+   switches, as the page's blur */
+static int cm_outside(unsigned long xw)
+{
+	if (!CMWIN || !gtk_widget_get_visible(CMWIN)) return 0; GdkWindow *g = gtk_widget_get_window(CMWIN);
+	if (xw && g && GDK_WINDOW_XID(g) == xw) return 0;
+	cm_close(); return 1;
+}
+/* (the desktop's own windows, the taskbar and the apps' pages are GTK's, their presses and keys coming by XInput 2, not to the X filter:
+   any widget's press closes the menu first, and the keys, wherever GTK sends them, are the menu's while it is open) */
+static void at_key(int back); static guint32 CM_T0;
+static gboolean cm_hook_press(GSignalInvocationHint *h, guint n, const GValue *v, gpointer d)
+{
+	(void)h; (void)d; GtkWidget *w = n ? g_value_get_object(&v[0]) : NULL; GdkEventButton *e = n > 1 ? g_value_get_boxed(&v[1]) : NULL;
+	if (w && e && e->type == GDK_BUTTON_PRESS && CMWIN && gtk_widget_get_toplevel(w) != CMWIN && e->time != CM_T0) cm_outside(0);   /* (not the press that opened it, going on to a parent) */
+	return TRUE;
+}
+static gint cm_snoop(GtkWidget *w, GdkEventKey *e, gpointer d)
+{
+	(void)d; if (e->type != GDK_KEY_PRESS || !CMWIN || !gtk_widget_get_visible(CMWIN)) return FALSE;
+	unsigned st = e->state & (GDK_CONTROL_MASK | GDK_MOD1_MASK | GDK_SUPER_MASK);
+	if (st) { int tab = e->keyval == GDK_KEY_Tab || e->keyval == GDK_KEY_ISO_Left_Tab; cm_close();   /* (a shortcut: the menu closes and it goes on; Alt+Tab switches, as the page's blur) */
+		if (tab && (st & GDK_MOD1_MASK) && !(st & GDK_CONTROL_MASK) && USER_ID[0] && !LOCKED) { at_key((e->state & GDK_SHIFT_MASK) != 0); return TRUE; } return FALSE; }
+	if (e->keyval == GDK_KEY_Escape || e->keyval == GDK_KEY_Tab || e->keyval == GDK_KEY_ISO_Left_Tab) { cm_close(); return TRUE; }
+	if (w && gtk_widget_get_toplevel(w) == CMWIN) return FALSE;
+	cm_key(CMAREA, e, NULL); return TRUE;
+}
+static void cm_hooks(void)
+{
+	static int done; if (done) return; done = 1;
+	g_signal_add_emission_hook(g_signal_lookup("button-press-event", GTK_TYPE_WIDGET), 0, cm_hook_press, NULL, NULL);
+	gtk_key_snooper_install(cm_snoop, NULL);
+}
+static int cm_xkey(XKeyEvent *e)
+{
+	if (!CMWIN || !gtk_widget_get_visible(CMWIN) || e->type != KeyPress) return 0;
+	KeySym ks = XkbKeycodeToKeysym(DPY, e->keycode, 0, 0); unsigned st = e->state & (ControlMask | Mod1Mask | Mod4Mask);
+	if (st) { cm_close(); return 0; }   /* (a shortcut: Alt+Tab, the Rudolf key's: the menu closes and it goes on) */
+	if (ks == XK_Escape || ks == XK_Tab || ks == XK_ISO_Left_Tab) { cm_close(); return 1; }
+	GdkEventKey k; memset(&k, 0, sizeof k); k.type = GDK_KEY_PRESS;
+	k.keyval = ks == XK_Down ? GDK_KEY_Down : ks == XK_Up ? GDK_KEY_Up : ks == XK_Return ? GDK_KEY_Return : ks == XK_KP_Enter ? GDK_KEY_KP_Enter : 0;
+	if (k.keyval) cm_key(CMAREA, &k, NULL);
+	return 1;   /* (the menu has the keys while it is open, as the page's .ctx its focus) */
+}
 static void cm_choose(int i) { if (i < 0 || i >= NCMI || CMIT[i].sep || CMIT[i].dis) return; char a[96]; snprintf(a, sizeof a, "%s", CMIT[i].act); void (*cb)(const char *) = CM_CB; cm_close(); if (cb) cb(a); }
 static gboolean cm_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { (void)w; (void)d; int h = cm_at(e->x, e->y); if (h != CMHOV) { CMHOV = h; gtk_widget_queue_draw(CMAREA); } return TRUE; }
 static gboolean cm_press(GtkWidget *w, GdkEventButton *e, gpointer d)
@@ -3911,6 +4040,7 @@ static void cm_open(double px, double py, const char *title, const CMI *items, i
 	double ph = CMBH - CM_LATE * 25; CM_LATE = 0;   /* (a window's menu: placed by the page before its Print row was added, apps25b.js) */
 	ph = round(ph); CMX = fmax(2, fmin(CMX, vw - round(CMBW) - 4)); CMY = fmax(2, CMY + ph > vh - 4 ? CMY - ph : CMY);
 	if (tb_side() == 1 && CMX < BARW / Z + 4) CMX = BARW / Z + 4; else if (tb_side() == 2 && CMX + round(CMBW) > vw - BARW / Z - 4) CMX = fmax(2, vw - BARW / Z - 4 - round(CMBW));   /* (1.6.2, tbside62.js: off a taskbar at the left or the right) */   /* (offsetWidth and offsetHeight: whole pixels) */   /* (the page's cmenu: kept on the screen, above the pointer when it would not fit below) */
+	cm_hooks(); CM_T0 = gtk_get_current_event_time();
 	if (!CMWIN) { CMWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(CMWIN), "Menu"); CMAREA = gtk_drawing_area_new(); gtk_widget_set_can_focus(CMAREA, TRUE);
 		gtk_widget_add_events(CMAREA, GDK_BUTTON_PRESS_MASK | GDK_POINTER_MOTION_MASK | GDK_KEY_PRESS_MASK); gtk_container_add(GTK_CONTAINER(CMWIN), CMAREA);
 		g_signal_connect(CMAREA, "draw", G_CALLBACK(cm_draw), NULL); g_signal_connect(CMAREA, "motion-notify-event", G_CALLBACK(cm_motion), NULL);
@@ -4339,6 +4469,24 @@ static void di_load(JV *cat)
 		for (int j = 0; j < k; j++) { int fc, fr; di_free(c0, r0, idx[j], &fc, &fr); DI[idx[j]].c = fc; DI[idx[j]].r = fr; }
 		if (k) di_save();
 	}
+}
+/* 1.6.3 Part 8, item 4 ("Desktop icon removal/changes still take several minutes on Native"): the desktop's icons came only with the
+   whole catalogue (desktop/apps: every app's picture drawn again, the start menu, the sounds, the statue), which a busy computer's page
+   took minutes to give (the owner's Vivobook, 2026-11-22: 192 s while Steam started), and which this shell then read from rudolfd.
+   A page whose desktop's icons changed gives just them at once (op "desk", deskquick63.js: their names, kinds, pictures' keys, places,
+   the icon size, and when the page read them, "dt"), drawn now; the catalogue that follows is drawn over them only when it is as new
+   (its own "dt"), so a slow one never puts older icons back. The signed-in account's only. */
+static void desk_quick(JSCValue *v)
+{
+	if (!USER_ID[0] || LOCKED) return;
+	JSCValue *jv = jsc_value_object_get_property(v, "j"); char *js = jv && jsc_value_is_string(jv) ? jsc_value_to_string(jv) : NULL; if (jv) g_object_unref(jv);
+	if (!js || strlen(js) > (256u << 10)) { g_free(js); return; }
+	JV *cat = jparse(js); g_free(js); if (!cat) return;
+	char acct[80] = ""; jstr(cat, "acct", acct, sizeof acct); double dt = jnum(cat, "dt", 0);
+	if (strcmp(acct, USER_ID) || dt < DI_T || !jprop(cat, "desk")) { jfree(cat); return; }
+	DI_T = dt; di_load(cat); jfree(cat); if (DESKAREA) desk_dirty();
+	if (ICONS_SINCE && di_shown()) { fprintf(stderr, "rudolf-native: the desktop's icons shown %.1f s after the sign-in (%d icons, at once)\n", (g_get_monotonic_time() - ICONS_SINCE) / 1e6, di_n()); ICONS_SINCE = 0; }
+	state_write();
 }
 /* the desktop's icons as the page draws them (base_v24.html .ic, styles25.css): 76 px wide (the icon size's share),
    the picture 40 px in a line of the 34 px font (vertical-align: middle) with its drop shadow, the name below in the
@@ -6544,7 +6692,7 @@ static void toast_place(void)
    smaller (no see-through without a compositor); at 0 there is no light, and the windows still fill, clear and drop on time.
    None with Reduce motion, on the lock screen, for a full-screen window and the shell's own unseen pages (do-*). This replaces
    test finding N15's fade (a window of the shell's over the new one, drawn from the windows' pictures). */
-typedef struct { int on, kind, back, sw, max_on; Client *c; gint64 t0; LPGeo g; GtkWidget *pw; int wx, wy, pclip; LPRect pcr; } LPRun;   /* (sw: its new size given; max_on: maximized after; pw: a menu of the shell's own, its window at wx wy: Part 17b) */
+typedef struct { int on, kind, back, sw, max_on; Client *c; gint64 t0; LPGeo g; GtkWidget *pw; int wx, wy, pclip; LPRect pcr; int nf; gint64 tl, gmax, work; } LPRun;   /* (nf, tl, gmax, work: its frames, the last one's time, the longest gap and the time drawing took, 1.6.3 Part 8 item 2) */   /* (sw: its new size given; max_on: maximized after; pw: a menu of the shell's own, its window at wx wy: Part 17b) */
 #define LP_RUNS 8
 #define LP_PL (LP_NL * 2)
 #define LP_PP (LP_NP * 2)
@@ -6624,10 +6772,20 @@ static void lp_draw_clip(cairo_t *cr, GtkWidget *pw, int wx, int wy)
 	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on && LPR[r].pw == pw && LPR[r].pclip) { const LPRect *c = &LPR[r].pcr;
 		cairo_rectangle(cr, c->x - wx, c->y - wy, c->w < .5 || c->h < .5 ? 0 : c->w, c->w < .5 || c->h < .5 ? 0 : c->h); cairo_clip(cr); return; }
 }
+/* (1.6.3 Part 8, item 2, "Transitions on Native are rough/blocky": each transition's frames measured, as the page's are with
+   requestAnimationFrame: how many, the longest gap between two and the time the shell took drawing them; the last 16 in the state
+   file, "lpstat KIND FRAMES MS GAP-MS WORK-MS", and the native log) */
+static char LPSTAT[16][64]; static int NLPSTAT;
+static void lp_stat(LPRun *R)
+{
+	gint64 now = g_get_monotonic_time(); char *l = LPSTAT[NLPSTAT++ % 16];
+	snprintf(l, sizeof LPSTAT[0], "%s%s %d %d %d %d", LP_NAME[R->kind], R->back ? "<" : "", R->nf, (int)((now - R->t0) / 1000), (int)(R->gmax / 1000), (int)(R->work / 1000));
+	if (getenv("RUDOLF_LP_LOG")) fprintf(stderr, "rudolf-native: litepoint %s\n", l);
+}
 static void lp_finish(LPRun *R)
 {
-	if (!R->on) return; if (R->pw) { lp_pw_shape(R, NULL); R->pw = NULL; } R->on = 0; LP_DONE++; Client *c = R->c; if (!c || !g_list_find(CLIENTS, c)) return;
-	lp_switch(R); c->lpclip = 0;
+	if (!R->on) return; lp_stat(R); if (R->pw) { lp_pw_shape(R, NULL); R->pw = NULL; } R->on = 0; LP_DONE++; Client *c = R->c; if (!c || !g_list_find(CLIENTS, c)) return;
+	lp_switch(R); c->lpclip = 0; desk_shadows();
 	if (R->kind == LP_MIN && !R->back && c->min) XUnmapWindow(DPY, c->frame);   /* (minimized: gone once it has dropped into its button) */
 	frame_shape(c); state_write();
 }
@@ -6639,10 +6797,12 @@ static void lp_state(GString *s)
 	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on) { double t = fmin(1, (now - LPR[r].t0) / (LP_MS[LPR[r].kind] * 1000.0));
 		g_string_append_printf(s, "lp %s%s %lx %.2f\n", LP_NAME[LPR[r].kind], LPR[r].back ? "<" : "", LPR[r].c ? (unsigned long)LPR[r].c->w : 0UL, LPR[r].back ? 1 - t : t); }
 	g_string_append_printf(s, "lpdone %d\nlplit %lx %.2f\n", LP_DONE, (unsigned long)LP_LITW, LP_LITA);
+	for (int i = NLPSTAT > 16 ? NLPSTAT - 16 : 0; i < NLPSTAT; i++) g_string_append_printf(s, "lpstat %s\n", LPSTAT[i % 16]);
 }
 static gboolean lp_tick(gpointer d)
 {
 	(void)d; gint64 now = g_get_monotonic_time(); RGB glow, core; lp_cols(&glow, &core); LP_CORE = core; double br = lp_br();
+	for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on) { LPRun *R = &LPR[r]; if (R->tl && now - R->tl > R->gmax) R->gmax = now - R->tl; R->tl = now; R->nf++; }
 	static double L[LP_PL][5], P[LP_PP][4]; int nl = 0, np = 0, any = 0; Window litw = 0; double lita = 0;
 	for (int r = 0; r < LP_RUNS; r++) { LPRun *R = &LPR[r]; if (!R->on) continue;
 		if (R->c && !g_list_find(CLIENTS, R->c)) { R->on = 0; continue; }
@@ -6661,6 +6821,7 @@ static gboolean lp_tick(gpointer d)
 	for (int i = 0; i < LP_PP; i++) { if (i < np) lp_point_put(i, P[i], glow, br); else if (LPPM[i]) { XUnmapWindow(DPY, LPPW[i]); LPPM[i] = 0; } }
 	lita *= br; if (litw != LP_LITW || fabs(lita - LP_LITA) > .01) { LP_LITW = litw; LP_LITA = lita; bar_redraw(); }
 	XFlush(DPY);
+	{ gint64 w = g_get_monotonic_time() - now; for (int r = 0; r < LP_RUNS; r++) if (LPR[r].on) LPR[r].work += w; }
 	if (!any) { LP_TICK = 0; lp_unmap(LPLW, LPLM, LP_PL); lp_unmap(LPPW, LPPM, LP_PP); if (LP_LITW) { LP_LITW = 0; LP_LITA = 0; bar_redraw(); } state_write(); return G_SOURCE_REMOVE; }
 	return G_SOURCE_CONTINUE;
 }
@@ -6671,7 +6832,7 @@ static int lp_start(Client *c, int kind, int back, const LPGeo *g, int max_on)
 	if (c) lp_stop(c);
 	LPRun *R = NULL; for (int r = 0; r < LP_RUNS; r++) if (!LPR[r].on) { R = &LPR[r]; break; } if (!R) return 0;
 	memset(R, 0, sizeof *R); R->on = 1; R->kind = kind; R->back = back; R->c = c; R->g = *g; R->max_on = max_on; R->t0 = g_get_monotonic_time(); LP_LAST = R;
-	if (c) { LPScene sc; lp_scene(kind, back ? 1 : 0, g, &sc); c->lpclip = sc.clip; c->lpcr = sc.cr; frame_shape(c); }   /* (its first moment at once) */
+	if (c) { LPScene sc; lp_scene(kind, back ? 1 : 0, g, &sc); c->lpclip = sc.clip; c->lpcr = sc.cr; frame_shape(c); desk_shadows(); }   /* (its first moment at once; its shadow with it) */
 	if (!LP_TICK) LP_TICK = g_timeout_add(16, lp_tick, NULL);
 	state_write(); return 1;
 }
@@ -6691,8 +6852,15 @@ static void lp_button(Client *c, const LPRect *f, double *x, double *y)
 static void wopen_start(Client *c)
 {
 	if (!c || c->opened) return; c->opened = 1;
-	LPGeo g; memset(&g, 0, sizeof g); if (lp_off(c) || c->min || !lp_viewable(c, &g.f)) return;
-	lp_start(c, c->trans || (c->app && c->app->s2s) ? LP_S2S : LP_C2C, 0, &g, 0);
+	LPGeo g; memset(&g, 0, sizeof g);
+	if (lp_off(c) || c->min || !lp_viewable(c, &g.f) || !lp_start(c, c->trans || (c->app && c->app->s2s) ? LP_S2S : LP_C2C, 0, &g, 0)) { if (c->lpclip) { c->lpclip = 0; frame_shape(c); } }   /* (no transition: whole, as before) */
+}
+/* (1.6.3 Part 8, item 2) an app's window about to be shown for the first time: nothing of it shown until its transition starts (wopen_start, at
+   once after: its first moment then; whole again if there is none), so it does not show whole for a moment first */
+static void wopen_pre(Client *c)
+{
+	if (!c || c->opened || lp_off(c) || c->min) return;
+	c->lpclip = 1; memset(&c->lpcr, 0, sizeof c->lpcr); frame_shape(c);
 }
 /* minimizing: the window stays mapped (minimized for everything else at once) until the point has dropped into its button */
 static int lp_min(Client *c)
@@ -8260,6 +8428,7 @@ static void state_write(void)
 	for (int i = 0; i < NAPPS; i++) if (APPS[i].x || strchr(APPS[i].k, ':')) g_string_append_printf(s, "catapp %s %d %s %d\n", APPS[i].k, APPS[i].x, APPS[i].ic[0] ? APPS[i].ic : "-", APPS[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, APPS[i].ic) ? 1 : 0);
 	for (int i = 0; i < NMR; i++) if (strchr(MR[i].v, ':')) g_string_append_printf(s, "mric %s %s %d\n", MR[i].v, MR[i].ic[0] ? MR[i].ic : "-", MR[i].ic[0] && ICONS && g_hash_table_lookup(ICONS, MR[i].ic) ? 1 : 0);
 	if (SIGN) g_string_append_printf(s, "signmsg %s\nsignfields %s|%ld|%d\n", SN_MSG, SN_NAME, g_utf8_strlen(SN_PASS, -1), SFOC);   /* (the password's length only) */
+	if (SIGN) fp_state_write(s);   /* (1.6.3 Part 2: the lock screen's fingerprint line) */
 	for (GList *l = WINS; l; l = l->next) { AppWin *a = l->data; GdkWindow *g = a->win ? gtk_widget_get_window(a->win) : NULL;
 		Client *c = WM_OK ? client_of_app(a) : NULL;
 		if (a->hidden) { g_string_append_printf(s, "page %s\n", a->k); continue; }   /* (2026-11-16: a page doing something unseen is no window: page KEY) */

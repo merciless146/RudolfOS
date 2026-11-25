@@ -66,6 +66,8 @@ w8 '[ -n "$(di Notepad)" ]' 20; timeout 0.5 tail -f /dev/null; shot
 ok "56. the desktop's icons, on the page's grid: in the columns, and where the page put one (the Calculator)" "$([ "$(di Notepad | cut -d' ' -f2-5)" = "0 0 8 8" ] && [ "$(di Calculator | cut -d' ' -f2-5)" = "2 1 176 94" ] && [ "$(di 'My Computer' | cut -d' ' -f2-3)" = "0 1" ] && close "$(px 50 34)" "16 185 129" 6 && echo 1)" "$(grep '^dicon' $D/state) $(px 50 34)"
 xdotool mousemove 50 40 click --repeat 2 --delay 80 1; w8 'grep -q "^app notepad .* Notepad$" $D/state' 80
 ok "57. a double-click opens the icon's app" "$(grep -q '^app notepad' $D/state && [ "$(di Notepad | cut -d' ' -f7)" = 1 ] && echo 1)" "$(grep '^app\|^dicon' $D/state)"
+# (1.6.3 Part 8, item 2: a window opening is not there to click until its transition has shown it, as the page's clip-path)
+w8 '[ "$(st wopen)" = 0 ]' 20
 NID=$(grep '^client .* app=notepad' $D/state | cut -d' ' -f2); X=$(cv $NID 4); Y=$(cv $NID 5); FW=$(( $(cv $NID 6) + 2 )); click $((X+FW-21)) $((Y+18)); w8 '[ -z "$(cl $NID)" ]' 40
 xdotool mousemove 218 134 mousedown 1; for k in 1 2 3 4 5 6; do xdotool mousemove $((218+k*42)) $((134+k*29)); timeout 0.1 tail -f /dev/null; done; xdotool mouseup 1; timeout 0.5 tail -f /dev/null
 ok "58. dragging an icon: to the nearest cell, kept by rudolfd for the shell (desktop/cells)" "$([ "$(di Calculator | cut -d' ' -f2-3)" = "5 3" ] && grep -q '"Calculator":\[5,3\]' $D/cells.json && echo 1)" "$(di Calculator) $(cat $D/cells.json 2>/dev/null)"
@@ -79,7 +81,7 @@ ok "60. an icon's own menu" "$([ "$(st dmenu)" = icon ] && echo 1)"
 rm -f $D/apps-fixed
 xdotool mousemove 900 500 click 3; w8 '[ -n "$(cmi "New text document")" ]' 20; click $(cmi "New text document"); w8 '[ "$(st dialog | cut -d" " -f1)" = rename ]' 80
 ok "61. the desktop's menu: New text document, then the page's Rename dialog, its name chosen" "$([ "$(st dialog)" = "rename NEW TEXT DOCUMENT.TXT|" ] && echo 1)" "$(st dialog)"
-xdotool type --delay 30 'notes.txt'; xdotool key Return; w8 '[ -n "$(di NOTES.TXT)" ]' 80
+xdotool type --delay 30 'notes.txt'; xdotool key Return; w8 '[ -n "$(di NOTES.TXT)" ] && [ "$(st dialog | cut -d" " -f1)" = - ]' 80   # (1.6.3 Part 8, item 4: the icon comes at once, the dialog closes as the page says it is done)
 ok "62. ...a name typed and Enter: the file's icon on the desktop (the page's upper case)" "$(di NOTES.TXT | grep -q '|file|NOTES.TXT$' && [ "$(st dialog | cut -d' ' -f1)" = - ] && echo 1)" "$(grep '^dicon\|^dialog' $D/state)"
 xdotool mousemove $(dc NOTES.TXT) click 3; w8 '[ "$(st dmenu)" = file ]' 20
 ok "63. a file's menu: Open, Open with…, Cut, Copy (1.6.1 Part 28, as the page's), Rename, Move to Trash, Properties" "$([ "$(st cmenu | cut -d' ' -f5-)" = NOTES.TXT ] && grep '^cmitem' $D/state | cut -d'|' -f2 | tr '\n' ',' | grep -q '^Open,Open with…,Cut,Copy,Rename,Move to Trash,Properties,$' && echo 1)" "$(grep '^cmenu\|^cmitem' $D/state)"

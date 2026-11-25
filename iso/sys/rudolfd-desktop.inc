@@ -507,7 +507,7 @@ static int desk_admin_check(const char *n, const char *pw, char *why, size_t wn)
 	const char *pkq = a ? dj_get(a, "pk") : NULL;
 	if (!a || !role || strcmp(role, "admin")) snprintf(why, wn, "only an administrator can do this");
 	else if (pkq && *dj_ws(pkq) != 'n') snprintf(why, wn, "this administrator signs in with a security key: use an administrator with a password");
-	else { int st = dpw_check(h, pw);
+	else { int st = fp_admin_pass(a, pw) ? 0 : dpw_check(h, pw);   /* (1.6.3 Part 2: or an administrator's finger) */
 		if (st == -2) snprintf(why, wn, "this administrator's password is from an older Rudolf OS: sign in with it once first");
 		else if (st) { snprintf(why, wn, "Wrong password."); dfail_note(0); health_add("signin", "wrong administrator password for %.100s (development link)", n); }
 		else { rc = 0; dfail_note(1); } }
@@ -601,7 +601,7 @@ static void api_desktop_login(struct req *r)
 	free(list); dls_close(&l);
 	char lp[300]; dpath(lp, sizeof lp, "native-locked"); unlink(lp);
 	if (dsess_write(&s)) { explicit_bzero(&s, sizeof s); reply_err(r->fd, 500, "the session could not be kept"); return; }
-	dfail_note(1);
+	dfail_note(1); if (strcmp(s.id, "guest")) fp_signed_in(s.id);   /* (1.6.3 Part 2) */
 	str o = {0}; sadd(&o, "{\"ok\":true,\"id\":"); sjson(&o, s.id); sadd(&o, ",\"n\":"); sjson(&o, s.n); sadd(&o, ",\"r\":"); sjson(&o, s.r);
 	{ char wp[400]; if (strcmp(s.id, "guest") && oweb_ready(s.id, wp, sizeof wp) && owenc_get(s.id) != 0) { sadd(&o, ",\"web\":"); sjson(&o, wp); } }   /* (1.6.0 Part 22: Oracle's encrypted folder, unless the account turned it off; Native's default is on) */
 	sadd(&o, "}");
@@ -755,7 +755,7 @@ static void api_desktop_admin(struct req *r)
 	dls l; dls_open(&l); char *list = dls_accounts(&l);
 	for (int i = 0; list && n && pw; i++) { const char *a = dj_at(list, i); if (!a) break;
 		char *an = dj_str(dj_get(a, "n")), *role = dj_str(dj_get(a, "r"));
-		if (an && !strcmp(an, n) && role && !strcmp(role, "admin")) { char *h = dj_str(dj_get(a, "h")); found = 1; okk = dpw_check(h, pw) == 0; dfree_secret(h); }
+		if (an && !strcmp(an, n) && role && !strcmp(role, "admin")) { char *h = dj_str(dj_get(a, "h")); found = 1; okk = dpw_check(h, pw) == 0 || fp_admin_pass(a, pw); dfree_secret(h); }   /* (1.6.3 Part 2: or a finger) */
 		free(an); free(role); if (found) break; }
 	dfree_secret(pw); free(list); dls_close(&l);
 	if (!okk) { dfail_note(0); health_add("signin", "a wrong administrator's password in a native app%s", found ? "" : " (not an administrator's account)"); free(n); reply_err(r->fd, 403, "Wrong password."); return; }
@@ -807,6 +807,7 @@ static int api_desktop(struct req *r, const char *w, int post)
 		int wt = dfail_wait(); if (wt) { char m[120]; snprintf(m, sizeof m, "Too many failed attempts. Please wait %d seconds and try again.", wt); reply_err(r->fd, 429, m); return 1; }
 		dsess s; if (!dsess_read(&s)) { reply_err(r->fd, 404, "no native session"); return 1; }
 		char lp[300]; dpath(lp, sizeof lp, "native-locked"); int okk = !strcmp(s.r, "guest");
+		if (r->body && (dj_get(r->body, "f") || dj_get(r->body, "ft"))) { explicit_bzero(&s, sizeof s); fp_native_unlock(r, lp); return 1; }   /* (1.6.3 Part 2: a finger) */
 		if (!okk) {
 			dls l; dls_open(&l); char *list = dls_accounts(&l), *pw = dbody_field(r, "p");
 			for (int i = 0; list && pw; i++) { const char *a = dj_at(list, i); if (!a) break; char id[80]; dacct_id(a, id, sizeof id);
@@ -824,7 +825,7 @@ static int api_desktop(struct req *r, const char *w, int post)
 			dfree_secret(pw); free(list); dls_close(&l);
 		}
 		if (!okk) { dfail_note(0); health_add("signin", "wrong password at the lock screen for the account %.100s (native)", s.n); explicit_bzero(&s, sizeof s); reply_err(r->fd, 403, "The password is incorrect."); return 1; }
-		dfail_note(1); explicit_bzero(&s, sizeof s); unlink(lp); reply_ok(r->fd, "unlocked"); return 1;
+		dfail_note(1); fp_password_used(s.id); explicit_bzero(&s, sizeof s); unlink(lp); reply_ok(r->fd, "unlocked"); return 1;
 	}
 	/* (1.6.0 Part 22 item 5) GET desktop/owenc?acct=ID: {"on": true|false|null (unset), "open": the folders open now, "web"};
 	   POST {"acct","on":true} | {"acct","on":false,"p":PASSWORD}: turning it off asks for the account's own password, and is
