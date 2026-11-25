@@ -394,6 +394,8 @@ out.append('static const char *const STOF[][2] = {' + ','.join('{ %s, %s }' % (c
 for k, v in dsp['SELECTS'].items(): out.append('static const char *const DSEL_%s[][2] = {' % k + ','.join('{ %s, %s }' % (cstr(a), cstr(b)) for a, b in v) + '};')
 out.append('typedef struct { const char *id; const char *const (*o)[2]; int n; } SetDSel;')
 out.append('static const SetDSel DSELS[] = {' + ','.join('{ %s, DSEL_%s, %d }' % (cstr(k), k, len(v)) for k, v in dsp['SELECTS'].items()) + '};')
+wpf = jsconst(rd('wallpaper31.js'), 'WP_FITS', 'wallpaper31.js')
+out.append('static const char *const WPFITS[][2] = {' + ','.join('{ %s, %s }' % (cstr(a), cstr(b)) for a, b in wpf) + '};')
 out.append('typedef struct { const char *k, *n, *tl, *td; int live; } SetDyn;')
 out.append('static const SetDyn DYNS[] = {' + ','.join('{ %s, %s, %s, %s, %d }' % (cstr(k), cstr(v['n']), cstr(v.get('tl') or ''), cstr(v.get('td') or ''), 1 + dsp['DYN_LIVE'].index(k) if k in dsp['DYN_LIVE'] else 0) for k, v in dsp['DYN'].items()) + '};')   # (live: its place among the moving ones, from 1)
 out.append('static const unsigned char LOGO_PNG[] = {' + ','.join(str(b) for b in png) + '};')

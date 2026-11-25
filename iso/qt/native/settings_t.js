@@ -347,7 +347,8 @@ async function checkDisp() {
   const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
     xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
   const confirm = async b => { click(rect(b)); await until(() => rect('dialog'), 3000); xdo('key Return'); await wait(900) };
-  natStart('disp', {RUDOLF_SET_NOSOUND: '1'}); await until(() => rect('body') && line('page') == 'disp', 20000); await wait(1500);
+  cp.execFileSync('python3', ['-c', 'import sys\nfrom PIL import Image\nImage.new("RGB", (3000, 1500), (200, 80, 40)).save(sys.argv[1])', path.join(D, 'wall.png')]);
+  natStart('disp', {RUDOLF_SET_NOSOUND: '1', RUDOLF_SET_PICK: path.join(D, 'wall.png')}); await until(() => rect('body') && line('page') == 'disp', 20000); await wait(1500);
   { click(rect('dyn-stag')); await until(() => line('dirty') == '1', 3000); await scrollTo('acsw'); const a = rect('acsw'); xdo(`mousemove ${Math.round(a[0] + 5 * 24.7 + 10)} ${Math.round(a[1] + 10)} click 1`); await wait(400);
     await confirm('apply'); await until(() => SET().dyn == 'stag', 4000); const st = SET();
     ok('D1. Moonlit Stag chosen and Green from the swatches, Apply: dyn "stag", accent "#16a34a" (bd95set:ACCT), as the page saves them', st.dyn == 'stag' && st.accent == '#16a34a', st) }
@@ -359,6 +360,9 @@ async function checkDisp() {
     ok('D4. Tablet mode On: kept at once (persistS: tablet "on"), not left to Apply', SET().tablet == 'on' && line('dirty') == '0', [SET().tablet, line('dirty')]) }
   { mark = c0(); await scrollTo('dres'); await pick('dres', 2, 5); await scrollTo('dsap'); click(rect('dsap')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /POST screen\?/.test(since()), 4000);
     ok('D5. Resolution 1366×768, Apply, Change (confirmed): screen?res=1366x768&fps=60', /POST screen\?res=1366x768&fps=60/.test(since()), since()) }
+  { mark = c0();
+    await scrollTo('wpc'); click(rect('wpc')); await until(() => /POST idbm\/put/.test(since()), 6000); await wait(500); await confirm('apply'); await until(() => SET().wpimg, 4000); const st = SET();
+    ok('D7. Picture, From this computer…: kept as the page keeps it (idbm/put of rudolfos/kv "wp:ID"), then Apply: wpimg ID, wpname "wall.png", dyn ""; bd95wpids:ACCT', /POST idbm\/put\?f=[0-9a-f]{16}/.test(since()) && st.wpimg && st.wpname == 'wall.png' && st.dyn === '' && (LS()['bd95wpids:uAnnA1b2'] || '').includes(st.wpimg), [st.wpimg, st.wpname, st.dyn, nst().split('\n').filter(x => /wpm|idbm|play|POST/.test(x)), since().slice(-300)]) }
   { mark = c0(); await scrollTo('dgp'); await pick('dgp', 1, 3); await until(() => /POST display\?mode=full/.test(since()), 4000);
     ok('D6. Graphics card: Use it for games and the desktop (display?mode=full)', /POST display\?mode=full/.test(since()), since()) }
   natStop();

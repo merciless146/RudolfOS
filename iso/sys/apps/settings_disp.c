@@ -199,26 +199,91 @@ static void rows_ext(void)
 }
 
 
-/* ================================================================== Picture (wallpaper31.js): "None" or the picture, Choose from my files…,
-   From this computer…, its message under (TO DO: the picture itself is kept in the page's IndexedDB, mirrored by rudolfd's idbm/put) */
-typedef struct { GtkWidget *none, *bf, *bc, *msg; char *t; } Pic;
+/* ================================================================== Picture (wallpaper31.js): "None" or the picture (its thumbnail and name,
+   Remove, Position), Choose from my files…, From this computer…. A picture of your own is kept as the page keeps it: a JPEG data URL in
+   IndexedDB's rudolfos/kv as "wp:ID", which rudolfd mirrors for every engine (idbm/put, its file named by idbmName's FNV-1a), the ids
+   kept in bd95wpids:ACCT; S.wpimg (the id), S.wpname and dyn '' in the working copy (wpUse) */
+typedef struct { GtkWidget *none, *th, *nm, *bf, *bc, *br, *pos, *posl, *msg; char *t; GdkPixbuf *pb; char id[24]; } Pic;
 static Pic PIC;
+static char *idbm_name(const char *key)
+{
+	char *k = set_jesc(key), *s = g_strdup_printf("rudolfos%ckv%c\"%s\"", 0, 0, k); size_t n = 8 + 1 + 2 + 1 + strlen(k) + 2; guint64 h = 0xcbf29ce484222325ULL;
+	for (size_t i = 0; i < n; i++) { h ^= (unsigned char)s[i]; h *= 0x100000001b3ULL; } g_free(s); g_free(k); return g_strdup_printf("%016" G_GINT64_MODIFIER "x", h);
+}
+static GdkPixbuf *wp_get(const char *id)
+{
+	char *key = g_strdup_printf("wp:%s", id), *f = idbm_name(key), path[80]; snprintf(path, sizeof path, "/api/idbm/get?f=%s", f); g_free(f); g_free(key);
+	RuiJ *j = rui_get(path); const char *v = rui_jstr(j, "v"); GdkPixbuf *pb = NULL;
+	if (v && g_str_has_prefix(v, "data:image")) { const char *c = strchr(v, ','); gsize n = 0; guchar *b = c ? g_base64_decode(c + 1, &n) : NULL; GdkPixbufLoader *l = gdk_pixbuf_loader_new();
+		if (b && gdk_pixbuf_loader_write(l, b, n, NULL) && gdk_pixbuf_loader_close(l, NULL)) { pb = gdk_pixbuf_loader_get_pixbuf(l); if (pb) g_object_ref(pb); } else gdk_pixbuf_loader_close(l, NULL); g_object_unref(l); g_free(b); }
+	rui_jfree(j); return pb;
+}
 static gboolean pic_msg_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)d; s_col(cr, "msg", 1); s_text(cr, PIC.t ? PIC.t : "", 0, 0, 13, 400, gtk_widget_get_allocated_width(w) / s_z(), 0); return TRUE; }
 static gboolean pic_none_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)d; s_col(cr, "msg", 1); s_text(cr, rui_tr("None"), 0, (gtk_widget_get_allocated_height(w) / s_z() - s_lh(13, 400)) / 2, 13, 400, 0, 0); return TRUE; }
+static gboolean pic_nm_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)d; char *n = gs("wpname"); s_col(cr, "fg", 1); s_text(cr, *n ? n : rui_tr("Picture"), 0, (gtk_widget_get_allocated_height(w) / s_z() - s_lh(13, 400)) / 2, 13, 400, 0, 0); g_free(n); return TRUE; }
+static gboolean pic_th_draw(GtkWidget *w, cairo_t *cr, gpointer d)
+{
+	(void)w; (void)d; double z = s_z(); cairo_save(cr); cairo_scale(cr, z, z); s_rrect(cr, 0, 0, 64, 36, 4); cairo_clip(cr);
+	if (PIC.pb) { double iw = gdk_pixbuf_get_width(PIC.pb), ih = gdk_pixbuf_get_height(PIC.pb), sc = fmax(64 / iw, 36 / ih); cairo_save(cr); cairo_translate(cr, (64 - iw * sc) / 2, (36 - ih * sc) / 2); cairo_scale(cr, sc, sc); gdk_cairo_set_source_pixbuf(cr, PIC.pb, 0, 0); cairo_paint(cr); cairo_restore(cr); }
+	cairo_reset_clip(cr); s_col(cr, "bd", 1); cairo_set_line_width(cr, 1); s_rrect(cr, .5, .5, 63, 35, 3.5); cairo_stroke(cr); cairo_restore(cr); return TRUE;
+}
+static int pic_on(void) { char *w = gs("wpimg"); int on = *w && PIC.pb && !strcmp(w, PIC.id); g_free(w); return on; }
 static double pic_lay(void *d, double x, double y, double w)
 {
-	(void)d; double nw = wordw("None"), bh = p_nat_h(PIC.bf); p_place(PIC.none, x, y + (bh - 18) / 2, nw + 1, 18);
-	double bx = x + nw + 8; p_place(PIC.bf, bx, y, 0, 0); p_place(PIC.bc, bx + p_nat_w(PIC.bf) + 8, y, 0, 0);
-	double mh = fmax(18, PIC.t && *PIC.t ? s_lines(PIC.t, 13, 400, w, NULL) * s_lh(13, 400) : 0); p_place(PIC.msg, x, y + bh + 4, w, mh); return bh + 4 + mh;
+	(void)d; int on = pic_on(); double bh = p_nat_h(PIC.bf), cx = x, rowh = on ? fmax(38, bh) : bh;
+	gtk_widget_set_visible(PIC.none, !on); gtk_widget_set_visible(PIC.th, on); gtk_widget_set_visible(PIC.nm, on); gtk_widget_set_visible(PIC.br, on); gtk_widget_set_visible(PIC.pos, on); gtk_widget_set_visible(PIC.posl, on);
+	if (on) { p_place(PIC.th, cx, y + (rowh - 38) / 2 + 1, 64, 36); cx += 66 + 8; char *n = gs("wpname"); double nw = wordw(*n ? n : "Picture"); g_free(n); p_place(PIC.nm, cx, y + (rowh - 18) / 2, nw + 1, 18); cx += nw + 8; }
+	else { double nw = wordw("None"); p_place(PIC.none, cx, y + (bh - 18) / 2, nw + 1, 18); cx += nw + 8; }
+	p_place(PIC.bf, cx, y + (rowh - bh) / 2, 0, 0); cx += p_nat_w(PIC.bf) + 8; p_place(PIC.bc, cx, y + (rowh - bh) / 2, 0, 0); cx += p_nat_w(PIC.bc) + 8; if (on) p_place(PIC.br, cx, y + (rowh - bh) / 2, 0, 0);
+	double cy = y + rowh; if (on) { double pw = wordw("Position"), sp = wordw("a a") - wordw("aa"); cy += 6; p_place(PIC.posl, x, cy, pw + 1, 25); p_place(PIC.pos, x + pw + sp, cy, 0, 25); cy += 25; }
+	double mh = fmax(18, PIC.t && *PIC.t ? s_lines(PIC.t, 13, 400, w, NULL) * s_lh(13, 400) : 0); p_place(PIC.msg, x, cy + 4, w, mh); return cy + 4 + mh - y;
 }
-static void pic_todo(GtkButton *b, gpointer d) { (void)b; (void)d; g_free(PIC.t); PIC.t = g_strdup("(native: not yet)"); gtk_widget_queue_draw(PIC.msg); set_note("picture todo"); }
+static void pic_say(const char *t) { g_free(PIC.t); PIC.t = g_strdup(rui_tr(t)); gtk_widget_queue_draw(PIC.msg); p_relayout(); set_note("wpm %s", t); }
+static void pic_files(GtkButton *b, gpointer d) { (void)b; (void)d; pic_say("Your files in Rudolf OS's drive C: are chosen in the desktop's own Settings for now."); }
+/* (wpUse: the picture kept, only it and the one applied kept with it) */
+static void pic_use(GdkPixbuf *src, const char *name)
+{
+	int sw = gdk_screen_get_width(gdk_screen_get_default()); double max = fmin(2560, fmax(1280, sw)), k = fmin(1, max / gdk_pixbuf_get_width(src));
+	int w = MAX(1, (int)lround(gdk_pixbuf_get_width(src) * k)), h = MAX(1, (int)lround(gdk_pixbuf_get_height(src) * k));
+	GdkPixbuf *bg = gdk_pixbuf_new(GDK_COLORSPACE_RGB, FALSE, 8, w, h); gdk_pixbuf_fill(bg, 0x000000ff);
+	gdk_pixbuf_composite(src, bg, 0, 0, w, h, 0, 0, k, k, GDK_INTERP_BILINEAR, 255);
+	gchar *buf = NULL; gsize n = 0; if (!gdk_pixbuf_save_to_buffer(bg, &buf, &n, "jpeg", NULL, "quality", "90", NULL)) { g_object_unref(bg); pic_say("This file is not a picture Rudolf OS can show."); return; }
+	char *b64 = g_base64_encode((guchar *)buf, n); g_free(buf); char id[24]; snprintf(id, sizeof id, "%s", ""); { gint64 ms = g_get_real_time() / 1000; char t[24]; int i = 0; do { int dg = ms % 36; t[i++] = dg < 10 ? '0' + dg : 'a' + dg - 10; ms /= 36; } while (ms && i < 20); for (int q = 0; q < i; q++) id[q] = t[i - 1 - q]; id[i] = 0; }
+	char *key = g_strdup_printf("wp:%s", id), *f = idbm_name(key), path[80], *body = g_strdup_printf("{\"db\":\"rudolfos\",\"store\":\"kv\",\"key\":\"%s\",\"v\":\"data:image/jpeg;base64,%s\"}", key, b64); g_free(b64);
+	snprintf(path, sizeof path, "/api/idbm/put?f=%s", f); int c = rui_http("POST", path, body, strlen(body), NULL, NULL); set_note("POST idbm/put?f=%s %d (%s)", f, c, key); g_free(body); g_free(f); g_free(key);
+	if (c != 200) { g_object_unref(bg); pic_say("The picture could not be kept."); return; }
+	/* (the others go: only this one, the one shown and the one applied stay) */
+	char wk[120]; snprintf(wk, sizeof wk, "bd95wpids:%s", ACCT); char *cur = gs("wpimg"), *ap = NULL; { int ci = ki("wpimg"); if (ci >= 0 && C_[ci]) { char *w2 = g_strdup_printf("{\"x\":%s}", C_[ci]); RuiJ *o = rui_jparse(w2); ap = g_strdup(set_jstr(o, "x", "")); rui_jfree(o); g_free(w2); } }
+	RuiJ *ids = set_ls_get(wk), *L = rui_jprop(ids, "x"); for (int i = 0; rui_jtype(L) == 4 && i < rui_jlen(L); i++) { const char *x = rui_jsval(rui_jat(L, i)); if (!x || !strcmp(x, id) || !strcmp(x, cur) || (ap && !strcmp(x, ap))) continue;
+		char *k2 = g_strdup_printf("wp:%s", x), *f2 = idbm_name(k2), p2[80]; snprintf(p2, sizeof p2, "/api/idbm/del?f=%s", f2); int c2 = rui_http("POST", p2, "", 0, NULL, NULL); set_note("POST idbm/del?f=%s %d (%s)", f2, c2, k2); g_free(k2); g_free(f2); }
+	rui_jfree(ids); GString *keep = g_string_new("["); g_string_append_printf(keep, "\"%s\"", id); if (*cur && strcmp(cur, id)) g_string_append_printf(keep, ",\"%s\"", cur); if (ap && *ap && strcmp(ap, id) && strcmp(ap, cur)) g_string_append_printf(keep, ",\"%s\"", ap); g_string_append_c(keep, ']');
+	set_ls_set(wk, keep->str); g_string_free(keep, TRUE); g_free(cur); g_free(ap);
+	if (PIC.pb) g_object_unref(PIC.pb); PIC.pb = bg; snprintf(PIC.id, sizeof PIC.id, "%s", id); sets("wpimg", id); char nm[81]; snprintf(nm, sizeof nm, "%s", name ? name : "Picture"); sets("wpname", nm);
+	if (strcmp(g("dyn"), "\"\"")) { sets("dyn", ""); th_redraw(); } pic_say(""); gtk_widget_queue_draw(PIC.th); gtk_widget_queue_draw(PIC.nm);
+}
+static void pic_computer(GtkButton *b, gpointer d)
+{
+	(void)b; (void)d; GtkWidget *dl = gtk_file_chooser_dialog_new(rui_tr("From this computer…"), GTK_WINDOW(SW->win), GTK_FILE_CHOOSER_ACTION_OPEN, rui_tr("Cancel"), GTK_RESPONSE_CANCEL, rui_tr("Open"), GTK_RESPONSE_ACCEPT, NULL);
+	GtkFileFilter *f = gtk_file_filter_new(); gtk_file_filter_add_pixbuf_formats(f); gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dl), f); gtk_dialog_set_default_response(GTK_DIALOG(dl), GTK_RESPONSE_ACCEPT);
+	const char *tp = getenv("RUDOLF_SET_PICK");   /* (the tests: the file the chooser would give) */
+	char *fn = tp && *tp ? g_strdup(tp) : gtk_dialog_run(GTK_DIALOG(dl)) == GTK_RESPONSE_ACCEPT ? gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dl)) : NULL; gtk_widget_destroy(dl); if (!fn) return;
+	GdkPixbuf *pb = gdk_pixbuf_new_from_file(fn, NULL); if (!pb) pic_say("This file is not a picture Rudolf OS can show."); else { char *bn = g_path_get_basename(fn); pic_use(pb, bn); g_free(bn); g_object_unref(pb); } g_free(fn);
+}
+static void pic_remove(GtkButton *b, gpointer d) { (void)b; (void)d; sets("wpimg", ""); sets("wpname", ""); p_relayout(); }
+static void on_wpfit(const char *v, void *d) { (void)d; sets("wpfit", v); }
 static void row_pic(void)
 {
+	char *w = gs("wpimg"); if (*w && strcmp(w, PIC.id)) { if (PIC.pb) g_object_unref(PIC.pb); PIC.pb = wp_get(w); snprintf(PIC.id, sizeof PIC.id, "%s", PIC.pb ? w : ""); } g_free(w);
 	PIC.none = gtk_drawing_area_new(); g_signal_connect(PIC.none, "draw", G_CALLBACK(pic_none_draw), NULL); PIC.msg = gtk_drawing_area_new(); g_signal_connect(PIC.msg, "draw", G_CALLBACK(pic_msg_draw), NULL);
-	g_free(PIC.t); PIC.t = NULL; PIC.bf = rui_button("Choose from my files…", 0); PIC.bc = rui_button("From this computer…", 0); g_signal_connect(PIC.bf, "clicked", G_CALLBACK(pic_todo), NULL); g_signal_connect(PIC.bc, "clicked", G_CALLBACK(pic_todo), NULL);
-	p_put(PIC.none); p_put(PIC.bf); p_put(PIC.bc); p_put(PIC.msg); p_label_named("wpf", PIC.bf); p_label_named("wpc", PIC.bc); row("Picture", pic_lay, NULL, 10);
+	PIC.th = gtk_drawing_area_new(); g_signal_connect(PIC.th, "draw", G_CALLBACK(pic_th_draw), NULL); PIC.nm = gtk_drawing_area_new(); g_signal_connect(PIC.nm, "draw", G_CALLBACK(pic_nm_draw), NULL);
+	g_free(PIC.t); PIC.t = NULL; PIC.bf = rui_button("Choose from my files…", 0); PIC.bc = rui_button("From this computer…", 0); PIC.br = rui_button("Remove", 0);
+	g_signal_connect(PIC.bf, "clicked", G_CALLBACK(pic_files), NULL); g_signal_connect(PIC.bc, "clicked", G_CALLBACK(pic_computer), NULL); g_signal_connect(PIC.br, "clicked", G_CALLBACK(pic_remove), NULL);
+	char *fit = gs("wpfit"); { const char *v[8], *l[8]; int n = 0; for (guint i = 0; i < G_N_ELEMENTS(WPFITS) && n < 8; i++, n++) { v[n] = WPFITS[i][0]; l[n] = WPFITS[i][1]; } PIC.pos = s_select(v, l, n, fit, on_wpfit, NULL); p_label_named("wpfit", PIC.pos); } g_free(fit);
+	PIC.posl = word("Position"); p_put(PIC.posl); gtk_widget_set_no_show_all(PIC.posl, TRUE);
+	p_put(PIC.none); p_put(PIC.th); p_put(PIC.nm); p_put(PIC.bf); p_put(PIC.bc); p_put(PIC.br); p_put(PIC.pos); p_put(PIC.msg);
+	gtk_widget_set_no_show_all(PIC.th, TRUE); gtk_widget_set_no_show_all(PIC.nm, TRUE); gtk_widget_set_no_show_all(PIC.br, TRUE); gtk_widget_set_no_show_all(PIC.pos, TRUE);
+	p_label_named("wpf", PIC.bf); p_label_named("wpc", PIC.bc); p_label_named("wpr", PIC.br); row("Picture", pic_lay, NULL, 10);
 }
-
 
 /* ================================================================== Lock and sign-in screen (lock58.js), inside the grid after the colours:
    for everyone (bd95sys's lk, saved at once by an administrator), Choose a picture… (bd95lkpic: a JPEG at most 1920 x 1080) */
@@ -255,7 +320,7 @@ static void on_lkuser(int on, void *d) { (void)d; lk_set(6, g_strdup(on ? "true"
 static void lk_pick(GtkButton *b, gpointer d)
 {
 	(void)b; (void)d; GtkWidget *dl = gtk_file_chooser_dialog_new(rui_tr("Choose a picture…"), GTK_WINDOW(SW->win), GTK_FILE_CHOOSER_ACTION_OPEN, rui_tr("Cancel"), GTK_RESPONSE_CANCEL, rui_tr("Open"), GTK_RESPONSE_ACCEPT, NULL);
-	GtkFileFilter *f = gtk_file_filter_new(); gtk_file_filter_add_pixbuf_formats(f); gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dl), f);
+	GtkFileFilter *f = gtk_file_filter_new(); gtk_file_filter_add_pixbuf_formats(f); gtk_file_chooser_set_filter(GTK_FILE_CHOOSER(dl), f); gtk_dialog_set_default_response(GTK_DIALOG(dl), GTK_RESPONSE_ACCEPT);
 	if (gtk_dialog_run(GTK_DIALOG(dl)) == GTK_RESPONSE_ACCEPT) { char *fn = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dl)); GdkPixbuf *pb = fn ? gdk_pixbuf_new_from_file(fn, NULL) : NULL; g_free(fn);
 		if (!pb) set_notify("Lock and sign-in screen", "That file is not a picture.", 1);
 		else { int w = gdk_pixbuf_get_width(pb), h = gdk_pixbuf_get_height(pb); double sc = fmin(1, fmin(1920.0 / w, 1080.0 / h)); GdkPixbuf *s2 = gdk_pixbuf_scale_simple(pb, MAX(1, (int)lround(w * sc)), MAX(1, (int)lround(h * sc)), GDK_INTERP_BILINEAR);
