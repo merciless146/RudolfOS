@@ -1,0 +1,23 @@
+# 1.6.3 (docs/plan-1.6.3.md Part 7): Chromium's own password manager and extensions in Oracle's tabs (the shell's Controlled
+# Frames) against a plain Chromium tab, with Playwright's Chromium and with the Chromium snap's stable channel (the one the
+# releases ship). Nothing published.
+name: Oracle frames check
+on:
+  push:
+    paths: ['iso/qt/native/oraframes63_t.js', '.github/workflows/oracle-frames-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  frames:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Playwright's Chromium
+        run: |
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          xvfb-run -a node iso/qt/native/oraframes63_t.js
+      - name: The Chromium snap (the releases' Chromium)
+        run: |
+          sudo snap install chromium >/dev/null && snap list chromium
+          CHROME=/snap/bin/chromium xvfb-run -a node iso/qt/native/oraframes63_t.js

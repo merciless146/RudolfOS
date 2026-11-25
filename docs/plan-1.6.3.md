@@ -286,6 +286,37 @@ Guest; on runners, Bitwarden's and uBlock Origin Lite's real extensions install 
 sign-in filled; a test ad blocked); memory with two extensions.
 **The owner's checklist:** Oracle on the Vivobook: save and fill a password; Bitwarden (or the owner's manager) signed
 in and filling; uBlock Origin Lite on a busy site; a Tor window without them.
+#### Status (2026-11-25, scheduled task): step 1 waits on the owner's decision
+- **Found: Oracle's own Chromium shows its websites in Controlled Frames too,** so Chromium's own password manager and
+  extensions do not work there either. On Native (rudolf-native.c oracle_open) and with "Keep my websites encrypted with my
+  account" on the Chromium desktop (rudolfd's orawin), Oracle's own Chromium runs the same shell (the Isolated Web App,
+  iso/shell) as the desktop's: Oracle's toolbar and tabs are the desktop's page, and each website is a `<controlledframe>`.
+  Chromium attaches its password manager and extensions' content scripts to its own tabs, not to Controlled Frames.
+  Measured by `iso/qt/native/oraframes63_t.js` (oracle-frames-check.yml), the same profile, sign-in page and stand-in
+  extension side by side: **a plain Chromium tab:** the password manager reads the form (its log names the site 37-44 times)
+  and the extension runs; **a Controlled Frame:** the password manager never sees the form (0) and the extension never runs.
+  The same with Playwright's Chromium 153 and the Chromium snap's 158.0.8127.36 (the releases' Chromium). The test fails
+  with a plain message the day a Chromium release changes this.
+- **So Part 7 as written cannot be built** (step 1, and step 2's extensions, which need their content scripts in the
+  websites' pages). Nothing of step 1 was changed in Rudolf OS. The ways on, for the owner to choose:
+  - **A. Oracle's own password manager in its tabs** (docs/plan-oracle.md Item 4's design): the shell's script in the
+    tab's isolated world finds sign-in forms; "Save your password for example.com?"; filled only after a click and only
+    for the tab's exact origin; "Use a strong password"; kept in the account's keyring (Settings › Privacy), locked with
+    the account; Guest, private and Tor windows never save. Works the same on the Chromium desktop (either setting),
+    Native and Lite (WebKit's user script), so the desktops match. Not Chromium's own: it needs its own security review.
+  - **B. Chromium's own tabs in Oracle's own-profile mode:** Oracle's own Chromium shows websites in Chromium's own
+    window (its tab strip and address bar instead of Oracle's), where Chromium's password manager and extensions work as
+    in Chrome. Oracle there no longer looks or works like Oracle (the Goes To line, find bar, reader mode, the ad and
+    tracker shield, the firewall's check, sleeping tabs, Ruffle and Oracle's menus are Oracle's page's), and Native would
+    differ from the Chromium desktop with the setting off.
+  - **C. A for passwords, and extensions only in a Chromium window opened from Oracle** ("Open in a Chromium window",
+    as Lite's "Open in Chromium" is today, the account's own profile, never the desktop's): Bitwarden, uBlock Origin Lite
+    and the vetted list there, under the owner's rule and the policies above; Oracle's own tabs keep none.
+  The owner's rule (no extension in the desktop's own Chromium, by policy) can be built whichever is chosen. One thing for
+  it: the desktop's Chromium loads Rudolf's own Ruffle extension (and, without the shell, the web frames extension) with
+  `--load-extension`, which ExtensionInstallBlocklist "*" with no allowlist would also stop: step 2 checks this on the
+  real Chromium and says what it means before the policy lands.
+- **Tests:** oraframes63_t.js 8/8 with each Chromium (the runner); Lite: none (WebKit has neither).
 
 ## Steps
 - Part 0: first.

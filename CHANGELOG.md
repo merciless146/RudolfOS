@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.3.md Part 7): Chromium's own password manager and extensions do not work in Oracle's tabs,
+  which are Controlled Frames in Oracle's own Chromium too (measured with Chromium 158); the ways on are set out for the
+  owner, and a check notices if a Chromium release changes this.
 - New (native desktop, not switched on yet): the native Settings has Volume Controls (the system volume, each desktop
   sound's style, switch and volume with its ▶, "Use one style everywhere", App volume, the output, the sound card, the
   microphone and its test, echo cancelling for calls), Multimedia Settings and Accessibility, as the web Settings has them
