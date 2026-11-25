@@ -109,6 +109,7 @@ static const char *const CONFINE_START[] = {
 	"net/hotspot",
 	"net/metered",
 	"net/static",
+	"oracle/pw/*",
 	"orawin/*",
 	"pkg/*",
 	"pkg/status",
