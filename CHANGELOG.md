@@ -18,6 +18,8 @@ Summary: In progress.
   and extensions only in a Chromium window opened from Oracle, never in the desktop's own Chromium.
 - Fixed: on Native, a right-click menu (the desktop's, the taskbar's, a window's) closes when you click anywhere outside it,
   press Esc or Tab, or switch windows, as in Chromium mode; it closed only when a row was chosen.
+- Fixed: Paint asks "Save changes to …?" (Save, Don't save, Cancel) before closing its window or starting a new picture
+  when the picture has changed; New starts an untitled picture instead of keeping the old file's name.
 - Fixed: Xbox Cloud Gaming and GeForce NOW (and the Library's games) open from the Start menu in Chromium mode; a click on
   their rows did nothing. With the Lite desktop they open in Chromium's window, which can play them, and it says so.
 - Changed: the plan (docs/plan-1.6.3.md Part 8): six fixes from the owner's use: Paint asks to save, Native's transitions,

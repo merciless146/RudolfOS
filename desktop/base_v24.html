@@ -865,15 +865,15 @@ function calc(){const W=win('Calculator','🧮',340,480);let deg=true,inv=false,
   const x=/^[0-9.+^()!%]$/.test(k)?k:M[k];if(x){e.preventDefault();press(x)}});
  relabel();W.el.focus({preventScroll:true})}
 /* ===== v2: Paint ===== */
-function paint(path){const W=win('Paint','🎨',760,540);let tool='pencil',col='#000000',sz=3,fillSh=false,p=path,dr=0,sx=0,sy=0,lx=0,ly=0,base=null,undo=[],redo=[];W.el.tabIndex=-1;
+function paint(path){const W=win('Paint','🎨',760,540);let tool='pencil',col='#000000',sz=3,fillSh=false,p=path,dr=0,sx=0,sy=0,lx=0,ly=0,base=null,undo=[],redo=[],dirty=0;W.el.tabIndex=-1;
  const TOOLS=[['pencil','✏️','Pencil'],['eraser','🧽','Eraser'],['line','╱','Line'],['rect','▭','Rectangle'],['ellipse','◯','Ellipse'],['fill','🪣','Fill'],['pick','💧','Color picker']];
  W.body.style.background='#fff';
  W.body.innerHTML=`<div class='pt'>${TOOLS.map(t=>`<button data-tool='${t[0]}' title='${t[2]}'>${t[1]}</button>`).join('')}<span class='sep'></span>Size <select class='sz'>${opt([1,2,3,5,8,12,20,32],3)}</select><label><input type='checkbox' class='fl'> Fill shapes</label><span class='sep'></span><button class='un'>↶ Undo</button><button class='re'>↷ Redo</button><button class='cl'>New</button><span class='sep'></span><button class='sv'>Save</button><button class='sa'>Save As</button><button class='ex'>Export</button><span class='sep'></span>W <input type='number' class='cw' min='16' max='2000' value='640' style='width:62px'> H <input type='number' class='ch' min='16' max='2000' value='400' style='width:62px'><button class='rz'>Resize</button></div><div class='pc'><canvas width='640' height='400'></canvas></div><div class='pp'><span class='pal'></span><input type='color' class='cc' value='#000000' title='Custom color'></div><div class='stat'></div>`;
  const q=s=>W.body.querySelector(s),cv=q('canvas'),x=cv.getContext('2d',{willReadFrequently:true}),st=q('.stat');
  const msg=t=>{st.textContent=t},info=()=>msg(`${TOOLS.find(t=>t[0]==tool)[2]} · size ${sz} · ${cv.width}×${cv.height}${p?' · '+p.join('\\'):''}`);
  const blank=()=>{x.fillStyle='#fff';x.fillRect(0,0,cv.width,cv.height)};blank();
- const snap=()=>{try{undo.push(x.getImageData(0,0,cv.width,cv.height));if(undo.length>30)undo.shift();redo=[]}catch(e){}};
- const doUndo=()=>{if(!undo.length)return;redo.push(x.getImageData(0,0,cv.width,cv.height));x.putImageData(undo.pop(),0,0)},doRedo=()=>{if(!redo.length)return;undo.push(x.getImageData(0,0,cv.width,cv.height));x.putImageData(redo.pop(),0,0)};
+ const snap=()=>{dirty=1;try{undo.push(x.getImageData(0,0,cv.width,cv.height));if(undo.length>30)undo.shift();redo=[]}catch(e){}};
+ const doUndo=()=>{if(!undo.length)return;dirty=1;redo.push(x.getImageData(0,0,cv.width,cv.height));x.putImageData(undo.pop(),0,0)},doRedo=()=>{if(!redo.length)return;dirty=1;undo.push(x.getImageData(0,0,cv.width,cv.height));x.putImageData(redo.pop(),0,0)};
  const setTool=t=>{tool=t;W.body.querySelectorAll('[data-tool]').forEach(b=>b.classList.toggle('on',b.dataset.tool==t));info()};
  const setCol=c=>{col=c;q('.cc').value=c;W.body.querySelectorAll('.pal i').forEach(i=>i.classList.toggle('on',i.dataset.c==c))};
  '#000000 #7f7f7f #880015 #ed1c24 #ff7f27 #fff200 #22b14c #00a2e8 #3f48cc #a349a4 #ffffff #c3c3c3 #b97a57 #ffaec9 #ffc90e #efe4b0 #b5e61d #99d9ea #7092be #c8bfe7'.split(' ').forEach(c=>{const i=document.createElement('i');i.style.background=c;i.dataset.c=c;i.onclick=()=>setCol(c);q('.pal').appendChild(i)});
@@ -896,15 +896,27 @@ function paint(path){const W=win('Paint','🎨',760,540);let tool='pencil',col='
  cv.onpointerup=cv.onpointercancel=()=>{if(dr){dr=0;base=null}};
  W.body.querySelectorAll('[data-tool]').forEach(b=>b.onclick=()=>setTool(b.dataset.tool));
  q('.sz').onchange=e=>{sz=+e.target.value;info()};q('.fl').onchange=e=>fillSh=e.target.checked;q('.cc').oninput=e=>setCol(e.target.value);
- q('.un').onclick=doUndo;q('.re').onclick=doRedo;q('.cl').onclick=()=>{snap();blank()};
- q('.rz').onclick=()=>{const w=Math.max(16,Math.min(2000,+q('.cw').value||640)),h=Math.max(16,Math.min(2000,+q('.ch').value||400)),old=x.getImageData(0,0,cv.width,cv.height);cv.width=w;cv.height=h;blank();x.putImageData(old,0,0);undo=[];redo=[];info()};
+ q('.un').onclick=doUndo;q('.re').onclick=doRedo;q('.cl').onclick=()=>ask(()=>{snap();blank();p=null;dirty=0;W.setTitle('Paint');info()});
+ q('.rz').onclick=()=>{dirty=1;const w=Math.max(16,Math.min(2000,+q('.cw').value||640)),h=Math.max(16,Math.min(2000,+q('.ch').value||400)),old=x.getImageData(0,0,cv.width,cv.height);cv.width=w;cv.height=h;blank();x.putImageData(old,0,0);undo=[];redo=[];info()};
  W.el.addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='z'){e.preventDefault();e.shiftKey?doRedo():doUndo()}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='y'){e.preventDefault();doRedo()}});
- const sv=()=>{if(!p)return nameDlg('PICTURE.PNG',n=>{p=resolve(/\.PNG$/.test(n)?n:n+'.PNG',['C:']);sv()});const d=dirOf(p);if(!isDir(d)){msg('Path not found');sfx('error');return}d[p.at(-1)]=cv.toDataURL('image/png');if(!fsSave()){msg('Disk full: could not save');sfx('error');return}W.setTitle(p.at(-1)+' - Paint');sfx('notify');msg('Saved '+p.join('\\'));EXPL.forEach(f=>f())};
- q('.sv').onclick=sv;q('.sa').onclick=()=>{p=null;sv()};
+ const sv=cb=>{if(!p)return nameDlg('PICTURE.PNG',n=>{p=resolve(/\.PNG$/.test(n)?n:n+'.PNG',['C:']);sv(cb)});const d=dirOf(p);if(!isDir(d)){msg('Path not found');sfx('error');return}d[p.at(-1)]=cv.toDataURL('image/png');if(!fsSave()){msg('Disk full: could not save');sfx('error');return}W.setTitle(p.at(-1)+' - Paint');sfx('notify');msg('Saved '+p.join('\\'));EXPL.forEach(f=>f());dirty=0;if(typeof cb=='function')cb()};
+ q('.sv').onclick=()=>sv();q('.sa').onclick=()=>{p=null;sv()};
+ /* (1.6.3 Part 8, item 1, "Paint app does not prompt user to save after unsaved changes are made to images": a picture changed since it
+    was opened or saved is asked about, as WordPro's and Notepad's are, before New or closing its window: the ✕, the taskbar's Close, the
+    native frame's ✕ and signing out on the native desktop, which asks each window as its ✕ does) */
+ const ask=next=>{if(!dirty)return next();paintAsk(p?p.at(-1):'Untitled').then(r=>{if(r=='save')sv(next);else if(r=='discard'){dirty=0;next()}})};
+ W.onclose=()=>{if(dirty&&!W._force){ask(()=>{W._force=true;W.close()});return false}};
+ W.unsaved=()=>dirty?(p?p.at(-1):'Untitled'):'';
  q('.ex').onclick=()=>{try{const a=document.createElement('a');a.href=cv.toDataURL('image/png');a.download=(p?p.at(-1).replace(/\.PNG$/,''):'picture')+'.png';document.body.appendChild(a);a.click();a.remove();msg('Exported PNG')}catch(e){msg('Export failed')}};
  if(p){const n=node(p);W.setTitle(p.at(-1)+' - Paint');if(typeof n=='string'&&n.startsWith('data:image')){const im=new Image();im.onload=()=>{cv.width=Math.min(2000,im.width);cv.height=Math.min(2000,im.height);blank();x.drawImage(im,0,0);q('.cw').value=cv.width;q('.ch').value=cv.height;undo=[];redo=[];info()};im.src=n}}
  setTool('pencil');setCol('#000000');W.el.focus({preventScroll:true})}
 
+/* Paint's question (1.6.3 Part 8, item 1): 'save', 'discard' or 'cancel' (Esc) */
+function paintAsk(name){return new Promise(res=>{const o=document.createElement('div');o.className='rmodal pask';
+ o.innerHTML="<div class='rmbox' role='alertdialog' aria-label='Paint'><h3>Paint</h3><p class='dqa'></p><div class='rmrow'><button class='pri y'>Save</button><button class='n'>Don't save</button><button class='c'>Cancel</button></div></div>";
+ o.querySelector('.dqa').textContent='Save changes to '+name+'?';document.body.appendChild(o);typeof promptFront=='function'&&promptFront(o);
+ const d=v=>{o.remove();res(v)};o.querySelector('.y').onclick=()=>d('save');o.querySelector('.n').onclick=()=>d('discard');o.querySelector('.c').onclick=()=>d('cancel');
+ o.addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Escape')d('cancel')});o.querySelector('.y').focus()})}
 /* ===== v2: file system helpers + File Explorer ===== */
 const EXPL=new Set(),FC={op:null,items:[]};
 function fsSave(){try{localStorage.setItem('blockdos95',JSON.stringify(fs));return true}catch(e){return false}}
