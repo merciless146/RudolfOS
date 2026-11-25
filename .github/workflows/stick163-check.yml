@@ -1,0 +1,22 @@
+name: Make a stick in Backup (1.6.3 Part 8, item 5)
+# Settings › Storage and backup's Backup part has Make a Rudolf OS USB stick, refined; Update and recovery links to it; Search
+# in Settings finds it there (iso/qt/shell2/stick163_t.js, rudolfd's answers given by the test: nothing is written anywhere).
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fixes163-stick']
+  pull_request:
+    paths: ['desktop/stick30.js', 'desktop/settings-index.json', 'iso/qt/shell2/stick163_t.js', '.github/workflows/stick163-check.yml']
+permissions: {contents: read}
+jobs:
+  page:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: stick163_t.js
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/stick163_t.js

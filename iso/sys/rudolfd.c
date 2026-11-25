@@ -4611,6 +4611,7 @@ static void fp_native_unlock(struct req *r, const char *lp);
 #include "rudolfd-know.inc"      /* 1.6.0: Blitzen knows the system (plan Part 18) */
 #include "rudolfd-guard.inc"     /* 1.6.1: Blitzen hardened against giving away secrets (plan-1.6.1 Part 26) */
 #include "rudolfd-dev.inc"       /* 1.6.0: Blitzen as a developer's agent (plan Part 19) */
+#include "rudolfd-webpw.inc"     /* 1.6.3: Oracle's own password manager, its passwords in the account's keyring (plan-1.6.3 Part 7) */
 #include "rudolfd-game.inc"      /* 1.6.1: game mode (plan-1.6.1 Part 19) */
 #include "rudolfd-lxprog.inc"    /* 1.6.2: Linux apps' progress on their taskbar buttons (plan-1.6.2 Part 25b) */
 #include "rudolfd-gpu.inc"       /* 1.6.1: Settings › Display › Graphics driver (plan-1.6.1 Part 19) */
@@ -5336,6 +5337,7 @@ static void api(struct req *r)
 	if (!strncmp(p, "pkg/", 4)) { api_pkg(r, p + 4); return; }
 	if (!strncmp(p, "print/", 6)) { api_print(r, p + 6); return; }
 	if (!strncmp(p, "keyring/", 8)) { api_keyring(r, p + 8, post); return; }   /* 1.6.0 (plan Part 14) */
+	if (!strncmp(p, "oracle/pw/", 10)) { api_webpw(r, p + 10, post); return; }   /* 1.6.3 (plan-1.6.3 Part 7): Oracle's passwords */
 	if (!strncmp(p, "sysext/", 7)) { api_sysext(r, p + 7, post); return; }   /* 1.6.0 (plan Part 13) */
 	if (!strcmp(p, "gpu/driver") || !strncmp(p, "gpu/driver/", 11)) { api_gpudriver(r, p[10] ? p + 11 : "", post); return; }   /* 1.6.1 (plan-1.6.1 Part 19) */
 	if (!strncmp(p, "apps/", 5)) { api_apps(r, p + 5); return; }

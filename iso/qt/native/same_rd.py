@@ -31,6 +31,59 @@ def session():
 def sget(data, k):
     try: return json.loads(data[k]) if k in data else None
     except ValueError: return None
+# (1.6.3 Part 8, item 4, deskicons163_t.js) the accounts' homes on the disk, as rudolfd's home/* keeps them (rudolfd-home.inc), in
+# DIR/dh/ACCOUNT: the folder, its tree with each file's version, reading, writing, folders, deleting, renaming and copying; the key
+# is not checked (the test's), nothing is encrypted
+def disk_home(h, m, w, q, b):
+    import urllib.parse, shutil
+    a = urllib.parse.parse_qs(q); acct = re.sub(r'[^A-Za-z0-9_-]', '', (a.get('acct') or [''])[0]); root = os.path.join(D, 'dh', acct)
+    def at(k):
+        rel = (a.get(k) or [''])[0]; f = os.path.normpath(os.path.join(root, rel))
+        return f if acct and rel and (f + os.sep).startswith(root + os.sep) and f != root else None
+    ver = lambda f: '%d-%d' % (os.stat(f).st_mtime_ns, os.path.getsize(f))
+    if w == 'home': return h.j({'ok': True, 'supported': True})
+    if not acct: return h.err(400, 'no account')
+    if w == 'home/unlock' and m == 'POST':
+        made = not os.path.isdir(root); os.makedirs(root, exist_ok=True); return h.j({'ok': True, 'message': 'made' if made else 'opened'})
+    if w in ('home/lock', 'home/forget', 'home/restore') and m == 'POST': return h.j({'ok': True, 'message': w})
+    if w == 'home/recovered': return h.j({'ok': True, 'items': []})
+    if w == 'home/tree':
+        items = []
+        for d, ds, fs in os.walk(root):
+            for n in ds: f = os.path.join(d, n); items.append({'p': os.path.relpath(f, root), 'd': 1})
+            for n in fs: f = os.path.join(d, n); items.append({'p': os.path.relpath(f, root), 's': os.path.getsize(f), 'v': ver(f)})
+        return h.j({'ok': True, 'items': items})
+    if w == 'home/read':
+        f = at('path')
+        if not f or not os.path.isfile(f): return h.err(404, 'no such file')
+        return h.send(200, open(f, 'rb').read(), 'application/octet-stream')
+    if w == 'home/write' and m == 'POST':
+        f = at('path')
+        if not f: return h.err(400, 'bad path')
+        os.makedirs(os.path.dirname(f), exist_ok=True); open(f + '.t', 'wb').write(b or b''); os.replace(f + '.t', f); return h.j({'ok': True, 'v': ver(f)})
+    if w == 'home/append' and m == 'POST':
+        f = at('path')
+        if not f: return h.err(400, 'bad path')
+        os.makedirs(os.path.dirname(f), exist_ok=True); open(f, 'ab').write(b or b''); return h.j({'ok': True, 'v': ver(f)})
+    if w == 'home/mkdir' and m == 'POST':
+        f = at('path')
+        if not f: return h.err(400, 'bad path')
+        os.makedirs(f, exist_ok=True); return h.j({'ok': True})
+    if w == 'home/delete' and m == 'POST':
+        f = at('path')
+        if f and os.path.isdir(f): shutil.rmtree(f)
+        elif f and os.path.exists(f): os.unlink(f)
+        return h.j({'ok': True, 'message': 'deleted'})
+    if w in ('home/rename', 'home/copy') and m == 'POST':
+        f, t = at('from'), at('to')
+        if not f or not t or not os.path.exists(f): return h.err(404, 'no such file')
+        os.makedirs(os.path.dirname(t), exist_ok=True)
+        if w == 'home/rename': os.replace(f, t)
+        elif os.path.isdir(f): shutil.copytree(f, t, dirs_exist_ok=True)
+        else: shutil.copyfile(f, t)
+        return h.j({'ok': True, 'v': ver(t) if os.path.isfile(t) else ''})
+    if w in ('home/list', 'home/hash', 'home/link', 'home/adopt'): return h.j({'ok': True, 'items': []})
+    return False
 class H(http.server.BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.0'
     def log_message(self, *a): pass
@@ -77,6 +130,9 @@ class H(http.server.BaseHTTPRequestHandler):
         self.send(404, 'not found', 'text/plain')
     def api(self, m, w, q, b):
         L = ls(); data = L['data']; s = session()
+        if (w == 'home' or w.startswith('home/')) and rd('diskhome') is not None:   # (1.6.3 Part 8, item 4: DIR/diskhome: the accounts' homes on the disk)
+            r = disk_home(self, m, w, q, b)
+            if r is not False: return r
         if w in ('events/wait', 'events') and rd('wm-native') is not None and 'shell=1' not in q:   # (1.6.0: rudolfd's on the native desktop: the shell's only)
             time.sleep(2); return self.j({'ok': True, 'events': '', 'native': True})
         if w in ('events/wait', 'events') and 'shell=1' in q and rd('std-on') is not None:   # (Standard's case: the native shell, left running from the case before, is not this machine's desktop now and takes none of its events)

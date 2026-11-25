@@ -1,0 +1,38 @@
+name: Desktop icons at once on Native (1.6.3 Part 8, item 4)
+# The desktop's icons on Native timed from each change to the shell drawing it (iso/qt/native/deskicons163_t.js): the files in
+# the browser's storage; the account's files on the disk (the stand-in rudolfd's home/*); and on the disk with a busy computer
+# (each picture of the catalogue 500 ms late). Each within 1 s; appsbeh_t.js (the programs' icons, Desktop icons…) unchanged.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fixes163-deskicons']
+  pull_request:
+    paths: ['iso/sys/rudolf-native.c', 'desktop/oneapp59.js', 'desktop/deskquick63.js', 'desktop/home56.js', 'desktop/lean61.js',
+      'iso/qt/native/deskicons163_t.js', 'iso/qt/native/same_rd.py', '.github/workflows/deskicons163-check.yml']
+permissions: {contents: read}
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil gcc xvfb xdotool imagemagick libwebkit2gtk-4.1-dev fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page and rudolf-native
+        run: |
+          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..
+          gcc -O2 -Wall -Wno-misleading-indentation -Wno-deprecated-declarations -o $RUNNER_TEMP/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+      - name: "deskicons163_t.js: the files in the browser's storage"
+        run: mkdir -p out/s && NODE_PATH=$PWD/node_modules SAME_SCRIPT=deskicons163_t.js SAME_PORT=8744 SAME_DSP=:91 sh iso/qt/native/same_t.sh $PWD/out/s "" $RUNNER_TEMP/rudolf-native
+      - name: "deskicons163_t.js: the account's files on the disk"
+        run: mkdir -p out/d && DESK_DISK=1 NODE_PATH=$PWD/node_modules SAME_SCRIPT=deskicons163_t.js SAME_PORT=8744 SAME_DSP=:91 sh iso/qt/native/same_t.sh $PWD/out/d "" $RUNNER_TEMP/rudolf-native
+      - name: "deskicons163_t.js: on the disk, a busy computer"
+        run: mkdir -p out/b && DESK_DISK=1 DESK_SLOW=500 NODE_PATH=$PWD/node_modules SAME_SCRIPT=deskicons163_t.js SAME_PORT=8744 SAME_DSP=:91 sh iso/qt/native/same_t.sh $PWD/out/b "" $RUNNER_TEMP/rudolf-native
+      - name: "appsbeh_t.js: the programs' icons, unchanged"
+        run: mkdir -p out/a && NODE_PATH=$PWD/node_modules SAME_SCRIPT=appsbeh_t.js SAME_PORT=8745 SAME_DSP=:92 sh iso/qt/native/same_t.sh $PWD/out/a "" $RUNNER_TEMP/rudolf-native
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: deskicons163, retention-days: 7, path: out}

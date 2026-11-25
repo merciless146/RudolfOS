@@ -286,7 +286,7 @@ static Mon MON[3]; static int NMON = 1, MONK_CUR, HOV_BAR, PRS_BAR, MON_DRAWK, W
 static void mon_walls_queue(void); static void mon_bars_queue(void);
 static void state_write(void); static void kb_sync(void);
 typedef struct JV JV; static void di_layout(void); static void di_load(JV *cat); static int di_shown(void); static int di_n(void);
-static gint64 ICONS_SINCE;   /* (when the account signed in, until its desktop's icons are there: the log's line) */   /* (the desktop's icons, below) */
+static gint64 ICONS_SINCE; static double DI_T; static void desk_quick(JSCValue *v);   /* (when the account signed in, until its desktop's icons are there: the log's line) */   /* (the desktop's icons, below) */
 static gint64 UNLOCK_T; static void sys_load(JV *v); static void sc_load(JV *v); static void wg_paint(cairo_t *cr); static void wg_load(JV *v); static void jumps_load(JV *v); static void wg_dirty_kind(const char *t); static void wg_picker(void);   /* (the widgets, below) */
 static int wg_shown(void); static int NWG_ALL_DIRTY;
 static gboolean wg_press(GdkEventButton *e); static gboolean wg_motion(GdkEventMotion *e); static gboolean wg_release(GdkEventButton *e); static gboolean note_key(GdkEventKey *e); static int NF;
@@ -661,6 +661,7 @@ static void on_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpoin
 	else if (!strcmp(op, "ready")) { if (!a->rest) appwin_reveal(a); }   /* (its page has drawn the app at its window's size: shown; 1.6.1: not the resting page's) */
 	else if (!strcmp(op, "login")) appwin_reveal(a);   /* (no native session: the page's own sign-in screen, which this window does need) */
 	else if (!strcmp(op, "srch")) srch_ready(a);   /* (2026-11-16: the start menu's search, Standard's: its page is ready) */
+	else if (!strcmp(op, "desk")) desk_quick(v);   /* (1.6.3 Part 8, item 4: the desktop's icons at once, before the whole catalogue) */
 	else if (!strcmp(op, "cat")) g_idle_add(apps_reload, NULL);   /* (a page gave its catalogue again: the statue's picture, N12; read at once, as the page gave it before it said so: the owner's Vivobook, 2026-11-16) */
 	else if (!strcmp(op, "wins")) wins_ask(a);   /* (Task Manager: every window, as Standard's one page has them) */
 	else if (!strcmp(op, "winop")) { jsstr(v, "id", x, sizeof x); jsstr(v, "do", f, sizeof f); win_op(x, f); }
@@ -3588,7 +3589,7 @@ static gboolean signin_done(gpointer p)
 		if (SIGN_LOCK && LOCKED) UNLOCK_T = g_get_monotonic_time();   /* (UNLOCKED_AT: no saver or lock for a minute: item 6) */
 		fp_lock_stop();   /* (1.6.3: the reader given up) */
 		LOCKED = 0; gtk_widget_hide(SIGN); explicit_bzero(SN_PASS, sizeof SN_PASS); sn_code_off(); SN_MSG[0] = 0; if (SCARET_T) { g_source_remove(SCARET_T); SCARET_T = 0; }
-		if (!SIGN_LOCK) ICONS_SINCE = g_get_monotonic_time();
+		if (!SIGN_LOCK) { ICONS_SINCE = g_get_monotonic_time(); DI_T = 0; }
 		settings_load(); apps_load(); if (BAR) gtk_widget_show_all(BAR); wm_restack();
 		if (!SIGN_LOCK) { svc_reset(); SVC_SIGNIN = g_get_real_time() / 1000; start_page(); }   /* (1.6.1: the time first: the hidden page's since=) */
 		if (WM_OK) wm_hide_all(0); else for (GList *l = WINS; l; l = l->next) gtk_widget_show(((AppWin *)l->data)->win);
@@ -3832,7 +3833,8 @@ static void apps_load(void)
 		GdkPixbuf *px = pix_from_bytes(b); g_byte_array_free(b, TRUE); if (px) g_hash_table_insert(ICONS, g_strdup(ics->k[i]), px);
 	}
 	VER[0] = 0; jstr(v, "ver", VER, sizeof VER);
-	di_load(v); menu_rows_load(v); jumps_load(v); if (DESKAREA) desk_dirty();
+	{ double cdt = jnum(v, "dt", 0); if (!cdt || cdt >= DI_T) { if (cdt) DI_T = cdt; di_load(v); } }   /* (1.6.3 Part 8, item 4: not over newer icons a page gave at once) */
+	menu_rows_load(v); jumps_load(v); if (DESKAREA) desk_dirty();
 	/* (2026-11-17, the owner's Vivobook: "the desktop still takes several minutes to add icons") the log says when they came, for the
 	   owner's checks: the first catalogue with the account's icons after each sign-in */
 	if (ICONS_SINCE && di_shown()) { fprintf(stderr, "rudolf-native: the desktop's icons shown %.1f s after the sign-in (%d icons)\n", (g_get_monotonic_time() - ICONS_SINCE) / 1e6, di_n()); ICONS_SINCE = 0; }
@@ -4464,6 +4466,24 @@ static void di_load(JV *cat)
 		for (int j = 0; j < k; j++) { int fc, fr; di_free(c0, r0, idx[j], &fc, &fr); DI[idx[j]].c = fc; DI[idx[j]].r = fr; }
 		if (k) di_save();
 	}
+}
+/* 1.6.3 Part 8, item 4 ("Desktop icon removal/changes still take several minutes on Native"): the desktop's icons came only with the
+   whole catalogue (desktop/apps: every app's picture drawn again, the start menu, the sounds, the statue), which a busy computer's page
+   took minutes to give (the owner's Vivobook, 2026-11-22: 192 s while Steam started), and which this shell then read from rudolfd.
+   A page whose desktop's icons changed gives just them at once (op "desk", deskquick63.js: their names, kinds, pictures' keys, places,
+   the icon size, and when the page read them, "dt"), drawn now; the catalogue that follows is drawn over them only when it is as new
+   (its own "dt"), so a slow one never puts older icons back. The signed-in account's only. */
+static void desk_quick(JSCValue *v)
+{
+	if (!USER_ID[0] || LOCKED) return;
+	JSCValue *jv = jsc_value_object_get_property(v, "j"); char *js = jv && jsc_value_is_string(jv) ? jsc_value_to_string(jv) : NULL; if (jv) g_object_unref(jv);
+	if (!js || strlen(js) > (256u << 10)) { g_free(js); return; }
+	JV *cat = jparse(js); g_free(js); if (!cat) return;
+	char acct[80] = ""; jstr(cat, "acct", acct, sizeof acct); double dt = jnum(cat, "dt", 0);
+	if (strcmp(acct, USER_ID) || dt < DI_T || !jprop(cat, "desk")) { jfree(cat); return; }
+	DI_T = dt; di_load(cat); jfree(cat); if (DESKAREA) desk_dirty();
+	if (ICONS_SINCE && di_shown()) { fprintf(stderr, "rudolf-native: the desktop's icons shown %.1f s after the sign-in (%d icons, at once)\n", (g_get_monotonic_time() - ICONS_SINCE) / 1e6, di_n()); ICONS_SINCE = 0; }
+	state_write();
 }
 /* the desktop's icons as the page draws them (base_v24.html .ic, styles25.css): 76 px wide (the icon size's share),
    the picture 40 px in a line of the 34 px font (vertical-align: middle) with its drop shadow, the name below in the
