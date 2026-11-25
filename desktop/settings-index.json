@@ -165,7 +165,9 @@
 ["Test","Web search (Oracle)"],
 ["Downloads","",1],
 ["Program files","Downloads"],
-["Largest download","Downloads"]],"sys":
+["Largest download","Downloads"],
+["Memory","",1],
+["Free tabs you have not looked at for","Memory"]],"sys":
 [["Date, time and language","",1],
 ["Clock","",1],
 ["24-hour","Clock"],
