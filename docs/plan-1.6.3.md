@@ -241,7 +241,9 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   - Done: Remote access (`settings_remote.c`), checklist R1-R3, views 0.54-0.68 %.
   - Done: Mobile network (`settings_mob.c`), checklist M1-M7 (the SIM's PIN with the administrator's name and password), views
     0.35-0.41 %.
-  - Next: Network Settings, Oracle.
+  - In progress: Network Settings (`settings_net.c`): Wi-Fi, Network hardware, Manual address and Proxy done (views 0.75-1.1 %);
+    next its lower half (the Web search and Downloads rows the page's CSS still shows, Metered connection, Cellular modems, Share
+    this connection, VPN, the footer), then Oracle.
 - **Left:** Network, Oracle (PR 6); Devices, Storage,
   Apps, Notifications; Privacy, Security, System health, Users; the switch.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
