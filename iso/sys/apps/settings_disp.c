@@ -430,6 +430,89 @@ static void sec_tablet(void)
 	TABM = p_msg(!strcmp(cur, "on") ? "Tablet mode is on: each window fills the screen, the taskbar is a dock, swipe up from the bottom for Start and in from the right for notifications." : "Tablet mode is off.", 2); g_free(cur);
 }
 
+
+/* ================================================================== Screen (settings25.js and display26.js screenUi): scaling and rotation in
+   the working copy; the resolution and frame rate from rudolfd's screen, changed with their own Apply (screen?res=&fps=, confirmed) */
+static RuiJ *SCR; static GtkWidget *DRES, *DFPS, *DSAP, *DRESM, *DFPSM, *DSMSG;
+static const char *const SCR_RES[4] = { "1920x1080", "1366x768", "1280x720", "1024x576" }; static const int SCR_FPS[4] = { 120, 90, 60, 30 };
+static char *scrx(const char *r) { char *o = g_strdup(r); char *x = strchr(o, 'x'); if (x) { char *t = g_strdup_printf("%.*s×%s", (int)(x - o), o, x + 1); g_free(o); return t; } return o; }
+static int scr_gpu(void) { return !g_strcmp0(rui_jstr(SCR, "display"), "gpu"); }
+static RuiJ *scr_mode(const char *res)
+{
+	RuiJ *ms = rui_jprop(rui_jprop(SCR, "modes"), "modes"); const char *nat = rui_jstr(rui_jprop(SCR, "modes"), "native"); const char *r = !strcmp(res, "auto") ? nat : res; if (!r || rui_jtype(ms) != 4) return NULL;
+	for (int i = 0; i < rui_jlen(ms); i++) { RuiJ *m = rui_jat(ms, i); char b[32]; snprintf(b, sizeof b, "%gx%g", rui_jnum(m, "w", 0), rui_jnum(m, "h", 0)); if (!strcmp(b, r)) return m; }
+	for (int i = 0; nat && i < rui_jlen(ms); i++) { RuiJ *m = rui_jat(ms, i); char b[32]; snprintf(b, sizeof b, "%gx%g", rui_jnum(m, "w", 0), rui_jnum(m, "h", 0)); if (!strcmp(b, nat)) return m; }
+	return NULL;
+}
+static int scr_has(const char *res) { if (!strcmp(res, "auto")) return 1; RuiJ *ms = rui_jprop(rui_jprop(SCR, "modes"), "modes"); for (int i = 0; rui_jtype(ms) == 4 && i < rui_jlen(ms); i++) { RuiJ *m = rui_jat(ms, i); char b[32]; snprintf(b, sizeof b, "%gx%g", rui_jnum(m, "w", 0), rui_jnum(m, "h", 0)); if (!strcmp(b, res)) return 1; } return 0; }
+static const char *scr_why(const char *res, int f)
+{
+	if (!scr_gpu()) return f > 60 ? "this screen is driven by the firmware, which refreshes it about 60 times a second; the graphics-card display (Settings › Display › Graphics) can go faster" : "";
+	if (!scr_has(res)) return f > 60 ? "the monitor has no mode of this size, so the software display scales it, at up to 60 frames a second" : "";
+	RuiJ *m = scr_mode(res), *hz = rui_jprop(m, "hz"); if (!m || rui_jtype(hz) != 4 || f == 60) return "";
+	for (int i = 0; i < rui_jlen(hz); i++) if (fabs(rui_jval(rui_jat(hz, i)) - f) <= 2) return "";
+	static char b[96]; snprintf(b, sizeof b, "the monitor does not offer %d Hz at this resolution", f); return b;
+}
+static void scr_fill(void);
+static void on_dres(const char *v, void *d) { (void)v; (void)d; scr_fill(); }
+static void on_dfps(const char *v, void *d) { (void)v; (void)d; scr_fill(); }
+static void scr_fill(void)
+{
+	const char *res = s_select_get(DRES); char cur[8]; snprintf(cur, sizeof cur, "%s", s_select_get(DFPS)); GString *off = g_string_new(NULL); const char *why0 = NULL;
+	for (int i = 0; i < 4; i++) { const char *w = scr_why(res, SCR_FPS[i]); char l[200]; snprintf(l, sizeof l, "%d fps%s", SCR_FPS[i], *w ? " (not available)" : SCR_FPS[i] == 60 ? " (default)" : SCR_FPS[i] == 30 ? " (saves power)" : "");
+		s_select_label(DFPS, i, l); s_select_disable(DFPS, i, *w != 0); if (*w) { g_string_append_printf(off, "%s%d", off->len ? " and " : "", SCR_FPS[i]); if (!why0) why0 = w; } }
+	int ok = 0; for (int i = 0; i < 4; i++) { char v[8]; snprintf(v, sizeof v, "%d", SCR_FPS[i]); if (!strcmp(v, cur) && !*scr_why(res, SCR_FPS[i])) ok = 1; } if (!ok) s_select_set(DFPS, "60");
+	char *m = off->len ? g_strdup_printf("%s fps: %s.", off->str, why0) : g_strdup(""); p_text_set(DFPSM, m); g_free(m); g_string_free(off, TRUE);
+	char fv[16]; g_ascii_formatd(fv, sizeof fv, "%g", rui_jnum(SCR, "fps", 60)); gtk_widget_set_sensitive(DSAP, !(!strcmp(s_select_get(DRES), set_jstr(SCR, "res", "auto")) && !strcmp(s_select_get(DFPS), fv)));
+}
+static void scr_go(int i, void *d)
+{
+	(void)d; if (i != 1) return; char p[96]; snprintf(p, sizeof p, "/api/screen?res=%s&fps=%s", s_select_get(DRES), s_select_get(DFPS)); char er[200] = ""; int c = rui_post(p, NULL, er, sizeof er); set_note("POST %s %d", p + 5, c);
+	p_text_set(DSMSG, c == 200 ? rui_tr("Starting the display again…") : er);
+}
+static void scr_apply(GtkButton *b, gpointer d)
+{
+	(void)b; (void)d; const char *r = s_select_get(DRES); char *rx = scrx(r), *t = g_strdup_printf("The screen goes dark for a few seconds while the display starts again with %s at %s fps. Your files are saved; open Linux apps and the browser window for sign-in sites are closed. If the picture does not come back, wait: the previous setting returns by itself.", !strcmp(r, "auto") ? "the screen’s own resolution" : rx, s_select_get(DFPS));
+	const char *const B[2] = { "Cancel", "Change" }; rui_confirm(SW, "Change the display?", t, B, 2, 1, scr_go, NULL); set_note("ask screen"); g_free(t); g_free(rx);
+}
+static void sec_screen(void)
+{
+	p_h4("Screen");
+	{ Cell *c = p_r2("Display scaling"); c_add(c, dsel("dsc", "scale"), 0, 0, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Rotation"); c_add(c, dsel("drt", "rot"), 0, 0, 1); p_r2_more(c); }
+	if (SCR) rui_jfree(SCR); SCR = rui_get("/api/screen");
+	if (!SCR) { Cell *c = p_r2("Resolution"); c_msg(c, "The screen settings could not be read", 0); p_r2_more(c); Cell *f = p_r2("Frame rate"); (void)f; return; }
+	RuiJ *a = rui_jprop(SCR, "actual"); const char *panel = scr_gpu() && rui_jprop(SCR, "modes") ? rui_jstr(rui_jprop(SCR, "modes"), "native") : rui_jstr(a, "panel"); char pb[32]; if (!panel || !*panel) { snprintf(pb, sizeof pb, "%gx%g", rui_jnum(a, "w", 0), rui_jnum(a, "h", 0)); panel = pb; }
+	{ Cell *c = p_r2("Resolution"); const char *v[5] = { "auto" }; char *l[5]; char *px = scrx(panel); l[0] = g_strdup_printf("Automatic (%s, the screen’s own)", px); g_free(px);
+		for (int i = 0; i < 4; i++) { v[i + 1] = SCR_RES[i]; char *x = scrx(SCR_RES[i]); int nat = scr_gpu() && rui_jprop(SCR, "modes") ? scr_has(SCR_RES[i]) : !strcmp(SCR_RES[i], panel); l[i + 1] = g_strdup_printf("%s%s", x, nat ? "" : scr_gpu() ? " (scaled by the software display)" : " (scaled)"); g_free(x); }
+		DRES = s_select(v, (const char *const *)l, 5, set_jstr(SCR, "res", "auto"), on_dres, NULL); for (int i = 0; i < 5; i++) g_free(l[i]); c_add(c, DRES, 0, 0, 0); p_label_named("dres", DRES);
+		char *now = NULL; if (rui_jnum(a, "w", 0) > 0) { char wh[32]; snprintf(wh, sizeof wh, "%gx%g", rui_jnum(a, "w", 0), rui_jnum(a, "h", 0)); char *x = scrx(wh), *pn = scrx(set_jstr(a, "panel", "")); double hz = rui_jnum(a, "hz", 0); char hzs[48] = ""; if (hz > 0) snprintf(hzs, sizeof hzs, " at %d%s", (int)lround(hz), scr_gpu() ? " Hz" : " frames a second");
+			char *sc = !g_strcmp0(rui_jstr(a, "kind"), "scaled") ? g_strdup_printf(", scaled to the %s screen with black bars where the shapes differ", pn) : g_strdup(""); now = g_strdup_printf("Now %s%s%s.", x, hzs, sc); g_free(x); g_free(pn); g_free(sc); }
+		char *m = g_strdup_printf("%s%s", now ? now : "", rui_jbool(SCR, "persistent") ? "" : " Not installed: the setting lasts until Rudolf OS restarts."); DRESM = c_msg(c, m, 2); g_free(m); g_free(now); p_r2_more(c); }
+	{ Cell *c = p_r2("Frame rate"); const char *v[4] = { "120", "90", "60", "30" }, *l[4] = { "120 fps", "90 fps", "60 fps", "30 fps" }; char fv[16]; g_ascii_formatd(fv, sizeof fv, "%g", rui_jnum(SCR, "fps", 60));
+		DFPS = s_select(v, l, 4, fv, on_dfps, NULL); c_add(c, DFPS, 0, 0, 0); p_label_named("dfps", DFPS); DFPSM = c_msg(c, "", 2); c_line(c, 6);
+		DSAP = rui_button("Apply", 1); g_signal_connect(DSAP, "clicked", G_CALLBACK(scr_apply), NULL); c_add(c, DSAP, 0, 0, 0); p_label_named("dsap", DSAP); DSMSG = c_text(c, "", 400); c_gap(DSMSG, 8); }
+	scr_fill();
+}
+
+/* ================================================================== Graphics (native25.js): which display the graphics card drives (display?mode=) */
+static GtkWidget *DGS;
+static void gp_restart(void) { set_note("reboot asked"); }
+static void on_dgp(const char *v, void *d)
+{
+	(void)d; (void)gp_restart; char p[64], *out = NULL; snprintf(p, sizeof p, "/api/display?mode=%s", v); int c = rui_http("POST", p, "", 0, &out, NULL); set_note("POST %s %d", p + 5, c); RuiJ *j = out ? rui_jparse(out) : NULL;
+	const char *m = rui_jstr(j, c == 200 ? "message" : "error"); if (c == 200) { p_text_set(DGS, m ? m : ""); set_notify("Graphics", m ? m : "", 0); } else set_notify("Graphics", m ? m : "rudolfd did not answer", 1); rui_jfree(j); free(out);
+}
+static void sec_graphics(void)
+{
+	p_h4("Graphics"); RuiJ *r = rui_get("/api/display");
+	Cell *c = p_r2("Graphics card"); GtkWidget *s = dsel_cb("dgp", r ? set_jstr(r, "setting", "games") : "games", on_dgp); c_add(c, s, 0, 0, 0);
+	char *t; if (!r) t = g_strdup("Checking…"); else if (!rui_jbool(r, "xorg")) t = g_strdup("This Rudolf OS build has no Xorg; the software display is used.");
+	else { const char *ac = set_jstr(r, "active", ""), *nm = !strcmp(ac, "gpu") ? "graphics card (Xorg)" : !strcmp(ac, "soft") ? "software display" : ac; const char *gp = rui_jstr(r, "gpu"), *re = rui_jstr(r, "reason");
+		t = g_strdup_printf("Now using: %s%s%s%s%s", nm, gp && *gp ? " · driver " : "", gp && *gp ? gp : "", re && *re ? " · " : "", re && *re ? re : ""); }
+	DGS = c_msg(c, t, 2); g_free(t); c_msg(c, "Changes take effect when Rudolf OS restarts. If the graphics card cannot be used, Rudolf OS falls back to the software display by itself.", 2); rui_jfree(r);
+}
+
 /* ================================================================== the footer */
 static void act(int what)
 {
@@ -463,7 +546,8 @@ void page_disp(void)
 	sec_titlebars();
 	sec_colours();
 	sec_night();
-	/* (to come: Screen, Graphics) */
+	sec_screen();
+	sec_graphics();
 	sec_saver();
 	sec_tablet();
 	/* (to come: Displays) */
