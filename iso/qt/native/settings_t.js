@@ -80,6 +80,9 @@ async function natShots(mode, pages) {
     /* (a view in the middle of a long page: the native one scrolled a few steps, the page then at the same place: pageMid) */
     { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 60; i++) xdo('click 4'); for (let i = 0; i < 6; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(800);
       const f = path.join(OUT, `${mode}-${k}-mid.nat.png`); sh(`import -window root ${f}`); out[k + '-mid'] = {f, b: rect('body'), y: +line('scroll')} }
+    /* (1.6.3: a long page, Display's ~3,500 px, seen at more places on its way down: 5 steps of the wheel each) */
+    for (const at of MIDS[k] || []) { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 5; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(800);
+      const f = path.join(OUT, `${mode}-${k}-${at}.nat.png`); sh(`import -window root ${f}`); out[k + '-' + at] = {f, b: rect('body'), y: +line('scroll')} }
     try { fs.copyFileSync(SF, path.join(OUT, `${mode}-${k}.state`)) } catch (e) {}   /* (what the native page showed: its parts' places, for comparing) */
     out[k + '-harv'] = lines('harv').filter(x => x.startsWith(k + '|')).map(x => x.split('|').slice(1, 3).join('|') + (x.endsWith('|1') ? '|1' : ''));
     natStop(); await wait(300);
@@ -87,6 +90,7 @@ async function natShots(mode, pages) {
   return out;
 }
 // ---- Search in Settings: the same results for the same words (the page's ssMatch over its pages, with System and About harvested as shown)
+const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7']};
 const QUERIES = ['time zone', 'sound', 'date', 'wifi', 'dark', 'idle', 'about', 'desktop page', 'lang', 'xyzzy'];
 async function pageSearch() {
   const {ctx, p} = await signin('light');
@@ -361,10 +365,11 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
     { const {ctx, p} = await signin(mode); for (const k of pages) { if (!N[k + '-mid']) continue;
         await p.evaluate(k => { document.querySelectorAll('.ntoast,#ntoasts>*').forEach(e => e.remove()); if (window.SW) { SW._ok = 1; SW.close() } settings(k); SW.el.style.left = '120px'; SW.el.style.top = '60px' }, k);
         for (let i = 0; i < 6; i++) { await p.clock.runFor(500); await wait(200) } await p.mouse.move(5, 5);
-        await p.evaluate(y => { SW.body.querySelector('.sc').scrollTop = y }, N[k + '-mid'].y); await wait(400);
-        const b = await p.evaluate(() => { const r = SW.body.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
-        const f = path.join(OUT, `${mode}-${k}-mid.page.png`); await p.screenshot({path: f}); P[k + '-mid'] = {f, b} } await ctx.close() }
-    for (const k of pages) for (const at of ['top', 'mid', 'end']) { const key = k + '-' + at;
+        for (const at of ['mid'].concat(MIDS[k] || [])) { if (!N[k + '-' + at]) continue;
+          await p.evaluate(y => { SW.body.querySelector('.sc').scrollTop = y }, N[k + '-' + at].y); await wait(400);
+          const b = await p.evaluate(() => { const r = SW.body.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
+          const f = path.join(OUT, `${mode}-${k}-${at}.page.png`); await p.screenshot({path: f}); P[k + '-' + at] = {f, b} } } await ctx.close() }
+    for (const k of pages) for (const at of ['top', 'mid'].concat(MIDS[k] || [], ['end'])) { const key = k + '-' + at;
       if (!P[key] || !N[key] || !N[key].b) { ok(`${mode} ${key}: drawn by both`, false); continue }
       const d = px(P[key].f, N[key].f, P[key].b, N[key].b, path.join(OUT, `${mode}-${key}`)); rows.push([mode, key, d.pct]);
       ok(`${mode} ${k} (${at}): ${d.pct}% of the window's pixels differ (page ${P[key].b.slice(2).join('x')}, native ${N[key].b.slice(2).join('x')})`, d.pct < LIMIT, {box: d.box, map: d.map}) }
