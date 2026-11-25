@@ -4,6 +4,7 @@
 #          another account's finger, five tries, the first sign-in after a restart, signing out, Guest, cancelling,
 #          removing, an account removed
 #   page:  User Settings › Sign-in options › Fingerprints (desktop/fprint63.js, iso/qt/shell2/fprint63_t.js; a stand-in rudolfd)
+#   native: Native's lock screen with a finger (iso/qt/host/nativefp163_t.sh, a stand-in rudolfd)
 #   size:  what libfprint adds to the newest beta's base layer (systools/mkfprint.sh against it: its 3 MB budget), and the
 #          helper built as the release builds it (hardened, its libraries all in that base layer)
 name: Fingerprint readers check
@@ -12,7 +13,8 @@ on:
     paths: ['iso/sys/rudolf-fprint.c', 'iso/sys/rudolfd-fprint.inc', 'iso/sys/rudolfd.c', 'iso/sys/rudolfd-home.inc', 'iso/sys/rudolfd-users.inc',
       'iso/sys/rudolfd-desktop.inc', 'iso/sys/rudolf-rootd.c', 'iso/sys/rudolf-rootd-confine.h', 'iso/systools/mkfprint.sh',
       'iso/systools/ci_release.sh', 'iso/qt/host/fprint163_t.sh', 'iso/qt/host/fixtures/fpapi.c', 'iso/qt/host/fixtures/vfinger.py',
-      'iso/qt/host/fixtures/deskls.js', 'desktop/fprint63.js', 'desktop/fido61.js', 'desktop/build19.py', 'iso/qt/shell2/fprint63_t.js',
+      'iso/qt/host/fixtures/deskls.js', 'desktop/fprint63.js', 'desktop/fido61.js', 'desktop/build19.py', 'iso/qt/shell2/fprint63_t.js', 'desktop/core25.js',
+      'iso/sys/rudolf-native.c', 'iso/qt/host/nativefp163_t.sh', 'iso/qt/host/fixtures/native_rd.py',
       '.github/workflows/fprint-check.yml']
   workflow_dispatch:
 permissions: {contents: read}
@@ -35,6 +37,15 @@ jobs:
         run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
       - name: The page's side
         run: node iso/qt/shell2/fprint63_t.js
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev xvfb xdotool >/dev/null
+      - name: Native's lock screen with a finger (a stand-in rudolfd)
+        run: sh iso/qt/host/nativefp163_t.sh
   size:
     runs-on: ubuntu-24.04
     timeout-minutes: 20

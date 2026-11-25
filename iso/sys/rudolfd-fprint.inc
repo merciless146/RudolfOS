@@ -29,6 +29,7 @@
  * An account removed: its prints too (fp_acct_gone, from au_sync_ids). */
 #define FP_MAXFAIL 5
 static char fp_state[256] = RUN "/fpstate", fp_hrun[256] = RUN "/fprint";   /* (rudolfd's own; the helper's; host tests change them) */
+static int fp_admin_pass(const char *a, const char *pw);
 static int fp_have(void) { char p[PATH_MAX]; snprintf(p, sizeof p, "%s/fprint", RD_ROOT_DIR); return !access(p, F_OK); }
 static int fp_acct_ok(const char *a) { return home_acct_ok(a) && strcmp(a, "guest") && strcmp(a, "shared"); }
 static void fp_file(char *o, size_t n, const char *kind, const char *acct) { snprintf(o, n, "%s/%s-%s", fp_state, kind, acct); }
@@ -78,7 +79,7 @@ static int fp_cred(struct req *r, const char *acct, char *who, size_t wn)
 	dls l; dls_open(&l); char *list = dls_accounts(&l); const char *a = list && n ? dacct_find(list, n) : NULL;
 	if (a && pw) { char id[80], *role = dj_str(dj_get(a, "r")), *h = dj_str(dj_get(a, "h")), *an = dj_str(dj_get(a, "n")); dacct_id(a, id, sizeof id);
 		found = !strcmp(id, acct) || (role && !strcmp(role, "admin"));
-		okk = found && dpw_check(h, pw) == 0; snprintf(who, wn, "%s", an ? an : id); dfree_secret(h); free(role); free(an); }
+		okk = found && (dpw_check(h, pw) == 0 || (role && !strcmp(role, "admin") && fp_admin_pass(a, pw))); snprintf(who, wn, "%s", an ? an : id); dfree_secret(h); free(role); free(an); }
 	dfree_secret(pw); free(n); free(list); dls_close(&l);
 	if (!okk) { dfail_note(0); health_add("signin", "a wrong password changing an account's fingerprints%s", found ? "" : " (not that account's or an administrator's)");
 		reply_err(r->fd, 403, found ? "Wrong password." : "Only the account itself or an administrator can change its fingerprints."); return 403; }
@@ -93,6 +94,95 @@ static int fp_acct_info(const char *acct, char *name, size_t nn, char *role, siz
 	for (int i = 0; list; i++) { const char *a = dj_at(list, i); if (!a) break; char id[80]; dacct_id(a, id, sizeof id);
 		if (!strcmp(id, acct)) { char *n = dj_str(dj_get(a, "n")), *ro = dj_str(dj_get(a, "r")); snprintf(name, nn, "%s", n ? n : acct); snprintf(role, rn, "%s", ro ? ro : ""); free(n); free(ro); found = 1; break; } }
 	free(list); dls_close(&l); return found;
+}
+/* ---- step 3: a finger at the lock screen and in administrator prompts ----
+   fp_verify_here: the gates, then the reader; 1 when ACCT's finger matched (nothing sent), else 0 with the answer sent
+   (423 the password is needed, 403 not recognised, 404, 408, 409). */
+static int fp_verify_here(struct req *r, const char *acct, int adm, int secs, char *name, size_t nn, char *finger, size_t fn)
+{
+	char role[16]; finger[0] = 0;
+	if (!fp_have()) { reply_err(r->fd, 404, "This Rudolf OS has no fingerprint support."); return 0; }
+	if (!fp_acct_info(acct, name, nn, role, sizeof role)) { reply_err(r->fd, 404, "no such account"); return 0; }
+	if (adm && strcmp(role, "admin")) { reply_err(r->fd, 403, "only an administrator's finger can allow this"); return 0; }
+	const char *why = !fp_signed(acct) ? "restart" : fp_fails(acct) >= FP_MAXFAIL ? "tries" : NULL;
+	if (why) { str e = {0}; sadd(&e, "{\"ok\":false,\"need\":\"password\",\"why\":\"%s\",\"error\":", why);
+		sjson(&e, !strcmp(why, "restart") ? "Use your password: a finger is taken only after this account has signed in with its password since the computer started." : "Too many fingers were not recognised: use your password.");
+		sadd(&e, "}"); reply(r->fd, 423, "application/json", e.b, e.n, NULL); free(e.b); return 0; }
+	fp_cancel(); { struct timespec ts = { 0, 300000000 }; nanosleep(&ts, NULL); }   /* (another one waiting gives the reader up) */
+	char sv[8]; snprintf(sv, sizeof sv, "%d", secs); const char *argv[] = { "fprint", "verify", acct, sv, NULL };
+	char *o = root_out(argv, 0); trim(o);
+	const char *mq = o[0] == '{' ? dj_get(o, "match") : NULL, *okq = o[0] == '{' ? dj_get(o, "ok") : NULL;
+	if (okq && dj_true(dj_ws(okq)) && mq && dj_true(dj_ws(mq))) {
+		fp_fails_set(acct, 0); char *f = dj_str(dj_get(o, "finger")); snprintf(finger, fn, "%s", f ? f : ""); free(f); free(o); return 1;
+	}
+	if (okq && dj_true(dj_ws(okq))) {
+		int n = fp_fails(acct) + 1; fp_fails_set(acct, n);
+		health_add("signin", "a finger not recognised for the account %.100s (%d of %d)", name, n, FP_MAXFAIL);
+		str e = {0};
+		if (n >= FP_MAXFAIL) { sadd(&e, "{\"ok\":false,\"need\":\"password\",\"why\":\"tries\",\"error\":\"Too many fingers were not recognised: use your password.\"}"); reply(r->fd, 423, "application/json", e.b, e.n, NULL); }
+		else { sadd(&e, "{\"ok\":false,\"left\":%d,\"error\":\"That finger was not recognised.\"}", FP_MAXFAIL - n); reply(r->fd, 403, "application/json", e.b, e.n, NULL); }
+		free(e.b); free(o); return 0;
+	}
+	fp_reply(r, o); free(o); return 0;
+}
+/* one-time answers, 60 s, for one purpose ('a' an administrator's permission where rudolfd checks the password itself;
+   'u' Native's lock screen, the authenticator code still to come): 32 hex digits in RUN only, used at most once */
+static int fp_ticket_new(const char *acct, char purpose, char *out)
+{
+	unsigned char b[16]; if (getrandom(b, sizeof b, 0) != (ssize_t)sizeof b) return -1;
+	for (int i = 0; i < 16; i++) sprintf(out + 2 * i, "%02x", b[i]);
+	out[32] = 0; explicit_bzero(b, sizeof b);
+	mkdir(fp_state, 0700); char p[400], l[80]; fp_file(p, sizeof p, "ticket", acct);
+	snprintf(l, sizeof l, "%c %s %lld\n", purpose, out, (long long)time(NULL) + 60); int r = write_str(p, l); explicit_bzero(l, sizeof l); return r ? -1 : 0;
+}
+static int fp_ticket_take(const char *acct, const char *t, char purpose)
+{
+	if (!fp_acct_ok(acct) || !t || strlen(t) != 32) return 0;
+	char p[400]; fp_file(p, sizeof p, "ticket", acct); char *c = slurp(p, NULL); unlink(p); if (!c) return 0;
+	char pu = 0, hx[40] = ""; long long until = 0; int ok = sscanf(c, "%c %39s %lld", &pu, hx, &until) == 3; explicit_bzero(c, strlen(c)); free(c);
+	unsigned d = 0; for (int i = 0; i < 32; i++) d |= (unsigned)(hx[i] ^ t[i]);
+	ok = ok && strlen(hx) == 32 && !d && pu == purpose && until >= (long long)time(NULL); explicit_bzero(hx, sizeof hx); return ok;
+}
+/* an administrator's "password" that is a finger's answer ("fp:" and fp/verify's "t"): desk_admin_check, desktop/admin */
+static int fp_admin_pass(const char *a, const char *pw)
+{
+	if (!a || !pw || strncmp(pw, "fp:", 3)) return 0;
+	char id[80], *role = dj_str(dj_get(a, "r")); dacct_id(a, id, sizeof id); int adm = role && !strcmp(role, "admin"); free(role);
+	return adm && fp_ticket_take(id, pw + 3, 'a');
+}
+/* the password was right at Native's lock screen or prompt: the count of fingers starts again */
+static void fp_password_used(const char *acct) { if (fp_acct_ok(acct)) fp_fails_set(acct, 0); }
+/* Native's lock screen (desktop/unlock): {"f":true} waits (20 s) for the session's account's finger; an account with an
+   authenticator app is then asked its code: 401 {"need":"code","ft"}, and {"ft","c"} finishes (the code checked with
+   the session's password key, as after a password). An account with security keys: the password (its key's step
+   needs it), 423 "key". */
+static void fp_native_unlock(struct req *r, const char *lp)
+{
+	dsess s; if (!dsess_read(&s)) { reply_err(r->fd, 404, "no native session"); return; }
+	if (!strcmp(s.r, "guest") || !fp_acct_ok(s.id)) { static const char G[] = "{\"ok\":false,\"need\":\"password\",\"why\":\"guest\",\"error\":\"Guest has no fingerprints.\"}"; explicit_bzero(&s, sizeof s); reply(r->fd, 423, "application/json", G, sizeof G - 1, NULL); return; }
+	dls l; dls_open(&l); char *list = dls_accounts(&l); const char *a = NULL;
+	for (int i = 0; list; i++) { const char *x = dj_at(list, i); if (!x) break; char id[80]; dacct_id(x, id, sizeof id); if (!strcmp(id, s.id)) { a = x; break; } }
+	const char *oq = a ? dj_get(a, "otp") : NULL; int otp = oq && *dj_ws(oq) == '{';
+	char *ft = dbody_field(r, "ft"); str o = {0};
+	if (!a) { reply_err(r->fd, 404, "no such account"); goto out; }
+	if (ft) {
+		if (!fp_ticket_take(s.id, ft, 'u')) { reply_err(r->fd, 403, "The finger's time ran out: put your finger on the reader again, or type your password."); goto out; }
+		uint8_t pk[32]; int okp = strlen(s.pk) == 64; for (int i = 0; okp && i < 32; i++) { unsigned v; if (sscanf(s.pk + 2 * i, "%2x", &v) != 1) okp = 0; else pk[i] = (uint8_t)v; }
+		char *cd = dbody_field(r, "c"), why[200] = ""; int oc = okp ? dotp_check(a, pk, s.id, cd, why, sizeof why) : 500; explicit_bzero(pk, sizeof pk); free(cd);
+		if (oc) { sadd(&o, "{\"ok\":false,\"need\":\"code\",\"error\":"); sjson(&o, why[0] ? why : "The code could not be checked.");
+			char t[40]; if ((oc == 403 || oc == 409 || oc == 401) && !fp_ticket_new(s.id, 'u', t)) { sadd(&o, ",\"ft\":"); sjson(&o, t); }   /* (a mistyped code: the finger is not asked again) */
+			sadd(&o, "}"); reply(r->fd, oc == 500 ? 500 : oc, "application/json", o.b, o.n, NULL); goto out; }
+		unlink(lp); reply_ok(r->fd, "unlocked"); goto out;
+	}
+	if (dfido_count(s.id) > 0) { static const char K[] = "{\"ok\":false,\"need\":\"password\",\"why\":\"key\",\"error\":\"Your security key needs your password: type it.\"}"; reply(r->fd, 423, "application/json", K, sizeof K - 1, NULL); goto out; }
+	{ char name[256], finger[32];
+		if (!fp_verify_here(r, s.id, 0, 20, name, sizeof name, finger, sizeof finger)) goto out;   /* (20 s: Native waits 30 s for an answer) */
+		if (otp) { char t[40]; if (fp_ticket_new(s.id, 'u', t)) { reply_err(r->fd, 500, "could not keep the finger's answer"); goto out; }
+			sadd(&o, "{\"ok\":false,\"need\":\"code\",\"ft\":"); sjson(&o, t); sadd(&o, ",\"error\":\"Enter the 6-digit code from your authenticator app.\"}");
+			reply(r->fd, 401, "application/json", o.b, o.n, NULL); goto out; }
+		unlink(lp); reply_ok(r->fd, "unlocked"); }
+out:
+	free(o.b); free(ft); free(list); dls_close(&l); explicit_bzero(&s, sizeof s);
 }
 static void api_fp(struct req *r, const char *w, int post)
 {
@@ -162,31 +252,11 @@ static void api_fp(struct req *r, const char *w, int post)
 		fp_reply(r, o); free(o); free(f); free(acct); return;
 	}
 	if (!strcmp(w, "verify")) {
-		char name[256], role[16]; const char *fq = dj_get(r->body, "for"); int adm = fq && !strncmp(dj_ws(fq), "\"admin\"", 7);
-		if (!fp_acct_info(acct, name, sizeof name, role, sizeof role)) { free(acct); reply_err(r->fd, 404, "no such account"); return; }
-		if (adm && strcmp(role, "admin")) { free(acct); reply_err(r->fd, 403, "only an administrator's finger can allow this"); return; }
-		const char *why = !fp_signed(acct) ? "restart" : fp_fails(acct) >= FP_MAXFAIL ? "tries" : NULL;
-		if (why) { str e = {0}; sadd(&e, "{\"ok\":false,\"need\":\"password\",\"why\":\"%s\",\"error\":", why);
-			sjson(&e, !strcmp(why, "restart") ? "Use your password: a finger is taken only after this account has signed in with its password since the computer started." : "Too many fingers were not recognised: use your password.");
-			sadd(&e, "}"); reply(r->fd, 423, "application/json", e.b, e.n, NULL); free(e.b); free(acct); return; }
-		fp_cancel(); { struct timespec ts = { 0, 300000000 }; nanosleep(&ts, NULL); }   /* (another one waiting gives the reader up) */
-		const char *argv[] = { "fprint", "verify", acct, "30", NULL };
-		char *o = root_out(argv, 0); trim(o);
-		const char *mq = o[0] == '{' ? dj_get(o, "match") : NULL, *okq = o[0] == '{' ? dj_get(o, "ok") : NULL;
-		if (okq && dj_true(dj_ws(okq)) && mq && dj_true(dj_ws(mq))) {
-			fp_fails_set(acct, 0); char *f = dj_str(dj_get(o, "finger"));
-			str s = {0}; sadd(&s, "{\"ok\":true,\"acct\":"); sjson(&s, acct); sadd(&s, ",\"n\":"); sjson(&s, name); sadd(&s, ",\"finger\":"); sjson(&s, f ? f : ""); sadd(&s, "}");
-			free(f); free(o); free(acct); reply_json(r->fd, &s); return;
-		}
-		if (okq && dj_true(dj_ws(okq))) {
-			int n = fp_fails(acct) + 1; fp_fails_set(acct, n);
-			health_add("signin", "a finger not recognised for the account %.100s (%d of %d)", name, n, FP_MAXFAIL);
-			str e = {0};
-			if (n >= FP_MAXFAIL) { sadd(&e, "{\"ok\":false,\"need\":\"password\",\"why\":\"tries\",\"error\":\"Too many fingers were not recognised: use your password.\"}"); reply(r->fd, 423, "application/json", e.b, e.n, NULL); }
-			else { sadd(&e, "{\"ok\":false,\"left\":%d,\"error\":\"That finger was not recognised.\"}", FP_MAXFAIL - n); reply(r->fd, 403, "application/json", e.b, e.n, NULL); }
-			free(e.b); free(o); free(acct); return;
-		}
-		fp_reply(r, o); free(o); free(acct); return;
+		char name[256]; const char *fq = dj_get(r->body, "for"); int adm = fq && !strncmp(dj_ws(fq), "\"admin\"", 7);
+		char finger[32] = ""; if (!fp_verify_here(r, acct, adm, 30, name, sizeof name, finger, sizeof finger)) { free(acct); return; }
+		str s = {0}; sadd(&s, "{\"ok\":true,\"acct\":"); sjson(&s, acct); sadd(&s, ",\"n\":"); sjson(&s, name); sadd(&s, ",\"finger\":"); sjson(&s, finger);
+		if (adm) { char t[40]; if (!fp_ticket_new(acct, 'a', t)) { sadd(&s, ",\"t\":"); sjson(&s, t); } }   /* (in place of the password where rudolfd checks one) */
+		sadd(&s, "}"); free(acct); reply_json(r->fd, &s); return;
 	}
 	free(acct); reply_err(r->fd, 404, "unknown fingerprint request");
 }

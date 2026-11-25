@@ -33,7 +33,7 @@
 #   DIR/tm.json        (when there, 1.6.2 Part 38) Task Manager's answers (fixtures/tm62.json: a made-up laptop): system, processes,
 #                      stats, net, info, memory/breakdown; proc/end, service/restart and memory/dropcache answered as done
 # Ann's password is in keys.json; a wrong one gets the page's message.   python3 native_rd.py PORT DIR
-import http.server, json, os, re, sys, threading
+import time, http.server, json, os, re, sys, threading
 PORT = int(sys.argv[1]); D = sys.argv[2]; WWW = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../../www')
 TOK = 'tok59native'; ST = {'session': None, 'locked': False, 'gen': 1, 'mt': 0}
 LOCK = threading.Lock()
@@ -145,6 +145,25 @@ class H(http.server.BaseHTTPRequestHandler):
             return self.j(s['session'])
         if w == 'desktop/logout': s['session'] = None; s['locked'] = False; return self.j({'ok': True, 'message': 'signed out'})
         if w == 'desktop/lock': s['locked'] = True; return self.j({'ok': True})
+        if w == 'fp/status':   # (1.6.3 Part 2, nativefp163_t.sh: D/fpready when a finger is taken now)
+            return self.j({'ok': True, 'helper': True, 'readers': [{'name': 'Reader'}], 'ready': rd('fpready') is not None})
+        if w == 'fp/cancel': open(os.path.join(D, 'fpcalls'), 'a').write('cancel\n'); return self.j({'ok': True})
+        if w == 'desktop/unlock' and (b'"f"' in (b or b'') or b'"ft"' in (b or b'')):
+            o = json.loads(b or b'{}'); open(os.path.join(D, 'fpcalls'), 'a').write(('ft %s' % o.get('c') if o.get('ft') else 'f') + '\n')
+            if o.get('ft'):
+                if o['ft'] != 'f' * 32: return self.send(403, json.dumps({'ok': False, 'error': "The finger's time ran out."}).encode())
+                if o.get('c') != '123456': return self.send(403, json.dumps({'ok': False, 'need': 'code', 'ft': 'f' * 32, 'error': 'That code is not right.'}).encode())
+                s['locked'] = False; return self.j({'ok': True, 'message': 'unlocked'})
+            for _ in range(80):   # (20 s, as rudolfd's; the test puts the finger: the first line of D/fpanswer, ok, no or code)
+                q = (rd('fpanswer', b'') or b'').decode().split('\n')
+                if q and q[0]:
+                    open(os.path.join(D, 'fpanswer'), 'w').write('\n'.join(q[1:])); a = q[0]
+                    if a == 'ok': s['locked'] = False; return self.j({'ok': True, 'message': 'unlocked'})
+                    if a == 'code': return self.send(401, json.dumps({'ok': False, 'need': 'code', 'ft': 'f' * 32, 'error': 'Enter the 6-digit code from your authenticator app.'}).encode())
+                    if a == 'tries': return self.send(423, json.dumps({'ok': False, 'need': 'password', 'why': 'tries', 'error': 'Too many fingers were not recognised: use your password.'}).encode())
+                    return self.send(403, json.dumps({'ok': False, 'left': 4, 'error': 'That finger was not recognised.'}).encode())
+                time.sleep(0.25)
+            return self.send(408, json.dumps({'ok': False, 'code': 'timeout'}).encode())
         if w == 'desktop/unlock':
             o = json.loads(b or b'{}')
             if o.get('p') != KEYS['Ann']['pw']: return self.err(403, 'The password is incorrect.')

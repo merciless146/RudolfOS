@@ -13,6 +13,10 @@ Summary: In progress.
   password, then the reader's scans shown as they come) and remove one; an administrator adds or removes another
   account's (with the administrator's permission; adding while that account's files are open). A reader Rudolf OS
   cannot use is named, and so is a missing one.
+- New: a fingerprint unlocks the lock screen and answers administrator prompts, on the Chromium, Lite and native
+  desktops alike (plan 1.6.3 Part 2, step 3). The password always works too. After a restart or signing out the password
+  is asked first, an authenticator app's code is still asked after a finger, and after five fingers not recognised only
+  the password works.
 - Changed: the plan (docs/plan-1.6.3.md Part 7): Chromium's own password manager and extensions do not work in Oracle's tabs,
   which are Controlled Frames in Oracle's own Chromium too (measured with Chromium 158); the ways on are set out for the
   owner, and a check notices if a Chromium release changes this.
