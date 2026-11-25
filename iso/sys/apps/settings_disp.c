@@ -376,6 +376,60 @@ static void sec_colours(void)
 	(void)icprev_lay;
 }
 
+
+/* ================================================================== bd95sys's other keys (sysSave), each written at once with the rest kept */
+static void sys_set(const char *key, const char *json)
+{
+	RuiJ *o = set_ls_get("bd95sys"), *x = rui_jprop(o, "x"); GString *b = g_string_new("{"); int n = 0;
+	for (int i = 0; rui_jtype(x) == 5 && rui_jkey(x, i); i++) { const char *k = rui_jkey(x, i); if (!strcmp(k, key)) continue; char *e = set_jesc(k); g_string_append_printf(b, "%s\"%s\":", n++ ? "," : "", e); g_free(e); jw(b, rui_jprop(x, k)); }
+	char *e = set_jesc(key); g_string_append_printf(b, "%s\"%s\":%s}", n ? "," : "", e, json); g_free(e); set_ls_set("bd95sys", b->str); set_note("sysSave %s %s", key, json); g_string_free(b, TRUE); rui_jfree(o);
+}
+static char *sys_get(const char *key) { RuiJ *o = set_ls_get("bd95sys"), *v = rui_jprop(rui_jprop(o, "x"), key); char *r = v ? jv(v) : NULL; rui_jfree(o); return r; }
+
+/* ================================================================== Night light (settings25.js), part of the working copy */
+static void on_nlv(double v, void *d) { (void)d; char b[16]; snprintf(b, sizeof b, "%g", v); set("nlv", g_strdup(b)); }
+static void sec_night(void)
+{
+	p_h4("Night light");
+	{ Cell *c = p_r2("Night light"); dck(c, "nl", "Warmer colours to reduce eye strain"); c_line(c, 15); dck(c, "nlsched", "Only from 8 PM to 7 AM"); p_r2_more(c); }
+	{ Cell *c = p_r2("Strength"); GtkWidget *r = s_range(10, 100, 1, gn("nlv"), on_nlv, NULL); c_add(c, r, 2, 2, 1); c_line(c, 2); p_label_named("dnv", r); }
+}
+
+/* ================================================================== Screen saver (saver31.js): for everyone, saved at once by an administrator
+   (bd95sys: sson, ssmin, ssstyle, sstime, lockss); TO DO: the style's moving preview and Preview */
+static void on_sson(int on, void *d) { const char *k = d; if (set_admin()) sys_set(k, on ? "true" : "false"); }
+static void on_ssmin(const char *v, void *d) { (void)d; if (set_admin()) sys_set("ssmin", v); }
+static void on_ssst(const char *v, void *d) { (void)d; if (!set_admin()) return; char *e = set_jesc(v), *j = g_strdup_printf("\"%s\"", e); sys_set("ssstyle", j); g_free(j); g_free(e); }
+static int sys_bool(const char *k, int dflt) { char *v = sys_get(k); int r = v ? !strcmp(v, "true") : dflt; g_free(v); return r; }
+static gboolean sspc_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; (void)d; double z = s_z(); cairo_save(cr); cairo_scale(cr, z, z); cairo_set_source_rgb(cr, 0, 0, 0); s_rrect(cr, 0, 0, 240, 135, 6); cairo_fill(cr); cairo_restore(cr); return TRUE; }
+static void ss_prev(GtkButton *b, gpointer d) { (void)b; (void)d; set_note("saver preview todo"); }
+static void sec_saver(void)
+{
+	int adm = set_admin(); p_h4("Screen saver");
+	{ Cell *c = p_r2("Screen saver"); GtkWidget *k = c_check(c, "On", sys_bool("sson", 0), on_sson, (gpointer)"sson"); gtk_widget_set_sensitive(k, adm); p_label_named("sson", k); p_r2_more(c); }
+	{ Cell *c = p_r2("Start after"); char *v = sys_get("ssmin"); if (!v) v = g_strdup("10"); GtkWidget *s = dsel_cb("ssmin", v, on_ssmin); g_free(v);
+		gtk_widget_set_sensitive(s, adm); c_add(c, s, 0, 0, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Style"); char *v = sys_get("ssstyle"), *cur = NULL; if (v) { char *w = g_strdup_printf("{\"x\":%s}", v); RuiJ *o = rui_jparse(w); cur = g_strdup(set_jstr(o, "x", "stars")); rui_jfree(o); g_free(w); } g_free(v);
+		GtkWidget *s = dsel_cb("ssst", cur ? cur : "stars", on_ssst); g_free(cur); gtk_widget_set_sensitive(s, adm); c_add(c, s, 0, 0, 0);
+		GtkWidget *b = rui_button("Preview", 0); g_signal_connect(b, "clicked", G_CALLBACK(ss_prev), NULL); c_add(c, b, wordw("a a") - wordw("aa"), 1, 0); p_label_named("ssprev", b);
+		c_line(c, 6); GtkWidget *a = gtk_drawing_area_new(); gtk_widget_set_size_request(a, (int)lround(240 * s_z()), (int)lround(135 * s_z())); g_signal_connect(a, "draw", G_CALLBACK(sspc_draw), NULL); c_add(c, a, 0, 0, 0); c_line(c, 3); p_r2_more(c); }
+	{ Cell *c = p_r2("Options"); GtkWidget *k1 = c_check(c, "Show the time (except with Clock)", sys_bool("sstime", 1), on_sson, (gpointer)"sstime"); c_line(c, 15);
+		GtkWidget *k2 = c_check(c, "Ask for the password when it ends", sys_bool("lockss", 1), on_sson, (gpointer)"lockss"); gtk_widget_set_sensitive(k1, adm); gtk_widget_set_sensitive(k2, adm); }
+	{ char *t = g_strdup_printf("%s%s", rui_tr("Drawn by the processor, not the graphics card. It does not start while something plays full screen, a game holds the mouse or a video plays, or while you use a game or a Linux app."), adm ? "" : rui_tr(" Only administrators can change it.")); p_msg(t, 0); g_free(t); }
+}
+
+/* ================================================================== Tablet mode (tablet58.js): S.tablet and SC.tablet kept at once (persistS) */
+static GtkWidget *TABM;
+static void on_tab(const char *v, void *d) { (void)d; char *e = set_jesc(v), *j = g_strdup_printf("\"%s\"", e); const char *K[1] = { "tablet" }, *V[1] = { j }; set_store(K, V, 1);
+	int i = ki("tablet"); if (i >= 0) { g_free(W_[i]); W_[i] = g_strdup(j); g_free(C_[i]); C_[i] = g_strdup(j); } set_note("persistS tablet %s", j); g_free(j); g_free(e);
+	p_text_set(TABM, rui_tr(!strcmp(v, "on") ? "Tablet mode is on: each window fills the screen, the taskbar is a dock, swipe up from the bottom for Start and in from the right for notifications." : "Tablet mode is off.")); }
+static void sec_tablet(void)
+{
+	p_h4("Tablet mode"); char *cur = gs("tablet");
+	{ Cell *c = p_r2("Tablet mode"); c_add(c, dsel_cb("dtab", cur, on_tab), 0, 0, 1); }
+	TABM = p_msg(!strcmp(cur, "on") ? "Tablet mode is on: each window fills the screen, the taskbar is a dock, swipe up from the bottom for Start and in from the right for notifications." : "Tablet mode is off.", 2); g_free(cur);
+}
+
 /* ================================================================== the footer */
 static void act(int what)
 {
@@ -408,6 +462,10 @@ void page_disp(void)
 	sec_taskbar();
 	sec_titlebars();
 	sec_colours();
-	/* (to come: Night light to Displays) */
+	sec_night();
+	/* (to come: Screen, Graphics) */
+	sec_saver();
+	sec_tablet();
+	/* (to come: Displays) */
 	p_footer(dirty, act);
 }
