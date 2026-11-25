@@ -1,0 +1,28 @@
+# 1.6.3 (docs/plan-1.6.3.md Part 7, step 2): what Chromium's extension policies do to the extensions the desktop loads itself
+# (--load-extension: Ruffle, the web frames extension), with Chromium for Testing and the Chromium snap (the releases' Chromium,
+# sandboxed): iso/qt/native/oraextpol63_t.sh. Nothing published.
+name: Oracle extensions check
+on:
+  push:
+    paths: ['iso/qt/native/oraextpol63_t.sh', '.github/workflows/oracle-extensions-check.yml']
+  workflow_dispatch:
+permissions: {contents: read}
+jobs:
+  policies:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq xvfb imagemagick >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+          sudo snap install chromium >/dev/null && snap list chromium
+      - name: Chromium for Testing (Playwright's)
+        run: |
+          sudo mkdir -p /etc/opt/chrome_for_testing/policies/managed && sudo chmod 777 /etc/opt/chrome_for_testing/policies/managed
+          CHROME=$(node -e "console.log(require('playwright').chromium.executablePath())") POLICY_DIR=/etc/opt/chrome_for_testing/policies/managed xvfb-run -a -s "-screen 0 1280x800x24" sh iso/qt/native/oraextpol63_t.sh
+      - name: The Chromium snap (the releases')
+        run: |
+          sudo mkdir -p /etc/chromium/policies/managed && sudo chmod 777 /etc/chromium/policies/managed
+          CHROME=/snap/bin/chromium POLICY_DIR=/etc/chromium/policies/managed xvfb-run -a -s "-screen 0 1280x800x24" sh iso/qt/native/oraextpol63_t.sh
