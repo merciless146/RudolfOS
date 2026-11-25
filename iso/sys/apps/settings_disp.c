@@ -335,6 +335,47 @@ static void sec_titlebars(void)
 		c_line(c, 6); TWPREV = gtk_drawing_area_new(); gtk_widget_set_size_request(TWPREV, (int)lround(320 * s_z()), (int)lround(76 * s_z())); g_signal_connect(TWPREV, "draw", G_CALLBACK(twprev_draw), NULL); c_add(c, TWPREV, 0, 0, 0); p_label_named("twprev", TWPREV); }
 }
 
+
+/* ================================================================== Colours and theme (settings25.js, accent56.js, litepoint60.js): the accent
+   colour (its own colour and the 16 swatches), where it is used, the dark theme, the icons (TO DO: .icprev's eight icons) */
+static const unsigned SWC[16] = { 0xdc2626, 0xea580c, 0xd97706, 0xca8a04, 0x65a30d, 0x16a34a, 0x0d9488, 0x0891b2, 0x0284c7, 0x2563eb, 0x4f46e5, 0x9333ea, 0xc026d3, 0xdb2777, 0x92400e, 0x475569 };
+static const char *const SWN[16] = { "Red", "Orange", "Amber", "Yellow", "Lime", "Green", "Teal", "Cyan", "Sky", "Blue", "Indigo", "Purple", "Fuchsia", "Pink", "Brown", "Slate" };
+static GtkWidget *SWA, *LPV, *ACSEL[3];
+static gboolean sw_draw(GtkWidget *w, cairo_t *cr, gpointer d)
+{
+	(void)w; (void)d; double z = s_z(); cairo_save(cr); cairo_scale(cr, z, z);
+	for (int i = 0; i < 16; i++) { double x = i * 24.7, r = 20.7 / 2; cairo_set_source_rgb(cr, (SWC[i] >> 16) / 255.0, (SWC[i] >> 8 & 255) / 255.0, (SWC[i] & 255) / 255.0); cairo_arc(cr, x + r, r, r, 0, 2 * M_PI); cairo_fill(cr);
+		cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 2); cairo_arc(cr, x + r, r, r - 1, 0, 2 * M_PI); cairo_stroke(cr); }
+	cairo_restore(cr); return TRUE;
+}
+static gboolean sw_press(GtkWidget *w, GdkEventButton *e, gpointer d)
+{
+	(void)d; if (e->button != 1 || e->type != GDK_BUTTON_PRESS) return FALSE; int i = (int)(e->x / s_z() / 24.7); if (i < 0 || i > 15) return TRUE;
+	char h[16]; snprintf(h, sizeof h, "#%06x", SWC[i]); sets("accent", h); set_note("accent %s", SWN[i]); gtk_widget_queue_draw(w); if (SWA) gtk_widget_queue_draw(SWA); return TRUE;
+}
+static void on_lpbr(double v, void *d) { (void)d; char b[16]; snprintf(b, sizeof b, "%g", v); set("lpbr", g_strdup(b)); char t[16]; snprintf(t, sizeof t, "%g%%", v); p_text_set(LPV, t); }
+static void on_acck(int on, void *d) { const char *k = d; set(k, g_strdup(on ? "true" : "false")); int i = !strcmp(k, "tbac") ? 0 : !strcmp(k, "icac") ? 1 : 2; if (ACSEL[i]) gtk_widget_set_sensitive(ACSEL[i], on); }
+static gboolean icprev_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)d; double z = s_z(), W = gtk_widget_get_allocated_width(w) / z, r, gg, b; char *c1 = gs("b1"); rgb_of(c1, &r, &gg, &b); g_free(c1);
+	cairo_save(cr); cairo_scale(cr, z, z); cairo_set_source_rgb(cr, r, gg, b); s_rrect(cr, 0, 0, W, 48, 8); cairo_fill(cr); cairo_restore(cr); return TRUE; }
+static double icprev_lay(void *d, double x, double y, double w) { p_place(d, x, y, w, 48); return 48; }
+static void sec_colours(void)
+{
+	p_h4("Colours and theme");
+	{ Cell *c = p_r2("Accent colour"); SWA = colour("accent", 50); c_add(c, SWA, 0, 0, 0); GtkWidget *sw = gtk_drawing_area_new(); gtk_widget_add_events(sw, GDK_BUTTON_PRESS_MASK);
+		gtk_widget_set_size_request(sw, (int)lround((16 * 24.7 - 4) * s_z()), (int)lround(20.7 * s_z())); g_signal_connect(sw, "draw", G_CALLBACK(sw_draw), NULL); g_signal_connect(sw, "button-press-event", G_CALLBACK(sw_press), NULL);
+		c_add(c, sw, 6, 3.2, 0); p_label_named("acsw", sw); p_r2_more(c); }
+	{ Cell *c = p_r2("Accent colour on"); static const char *const K[3][4] = { { "tbac", "The taskbar", "dtbacm", "tbacm" }, { "icac", "The desktop icons", "dicacm", "icacm" }, { "lpac", "The window transitions (LitePoint)", "dlpacm", "lpacm" } };
+		for (int i = 0; i < 3; i++) { GtkWidget *k = c_check(c, K[i][1], !strcmp(g(K[i][0]), "true"), on_acck, (gpointer)K[i][0]); p_label_named(K[i][0], k); c_dy(k, 3); ACSEL[i] = dsel(K[i][2], K[i][3]); gtk_widget_set_sensitive(ACSEL[i], !strcmp(g(K[i][0]), "true")); c_add(c, ACSEL[i], 10, 0, 0); c_line(c, 0); }
+		{ GtkWidget *l = c_label(c, "Window transitions' light", 2.5); (void)l; GtkWidget *r = s_range(0, 100, 5, gn("lpbr"), on_lpbr, NULL); gtk_widget_set_size_request(r, (int)lround(180 * s_z()), (int)lround(16 * s_z())); c_add(c, r, 12, 2, 0); p_label_named("lpbr", r);
+			char t[16]; snprintf(t, sizeof t, "%g%%", gn("lpbr")); LPV = c_text(c, t, 400); c_gap(LPV, 12); c_dy(LPV, 2.5); }
+		c_msg(c, "Normal is the accent colour; Negative is its negative; Complementary is the colour opposite it on the colour wheel. The desktop icons are Rudolf's own icons (apps' own pictures stay as they are). The window transitions are white unless ticked; their light from Off to full (Reduce motion turns them off).", 2); p_r2_more(c); }
+	{ Cell *c = p_r2("Windows and menus"); dck(c, "darkui", "Use a dark theme when dark mode is on"); p_r2_more(c); }
+	{ Cell *c = p_r2("Icons"); c_add(c, dsel("dic", "icons"), 0, 0, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Icon style"); c_add(c, dsel("dis", "icstyle"), 0, 0, 0); c_line(c, 6); GtkWidget *a = gtk_drawing_area_new(); gtk_widget_set_size_request(a, -1, (int)lround(48 * s_z())); g_signal_connect(a, "draw", G_CALLBACK(icprev_draw), NULL); c_add(c, a, 0, 0, 1); p_label_named("icprev", a); p_r2_more(c); }
+	{ Cell *c = p_r2("Icon colours"); dck(c, "icdyn", "Match icons to the wallpaper"); c_msg(c, "Icons take the colour opposite the wallpaper’s main colour on the colour wheel, light on dark wallpapers and dark on light ones, and follow the dynamic wallpaper from day to night.", 2); }
+	(void)icprev_lay;
+}
+
 /* ================================================================== the footer */
 static void act(int what)
 {
@@ -366,6 +407,7 @@ void page_disp(void)
 	{ Cell *c = p_r2("Icon size"); GtkWidget *r = s_range(100, 200, 5, gn("is"), on_is, NULL); gtk_widget_set_size_request(r, (int)lround(129 * s_z()), (int)lround(16 * s_z())); c_add(c, r, 2, 2, 0); p_label_named("is", r); }
 	sec_taskbar();
 	sec_titlebars();
-	/* (to come: Colours and theme to Displays) */
+	sec_colours();
+	/* (to come: Night light to Displays) */
 	p_footer(dirty, act);
 }
