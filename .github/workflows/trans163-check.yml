@@ -1,12 +1,12 @@
 name: Native's transitions (1.6.3 Part 8, item 2)
 # The window transitions recorded frame by frame (ffmpeg x11grab, 60 a second) on Chromium mode and Native under Xvfb
-# (iso/qt/native/trans163_t.js), and the title bars against Chromium mode (same_t.js) and their behaviour (titlebeh_t.js).
+# (iso/qt/native/trans163_t.js), the title bars' behaviour (titlebeh_t.js) and the native desktop's host test (native59_t.sh).
 on:
   workflow_dispatch:
   push:
     branches: ['fixes163-transitions']
   pull_request:
-    paths: ['iso/sys/rudolf-native.c', 'iso/sys/litepoint.h', 'iso/qt/native/trans163_t.js', 'iso/qt/native/trans163_an.py', '.github/workflows/trans163-check.yml']
+    paths: ['iso/sys/rudolf-native.c', 'iso/qt/host/native59_t.sh', 'iso/sys/litepoint.h', 'iso/qt/native/trans163_t.js', 'iso/qt/native/trans163_an.py', '.github/workflows/trans163-check.yml']
 permissions: {contents: read}
 jobs:
   native:
@@ -25,16 +25,10 @@ jobs:
           gcc -O2 -Wall -Wno-misleading-indentation -Wno-deprecated-declarations -o $RUNNER_TEMP/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
       - name: "trans163_t.js: the transitions, frame by frame"
         run: mkdir -p out/t && NODE_PATH=$PWD/node_modules SAME_SCRIPT=trans163_t.js SAME_PORT=8748 SAME_DSP=:94 sh iso/qt/native/same_t.sh $PWD/out/t "" $RUNNER_TEMP/rudolf-native
-      - name: "same_t.js: the title bars with main's rudolf-native (for comparison: the runner's own differences)"
-        continue-on-error: true
-        run: |
-          git fetch -q --depth 1 origin main && git show origin/main:iso/sys/rudolf-native.c > $RUNNER_TEMP/main-native.c && git show origin/main:iso/sys/litepoint.h > $RUNNER_TEMP/litepoint.h
-          gcc -O2 -Wno-misleading-indentation -Wno-deprecated-declarations -I iso/sys -o $RUNNER_TEMP/rudolf-native-main $RUNNER_TEMP/main-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
-          mkdir -p out/m && NODE_PATH=$PWD/node_modules SAME_PORT=8746 SAME_DSP=:93 sh iso/qt/native/same_t.sh $PWD/out/m title-standard,title-candy,title-dark $RUNNER_TEMP/rudolf-native-main
-      - name: "same_t.js: the title bars against Chromium mode"
-        run: mkdir -p out/s && NODE_PATH=$PWD/node_modules SAME_PORT=8749 SAME_DSP=:95 sh iso/qt/native/same_t.sh $PWD/out/s title-standard,title-candy,title-dark $RUNNER_TEMP/rudolf-native
       - name: "titlebeh_t.js: the title bars' behaviour"
         run: mkdir -p out/b && NODE_PATH=$PWD/node_modules SAME_SCRIPT=titlebeh_t.js SAME_PORT=8747 SAME_DSP=:96 sh iso/qt/native/same_t.sh $PWD/out/b "" $RUNNER_TEMP/rudolf-native
+      - name: "native59_t.sh: the native desktop, its window manager"
+        run: NATIVE59_PORT=8745 NATIVE59_DSP=:93 sh iso/qt/host/native59_t.sh $RUNNER_TEMP/rudolf-native
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: trans163, retention-days: 7, path: out}

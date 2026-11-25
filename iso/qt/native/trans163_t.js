@@ -1,7 +1,7 @@
 // 1.6.3 Part 8, item 2 ("Transitions on Native are rough/blocky"): the window transitions (LitePoint, litepoint60.js and
 // litepoint.h) recorded frame by frame (ffmpeg x11grab, 60 frames a second) on Chromium mode (Playwright's Chromium on the
 // screen, kiosk) and on Native, Notepad opened from its pin, minimized and restored with it, and compared:
-//  N1. at rest, Native's frame has its rounded corners (its X shape: GDK set none on a frame, a window it did not make);
+//  N1. at rest, Native's frame is whole (no X shape left from a transition: its corners keep their resize grips);
 //  N2. opening, the window is never shown whole in one frame (it showed whole at once, the light drawn around it);
 //  N3. minimizing and restoring with its taskbar button: never whole in one frame either (it vanished whole, and came back
 //      whole for a frame or two before the transition);
@@ -68,7 +68,7 @@ async function native() {
   fs.writeFileSync(path.join(OUT, 'trans163.json'), JSON.stringify(M, null, 1));
   const s = M.std, n = M.nat, sum = o => o ? (o.err ? o.err : `${o.changed} frames changing in ${o.ms} ms, biggest ${o.biggest}, ${o.big_frames} big, still ${o.still_run}`) : '-';
   for (const k of ['open', 'min', 'res']) console.log(`  ${k}: Chromium ${sum(s[k])} | Native ${sum(n[k])}`);
-  ok('N1. at rest, Native\'s frame has its rounded corners (an X shape: ' + n.rest + ')', n.rest && n.rest != 'none' && n.rest != 'err' && n.rest != 'no window', n.rest);
+  ok('N1. at rest, Native\'s frame is whole, nothing of a transition\'s shape left (' + n.rest + ')', /^(none|522x362\+0\+0)$/.test(n.rest || ''), n.rest);
   ok('N2. opening, the window is never shown whole in one frame (biggest change ' + (n.open || {}).biggest + ' of its box)', n.open && n.open.biggest < .6, n.open);
   ok('N3. minimizing and restoring with its taskbar button: never whole in one frame either (biggest ' + (n.min || {}).biggest + ', ' + (n.res || {}).biggest + ')', n.min && n.res && n.min.biggest < .6 && n.res.biggest < .6, {min: n.min, res: n.res});
   const st = (n.lpstat || []).filter(a => /^(c2c|min|min<)$/.test(a[0]));

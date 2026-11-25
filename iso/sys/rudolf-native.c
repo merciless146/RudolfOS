@@ -2852,8 +2852,8 @@ static void btn_rects(Client *c, int r[3][4])
 }
 /* the frame's outline: round corners (X's shape: no compositor needed) */
 /* 1.6.3 Part 8, item 2 ("Transitions on Native are rough/blocky"): GDK does not shape a window it did not make (a foreign one, as the frames
-   are: gdk_window_shape_combine_region set nothing on them, measured with xwininfo -shape), so no frame ever had its rounded corners or a
-   transition's part of the window (a window opening showed whole at once, the light drawn around it). X's own SHAPE request, from libXext,
+   are: gdk_window_shape_combine_region set nothing on them, measured with xwininfo -shape), so no transition showed only its part of the
+   window (a window opening showed whole at once, the light drawn around it). X's own SHAPE request, from libXext,
    which GTK has loaded (taken as libXcomposite is, without a new library to link); GDK's call kept where it is not there */
 typedef int (*XShRects)(Display *, Window, int, int, int, XRectangle *, int, int, int);
 static XShRects xshape_fn(void)
@@ -2878,6 +2878,9 @@ static void frame_shape(Client *c)
 	/* (1.6.0 Part 17: during a window transition only the part of it the scene shows: X's shape again, no compositor) */
 	if (c->lpclip) { int x0 = (int)floor(c->lpcr.x - c->x), y0 = (int)floor(c->lpcr.y - c->y), x1 = (int)ceil(c->lpcr.x + c->lpcr.w - c->x), y1 = (int)ceil(c->lpcr.y + c->lpcr.h - c->y), none = c->lpcr.w < .5 || c->lpcr.h < .5;
 		cairo_rectangle_int_t rc = { x0, y0, none ? 0 : x1 - x0, none ? 0 : y1 - y0 }; cairo_region_intersect_rectangle(rg, &rc); }
+	/* (at rest the frame stays whole, as it was in fact: the rounded corners cut by X's shape would also cut its corners' resize grips,
+	   which the page's and native59_t.sh's corner drag take 2 px from the corner; only a transition's part of the window is shaped) */
+	if (!c->lpclip) { cairo_region_destroy(rg); cairo_rectangle_int_t all = { 0, 0, fw, fh }; rg = cairo_region_create_rectangle(&all); }
 	if (!xshape_set(c->frame, rg) && g) gdk_window_shape_combine_region(g, rg, 0, 0); cairo_region_destroy(rg); if (g) g_object_unref(g);
 }
 /* (the owner's photo) Settings › Accessibility › Color vision, which the page puts on the whole screen (base_v24.html applyCB: html's
@@ -6830,7 +6833,7 @@ static int lp_start(Client *c, int kind, int back, const LPGeo *g, int max_on)
 	LPRun *R = NULL; for (int r = 0; r < LP_RUNS; r++) if (!LPR[r].on) { R = &LPR[r]; break; } if (!R) return 0;
 	memset(R, 0, sizeof *R); R->on = 1; R->kind = kind; R->back = back; R->c = c; R->g = *g; R->max_on = max_on; R->t0 = g_get_monotonic_time(); LP_LAST = R;
 	if (c) { LPScene sc; lp_scene(kind, back ? 1 : 0, g, &sc); c->lpclip = sc.clip; c->lpcr = sc.cr; frame_shape(c); desk_shadows(); }   /* (its first moment at once; its shadow with it) */
-	if (!LP_TICK) LP_TICK = g_timeout_add_full(G_PRIORITY_HIGH, 16, lp_tick, NULL, NULL);   /* (1.6.3 Part 8, item 2: before the other work waiting, a page loading, so no frame is late) */
+	if (!LP_TICK) LP_TICK = g_timeout_add(16, lp_tick, NULL);
 	state_write(); return 1;
 }
 static int lp_viewable(Client *c, LPRect *r)
