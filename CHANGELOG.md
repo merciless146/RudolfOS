@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Changed: Make a Rudolf OS USB stick is in Settings › Storage and backup's Backup part (Update and recovery links to it):
+  it says in plain words what each choice puts on the stick, refuses a stick too small for the chosen image before
+  anything is written, shows the step and the time left, and at the end what was checked and that the stick can be removed.
 - New: each of Oracle's tabs says in its tooltip how much memory it uses (its process's, as Task Manager counts it, with the
   frames of other sites it holds said apart; "shares a process with 2 other tabs" when it does; none for a freed tab 💤),
   measured when the tooltip opens and while it shows; the same on Chromium and Native, and Lite says what WebKit lets it know
