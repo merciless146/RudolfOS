@@ -192,7 +192,7 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   written by the desktop's page when it next starts (mmEnsure), and a removed plugin's launcher stays until then; Emu and Flash
   Player open as the Start menu opens them (asking to install or enable a plugin that is not ready); the firewall's check of a new
   Ruffle address is the page's alone.
-- **PR 5 (in progress, branch `native-settings-6`, based on PR 4's `native-settings-5` for its helpers): Display Properties.** What the
+- **PR 5 (branch `native-settings-6`): Display Properties.** What the
   page is, read from it (the probe of 2026-11-24): about 2,600 px. Its first .r2 has Dynamic Backgrounds and Static Backgrounds
   (base_v24.html dispPanelS: the .dynb buttons in a 4-column grid, 8 px apart, 2 px border, radius 8, the accent's ring when chosen;
   .dth thumbnails 'center/cover' from DYN's tl/td, which the built page holds as a/*.jpg). Then Appearance (dm, its .dmi line at 12 px
@@ -213,7 +213,29 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   in Settings' index is: `node iso/qt/shell2/setsearch59_t.js --write` also writes desktop/settings-disp.json (DKEYS, DEFS.disp,
   ACMODES, ST_NAMES and the accent of each statue, DYN's names and thumbnails as the built page names them), and mksettings.py reads
   that file.
-- **Left:** Display (PR 5, the memory with Display open); Network, Mobile network, Bluetooth, Oracle, Remote; Devices, Storage,
+- **PR 5, done (2026-11-25, scheduled task): Display Properties** (`settings_disp.c`). Every section of the page:
+  - the backgrounds' thumbnails (the page's own a/*.jpg; a WebP one through libwebp);
+  - Appearance, Northern lights, the Spirit Falls statue, Background style;
+  - Picture: From this computer… kept as wpUse keeps it, in IndexedDB rudolfos/kv "wp:ID" through rudolfd's idbm/put, with
+    bd95wpids:ACCT; Remove; Position;
+  - Color 1 / Color 2, Font, Font size, the text colours, Icon size;
+  - Lock and sign-in screen: bd95sys.lk, at once for an administrator, and its picture bd95lkpic;
+  - Taskbar, Title bars, Colours and theme (the accent colour, its swatches, where it is used), Night light;
+  - Screen: scaling and rotation in the working copy; resolution and frame rate from rudolfd's screen, with their own confirmed Apply;
+  - Graphics (display?mode=), Screen saver (bd95sys, at once), Tablet mode (kept at once), Displays.
+  Its footer covers DKEYS as the live page has them. desktop/settings-disp.json is written by setsearch59_t.js --write with the
+  keys, the defaults, the drop-downs and the thumbnails.
+  Against the web one: every view under 2 % in light, dark, light-green and dark-pink, at the top, eight places on the way down and
+  the end (0.54-1.87 %); Search the same 67 rows; the checklist D1-D7; memory with Display open 16.0 MB RssAnon (the web
+  Settings 73.9 MB). The test's rudolfd now answers screen and display.
+  **Known differences (PR 5):**
+  - Choose from my files… (the page's own drive C:, in its storage) says so instead.
+  - The lock screen's Preview (the page's overlay).
+  - The icon style preview's eight icons (icSvg); the title bar styles' own looks in the preview (each drawn in the accent colour).
+  - The screen saver's moving preview and Preview.
+  - Displays' arrangement for two or three monitors (screen/arrange); one display is said as the page says it.
+  - Changes before Apply show in Settings only.
+- **Left:** Network, Mobile network, Bluetooth, Oracle, Remote; Devices, Storage,
   Apps, Notifications; Privacy, Security, System health, Users; the switch.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in
