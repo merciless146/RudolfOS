@@ -2857,6 +2857,37 @@ static void tag_procs(struct pinfo *ps, int n)
 		for (int k = 0; k < 8 && q; k++) { q = pfind(ps, n, q->ppid); if (q && q->tag && !strcmp(q->tag, "webwindow") ) { p->tag = "webwindow"; break; } }
 	}
 }
+/* (1.6.3, docs/plan-1.6.3.md Part 4) each Oracle tab's process, for its tooltip, from Oracle's own Chromium (Native, the encrypted
+   setting, Tor windows): each of its rudolf-launch writes /run/user/1000/rudolf-tabmem-oPID.json ({time, ftime, frames, mem}), passed on
+   as "oframes": [...] while that rudolf-launch runs. (The desktop's Chromium's are in "pages".) */
+/* one JSON object and nothing after it: brackets balanced outside strings, none closed below its first level before the end */
+static int procs_one_object(const char *b)
+{
+	int depth = 0, instr = 0; const char *p = b;
+	for (; *p; p++) {
+		if (instr) { if (*p == '\\' && p[1]) p++; else if (*p == '"') instr = 0; continue; }
+		if (*p == '"') instr = 1; else if (*p == '{' || *p == '[') depth++;
+		else if (*p == '}' || *p == ']') { if (--depth < 0) return 0; if (!depth) return p[1] == 0; }
+		else if ((unsigned char)*p < 0x20 && *p != ' ' && *p != '\n') return 0;
+	}
+	return 0;
+}
+static void procs_oracle_frames(str *s)
+{
+	DIR *d = opendir("/run/user/1000"); if (!d) return;
+	struct dirent *e; int n = 0;
+	sadd(s, ",\"oframes\":[");
+	while ((e = readdir(d)) && n < 8) {
+		int pid = 0; char tail[8] = "";
+		if (sscanf(e->d_name, "rudolf-tabmem-o%d.%7s", &pid, tail) != 2 || pid <= 1 || strcmp(tail, "json")) continue;
+		{ char cp[64]; snprintf(cp, sizeof cp, "/proc/%d/comm", pid); char *c = slurp(cp, NULL); int live = c && !strncmp(c, "rudolf-launch", 13); free(c);
+		  if (!live) continue; }   /* (its rudolf-launch has gone: no signal is sent, the request stays narrow) */
+		char path[300]; snprintf(path, sizeof path, "/run/user/1000/%.200s", e->d_name);
+		char *b = slurp(path, NULL); if (b && b[0] == '{' && strlen(b) < (1 << 20)) { trim(b); if (procs_one_object(b)) { sadd(s, "%s%s", n ? "," : "", b); n++; } }
+		free(b);
+	}
+	closedir(d); sadd(s, "]");
+}
 static void api_processes(struct req *r)
 {
 	struct pinfo *ps = calloc(MAXP, sizeof *ps); if (!ps) { reply_err(r->fd, 500, "out of memory"); return; }
@@ -2895,6 +2926,7 @@ static void api_processes(struct req *r)
 	char *pg = slurp("/run/user/1000/rudolf-tabmem.json", NULL);
 	if (pg && pg[0] == '{') { trim(pg); sadd(&s, ",\"pages\":%s", pg); }
 	free(pg);
+	procs_oracle_frames(&s);   /* (1.6.3: Oracle's own Chromium's tabs, each tab's process) */
 	sadd(&s, "}");
 	write_str(RUN "/procs.prev", nx.b ? nx.b : ""); free(nx.b); free(prev); free(ps);
 	reply_json(r->fd, &s);
