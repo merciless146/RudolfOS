@@ -20055,7 +20055,10 @@ if(ONEAPP&&typeof BroadcastChannel=='function'){const FSB=new BroadcastChannel('
   const sys=await kvGet('fs:system');
   if(sys&&isDir(sys['C:'])){const C=fs['C:'],S=sys['C:'];for(const k of Object.keys(C))if(k!='USERS'&&!(k in S))delete C[k];for(const k in S)if(k!='USERS')C[k]=S[k];
    for(const k of Object.keys(fs))if(k!='C:'&&!(k in sys))delete fs[k];for(const k in sys)if(k!='C:')fs[k]=sys[k]}
-  if(USER.r!='guest'&&HOME&&!HOMELOCKED){const rec=await kvGet('home:'+uid());let o=null;
+  /* (1.6.3 Part 8, item 4) an account whose files are on the disk (home56.js): read again from the disk, where the other page wrote them;
+     the browser's storage holds only its copy from before the move (kept 7 days), which put the old files back in every window */
+  const hd=typeof hdOn=='function'&&hdOn();if(hd)try{await HD.chain;await hdRefresh()}catch(e){}
+  if(!hd&&USER.r!='guest'&&HOME&&!HOMELOCKED){const rec=await kvGet('home:'+uid());let o=null;
    if(rec&&rec.ct&&KEY)o=JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:rec.iv},rec.k=='f'?KEY:(PKEY||KEY),rec.ct)));else if(rec&&rec.plain)o=JSON.parse(rec.plain);
    if(o&&isDir(o)){for(const k of Object.keys(HOME))delete HOME[k];Object.assign(HOME,o)}}
   OA_FSIN=1;try{EXPL.forEach(f=>{try{f()}catch(x){}})}finally{OA_FSIN=0}}catch(e){console.warn('one-app: the files again',e)}}
@@ -20386,7 +20389,7 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
        reads, the catalogue given; only the page stays) */
     const fin=m=>{(async()=>{try{if(OA_QST)await OA_QST}catch(e){}try{fsFlush()}catch(e){}
      try{if(typeof HD!='undefined'&&HD.chain)await Promise.race([HD.chain,new Promise(r=>setTimeout(r,8000))])}catch(e){}
-     try{if(window.__rudolfLsFlush)await window.__rudolfLsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},m||{}))})()};
+     try{if(window.__rudolfLsFlush)await window.__rudolfLsFlush()}catch(e){}try{await oaCatSoon()}catch(e){}oaPost(Object.assign({op:'done'},m||{}))})()};
     /* (what it took, for the tests: OA.doLog) */
     const took=()=>{(OA.doLog||(OA.doLog=[])).push(da);return 1};
     try{if(da=='nc'&&q.get('op')=='why')return 0;if(da=='desk'){oaDesk(q,fin);return took()}if(da=='fs'&&/^(drop|rename|xdrop)$/.test(q.get('op')||'')){oaFs(q,String(file||''),fin);return took()}if(oaAct(da,q,fin,1))return took()}
@@ -20482,13 +20485,13 @@ function oaSvcRun(){
       icon, then its Rename, which the shell draws (op "done" with ask "rename", as oaDesk reports it) */
    window.__oaDeskNew=dir=>{let asked=null;const _rd=renameDlg;renameDlg=p=>{asked=p};
     try{deskNew(dir?1:0)}catch(e){console.warn('svc: new',e)}
-    setTimeout(async()=>{renameDlg=_rd;try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}
+    setTimeout(async()=>{renameDlg=_rd;try{fsFlush()}catch(e){}try{await oaCatSoon()}catch(e){}
      oaPost(Object.assign({op:'done'},asked&&asked.length?{ask:'rename',file:asked.join('\\'),name:String(asked[asked.length-1])}:{}))},80);return 1};
    /* (and the shell's Rename dialog's answer, as oaFs's rename: renameDlg's checks and messages) */
    window.__oaRename=(f,to)=>{let r={ok:1};try{const p=resolve(String(f||''),['C:']),nv=String(to||'').trim().toUpperCase(),d=dirOf(p);
      if(!d||!(p.at(-1) in d))r={err:'The file is not there any more.'};else if(!validName(nv))r={err:'That name is not allowed.'};else if(nv!=p.at(-1)&&nv in d)r={err:'That name is already used.'};
      else{const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f())}}catch(e){r={err:String(e&&e.message||e)}}
-    (async()=>{try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},r))})();return 1};
+    (async()=>{try{fsFlush()}catch(e){}try{await oaCatSoon()}catch(e){}oaPost(Object.assign({op:'done'},r))})();return 1};
    oaPost({op:'svc',ready:'1'});}
 /* (the portal's page's part: #app=do-portal, or the hidden page's) */
 function oaPortalRun(){const opens=r=>r.kind=='openfile'||r.kind=='folder'||(r.kind=='url'&&/^(mailto|file):/i.test(String(r.uri||'')));
@@ -20539,6 +20542,9 @@ function oaAct1(da,q,fin,bg){
    gives the page's own menu for that desktop icon (its name, or a file's name; none: the desktop's) and chooses the item
    with those words, as a click would. What opens a window is that window; what has none is done unseen and the page
    closes; the page's own dialogs that the shell draws itself (Rename, Open with) are reported to it instead. */
+/* (the hidden page's actions: told done once the catalogue is given; deskquick63.js tells it done once the desktop's icons are, the
+   catalogue following) */
+function oaCatSoon(){return oaCatalog()}
 function oaFin(m){(async()=>{try{if(OA_QST)await OA_QST}catch(e){}try{fsFlush()}catch(e){}try{await oaCatalog()}catch(e){}oaPost(Object.assign({op:'done'},m||{}));oaDone()})()}
 function oaDesk(q=ONEAPP.q,fin=oaFin){const on=q.get('on')||'',item=(q.get('item')||'').trim(),D=document.getElementById('desk');
  const el=on?[...D.querySelectorAll(':scope > .ic')].find(e=>(e.dataset.fn||((e.querySelector('span')||{}).textContent||'').trim())==on):null;
@@ -20655,7 +20661,7 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   await Promise.all(apps.filter(a=>APPS[a.k]&&typeof APPS[a.k].img=='function').map(async a=>{const ik=await own(a.k);if(ik)a.ic=ik}));
   /* (1.6.0 Part 12, item 1) the desktop's icons as this account sees them (the shortcuts, not the files yet), their
      places (bd95cells:ID) and the icon size, for the native shell's desktop */
-  const desk=[];try{const D=document.getElementById('desk');if(D&&typeof icTarget=='function')for(const d of D.querySelectorAll(':scope > .ic')){
+  const desk=[],dt=Date.now();try{const D=document.getElementById('desk');if(D&&typeof icTarget=='function')for(const d of D.querySelectorAll(':scope > .ic')){
    if(d.style.display=='none')continue;
    /* (1.6.0 Part 12, item 1's second part) the files and folders in the Desktop folder: their names, pictures, places */
    if(d.classList.contains('fic')){const im=d.querySelector('img.ico'),e=im?im.dataset.emo||'':((d.querySelector('b')||{}).textContent||'').trim(),fn=d.dataset.fn,v=(deskFiles()||{})[fn];
@@ -20687,7 +20693,7 @@ async function oaCatalog(){if(typeof RD=='undefined'||!RD||!USER)return;
   const sndp={};try{if(typeof SNDS=='object'&&typeof PAT=='object')for(const [k] of SNDS)sndp[k]=(typeof SPRE=='object'&&SPRE[k]?SPRE[k].map(x=>x[1]||PAT[k]):[PAT[k]]).map(p=>(p||[]).map(oaTone))}catch(e){}
   /* (1.6.1 Part 28) the places of icons just dropped or pasted (bd95place), which the shell takes over its own */
   const place=typeof dkPlaceFresh=='function'?dkPlaceFresh():null;
-  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,cells,place,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}));OA_CSIG=sig
+  await rdPost('desktop/apps',JSON.stringify({apps,bg,fx,hide,icons,desk,dt,cells,place,menu,jumps,sndp,is:+S.is||100,ver:typeof RVER!='undefined'?String(RVER):'',acct:uid()}));OA_CSIG=sig
   /* (2026-11-17, the owner's Vivobook: icons minutes late on Native) the native log says when giving the catalogue took long on this computer */
   {const ms=Math.round(performance.now()-t0);if(ms>3000)console.warn('desktop/apps given after '+ms+' ms')}}catch(e){console.warn('desktop/apps',e)}}
 /* (N12) the statue changes with the accent colour, its glow's rule and light or dark: given again, and the native shell told */
@@ -21067,6 +21073,48 @@ if(ONEAPP&&oaNative()){const _c=oaCatalog;oaCatalog=async function(){const g=OA_
 /* (the hidden page: another window's saved settings taken in, the catalogue given again and the shell told) */
 if(OA_BG){let t=0;const _sa=oaSetApply;oaSetApply=function(){const r=_sa.apply(this,arguments);
  clearTimeout(t);t=setTimeout(()=>{if(!USER||OA.done)return;oaCatalog().then(()=>{if(!OA.done)oaPost({op:'cat'})}).catch(()=>{})},800);return r}}
+
+__svcMod("deskquick63.js");
+/* ===== Rudolf OS 1.6.3 (docs/plan-1.6.3.md Part 8, item 4): the native desktop's icons at once =====
+   "Desktop icon removal/changes still take several minutes on Native." The native shell drew the desktop's icons only from the whole
+   catalogue a page gives (oneapp59.js oaCatalog: every app's picture drawn as a PNG, the start menu's rows with their styles, the
+   statue, the sounds), which a busy computer took minutes to make and send (the owner's Vivobook, 2026-11-22: 192 s while Steam
+   started). Each time a page of the native desktop gives the catalogue, it first gives the shell just the desktop's icons (op "desk":
+   their names, kinds, pictures' keys, places and the icon size, and "dt", when they were read), drawn at once; the catalogue that
+   follows carries the same "dt", and the shell draws its icons only when they are as new (rudolf-native.c desk_quick). The pictures'
+   keys are the ones the catalogue gives (EMO2IC's, a program's own oaImgKey), whose pictures the shell has from before; one it does
+   not have yet is drawn as its emoji until the catalogue brings it. As the catalogue, after the apps rudolfd knows are in
+   (oaAppsReady), so a window that has not got them yet never takes their icons away. ===== */
+const OA_DQ={last:'',n:0};
+async function oaDeskQuick(){if(!ONEAPP||typeof oaNative!='function'||!oaNative()||!USER||typeof RD=='undefined'||!RD||OA.done)return;
+ try{await oaAppsReady()}catch(e){}if(!USER||OA.done)return;
+ /* (an app's window gives nothing that is what was given last, as its catalogue: lean61.js) */
+ try{if(typeof OA_LEAN!='undefined'&&OA_LEAN&&oaLeanSig()===oaCatSigSaved())return}catch(e){}
+ const dt=Date.now(),key=e=>typeof EMO2IC=='object'&&S.icons!=='emoji'?EMO2IC[e]||EMO2IC[e.replace(/️/g,'')]||'':'';
+ const desk=[];try{const D=document.getElementById('desk');if(D&&typeof icTarget=='function')for(const d of D.querySelectorAll(':scope > .ic')){
+  if(d.style.display=='none')continue;const im=d.querySelector('img.ico'),e=im?im.dataset.emo||'':((d.querySelector('b')||{}).textContent||'').trim();
+  if(d.classList.contains('fic')){const fn=d.dataset.fn,v=(deskFiles()||{})[fn];desk.push({n:fn,k:'',kind:isDir(v)?'dir':'file',ic:key(e),icon:e,cell:'file:'+fn,fp:homePath('DESKTOP').concat(fn).join('\\')});continue}
+  const T=icTarget(d),k=T.k&&APPS[T.k]?T.k:'',own=k&&typeof APPS[k].img=='function'&&typeof oaImgKey=='function'?oaImgKey(k):'';
+  desk.push({n:T.name,k,kind:d.classList.contains('tr')?'trash':T.kind,full:d.classList.contains('full')?1:0,own:d.classList.contains('dapp')?1:0,ic:own||key(e),icon:e,cell:d.dataset.n||T.name})}}catch(e){console.warn('desk at once',e);return}
+ let cells={};try{cells=JSON.parse(localStorage.getItem(typeof cellKey=='function'?cellKey():'bd95cells')||'{}')}catch(e){}
+ const place=typeof dkPlaceFresh=='function'?dkPlaceFresh():null,body={acct:uid(),is:+S.is||100,desk,cells,place};
+ const j=JSON.stringify(body);if(j===OA_DQ.last)return;OA_DQ.last=j;OA_DQ.n++;
+ oaPost({op:'desk',j:JSON.stringify(Object.assign(body,{dt}))})}
+let OA_DQP=null;
+if(ONEAPP&&typeof oaCatalog=='function'){const _c=oaCatalog;oaCatalog=function(){try{OA_DQP=oaDeskQuick()}catch(e){OA_DQP=null}return _c.apply(this,arguments)}}
+/* (the hidden page's actions, oneapp59.js oaCatSoon: done once the desktop's icons are given, not after the whole catalogue, which a busy
+   computer gave minutes later while the next action waited for this one; the catalogue goes on, and the shell is told when it is in) */
+if(ONEAPP&&typeof oaCatSoon=='function'){oaCatSoon=function(){const p=oaCatalog(),q=OA_DQP||Promise.resolve();p.then(()=>{if(!OA.done)oaPost({op:'cat'})}).catch(()=>{});
+ return Promise.race([p,q.then(()=>new Promise(r=>setTimeout(r,50)))])}}
+window.__oaDeskQuick=()=>({n:OA_DQ.n});
+/* (and the files of an account on the disk, home56.js, in every window as they are on the disk: a page that saved tells the others
+   (oneapp59.js's "rudolf-fs" channel), which read the disk again; a page still signing in when told, or told before its files were
+   loaded, reads them once it is signed in. Before, a window showed the files it loaded, or the browser's copy from before the move,
+   until its next look 15 s on, and gave the desktop's icons from that: the others' new icons went and came back) */
+if(ONEAPP&&typeof BroadcastChannel=='function'&&typeof hdRefresh=='function'){const ch=new BroadcastChannel('rudolf-fs');let want=0,t=0;
+ const go=()=>{clearTimeout(t);t=setTimeout(async()=>{if(!USER||typeof hdOn!='function'||!hdOn()||typeof FSLOADED=='undefined'||!FSLOADED){want=1;return}want=0;try{await HD.chain;await hdRefresh()}catch(e){}},250)};
+ ch.onmessage=e=>{const m=e.data||{};if(USER&&m.id&&m.id!=uid())return;go()};
+ {const _ul=userLogin;userLogin=async function(){const r=await _ul.apply(this,arguments);setTimeout(()=>{if(want||(typeof hdOn=='function'&&hdOn()))go()},1500);return r}}}
 
 __svcMod("tbprog61.js");
 /* ===== Rudolf OS 1.6.1 (docs/plan-1.6.1.md Part 25; the owner, 2026-11-21): progress on a minimized window's taskbar button =====

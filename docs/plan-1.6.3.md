@@ -480,6 +480,24 @@ unless the item is Native's own (then Native is made to match Chromium, never th
 4. **Desktop icons are slow on Native.** "Desktop icon removal/changes still take several minutes on Native." A desktop
    icon removed, renamed, added or changed shows within a second on Native, as on Chromium; find what Native waits for
    (a poll, a watch, the hidden page's sync) and measure before and after.
+   - **Status (2026-11-25, scheduled task): fixed** (PR "Desktop icons at once on Native"). Measured with
+     `iso/qt/native/deskicons163_t.js` (nine changes, each timed from the action to the shell drawing it). With the test's
+     files in the browser's storage everything showed in 0.05-0.5 s; the owner's minutes came from two things the owner has
+     and the test did not:
+     1. **An account whose files are on the disk** (home56.js; the test's stand-in rudolfd now keeps such homes:
+        same_rd.py `home/*`, DIR/diskhome). A page told that another saved (oneapp59.js oaFsReload) took the account's files
+        from the browser's storage, which holds only its copy from before the move to the disk: every window showed the
+        old desktop files, and the desktop's icons it gave took the others' new ones away until a window looked at the disk
+        again (15 s on, if shown). Now such a page reads the disk again; one told while still signing in reads it once
+        signed in (deskquick63.js).
+     2. **A busy computer**: the shell drew the icons only from the whole catalogue (every app's picture drawn again, the
+        start menu, the statue, the sounds), which the Vivobook's hidden page gave 192 s late while Steam started
+        (rudolf-native.c's note of 2026-11-22), and the hidden page's next action waited for it (its "done" came after the
+        catalogue). Now a page gives the shell the desktop's icons at once (op "desk", desk_quick: their names, kinds,
+        pictures' keys, places, size, and when they were read, "dt"), the catalogue follows with the same "dt" and is drawn
+        over them only when as new; the hidden page's actions are done once the icons are given.
+     **Test:** the account on the disk and each picture 500 ms late (about 20 s a catalogue): **before 3/12, changes 3.5 to
+     37 s; after 12/12, 0.02 to 0.9 s**; as before (files in the browser's storage) 11/11 both; appsbeh_t.js 27/27.
 5. **Make a stick refined, moved to Backup.** "'Make a stick' needs further refinement and to be moved from
    update/recovery to backup settings." Settings › Backup gains "Make a stick" (Update and recovery keeps a link to it
    while people learn the new place; Search in Settings finds it there); refined: the stick's size and model shown, the
