@@ -474,6 +474,23 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    minimize, restore, maximize, the Start menu, menus, pop-ups, LitePoint) drawn smoothly as Chromium's: measured frame
    by frame against Chromium mode (frames dropped, steps visible, the animation's length), on the Vivobook's integrated
    graphics as well as without acceleration; the soft-drawing mode kept for weak machines.
+   - **Status (2026-11-25, scheduled task): fixed what was measured** (PR "Native's transitions drawn as Chromium's"). Recorded
+     frame by frame (`iso/qt/native/trans163_t.js`: ffmpeg x11grab at 60 frames a second, Notepad opened from its pin,
+     minimized and restored, Chromium mode and Native under Xvfb, the soft drawing). Found: **GDK sets no X shape on a window
+     it did not make**, as the frames are (frame_shape's gdk_window_shape_combine_region did nothing; xwininfo -shape: "No
+     window shape defined"), so on Native no frame had its rounded corners and no transition showed part of a window: an
+     opening window appeared whole in one frame (72 % of its box changing at once) with the light drawn around it, and
+     minimizing and restoring made it vanish and appear whole. Now X's SHAPE request itself (XShapeCombineRectangles from the
+     libXext GTK has loaded, as libXcomposite is taken); an app's window opening, and a window restored from its taskbar
+     button, is given its first moment before it is shown; its shadow (drawn on the desktop) waits until it is whole, as the
+     page's clip-path cuts its box-shadow; the transitions' frames go before other waiting work (a page loading). Each
+     transition's frames are counted by the shell (state "lpstat", RUDOLF_LP_LOG=1 in the log). **Before 2/5, after 5/5:**
+     opening's biggest single-frame change 0.72 → 0.40 of the box (Chromium mode 0.32-0.66 under Xvfb), minimizing 0.72 →
+     0.39, restoring 0.72 → 0.44; 13-15 frames each 240 ms transition, no gap over 50 ms; same_t.js title bars closer to
+     Chromium (0.37 → 0.31 % and 0.41 → 0.34 % of the pixels differing: the rounded corners); titlebeh_t.js 16/16. **Not
+     measured here:** the Vivobook's graphics (with acceleration), the start menu's and menus' transitions (their windows draw
+     their own clip, unchanged), and the light's own drawing (the lines and points are small windows without see-through,
+     there being no compositor): the owner's checklist.
 3. **Xbox Cloud Gaming and GeForce NOW don't respond.** "Xbox gaming and GeForce apps do not respond when clicked."
    (desktop/game51.js: each opens in Oracle.) Clicking either in the Start menu, the Games tab, a pin or the desktop
    opens it, on every desktop engine (Lite: in Chromium if WebKit can't play them, said plainly); a test for each place.

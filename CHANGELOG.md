@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Fixed: on Native, windows have their rounded corners, and opening, minimizing and restoring a window draw it filling out and
+  clearing as in Chromium mode; before, a window appeared or vanished whole at once with the light drawn around it.
 - New: each of Oracle's tabs says in its tooltip how much memory it uses (its process's, as Task Manager counts it, with the
   frames of other sites it holds said apart; "shares a process with 2 other tabs" when it does; none for a freed tab 💤),
   measured when the tooltip opens and while it shows; the same on Chromium and Native, and Lite says what WebKit lets it know
