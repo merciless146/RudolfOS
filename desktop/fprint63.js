@@ -6,7 +6,14 @@
    Step 2: User Settings › Sign-in options › Fingerprints: the account's own (added with its password: a finger chosen,
    then the reader's scans shown as they come; removed), and for an administrator every other account's (Fingerprints…:
    the administrator's prompt; adding needs that account's files open and its owner's finger on the reader). A reader
-   libfprint does not support is named plainly; with none the row says so. Guest has none. ===== */
+   libfprint does not support is named plainly; with none the row says so. Guest has none.
+   Step 3: the lock screen (core25.js lockScreen's __lockOpened) and the administrator's prompt (elevate's __elevOpened)
+   take a finger of the account signed in, the password always still: "Or put your finger on the reader" while rudolfd
+   says one is taken (signed in with the password since the start; fewer than five not recognised). After a finger the
+   authenticator app's code is still asked (otpCheck, the secret opened with the password's key the session holds, as
+   after the password); an account with security keys is asked its password (its key's step needs it). A right password
+   tells rudolfd (fp/password), which counts the fingers again. In a prompt whose answer rudolfd checks itself ({cred:1})
+   the finger's one-time answer goes in place of the password ("fp:" and fp/verify's "t"). Lite runs this same page. ===== */
 const FP_FINGERS=[['right-index','Right index finger'],['left-index','Left index finger'],['right-thumb','Right thumb'],['left-thumb','Left thumb'],
  ['right-middle','Right middle finger'],['left-middle','Left middle finger'],['right-ring','Right ring finger'],['left-ring','Left ring finger'],
  ['right-little','Right little finger'],['left-little','Left little finger']];
@@ -75,3 +82,31 @@ function fpRow(c){const row=document.createElement('div');row.className='r2 fpse
  c.appendChild(row);fpDraw(USER,box)}
 if(typeof usrPanelS=='function'){const _ufp=usrPanelS;usrPanelS=function(c,W){const r=_ufp.apply(this,arguments);try{if(USER&&USER.r!='guest'&&RD){
  const fr=c.querySelector('.fidorow'),pk=c.querySelector('.pka'),host=fr?fr.parentElement:pk&&pk.closest('.r2')?pk.closest('.r2').parentElement:c;fpRow(host)}}catch(e){console.warn('fprint63',e)}return r}}
+/* ---- step 3: the lock screen and the administrator's prompt ---- */
+const FP_PK={fp:1};   /* (otpCheck's "password" after a finger: the secret opened with the session's password key) */
+if(typeof otpSecret=='function'){const _os=otpSecret;otpSecret=async function(a,pw){return pw===FP_PK?acDec(PKEY,a.otp):_os(a,pw)}}
+const fpKeyed=a=>!!(a&&a.fido&&a.fido.n);
+window.__lockPw=(a,pw)=>{if(!RD||!a||a.r=='guest'||!pw)return;fidoReq('fp/password',{n:a.n,p:pw}).catch(()=>{})};
+/* ask the reader until a finger matches (then win()), the dialog closes, or rudolfd says the password is needed */
+async function fpLoop(o,acct,purpose,line,win){const gone=()=>!document.body.contains(o);
+ const watch=setInterval(()=>{if(gone()){clearInterval(watch);fidoReq('fp/cancel',{}).catch(()=>{})}},500);
+ try{while(!gone()){let r;try{r=await fidoReq('fp/verify',{acct,for:purpose})}catch(e){r={status:0}}
+  if(gone())break;
+  if(r.ok){if(await win(r)===false)continue;break}
+  if(r.status==403&&r.left){line.textContent=`☝️ That finger was not recognised: try again (${r.left} ${r.left==1?'try':'tries'} left), or type the password.`;try{sfx('error')}catch(e){}continue}
+  if(r.status==408)continue;
+  if(r.status==409){await new Promise(z=>setTimeout(z,1000));continue}
+  line.textContent='☝️ '+(r.error||'The fingerprint reader is not available: type the password.');break}}
+ finally{clearInterval(watch)}}
+window.__lockOpened=async(o,x)=>{if(x.adminOnly||!USER||USER.r=='guest'||!RD||fpKeyed(USER))return;
+ const st=await fpStatus(USER.id);if(!st.ready||!document.body.contains(o))return;
+ const line=document.createElement('div');line.className='lkfp';line.style.cssText='font-size:13px;margin:6px 0';line.textContent='☝️ Or put your finger on the reader.';
+ const box=o.querySelector('.lkbox'),m=o.querySelector('.lkm');if(box&&m)box.insertBefore(line,m);else (box||o).appendChild(line);
+ fpLoop(o,USER.id,'unlock',line,async()=>{if(USER.otp&&typeof otpCheck=='function'&&!(await otpCheck(USER,FP_PK))){line.textContent='☝️ The code was not right: put your finger on the reader again, or type your password.';return false}
+  try{logEvt('sys',`${USER.n} unlocked with a fingerprint`)}catch(e){}x.done()})};
+window.__elevOpened=async(o,x)=>{const a=USER;if(!RD||!a||a.r!='admin'||fpKeyed(a))return;
+ const st=await fpStatus(a.id);if(!st.ready||!document.body.contains(o))return;
+ const line=document.createElement('div');line.className='elfp';line.style.cssText='font-size:13px;margin:6px 0';
+ const say=()=>{line.textContent=x.sel.value==a.n?`☝️ Or ${a.n} puts a finger on the reader.`:'☝️ A finger answers for the account signed in only: type the password.'};say();x.sel.addEventListener('change',say);
+ const m=o.querySelector('.rmmsg');if(m)m.parentElement.insertBefore(line,m);else o.querySelector('.rmbox').appendChild(line);
+ fpLoop(o,a.id,'admin',line,async r=>{if(x.sel.value!=a.n){say();return false}x.allow(a,r.t||'')})};

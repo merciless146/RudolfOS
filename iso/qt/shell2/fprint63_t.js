@@ -3,7 +3,10 @@
 // the test): no reader said plainly; a reader libfprint does not support named; an account whose files are not on the
 // disk; adding a finger (the password asked, the reader's scans shown as they come, the request carrying the account and
 // the password), removing one; an administrator's Fingerprints… for another account (the administrator's prompt, adding
-// only while that account's files are open); Guest has none; no page errors.
+// only while that account's files are open); Guest has none; (step 3) the lock screen and the administrator's prompt taking a
+// finger: not recognised, unlocked, the code still asked after it, none for an account with security keys or when rudolfd
+// says the password is needed, the password still unlocking (and told to rudolfd), a finger's one-time answer in place of
+// the password for rudolfd; no page errors.
 //   node fprint63_t.js [CHROME]   (build iso/www first; rudolfd's own side: iso/qt/host/fprint163_t.sh)
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const WWW = path.join(__dirname, '../../../iso/www');
@@ -16,17 +19,20 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   await p.addInitScript(() => {
     window.RUDOLFD = {token: 'x', base: '', boot: 'uefi', media: 'disk', live: 0, recovery: 0};
     // the stand-in rudolfd: T.reader (null, 'unsupported' or a name), each account's fingers, disk and open; T.stage the scans so far
-    window.T = {reader: null, fingers: {}, disk: {}, open: {}, stage: 0, calls: []};
+    window.T = {reader: null, fingers: {}, disk: {}, open: {}, stage: 0, calls: [], vq: [], pw: [], ready: null, pend: null};
     const f0 = window.fetch;
     window.fetch = async (u, o) => { u = String(u); const q = new URL(u, location.href), J = (x, st) => new Response(JSON.stringify(Object.assign({ok: !st}, x)), {status: st || 200, headers: {'content-type': 'application/json'}});
       const pth = q.pathname.replace('/api/', '');
       if (pth == 'fp/status') { const id = q.searchParams.get('acct');
         return J({helper: true, readers: T.reader && T.reader != 'unsupported' ? [{name: T.reader, driver: 'x', scan: 'press', stages: 5}] : [],
           unsupported: T.reader == 'unsupported' ? [{usb: '04f3:036b', name: 'ELAN Fingerprint Sensor'}] : [], disk: !!T.disk[id], open: !!T.open[id],
-          fingers: T.fingers[id] || [], signed: true, fails: 0, ready: !!(T.fingers[id] || []).length, why: ''}) }
+          fingers: T.fingers[id] || [], signed: true, fails: 0, ready: T.ready !== null ? T.ready : !!(T.fingers[id] || []).length, why: ''}) }
       if (pth == 'fp/progress') return J({stage: T.stage, of: 5, msg: T.stage < 5 ? 'Lift your finger and put it on the reader again.' : 'Done.'});
       if (pth.startsWith('fp/')) { const bd = JSON.parse(o.body || '{}'), w = pth.slice(3); T.calls.push({w, acct: bd.acct, n: bd.n, p: bd.p, finger: bd.finger, all: bd.all});
-        if (w == 'cancel') return J({});
+        if (w == 'cancel') { if (T.pend) { T.pend(J({code: 'cancelled', error: 'Cancelled.'}, 409)); T.pend = null } return J({}) }
+        if (w == 'verify') return await new Promise(res => { T.pend = res; const go = () => { if (T.pend !== res) return; const a = T.vq.shift(); if (!a) return setTimeout(go, 100); T.pend = null;
+          res(a == 'ok' ? J({acct: bd.acct, n: 'x', finger: 'right-index', t: bd.for == 'admin' ? 'ab'.repeat(16) : undefined}) : a == 'no' ? J({left: 4, error: 'That finger was not recognised.'}, 403) : J({need: 'password', why: 'tries', error: 'Too many fingers were not recognised: use your password.'}, 423)) }; go() });
+        if (w == 'password') { T.pw.push(bd.n); return J({}) }
         const a = ACCTS.find(x => x.n == bd.n); if (!a || !(await pwCheck(a, bd.p))) return J({error: 'Wrong password.'}, 403);
         if (w == 'enroll') { for (T.stage = 0; T.stage < 5; T.stage++) await new Promise(r => setTimeout(r, 400)); (T.fingers[bd.acct] = T.fingers[bd.acct] || []).push(bd.finger); return J({finger: bd.finger}) }
         if (w == 'remove') { T.fingers[bd.acct] = bd.all ? [] : (T.fingers[bd.acct] || []).filter(f => f != bd.finger); return J({}) } }
@@ -36,7 +42,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const q = s => p.evaluate(s);
   await q(`(async()=>{try{svj('bd95setup',1)}catch(e){}['oobe'].forEach(i=>{const o=document.getElementById(i);o&&o.remove()});
     ACCTS.length=0;ACCTS.push(await acctNew('boss','b1','admin'));ACCTS.push(await acctNew('kid','k1','user'));saveUser();USER=ACCTS[0];await userLogin(USER,'b1');
-    window.elevate=async(t,o)=>{window.__elev=t;return o&&o.cred?{n:'boss',p:'b1'}:true};
+    window.__elev0=elevate;window.elevate=async(t,o)=>{window.__elev=t;return o&&o.cred?{n:'boss',p:'b1'}:true};
     document.getElementById('login').style.display='none';return 1})()`);
   const me = await q('USER.id'), kid = await q('ACCTS[1].id');
   const open = async () => { await q("document.querySelectorAll('.win').forEach(w=>{try{w.querySelector('.xb')&&w.querySelector('.xb').click()}catch(e){}})"); await q("settings('usr')"); await wait(1200) };
@@ -78,6 +84,32 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('9. kid\'s files open: an administrator adds one (the administrator\'s prompt, the request with the administrator\'s name)', c2.some(c => c.w == 'enroll' && c.acct == kid && c.n == 'boss') && /Add a fingerprint \(kid\)/.test(ev || ''), [c2, ev]);
   ok('...listed in kid\'s dialog', /Right index finger/.test(await q("document.querySelector('.fpother .fpl').textContent")));
   await q("document.querySelector('.fpother .n').click()");
+  // ---- step 3: the lock screen and the administrator's prompt (the page's own elevate)
+  await q("document.querySelectorAll('.win').forEach(w=>{try{w.querySelector('.xb')&&w.querySelector('.xb').click()}catch(e){}});window.elevate=window.__elev0;T.ready=true;T.vq=[];T.calls=[]");
+  await q("lockScreen()"); await wait(800);
+  const lt = () => q("(document.querySelector('#lockov .lkfp')||{}).textContent||''");
+  ok('13. the lock screen: "Or put your finger on the reader" (a finger is taken now), the password box still there', /Or put your finger/.test(await lt()) && await q("!!document.querySelector('#lockov .lkp')"), await lt());
+  await q("T.vq.push('no')"); await wait(700);
+  ok('14. a finger not recognised: said, with the tries left; still locked', /not recognised.*4 tries left/.test(await lt()) && await q('LOCKED'), await lt());
+  await q("T.vq.push('ok')"); await wait(800);
+  ok('15. his finger: unlocked', await q("!LOCKED&&!document.getElementById('lockov')"));
+  await q("USER.otp={iv:'x',ct:'y'};window.__otpAsked=0;window.otpCheck=async(a,pw)=>{__otpAsked=pw===FP_PK?1:2;return false}");
+  await q("lockScreen()"); await wait(800); await q("T.vq.push('ok')"); await wait(800);
+  ok('16. two-step sign-in: after a finger the code is still asked (with the session\'s key, not a password); a wrong code: still locked', await q('__otpAsked==1&&LOCKED') && /code was not right/.test(await lt()), [await q('__otpAsked'), await lt()]);
+  await q("window.otpCheck=async()=>true;T.vq.push('ok')"); await wait(800);
+  ok('...the right code after the finger: unlocked', await q("!LOCKED"));
+  await q("delete USER.otp;USER.fido={n:1}"); await q("lockScreen()"); await wait(800);
+  ok('17. an account with security keys: no finger offered (its key needs the password)', !(await lt()) && await q('LOCKED'));
+  await q("delete USER.fido"); await p.focus('#lockov .lkp'); await p.keyboard.type('b1'); await p.keyboard.press('Enter'); await wait(1500);
+  ok('18. the password still unlocks, and tells rudolfd (the fingers counted again)', await q("!LOCKED") && JSON.stringify(await q('T.pw')).includes('boss'), await q('T.pw'));
+  await q("T.ready=false"); await q("lockScreen()"); await wait(800);
+  ok('19. rudolfd says no finger now (after a restart, five tries): none offered', !(await lt()));
+  await p.focus('#lockov .lkp'); await p.keyboard.type('b1'); await p.keyboard.press('Enter'); await wait(1500);
+  await q("T.ready=true;window.__ev=null;elevate('Change the date',{cred:1}).then(v=>window.__ev=v);1"); await wait(800);
+  const el = await q("(document.querySelector('.elfp')||{}).textContent||''");
+  ok('20. an administrator\'s prompt: a finger offered for the administrator signed in', /boss puts a finger/.test(el), el);
+  await q("T.vq.push('ok')"); await wait(900);
+  ok('...the finger: allowed; where rudolfd checks the password itself, its one-time answer goes in its place', JSON.stringify(await q('window.__ev')) == JSON.stringify({n: 'boss', p: 'fp:' + 'ab'.repeat(16)}), await q('window.__ev'));
   // ---- the account that is not an administrator, and Guest
   await q("USER=ACCTS[1]"); await open();
   ok('10. an account that is not an administrator sees only its own', await q("!!document.querySelector('.fpsec')&&!document.querySelector('.fpsec .fpo')"));

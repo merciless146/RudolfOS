@@ -118,6 +118,40 @@ ok "21. Native's sign-in with the password: a finger taken from then on" "$(has 
 body "{$B,\"finger\":\"right-index\",\"n\":\"Bob\",\"p\":\"bob-pass\"}"; o=$(api "POST fp/remove <$T/b" "GET fp/status?acct=uBobC3d4")
 ok "22. Bob removes his right index finger" "$(has "$o" '"fingers":["left-index","right-ring"]')$([ ! -e $M/fprint/uBobC3d4/right-index ] && echo 1)" "$o"
 o=$(v 11 uBobC3d4); ok "...which no longer unlocks him" "$(has "$o" '403')" "$o"
+# ---- step 3: Native's lock screen and an administrator's finger where rudolfd checks the password
+o=$(api "POST desktop/lock"); finger 12 1; body '{"f":true}'
+o=$(timeout 60 $T/api $T/ls.json $T/desk /run/rudolf $M/accounts $T/fpstate $T/run $T/etc $T/aumap "POST desktop/unlock <$T/b" "GET desktop/session"); wait
+ok "26. Native's lock screen: Bob's finger unlocks it (desktop/unlock with f)" "$(has "$o" '"message":"unlocked"')$(has "$(echo "$o" | tail -1)" '200 OK')" "$o"
+o=$(api "POST desktop/lock"); finger 30 1
+o=$(timeout 60 $T/api $T/ls.json $T/desk /run/rudolf $M/accounts $T/fpstate $T/run $T/etc $T/aumap "POST desktop/unlock <$T/b" "GET desktop/session"); wait
+ok "...another finger: not recognised (403), the screen stays locked" "$(has "$o" '403')$(has "$(echo "$o" | tail -1)" '423')" "$o"
+body '{"p":"bob-pass"}'; o=$(api "POST desktop/unlock <$T/b" "GET fp/status?acct=uBobC3d4")
+ok "...his password unlocks it, and the count of fingers starts again" "$(has "$o" '"fails":0')" "$o"
+# an authenticator app on Bob's account (the page's "otp" box: the secret sealed with his password's key)
+node -e "const c=require('crypto'),f='$T/ls.json',l=require(f),u=JSON.parse(l.data.bd95user),k=require('$T/keys.json');const a=u.accts.find(x=>x.n=='Bob');
+ const iv=c.randomBytes(12),ci=c.createCipheriv('aes-256-gcm',Buffer.from(k.Bob.pk,'hex'),iv),sec=Buffer.from('12345678901234567890');a.otp={iv:iv.toString('base64'),ct:Buffer.concat([ci.update(sec),ci.final(),ci.getAuthTag()]).toString('base64')};
+ l.data.bd95user=JSON.stringify(u);require('fs').writeFileSync(f,JSON.stringify(l))"
+totp() { node -e "const c=require('crypto');const t=Math.floor(Date.now()/30000)+($1);const b=Buffer.alloc(8);b.writeBigUInt64BE(BigInt(t));const h=c.createHmac('sha1','12345678901234567890').update(b).digest();const o=h[19]&15;console.log(String(((h.readUInt32BE(o)&0x7fffffff)%1000000)).padStart(6,'0'))"; }
+o=$(api "POST desktop/lock"); finger 12 1; body '{"f":true}'
+o=$(timeout 60 $T/api $T/ls.json $T/desk /run/rudolf $M/accounts $T/fpstate $T/run $T/etc $T/aumap "POST desktop/unlock <$T/b"); wait
+FT=$(echo "$o" | sed -n 's/.*"ft":"\([0-9a-f]*\)".*/\1/p')
+ok "27. two-step sign-in: after his finger, the code is still asked (401 need code, a one-time answer)" "$(has "$o" '401')$(has "$o" '"need":"code"')$([ ${#FT} = 32 ] && echo 1)" "$o"
+body "{\"ft\":\"$FT\",\"c\":\"000000\"}"; o=$(api "POST desktop/unlock <$T/b" "GET desktop/session"); FT2=$(echo "$o" | head -1 | sed -n 's/.*"ft":"\([0-9a-f]*\)".*/\1/p')
+ok "...a wrong code: refused, still locked, the finger not asked again (a new answer)" "$(has "$o" '403')$(has "$(echo "$o" | tail -1)" '423')$([ ${#FT2} = 32 ] && [ "$FT2" != "$FT" ] && echo 1)" "$o"
+body "{\"ft\":\"$FT2\",\"c\":\"$(totp 0)\"}"; o=$(api "POST desktop/unlock <$T/b" "GET desktop/session")
+ok "...the right code: unlocked" "$(has "$o" '"message":"unlocked"')$(has "$(echo "$o" | tail -1)" '200 OK')" "$o"
+o=$(api "POST desktop/lock"); body "{\"ft\":\"$FT\",\"c\":\"$(totp 0)\"}"; o=$(api "POST desktop/unlock <$T/b")
+ok "...an answer cannot be used again (nor an older one)" "$(has "$o" '403')$(has "$o" 'time ran out')" "$o"
+body '{"p":"bob-pass"}'; o=$(api "POST desktop/unlock <$T/b")
+ok "...and his password alone is not enough either (the code asked, as before)" "$(has "$o" '"need":"code"')" "$o"
+body "{\"p\":\"bob-pass\",\"c\":\"$(totp 1)\"}"; o=$(api "POST desktop/unlock <$T/b")
+# an administrator's finger in place of the password where rudolfd checks it (desktop/admin, desk_admin_check)
+o=$(api "POST home/unlock?acct=uAnnA1b2&session=1 <$T/annkey.b"); o=$(v 21 uAnnA1b2 admin); T1=$(echo "$o" | sed -n 's/.*"t":"\([0-9a-f]*\)".*/\1/p')
+ok "28. an administrator's finger gives a one-time answer for rudolfd's own checks" "$(has "$o" '"ok":true,"acct":"uAnnA1b2"')$([ ${#T1} = 32 ] && echo 1)" "$o"
+body "{\"n\":\"Ann\",\"p\":\"fp:$T1\"}"; o=$(api "POST desktop/admin <$T/b" "POST desktop/admin <$T/b")
+ok "...it allows once (desktop/admin), and never again" "$(has "$(echo "$o" | head -1)" '"message":"allowed"')$(has "$(echo "$o" | tail -1)" '403')" "$o"
+o=$(v 21 uAnnA1b2 admin); T1=$(echo "$o" | sed -n 's/.*"t":"\([0-9a-f]*\)".*/\1/p'); body "{\"n\":\"Bob\",\"p\":\"fp:$T1\"}"; o=$(api "POST desktop/admin <$T/b")
+ok "...not in another account's name" "$(has "$o" '403')" "$o"
 # ---- an account removed: its prints with it
 o=$(api "gone uBobC3d4")
 ok "23. Ann's account removed: her prints removed with it (her folder locked or not)" "$(has "$o" 'gone 1')$([ ! -e $M/fprint/uAnnA1b2 ] && echo 1)$([ -d $M/fprint/uBobC3d4 ] && echo 1)" "$o $(ls -la $M/fprint)"

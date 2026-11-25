@@ -126,9 +126,26 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   finger on the reader). The row says plainly: no reader (a touchpad or touchscreen cannot read one), a reader libfprint
   does not support (its name and USB id), the files not on the disk, five tries. Guest none. Test:
   iso/qt/shell2/fprint63_t.js (15/15, a stand-in rudolfd). The native Settings' Users page is Part 3's: a note there.
-- **Left:** step 3, the lock screen (Chromium, Lite and Native the same) and the
-  administrator prompts taking a finger (the password always still; the code or the key of two-step sign-in still asked
-  after a finger; an administrator's finger in rudolfd-checked prompts by a one-time answer from `fp/verify`).
+- **Step 3 (branch `fingerprints-3`, after step 2): the lock screen and administrator prompts.**
+  - **The page (Chromium and Lite, the same page):** the lock screen says "Or put your finger on the reader" while rudolfd
+    says a finger is taken now, and asks the reader again after a finger not recognised (the tries left said); a match
+    unlocks as a right password does. The password always still works and tells rudolfd (`fp/password`, the count starts
+    again). After a finger, two-step sign-in's code is still asked (the authenticator's secret opened with the password's
+    key the session holds, as after the password); an account with security keys is not offered a finger (its key's step
+    needs the password). The administrator's prompt offers the signed-in administrator's finger; where rudolfd checks the
+    answer itself (`{cred:1}`), the finger's one-time answer (`fp/verify`'s `"t"`, 60 s, once) goes in place of the
+    password (`"fp:"+t`, taken by desk_admin_check and desktop/admin). Small hooks in core25.js (`__lockOpened`,
+    `__elevOpened`, `__lockPw`); the rest in fprint63.js.
+  - **Native (rudolf-native.c, fp_*):** the same line on its lock screen; desktop/unlock `{"f":true}` waits (20 s, again
+    and again) for the session account's finger; an authenticator app: 401 `{"need":"code","ft"}` and the code sent with
+    that one-time answer (`{"ft","c"}`: a wrong code asks again without the finger, a used answer is refused); five
+    tries: rudolfd's reason shown, the reader left alone; the password unlocking gives the reader up (`fp/cancel`).
+  - **Tests:** fprint163_t.sh 50/50 (adds Native's unlock with a finger, the code after it, one-time answers, an
+    administrator's finger for desktop/admin once and only in its own name); fprint63_t.js 25/25 (the lock screen and
+    the prompt); nativefp163_t.sh 11/11 (Xvfb, a stand-in rudolfd).
+- **Left:** the native apps' own administrator prompt (librudolf-ui, iso/sys/ui/rudolf-ui.c, used by the native apps that
+  are still switched off with the native Settings, Part 3): a finger there too, by the same one-time answer, when the
+  native Settings is switched on; the owner's checklist with a real reader.
 
 ### Part 3. Native Settings, finished (moved from 1.6.2 Part 39, item 3)
 `/usr/bin/rudolf-settings` (iso/sys/apps/settings*.c), one PR per group of pages, as begun in 1.6.2 and kept there switched off:

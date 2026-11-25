@@ -234,8 +234,10 @@ function elevate(reason,opt){const cred=opt&&opt.cred;return new Promise(res=>{i
  o.querySelector('.rmr').textContent=reason;const sel=o.querySelector('.ea');admins.forEach(a=>{const op=document.createElement('option');op.textContent=a.n;op.value=a.n;sel.appendChild(op)});if(isAdmin())sel.value=USER.n;
  const P=maskInput(o.querySelector('.ep'));document.body.appendChild(o);setTimeout(()=>o.querySelector('.ep').focus(),30);
  const done=v=>{o.remove();res(v)};o.querySelector('.en').onclick=()=>done(false);
- const ok=async()=>{const a=admins.find(x=>x.n==sel.value);if(a&&await pwCheck(a,P.get())){logEvt('sys',`${a.n} approved: ${reason}`);if(cred)return done({n:a.n,p:P.get()});if(isAdmin()&&a===USER)window.__elevTrust=Date.now();done(true)}else{o.querySelector('.rmmsg').textContent='Wrong password.';P.clear();sfx('error')}};
- o.querySelector('.ey').onclick=ok;o.querySelector('.ep').addEventListener('keydown',e=>{if(e.key=='Enter')ok();if(e.key=='Escape')done(false)})})}
+ const ok=async()=>{const a=admins.find(x=>x.n==sel.value);if(a&&await pwCheck(a,P.get())){logEvt('sys',`${a.n} approved: ${reason}`);if(window.__lockPw)try{__lockPw(a,P.get())}catch(e){}if(cred)return done({n:a.n,p:P.get()});if(isAdmin()&&a===USER)window.__elevTrust=Date.now();done(true)}else{o.querySelector('.rmmsg').textContent='Wrong password.';P.clear();sfx('error')}};
+ o.querySelector('.ey').onclick=ok;o.querySelector('.ep').addEventListener('keydown',e=>{if(e.key=='Enter')ok();if(e.key=='Escape')done(false)});
+ /* (1.6.3 Part 2: an administrator's finger, fprint63.js: allow(a,t) as a right password, "fp:"+t in place of it for rudolfd) */
+ if(window.__elevOpened)try{__elevOpened(o,{sel,cred,allow:(a,t)=>{if(!document.body.contains(o))return;logEvt('sys',`${a.n} approved with a fingerprint: ${reason}`);if(cred)return done({n:a.n,p:'fp:'+t});if(isAdmin()&&a===USER)window.__elevTrust=Date.now();done(true)}})}catch(e){}})}
 /* ---------- lock screen, screensaver, idle, sleep ---------- */
 let LOCKED=false,lastInput=Date.now(),SAVER=null,UNLOCKED_AT=0;
 /* 1.5.7: other modules read window.LOCKED (updates, Keep, Linux apps' updates), which a "let" does not make: it was
@@ -255,10 +257,12 @@ function lockScreen(reason,adminOnly){if(!USER||LOCKED)return;try{sfx('logout')}
  const tick=()=>{const c=clockParts();o.querySelector('.lkclock').textContent=c.time;o.querySelector('.lkdate').textContent=c.longNoYear};tick();const iv=setInterval(tick,1000);
  document.body.appendChild(o);setTimeout(()=>o.querySelector('.lkp').focus(),50);
  const un=async()=>{let ok=false;if(adminOnly)ok=await elevate(reason||'Unlock this account');else{const pw=P.get();ok=USER.r=='guest'||(await pwCheck(USER,pw)&&await(async()=>{const g=typeof fidoGate=='function'?await fidoGate(USER,pw,'Unlock'):'none';return g=='ok'||(g=='none'&&(!USER.otp||typeof otpCheck!='function'||await otpCheck(USER,pw)))})())}   /* (1.6.0: the second step again: otp60.js; 1.6.1: a security key, fido61.js) */
-  if(ok){clearInterval(iv);o.remove();LOCKED=false;lastInput=UNLOCKED_AT=Date.now();if(window.__lockDone)__lockDone();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
+  if(ok){if(!adminOnly&&window.__lockPw)try{__lockPw(USER,P.get())}catch(e){}clearInterval(iv);o.remove();LOCKED=false;lastInput=UNLOCKED_AT=Date.now();if(window.__lockDone)__lockDone();sfx('login');if(adminOnly&&window.__parentalExtend)__parentalExtend()}else{o.querySelector('.lkm').textContent='Wrong password.';P.clear();sfx('error')}};
  o.querySelector('.lku').onclick=un;o.querySelector('.lkp').addEventListener('keydown',e=>{e.stopPropagation();if(e.key=='Enter')un()});
  o.querySelector('.lks').onclick=()=>{clearInterval(iv);o.remove();LOCKED=false;A.logoff()};
- o.addEventListener('keydown',e=>{if(e.key!='Tab')e.stopPropagation()})}
+ o.addEventListener('keydown',e=>{if(e.key!='Tab')e.stopPropagation()});
+ /* (1.6.3 Part 2: a finger, fprint63.js: done() unlocks as a right password and second step do) */
+ if(window.__lockOpened)try{__lockOpened(o,{adminOnly,done:()=>{if(!document.body.contains(o))return;clearInterval(iv);o.remove();LOCKED=false;lastInput=UNLOCKED_AT=Date.now();if(window.__lockDone)__lockDone();sfx('login')}})}catch(e){}}
 /* the screen saver (1.4.4: eight styles drawn by the processor, saver31.js); the time without input comes from
    rudolf-display on installed Rudolf OS (every key and pointer movement, also in games and Linux apps) */
 function saverStart(preview){if(SAVER||!USER||LOCKED&&!preview)return;SAVER=ssRun({preview:!!preview})}

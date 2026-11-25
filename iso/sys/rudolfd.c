@@ -4563,6 +4563,9 @@ static unsigned au_uid(const char *id);
 static void fp_signed_in(const char *acct);   /* rudolfd-fprint.inc (1.6.3 Part 2) */
 static void fp_signed_out(const char *acct);
 static void fp_acct_gone(const char *acct);
+static int fp_admin_pass(const char *a, const char *pw);   /* (step 3: an administrator's finger) */
+static void fp_password_used(const char *acct);
+static void fp_native_unlock(struct req *r, const char *lp);
 #include "rudolfd-webkey.inc"    /* 1.6.1: the website data's key in the TPM (plan-1.6.1 Part 20) */
 #include "rudolfd-home.inc"
 #include "rudolfd-desktop.inc"   /* 1.5.9: the native desktop's API (plan Part 12) */
