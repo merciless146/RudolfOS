@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Fixed: Xbox Cloud Gaming and GeForce NOW (and the Library's games) open from the Start menu in Chromium mode; a click on
+  their rows did nothing. With the Lite desktop they open in Chromium's window, which can play them, and it says so.
 - Changed: the plan (docs/plan-1.6.3.md Part 8): six fixes from the owner's use: Paint asks to save, Native's transitions,
   Xbox Cloud Gaming and GeForce NOW opening, desktop icons on Native, Make a stick in Backup, Native's menus closing.
 - New: Oracle frees the memory of tabs you have not looked at for 30 minutes (Settings › Oracle › Memory: 15 minutes to
