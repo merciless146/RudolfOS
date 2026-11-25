@@ -1,4 +1,4 @@
-# Rudolf OS 1.6.3: the signing keys protected, native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page, installing beside Windows, Oracle's extensions
+# Rudolf OS 1.6.3: the signing keys protected, native Settings, the native Office apps, fingerprint readers, Oracle's memory, Oracle's encrypted websites in the page, installing beside Windows, Oracle's passwords and extensions
 
 1.6.3 follows 1.6.2. The owner, 2026-11-23 18:20 and 18:23 CST: "Push fingerprint scanners to 1.6.3" and, for the Office
 apps' native versions, "Move them to 1.6.3 so we can expedite the rollout of 1.6.2 stable on the beta build that includes
@@ -241,6 +241,58 @@ freed tab coming back as it was.
   freed tab: it loads again where it was scrolled; 3. a tab playing music and one with a half-typed message stay awake;
   4. Never: nothing is freed.
 
+#### Each tab's memory in its tooltip (the owner, 2026-11-24 22:14 CST)
+The owner: "Can we have Oracle show the memory usage of a tab in the tooltip when the mouse is held over that tab?" So **each
+tab's tooltip** (its title and address) **gains the memory it uses**, the same on Native, Chromium and Lite (the owner's rule),
+honest about what can be known:
+- **A tab alone in its process:** that process's memory, as Task Manager counts it (the proportional set size, Pss: what the
+  process alone holds plus its share of what it shares), with the frames of other sites the page holds (their own processes:
+  site isolation) said apart: "Memory: 180 MB (the page 120 MB; 3 frames from other sites 60 MB)".
+- **Tabs sharing a process** (Chromium may put pages of one site in one process): "Shares its memory with 2 other tabs: 180 MB
+  together".
+- **A freed tab** (💤, above): "Memory: none until you choose it".
+- **Oracle's own pages** (about:…, files on the drive): part of Oracle's page, said so.
+- **Fresh when the tooltip opens:** measured when the mouse has rested on the tab, again every few seconds while it shows,
+  never while no tooltip is shown.
+**How it is known.** Chromium does not say which process shows which Controlled Frame, so rudolf-launch (which already
+measures each page's JavaScript memory for Task Manager while it looks, over Chromium's private pipe) asks the shell's window
+for a trace of its frames (DevTools' "TracingStartedInBrowser": every frame of the window and its tabs, each with its process),
+reads each of those processes' Pss and RssAnon (/proc, the same user), and writes them beside the pages it already writes, the
+address of each frame as a hash, not in the clear. In Oracle's own Chromium (Native, and the encrypted setting on the Chromium
+desktop; also the Tor windows) its own rudolf-launch does the same for each of its windows into a file of its own, which
+rudolfd's existing processes reply passes on with the rest (no new request). Lite: WebKit does not say which of its page
+processes shows which tab, so Lite's tooltip says so and gives what can be known: the page processes of Lite together.
+**Tests:** the tooltip's text for each case (alone, with frames of other sites, shared, freed, Oracle's own page, not yet
+measured, the browser version, Lite) with a stand-in rudolfd; rudolf-launch with a real Chromium, a shell of its own and tabs on
+stand-in sites (one alone, two of one site, one with a frame of another site), in both modes: each tab's process found and its
+Pss read, the frames' addresses hashed; Lite's tooltip with WebKit on the runner. **The owner's checklist:** the Vivobook,
+Chromium and Native: hold the mouse over a tab: its memory, and about what Task Manager's Processes shows for it; a freed tab
+says none; two tabs of one site.
+
+#### Status (2026-11-25, scheduled task): the tooltip built (PR "Oracle's tab tooltip shows its memory")
+- **The page** (desktop/oratip63.js; base_v24.html's tab bar calls it for each tab): Oracle's own tooltip (the browser's, from the
+  tab's title, is not shown while the mouse is on the tab; the title stays otherwise), after the mouse rests 0.6 s: the title, the
+  address and the memory line; asked of rudolfd (its processes reply, Task Manager's) at once, every second until a measurement
+  taken after the tooltip opened is there (up to 8 s, else "not known"), then every 3 s; nothing asked once it hides. The page is
+  cut around it as for a menu.
+- **rudolf-launch** (both modes): the trace of each shell window's frames (found: the shell window's own trace lists its tabs'
+  frames and their processes in ~40-70 ms with only that category; asked of a tab's own target it lists only that tab; of the
+  browser, none), each process's Pss and RssAnon, the addresses hashed. **rudolfd** (rudolfd.c procs_oracle_frames, small): the
+  processes reply adds "oframes", the files of Oracle's own Chromium's rudolf-launch processes (only a live rudolf-launch's, only
+  one JSON object); the request stays narrow (no signal sent: liveness from /proc). No new request: confinepure.py and winapi.py
+  current.
+- **Tests:** oratip63_t.js 24/24 (every case of the line, asked only while shown, the page cut around it; Oracle's own Chromium's
+  file; Lite's own way; the browser version); oratabmem63_t.js 20/20 here (Playwright's Chromium 153) and on the runner with
+  Playwright's Chromium 153 and the Chromium snap's 158.0.8127.36 (the releases', **sandboxed**, as on Rudolf OS: its renderers'
+  Pss readable by the same user; a 150 MB page's process 175 MB Pss, a 80 MB frame of another site its own process, 106 MB);
+  confine161_t.sh 26/26 (15c: oframes, narrow); Oracle's page tests as before (oracle-memory-check.yml).
+  **Lite:** WebKit does not say which page process shows which tab (WebKitGTK has no way to ask), so its tooltip says so and gives
+  its page processes together (resident memory, from rudolfd's list); tested with the stand-in, not yet with WebKit itself (the
+  owner's checklist).
+- **The owner's checklist (Vivobook):** 1. Chromium mode: hold the mouse over a tab: its memory, close to Task Manager ›
+  Processes' number for it; a news site's tab says its frames from other sites; 2. two tabs of one site; 3. a freed tab (💤)
+  says none; 4. Native: the same; 5. Lite: the tooltip says what WebKit lets it know.
+
 ### Part 5. Oracle's encrypted websites back in the page on Chromium (the owner, 2026-11-23 20:08 and 20:10 CST)
 The owner: "Is it possible to have the Oracle browser in Chromium running in the same Chromium page again?", then "Yes, add
 it to the end of 1.6.3."
@@ -316,66 +368,83 @@ partition, an MBR disk and a BIOS computer refused with plain words; removal lea
 beside; Rudolf OS and Windows each start from the menu and from F8; a Windows update, then Rudolf OS's next start; an
 update of Rudolf OS; removal and Extend Volume back.
 
-### Part 7. Oracle's extensions, and a password manager built in (the owner, 2026-11-24 12:42 and 12:45 CST)
+### Part 7. Oracle's extensions, and a password manager built in (the owner, 2026-11-24 12:42 and 12:45 CST; option C, 22:14 CST)
 The owner: "What would be the recommended means of adding extensions (password managers, specialized blockers, etc) to
-Oracle?", then "Yes" to adding it with the built-in password manager first.
-**Where extensions may run.** On the Chromium desktop, Oracle's tabs are Controlled Frames inside the desktop's page,
-where Chromium runs no extensions, and that page holds rudolfd's token: **extensions never run in the desktop's own
-Chromium.** They run only in Oracle's own Chromium with its own profile (as on Native, and with "Keep my websites
-encrypted with my account"): turning extensions on makes Oracle open that way on the Chromium desktop too, as the
-encrypted setting does (Part 5 does not change this: frames run no extensions). The Lite desktop (WebKit) has none, and
-Settings says so.
-**The owner's rule (2026-11-24 12:50 CST):** "Whenever Oracle is running on any Chromium desktop as part of the desktop's
-own Chromium, instead of over top of it, extensions must not run at all and attempting to activate them should remind
-the user to change the appropriate settings. This keeps potential unauthorized extension access from the desktop and the
-rest of the PC." So:
-- Oracle in the desktop's own Chromium (its tabs in the desktop page: the Chromium desktop with extensions off and the
-  encrypted setting off, and Part 5's encrypted-in-the-page): **no extension runs**, enforced by Chromium's policy on the
-  desktop's own profile (ExtensionInstallBlocklist "*", no allowlist, ExtensionSettings "*": installation_mode blocked;
-  the desktop's profile never gets an extension, whatever Oracle's settings say), not only by Oracle's buttons.
-- **Trying to use one there reminds the person, and does nothing else:** Oracle's extensions button, ☰ › Extensions, an
-  extension's page on the Web Store ("Add to Chrome") and Settings › Oracle › Extensions all show the same notice:
-  "Extensions only run when Oracle runs in its own window. Turn on Settings › Oracle › Extensions (Oracle then opens in
-  its own window), or turn on 'Keep my websites encrypted with my account'." with a button that opens that page of
-  Settings; nothing is installed or switched by the notice itself.
-- **"Learn more"** in that reminder opens Oracle's page **about:safety#extensions-desktop** (the owner, 2026-11-24 12:55
-  CST): "Oracle's safety and your data", a page of Oracle's user-safety and data-security policies in the default
-  bookmarks (as "Safety"; added once to bookmarks kept from before), scrolled to the entry that explains why extensions
-  are unsafe in the desktop's own Chromium and highlighted. Its entries: nothing sent about you; ads and trackers
-  blocked; your websites account by account (the TPM, the encrypted setting); private windows; Tor windows (and their
-  limits); updates and site isolation; extensions and the desktop; Guest; what Oracle cannot do for you. **Built and
-  tested on the branch oracle-safety-page** (desktop/orasafe63.js, orasafe63_t.js 9/9, oracle-safety-check.yml;
-  "This will be part of Oracle's 1.6.3 work": merged with this part, not before), its text kept true as each part lands.
-- Oracle in its own Chromium, over the desktop (Native; the Chromium desktop with extensions or the encrypted setting
-  on): extensions as below. A test checks the desktop's profile refuses every extension even if Oracle's own policy
-  allows one.
-**Step 1 (first): the built-in password manager.** Chromium's own (save, fill, generate, check for leaked passwords
-only if the person turns that on) in Oracle's own-profile mode, its store the account's keyring (Rudolf OS already keeps
-apps' sign-ins there: Settings › Privacy › Saved passwords for apps), so it is locked with the account; Oracle's ☰ ›
-Passwords opens it; Guest and Tor windows never save. No extension needed for the most common need.
-**Step 2: extensions, by Chromium's enterprise policies** (Rudolf OS already writes Chromium policy):
-- ExtensionInstallAllowlist: by default a short vetted list, signed by the release key like the Library's lists (a forged
-  list is refused): password managers (Bitwarden, 1Password, KeePassXC-Browser, Proton Pass), uBlock Origin Lite,
-  Privacy Badger, Dark Reader. An administrator may allow any extension from the Chrome Web Store (the administrator's
-  prompt). Extensions come from the Web Store, signed by Google, and update through Chromium's own updater.
-- ExtensionSettings for every extension: runtime_blocked_hosts localhost, 127.0.0.1, [::1] and Rudolf OS's own pages,
-  so no extension ever reaches rudolfd or the desktop; native messaging off unless allowed for one app (KeePassXC-Browser
-  with KeePassXC from Flathub).
-- Per account, in that account's Oracle profile (in the encrypted folder when that is on); Guest none.
-- Tor windows: never (extensions leak identity and help fingerprinting). Private windows: off unless the person allows an
-  extension there, as in Chrome.
-- Settings › Oracle › Extensions: the list, add and remove, each one's permissions in plain words, its memory (each
-  running extension ~20-60 MB), the administrator's switch; Oracle's toolbar: an extensions button for their menus.
-**Never:** an extension in the desktop's Chromium (whatever Oracle's settings say), in an app window or a Tor window; one reaching 127.0.0.1 or the
-desktop page; an extension installed without the vetted list or the administrator's switch.
-**Tests:** with Oracle in the desktop's own Chromium, a stand-in extension cannot be installed or run (policy) and each
-way of trying shows the reminder; a stand-in extension that tries 127.0.0.1, rudolfd's port and the desktop page: refused; a Tor window loads
-none; a forged vetted list refused; the built-in password manager saves and fills in a test page and keeps nothing in
-Guest; on runners, Bitwarden's and uBlock Origin Lite's real extensions install from the policy and work (a test
-sign-in filled; a test ad blocked); memory with two extensions.
-**The owner's checklist:** Oracle on the Vivobook: save and fill a password; Bitwarden (or the owner's manager) signed
-in and filling; uBlock Origin Lite on a busy site; a Tor window without them.
-#### Status (2026-11-25, scheduled task): step 1 waits on the owner's decision
+Oracle?", then "Yes" to adding it with the built-in password manager first. Measured on 2026-11-25 (the status below):
+Chromium's own password manager and extensions never reach Oracle's tabs, which are Controlled Frames in every mode, so the
+owner chose (2026-11-24 22:14 CST) **"Option C": A for passwords** (Oracle's own password manager in its tabs) **and
+extensions only in a Chromium window opened from Oracle.**
+**The owner's rule (2026-11-24 12:50 CST), which stands:** "Whenever Oracle is running on any Chromium desktop as part of the
+desktop's own Chromium, instead of over top of it, extensions must not run at all and attempting to activate them should
+remind the user to change the appropriate settings. This keeps potential unauthorized extension access from the desktop and
+the rest of the PC."
+**Step 1: Oracle's own password manager** (docs/plan-oracle.md Item 4's design), the same on the Chromium desktop (either
+setting), Native and Lite:
+- **The script:** the shell's script in the tab's **isolated world** (Chromium: the Controlled Frame's content script in a world
+  of its own; Lite: WebKit's user script in the "rudolf" world), which the page's own scripts cannot see or call. It finds
+  sign-in forms (a password field, the name or e-mail field before it) and tells Oracle only the form's origin and that a
+  password was typed; the password itself goes to Oracle only when the person says "Save".
+- **"Save your password for example.com?"** after a sign-in form is sent (Save, Never for this site, Not now), kept for that
+  **exact origin** (scheme, host and port: never a look-alike host, another subdomain or a cross-origin frame).
+- **Filled only after a click:** the key in the password field, or the account chosen from it; never by itself, never in a
+  frame of another origin, never on an http: page (local addresses included), never in a hidden field.
+- **"Use a strong password"** in a new-password field: made from the system's random source, shown before it is used, saved
+  with the sign-up.
+- **Kept in the account's keyring** (Rudolf OS already keeps apps' sign-ins there: Settings › Privacy › Saved passwords for
+  apps), so it is locked with the account and opened only by its sign-in; never in the page's storage, the session's files,
+  Oracle's profile or a sync.
+- **Guest, private and Tor windows never save** (nor offer to fill: they keep nothing).
+- **Oracle's ☰ › Passwords:** to see (after the account's password), change and remove them, and the sites marked "Never".
+- **Its security review is in its PR:** what a page can and cannot see, where the passwords are stored and when they are locked.
+**Step 2: extensions in a Chromium window opened from Oracle** ("Open in a Chromium window", as Lite's "Open in Chromium"):
+- From Oracle's ☰ and a tab's menu: the tab's address opens in a window of Rudolf's Chromium with **the account's own
+  Chromium profile** (its own folder, in the encrypted folder when "Keep my websites encrypted with my account" is on), never
+  the desktop's profile; Chromium's own window, tab strip and address bar, where Chromium's password manager and extensions
+  work as in Chrome. Oracle's own tabs keep no extensions.
+- **Extensions there by Chromium's enterprise policies** (Rudolf OS already writes Chromium policy):
+  - ExtensionInstallAllowlist: by default a short vetted list, signed by the release key like the Library's lists (a forged
+    list is refused): password managers (Bitwarden, 1Password, KeePassXC-Browser, Proton Pass), uBlock Origin Lite, Privacy
+    Badger, Dark Reader. An administrator may allow any extension from the Chrome Web Store (the administrator's prompt).
+    Extensions come from the Web Store, signed by Google, and update through Chromium's own updater.
+  - ExtensionSettings for every extension: runtime_blocked_hosts localhost, 127.0.0.1, [::1] and Rudolf OS's own pages, so
+    no extension ever reaches rudolfd or the desktop; native messaging off unless allowed for one app (KeePassXC-Browser with
+    KeePassXC from Flathub).
+  - Per account; Guest none. **No Tor** (a Tor window never opens a Chromium window; extensions leak identity and help
+    fingerprinting). Private: a private Oracle window opens Chromium's incognito window, where an extension runs only if the
+    person allowed it there, as in Chrome.
+  - Settings › Oracle › Extensions: the list, add and remove, each one's permissions in plain words, its memory (each running
+    extension ~20-60 MB), the administrator's switch.
+- **The desktop's own Chromium runs no extension at all,** whatever Oracle's settings say: Chromium's policy on the desktop's
+  profile (ExtensionInstallBlocklist "*", ExtensionSettings "*": installation_mode blocked). Rudolf's own Ruffle extension and
+  the web frames extension are loaded with `--load-extension`, which that policy would also stop: this step checks on the real
+  Chromium what the policy does to them and keeps them by the narrowest means that keeps every other extension out (their IDs
+  only, as "allowed" with their own settings, or loaded as component extensions), said in its PR.
+- **Every way of trying in the desktop's own Chromium shows the reminder,** and does nothing else: Oracle's extensions button,
+  ☰ › Extensions, an extension's page on the Web Store ("Add to Chrome") and Settings › Oracle › Extensions: "Extensions only
+  run in a Chromium window opened from Oracle (☰ › Open in a Chromium window), never in Oracle's tabs or the desktop's own
+  Chromium." with "Open in a Chromium window" and **"Learn more"**, which opens **about:safety#extensions-desktop** (the owner,
+  2026-11-24 12:55 CST): "Oracle's safety and your data", a page of Oracle's user-safety and data-security policies in the
+  default bookmarks (as "Safety"; added once to bookmarks kept from before), scrolled to the entry that explains why extensions
+  are unsafe in the desktop's own Chromium and highlighted. Its entries: nothing sent about you; ads and trackers blocked; your
+  websites account by account (the TPM, the encrypted setting); private windows; Tor windows (and their limits); updates and
+  site isolation; passwords (step 1); extensions and the desktop; Guest; what Oracle cannot do for you. **Built and tested on
+  the branch oracle-safety-page** (desktop/orasafe63.js, orasafe63_t.js, oracle-safety-check.yml; "This will be part of
+  Oracle's 1.6.3 work"): merged into this step, its text brought up to date with what was built (every entry true of the build).
+- The Lite desktop: Lite's "Open in Chromium" is this window (the account's profile, the same policies).
+**Never:** an extension in the desktop's Chromium, in Oracle's tabs, an app window or a Tor window; one reaching 127.0.0.1 or
+the desktop page; an extension installed without the vetted list or the administrator's switch; a password filled without a
+click, into another origin, on http: or in Guest, private and Tor windows.
+**Tests:** step 1: a test sign-in page (made-up passwords): saved after "Save" only, filled after a click only, never into a
+cross-origin frame, an http: page or a look-alike host, nothing in Guest, private and Tor windows, the page's own script cannot
+read what the isolated world holds, locked with the account (the keyring); on Chromium, Native and Lite. Step 2: with Oracle in
+the desktop's own Chromium, a stand-in extension cannot be installed or run (policy) and each way of trying shows the reminder;
+in the Chromium window, a stand-in extension that tries 127.0.0.1, rudolfd's port and the desktop page: refused; a Tor window
+offers no Chromium window; a forged vetted list refused; on runners, Bitwarden's and uBlock Origin Lite's real extensions
+install from the policy and work (a test sign-in filled; a test ad blocked); memory with two extensions; about:safety's entries.
+**The owner's checklist:** Oracle on the Vivobook: save and fill a password (a made-up one on a test site, then a real site);
+☰ › Passwords; a Chromium window from Oracle with Bitwarden (or the owner's manager) signed in and filling; uBlock Origin Lite
+on a busy site; a Tor window without them; the reminder and about:safety in the desktop's Oracle.
+#### Status (2026-11-25, scheduled task): Chromium's own password manager and extensions do not reach Controlled Frames (#684)
 - **Found: Oracle's own Chromium shows its websites in Controlled Frames too,** so Chromium's own password manager and
   extensions do not work there either. On Native (rudolf-native.c oracle_open) and with "Keep my websites encrypted with my
   account" on the Chromium desktop (rudolfd's orawin), Oracle's own Chromium runs the same shell (the Isolated Web App,
@@ -386,26 +455,13 @@ in and filling; uBlock Origin Lite on a busy site; a Tor window without them.
   and the extension runs; **a Controlled Frame:** the password manager never sees the form (0) and the extension never runs.
   The same with Playwright's Chromium 153 and the Chromium snap's 158.0.8127.36 (the releases' Chromium). The test fails
   with a plain message the day a Chromium release changes this.
-- **So Part 7 as written cannot be built** (step 1, and step 2's extensions, which need their content scripts in the
-  websites' pages). Nothing of step 1 was changed in Rudolf OS. The ways on, for the owner to choose:
-  - **A. Oracle's own password manager in its tabs** (docs/plan-oracle.md Item 4's design): the shell's script in the
-    tab's isolated world finds sign-in forms; "Save your password for example.com?"; filled only after a click and only
-    for the tab's exact origin; "Use a strong password"; kept in the account's keyring (Settings › Privacy), locked with
-    the account; Guest, private and Tor windows never save. Works the same on the Chromium desktop (either setting),
-    Native and Lite (WebKit's user script), so the desktops match. Not Chromium's own: it needs its own security review.
-  - **B. Chromium's own tabs in Oracle's own-profile mode:** Oracle's own Chromium shows websites in Chromium's own
-    window (its tab strip and address bar instead of Oracle's), where Chromium's password manager and extensions work as
-    in Chrome. Oracle there no longer looks or works like Oracle (the Goes To line, find bar, reader mode, the ad and
-    tracker shield, the firewall's check, sleeping tabs, Ruffle and Oracle's menus are Oracle's page's), and Native would
-    differ from the Chromium desktop with the setting off.
-  - **C. A for passwords, and extensions only in a Chromium window opened from Oracle** ("Open in a Chromium window",
-    as Lite's "Open in Chromium" is today, the account's own profile, never the desktop's): Bitwarden, uBlock Origin Lite
-    and the vetted list there, under the owner's rule and the policies above; Oracle's own tabs keep none.
-  The owner's rule (no extension in the desktop's own Chromium, by policy) can be built whichever is chosen. One thing for
-  it: the desktop's Chromium loads Rudolf's own Ruffle extension (and, without the shell, the web frames extension) with
-  `--load-extension`, which ExtensionInstallBlocklist "*" with no allowlist would also stop: step 2 checks this on the
-  real Chromium and says what it means before the policy lands.
+- **The ways on, as set out for the owner:** A. Oracle's own password manager in its tabs; B. Chromium's own tabs in
+  Oracle's own-profile mode (Oracle there no longer Oracle; Native unlike the Chromium desktop); C. A for passwords, and
+  extensions only in a Chromium window opened from Oracle. **The owner chose C (2026-11-24 22:14 CST)**: steps 1 and 2 above.
 - **Tests:** oraframes63_t.js 8/8 with each Chromium (the runner); Lite: none (WebKit has neither).
+#### Status (2026-11-25, scheduled task): option C planned; step 1 next
+- This plan rewritten for option C (PR "Oracle's tab tooltip shows its memory", with Part 4's tooltip). Step 1 (the password
+  manager) and step 2 (the Chromium window, with about:safety from oracle-safety-page) follow, one PR each.
 
 ### Part 8. Fixes from the owner's use (the owner, 2026-11-24 22:51 CST)
 "Some items to add to 1.6.3:" each fixed with a test that fails before the fix, the same on Native, Chromium and Lite
@@ -443,6 +499,16 @@ unless the item is Native's own (then Native is made to match Chromium, never th
 6. **Native's desktop menu stays open.** "Desktop right-click menu does not disappear if clicked outside of while open on
    Native. Will only close after an option is selected." On Native, a right-click menu (the desktop's, the taskbar's,
    a window's) closes when clicking anywhere outside it, pressing Esc, or switching windows, as on Chromium.
+   - **Status (2026-11-25, scheduled task): fixed** (PR "Native's menus close on a click outside"). The cause: the menu's
+     grab (cm_open) leaves the desktop's own windows their presses (so a right-click elsewhere opens the next menu at once),
+     and the desktop, the taskbar and the apps' pages are GTK's windows, their presses and keys coming by XInput 2: none of
+     them reached the menu, which closed only on a press in another program's window. Now any press outside the menu (the
+     desktop, the taskbar, a title bar, inside a window, another monitor) closes it first and then goes on, as the page's
+     pointerdown; Esc and Tab close it wherever the keyboard's focus is; another window chosen (Alt+Tab, a window coming up)
+     closes it, as the page's blur. **Test:** `iso/qt/native/cmclose163_t.js` (menus163-check.yml): 12 steps on Chromium
+     mode's page and Native, **3/12 before, 12/12 after**; tbbeh_t.js and keybeh_t.js unchanged (tbbeh's step 9 fails
+     before and after: Command Prompt's key, `terminal` and `prompt`, a test of its own). Found: on Chromium mode's page
+     (Playwright, one window) the menu stays open over the page's own Alt+Tab; Native closes it, the owner's words.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ## Steps
@@ -453,5 +519,6 @@ unless the item is Native's own (then Native is made to match Chromium, never th
 - Part 4: after 1.6.2 is stable.
 - Part 5: last, after 1.6.2 is stable.
 - Part 6: after Part 3 (native Settings), before the Office apps if the owner wants it sooner.
-- Part 7: step 1 (the built-in password manager) early; step 2 after it.
+- Part 7 (option C): step 1 (Oracle's own password manager) early; step 2 (extensions in a Chromium window opened from
+  Oracle, with about:safety) after it.
 - Part 8: alongside the others; each item its own PR.

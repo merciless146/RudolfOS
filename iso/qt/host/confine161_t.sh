@@ -97,6 +97,15 @@ ok "15. the native shell (rudolf-native) gets its own (desktop/accounts) and is 
 o=$(win $T/rudolf-taskmgr /api/processes); o2=$(win $T/rudolf-taskmgr /api/fs/list); o3=$(win $T/rudolf-taskmgr /api/stats)
 ok "15b. a native app (rudolf-taskmgr) gets what its code asks for (processes, stats) and is refused the rest (fs/list, which the page asks for)" "$([ "$(echo "$o" | head -1)" = 200 ] && [ "$(echo "$o3" | head -1)" = 200 ] && echo "$o2" | grep -q '^403' && echo 1)" "$o / $o2 / $o3"
 ok "...noted as a native app's in the confinement's log" "$(grep -q 'a native app asked for fs/list: refused' /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null && echo 1)" "$(cat /persist/var/log/confine.log /run/rudolf/confine.log 2>/dev/null | tail -2)"
+# (1.6.3, plan Part 4) Oracle's own Chromium's measurement of its tabs (rudolf-launch --oracle's file) passed on in processes, narrow: only
+# a file of a live rudolf-launch, only one JSON object (a file that would add to the reply is left out), nothing signalled
+cp /usr/bin/tail $T/rudolf-launch; chmod 755 $T/rudolf-launch; $T/rudolf-launch -f /dev/null & LP=$!; $T/rudolf-launch -f /dev/null & LP2=$!; RDP="$RDP $LP $LP2"; mkdir -p /run/user/1000
+printf '{"time":1,"ftime":1,"frames":[{"h":7,"p":42,"m":1,"f":"F1","up":""}],"mem":{"42":[1000,900]}}\n' > /run/user/1000/rudolf-tabmem-o$LP.json
+printf '{"time":1,"frames":[]}\n' > /run/user/1000/rudolf-tabmem-o999999.json
+printf '{"time":1},"items":[]}\n' > /run/user/1000/rudolf-tabmem-o$LP2.json
+c=$(api processes)
+ok "15c. processes passes on Oracle's own Chromium's tab measurement (oframes), only a live rudolf-launch's, only one JSON object, the request still narrow" "$([ "$c" = 200 ] && python3 -c "import json,sys;j=json.load(open(sys.argv[1]));o=j['oframes'];assert len(o)==1 and o[0]['frames'][0]['f']=='F1' and o[0]['mem']['42']==[1000,900],o" $T/body && sed -n '/CONFINE_PURE/,/NULL/p' $SYS/rudolfd-confine-pure.h | grep -q '"processes",' && echo 1)" "$c $(head -c 300 $T/body)"
+kill $LP $LP2 2>/dev/null; rm -f /run/user/1000/rudolf-tabmem-o*.json
 c=$(api desktop/accounts)
 ok "16. root (rudolfd's helpers, the session's scripts) is never checked" "$([ "$c" = 200 ] && echo 1)" "$c"
 stop

@@ -456,6 +456,7 @@ static void pt_msg(AppWin *a, JSCValue *v); static void pt_reset(void);   /* (1.
 static void svc_msg(AppWin *a, JSCValue *v); static void svc_reset(void); static AppWin *svc_page(void); static gint64 SVC_SIGNIN;   /* (1.6.0 Part 12, item 12: the desktop's service page, below; when the account signed in, ms) */
 static void snd_page(const char *k, double v, const char *pj); static void snd_click(void);
 static int fl_outside(void); static void seat_grab(GtkWidget *w, int owner); static void qs_keep(void);
+static int cm_outside(unsigned long xw); static int cm_xkey(XKeyEvent *e); static gboolean cm_key(GtkWidget *w, GdkEventKey *e, gpointer d);   /* (1.6.3 Part 8, item 6: a right-click menu closed as the page's) */
 static int oracle_open(const char *file, const char *extra);   /* (1.5.9, 12.3c: Oracle in Rudolf's Chromium) */
 static void page_done(JSCValue *v);
 static void frame_redraw_app(AppWin *a);
@@ -956,7 +957,7 @@ static void wm_focus(Client *c)
 	if (c && !c->ws) c = NULL;   /* (a window going, in no workspace: 12.3c) */
 	if (c && NMON > 1 && ws_of(c) != WSC) { if (c->off) mon_show(MAX(0, mon_of_ws(WSC)), ws_of(c), 0); else { WSC = ws_of(c); bar_redraw(); } }   /* (1.6.1 Part 1: shown on another monitor: that one is in use) */
 	else if (c && c->off && ws_of(c) != WSC) { WSC = ws_of(c); ws_apply(); bar_redraw(); g_timeout_add(80, ws_said, GINT_TO_POINTER(WSC)); }   /* (W.focus: wsGo(W.ws) first) */
-	Client *old = FOCUS; FOCUS = c;
+	Client *old = FOCUS; FOCUS = c; if (c != old) cm_outside(0);   /* (1.6.3 Part 8, item 6: switching windows closes a menu, as the page's blur) */
 	if (c && c->app && c->app->rest) appwin_wake(c->app);   /* (1.6.1 Part 23 C: its page loaded again, back where it was) */
 	if (c) {
 		c->used = g_get_monotonic_time();   /* (the page's MRU: item 5) */
@@ -1834,6 +1835,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 	switch (e->type) {
 	case KeyPress:   /* (the page's global shortcuts: item 5, sc_key) */
 		if (DRAG.c && DRAG.kbd) { drag_key(&e->xkey); return GDK_FILTER_REMOVE; }   /* (1.6.1 Part 15: an app's own Move or Size) */
+		if (cm_xkey(&e->xkey)) return GDK_FILTER_REMOVE;   /* (1.6.3 Part 8, item 6: a menu's keys, wherever the focus is) */
 		if ((c = client_of(e->xkey.window)) && c->ak[0] && e->xkey.window == c->w && oracle_key(&e->xkey)) return GDK_FILTER_REMOVE;   /* (Oracle's keys, as on Standard: 12.3c) */
 		if (sc_key(&e->xkey)) return GDK_FILTER_REMOVE;
 		break;
@@ -1882,6 +1884,7 @@ static GdkFilterReturn wm_filter(GdkXEvent *xev, GdkEvent *ev, gpointer d)
 		if ((c = client_of(e->xexpose.window)) && c->frame == e->xexpose.window) { if (!e->xexpose.count) frame_draw(c); return GDK_FILTER_REMOVE; }
 		return GDK_FILTER_CONTINUE;
 	case ButtonPress:
+		cm_outside(e->xbutton.window);   /* (1.6.3 Part 8, item 6: a press on the desktop, the taskbar or a frame closes a menu, and goes on, as the page's pointerdown) */
 		if (DRAG.c && DRAG.kbd) { drag_end(e->xbutton.time, 0); return GDK_FILTER_REMOVE; }   /* (a click ends the keyboard's move: 1.6.1 Part 15) */
 		if ((c = client_of(e->xbutton.window))) { fl_outside();
 			int ri = rz_of(c, e->xbutton.window); if (ri >= 0) { XButtonEvent b = e->xbutton; rz_to_frame(c, ri, &b.x, &b.y); frame_press(c, &b); return GDK_FILTER_REMOVE; }
@@ -3938,6 +3941,54 @@ static int cm_at(double px, double py)
 	return -1;
 }
 static void cm_close(void) { if (CMWIN && gtk_widget_get_visible(CMWIN)) { gdk_seat_ungrab(gdk_display_get_default_seat(gdk_display_get_default())); gtk_widget_hide(CMWIN); pop_gone(CMBG, CMWX, CMWY); } if (CMBG) { g_object_unref(CMBG); CMBG = NULL; } CMHOV = -1; state_write(); }
+/* (1.6.3 Part 8, item 6, "the desktop right-click menu does not disappear if clicked outside of while open on Native") the menu's grab
+   leaves the desktop's own windows their presses (owner events, so a right-click elsewhere opens the next menu at once), and so a press on
+   the desktop, the taskbar or a window's frame never came to cm_press: closed here, from the X filter, for a press on any window but the
+   menu's (and from wm_focus with 0: another window chosen), the press then going on as the page's pointerdown does; Esc and Tab close it
+   wherever the keyboard's focus is (the desktop's own window holds it, so its keys did not come to cm_key), and Alt+Tab closes it and
+   switches, as the page's blur */
+static int cm_outside(unsigned long xw)
+{
+	if (!CMWIN || !gtk_widget_get_visible(CMWIN)) return 0; GdkWindow *g = gtk_widget_get_window(CMWIN);
+	if (xw && g && GDK_WINDOW_XID(g) == xw) return 0;
+	cm_close(); return 1;
+}
+/* (the desktop's own windows, the taskbar and the apps' pages are GTK's, their presses and keys coming by XInput 2, not to the X filter:
+   any widget's press closes the menu first, and the keys, wherever GTK sends them, are the menu's while it is open) */
+static void at_key(int back); static guint32 CM_T0;
+static gboolean cm_hook_press(GSignalInvocationHint *h, guint n, const GValue *v, gpointer d)
+{
+	(void)h; (void)d; GtkWidget *w = n ? g_value_get_object(&v[0]) : NULL; GdkEventButton *e = n > 1 ? g_value_get_boxed(&v[1]) : NULL;
+	if (w && e && e->type == GDK_BUTTON_PRESS && CMWIN && gtk_widget_get_toplevel(w) != CMWIN && e->time != CM_T0) cm_outside(0);   /* (not the press that opened it, going on to a parent) */
+	return TRUE;
+}
+static gint cm_snoop(GtkWidget *w, GdkEventKey *e, gpointer d)
+{
+	(void)d; if (e->type != GDK_KEY_PRESS || !CMWIN || !gtk_widget_get_visible(CMWIN)) return FALSE;
+	unsigned st = e->state & (GDK_CONTROL_MASK | GDK_MOD1_MASK | GDK_SUPER_MASK);
+	if (st) { int tab = e->keyval == GDK_KEY_Tab || e->keyval == GDK_KEY_ISO_Left_Tab; cm_close();   /* (a shortcut: the menu closes and it goes on; Alt+Tab switches, as the page's blur) */
+		if (tab && (st & GDK_MOD1_MASK) && !(st & GDK_CONTROL_MASK) && USER_ID[0] && !LOCKED) { at_key((e->state & GDK_SHIFT_MASK) != 0); return TRUE; } return FALSE; }
+	if (e->keyval == GDK_KEY_Escape || e->keyval == GDK_KEY_Tab || e->keyval == GDK_KEY_ISO_Left_Tab) { cm_close(); return TRUE; }
+	if (w && gtk_widget_get_toplevel(w) == CMWIN) return FALSE;
+	cm_key(CMAREA, e, NULL); return TRUE;
+}
+static void cm_hooks(void)
+{
+	static int done; if (done) return; done = 1;
+	g_signal_add_emission_hook(g_signal_lookup("button-press-event", GTK_TYPE_WIDGET), 0, cm_hook_press, NULL, NULL);
+	gtk_key_snooper_install(cm_snoop, NULL);
+}
+static int cm_xkey(XKeyEvent *e)
+{
+	if (!CMWIN || !gtk_widget_get_visible(CMWIN) || e->type != KeyPress) return 0;
+	KeySym ks = XkbKeycodeToKeysym(DPY, e->keycode, 0, 0); unsigned st = e->state & (ControlMask | Mod1Mask | Mod4Mask);
+	if (st) { cm_close(); return 0; }   /* (a shortcut: Alt+Tab, the Rudolf key's: the menu closes and it goes on) */
+	if (ks == XK_Escape || ks == XK_Tab || ks == XK_ISO_Left_Tab) { cm_close(); return 1; }
+	GdkEventKey k; memset(&k, 0, sizeof k); k.type = GDK_KEY_PRESS;
+	k.keyval = ks == XK_Down ? GDK_KEY_Down : ks == XK_Up ? GDK_KEY_Up : ks == XK_Return ? GDK_KEY_Return : ks == XK_KP_Enter ? GDK_KEY_KP_Enter : 0;
+	if (k.keyval) cm_key(CMAREA, &k, NULL);
+	return 1;   /* (the menu has the keys while it is open, as the page's .ctx its focus) */
+}
 static void cm_choose(int i) { if (i < 0 || i >= NCMI || CMIT[i].sep || CMIT[i].dis) return; char a[96]; snprintf(a, sizeof a, "%s", CMIT[i].act); void (*cb)(const char *) = CM_CB; cm_close(); if (cb) cb(a); }
 static gboolean cm_motion(GtkWidget *w, GdkEventMotion *e, gpointer d) { (void)w; (void)d; int h = cm_at(e->x, e->y); if (h != CMHOV) { CMHOV = h; gtk_widget_queue_draw(CMAREA); } return TRUE; }
 static gboolean cm_press(GtkWidget *w, GdkEventButton *e, gpointer d)
@@ -3967,6 +4018,7 @@ static void cm_open(double px, double py, const char *title, const CMI *items, i
 	double ph = CMBH - CM_LATE * 25; CM_LATE = 0;   /* (a window's menu: placed by the page before its Print row was added, apps25b.js) */
 	ph = round(ph); CMX = fmax(2, fmin(CMX, vw - round(CMBW) - 4)); CMY = fmax(2, CMY + ph > vh - 4 ? CMY - ph : CMY);
 	if (tb_side() == 1 && CMX < BARW / Z + 4) CMX = BARW / Z + 4; else if (tb_side() == 2 && CMX + round(CMBW) > vw - BARW / Z - 4) CMX = fmax(2, vw - BARW / Z - 4 - round(CMBW));   /* (1.6.2, tbside62.js: off a taskbar at the left or the right) */   /* (offsetWidth and offsetHeight: whole pixels) */   /* (the page's cmenu: kept on the screen, above the pointer when it would not fit below) */
+	cm_hooks(); CM_T0 = gtk_get_current_event_time();
 	if (!CMWIN) { CMWIN = gtk_window_new(GTK_WINDOW_POPUP); gtk_window_set_title(GTK_WINDOW(CMWIN), "Menu"); CMAREA = gtk_drawing_area_new(); gtk_widget_set_can_focus(CMAREA, TRUE);
 		gtk_widget_add_events(CMAREA, GDK_BUTTON_PRESS_MASK | GDK_POINTER_MOTION_MASK | GDK_KEY_PRESS_MASK); gtk_container_add(GTK_CONTAINER(CMWIN), CMAREA);
 		g_signal_connect(CMAREA, "draw", G_CALLBACK(cm_draw), NULL); g_signal_connect(CMAREA, "motion-notify-event", G_CALLBACK(cm_motion), NULL);
