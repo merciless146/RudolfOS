@@ -111,9 +111,9 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
     its password since the start (the page's home/unlock?session=1, Native's desktop/login; signing out ends it), never
     after five fingers not recognised in a row until the password is used, never for Guest. An account whose files are
     not on the disk (older accounts) cannot have fingerprints: Settings will say so.
-  - **The size**: the check workflow's `size` job measures what libfprint adds to the newest beta's base layer (libfprint
-    with libgusb, libgudev, json-glib and Ubuntu's libfprint-2-tod; GLib, NSS, pixman and libusb are there already);
-    ci_release.sh fails over its own budget, 3 MB (systools/mkfprint.sh).
+  - **The size: 972 KB** added to the base layer (fprint-check.yml's `size` job against beta 2026112422: libfprint with what
+    it links that the base layer lacked, and its list of unsupported readers); ci_release.sh fails over its own budget,
+    3 MB (systools/mkfprint.sh).
   - **Tests:** iso/qt/host/fprint163_t.sh (fprint-check.yml): libfprint's virtual reader with made-up fingerprints
     (fixtures/vfinger.py draws them from a number; never anyone's finger) on an encrypted ext4 drive: adding (passwords,
     the files not on the disk), matching, another account's finger refused, an administrator's prompt, five tries, the
