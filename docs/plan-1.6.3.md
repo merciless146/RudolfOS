@@ -518,8 +518,8 @@ on a busy site; a Tor window without them; the reminder and about:safety in the 
   debugging port with a managed policy file present: to be measured on the runner with the snap's Chromium).
 
 #### Status (2026-11-25, scheduled task): step 2 waits on the owner's decision (the desktop's own extensions and the policy)
-- **Measured** (`iso/qt/native/oraextpol63_t.sh`, oracle-extensions-check.yml; Chromium for Testing 153 here, the snap's 158 on the
-  runner): a stand-in extension loaded with `--load-extension`, as the desktop loads Ruffle for Oracle and the web frames extension,
+- **Measured** (`iso/qt/native/oraextpol63_t.sh`, oracle-extensions-check.yml; the same with Chromium for Testing 153 and the
+  Chromium snap's 158.0.8127.36, the releases', on the runner; the snap reads /etc/chromium-browser/policies/managed): a stand-in extension loaded with `--load-extension`, as the desktop loads Ruffle for Oracle and the web frames extension,
   under each kind of managed policy. **Any policy that blocks extensions** (ExtensionInstallBlocklist "*", or ExtensionSettings "*"
   blocked) **refuses every `--load-extension` one, even with its own ID allowed** (by either policy): Chromium says "Failed to load
   extension … Loading of unpacked extensions is disabled by the administrator" in a dialog **that stops its start** (the page never
