@@ -83,11 +83,14 @@ static int open_id, tries, ready;
 /* ---- the memory each page uses, for Task Manager (Chromium does not say which process belongs to which tab).
    While rudolfd asks (it touches WANT when Task Manager looks), every 2 seconds: list the targets, attach to each
    page (the desktop and Oracle's tabs), ask for its JavaScript memory, and write {url, used} to OUT. */
-#define WANT "/run/user/1000/rudolf-tabmem.want"
-#define OUTF "/run/user/1000/rudolf-tabmem.json"
+/* (1.6.3: RUDOLF_TABMEM_DIR instead of /run/user/1000, for the host tests only) */
+static const char *tm_dir(void) { const char *d = getenv("RUDOLF_TABMEM_DIR"); return d && *d == '/' && strlen(d) < 200 ? d : "/run/user/1000"; }
+static char WANT[256], OUTF[256], OUTT[260];
+static void tm_paths(void) { snprintf(WANT, sizeof WANT, "%s/rudolf-tabmem.want", tm_dir()); snprintf(OUTF, sizeof OUTF, "%s/rudolf-tabmem.json", tm_dir()); snprintf(OUTT, sizeof OUTT, "%s.tmp", OUTF); }
 #define MAXT 64
 static struct { char target[64], session[64], url[512]; long long used; int attach_id, heap_id, seen; } tm[MAXT];
 static int tm_list_id;
+static void tp_json(FILE *f);   /* (1.6.3: below) */
 static long long tm_last;
 static int tm_slot(const char *target)
 {
@@ -98,11 +101,11 @@ static int tm_slot(const char *target)
 }
 static void tm_write(void)
 {
-	FILE *f = fopen(OUTF ".tmp", "w"); if (!f) return;
+	FILE *f = fopen(OUTT, "w"); if (!f) return;
 	fprintf(f, "{\"time\":%lld,\"pages\":[", (long long)time(NULL));
 	int first = 1;
 	for (int i = 0; i < MAXT; i++) if (tm[i].target[0] && tm[i].used >= 0) { fprintf(f, "%s{\"url\":\"%s\",\"used\":%lld}", first ? "" : ",", tm[i].url, tm[i].used); first = 0; }
-	fprintf(f, "]}\n"); fclose(f); rename(OUTF ".tmp", OUTF);
+	fprintf(f, "]"); tp_json(f); fprintf(f, "}\n"); fclose(f); rename(OUTT, OUTF);   /* (1.6.3: each tab's process, tp_json) */
 }
 static void send_session(const char *session, const char *method, const char *params, int *id_out)
 {
@@ -152,6 +155,158 @@ static int tm_handle(const char *msg, long id)
 	}
 	return 0;
 }
+
+/* ---- (1.6.3, docs/plan-1.6.3.md Part 4) which process shows each of Oracle's tabs, and what each process holds, for a tab's
+   tooltip. Chromium does not say which process shows a Controlled Frame; a trace of a shell window does: DevTools' event
+   "TracingStartedInBrowser" lists every frame of that window and of its tabs (guests), each with its process ID. While Task Manager
+   or a tooltip asks (WANT, as above), every 2 seconds: each shell window in turn is traced for a moment (category
+   disabled-by-default-devtools.timeline, started and ended at once), its frames kept as {h: a hash of the address without its
+   #part (FNV-1a; the address itself is not written), p: the process, f: the frame, up: its parent, m: a window's or a tab's own
+   page}, and each of those processes' Pss and RssAnon read from /proc (the same user's processes). Written as "frames" and "mem"
+   beside the pages (the desktop's Chromium: OUTF) or, for Oracle's own Chromium (--oracle: Native, the encrypted setting, Tor
+   windows), into a file of its own, TPOUT, removed when this exits; rudolfd's processes reply passes both on. */
+#define TPOUT "%s/rudolf-tabmem-o%d.json"
+#define TPF 256
+struct tpframe { unsigned h; int pid, main; char f[40], up[40]; };
+static struct tpframe tp_f[TPF], tp_done[TPF]; static int tp_nf, tp_ndone = -1;
+static struct { char target[64], session[80]; int attach_id; } tp_w[64]; static int tp_nw;
+static int tp_cur = -1, tp_start_id, tp_end_id, tp_oracle; static long long tp_t0, tp_last, tp_at; static char tp_file[260];
+static int tp_handle(const char *msg);
+static void tp_write_file(void);
+/* the address in a frame's "url":"..." (escapes undone), without its #part, hashed */
+static unsigned tp_hash(const char *obj)
+{
+	const char *p = strstr(obj, "\"url\":\""); unsigned h = 2166136261u; if (!p) return 0;
+	for (p += 7; *p && *p != '"'; p++) {
+		unsigned c = (unsigned char)*p;
+		if (c == '\\' && p[1]) { p++; c = (unsigned char)*p;
+			if (c == 'u') { unsigned v = 0; for (int i = 1; i <= 4; i++) { char x = p[i]; if (!x) return 0; v = v * 16 + (x >= '0' && x <= '9' ? x - '0' : x >= 'a' && x <= 'f' ? x - 'a' + 10 : x >= 'A' && x <= 'F' ? x - 'A' + 10 : 0); }
+				p += 4; if (v >= 0x80) return 0; c = v; }   /* (an address is ASCII: anything else is not matched) */
+			else if (c == 'n' || c == 't' || c == 'r' || c == 'b' || c == 'f') return 0; }
+		if (c == '#') break;
+		h ^= c; h *= 16777619u;
+	}
+	return h;
+}
+/* the frames of a TracingStartedInBrowser event in msg, added to tp_f */
+static void tp_frames(const char *msg)
+{
+	/* (an event's "args" come before its "name": the frames are taken from {"args":{"data":{...,"frames":[...]...}},"cat":...,
+	   "name":"TracingStartedInBrowser"}, the event that names them coming after them) */
+	if (!strstr(msg, "\"name\":\"TracingStartedInBrowser\"")) return;
+	for (const char *fr = strstr(msg, "\"frames\":[{\"frame\":"); fr; fr = strstr(fr + 1, "\"frames\":[{\"frame\":")) {
+	int n0 = tp_nf; const char *o = fr + 10;
+	for (; *o == '{' && tp_nf < TPF; ) {
+		/* one frame: {...} with no object inside; strings skipped so that a } in an address does not end it */
+		const char *e = o + 1; int instr = 0;
+		for (; *e; e++) { if (instr) { if (*e == '\\' && e[1]) e++; else if (*e == '"') instr = 0; } else if (*e == '"') instr = 1; else if (*e == '}') break; }
+		if (!*e) break;
+		static char one[4096]; size_t n = (size_t)(e - o + 1);
+		if (n < sizeof one) {
+			memcpy(one, o, n); one[n] = 0;
+			struct tpframe *t = &tp_f[tp_nf]; memset(t, 0, sizeof *t);
+			t->pid = (int)num_field(one, "processId"); field(one, "frame", t->f, sizeof t->f); field(one, "parent", t->up, sizeof t->up);
+			t->main = strstr(one, "\"isOutermostMainFrame\":true") != NULL; t->h = tp_hash(one);
+			if (t->pid > 0 && t->f[0]) tp_nf++;
+		}
+		o = e + 1; if (*o == ',') o++;
+	}
+	/* (kept only when the event they belong to is TracingStartedInBrowser: the array, its data's end, then the event's name) */
+	const char *nm = strstr(o, "\"name\":\""); if (!nm || nm - o > 400 || strncmp(nm, "\"name\":\"TracingStartedInBrowser\"", 32)) tp_nf = n0;
+	}
+}
+/* a process's Pss and RssAnon in kB (-1: not readable) */
+static void tp_mem(int pid, long *pss, long *anon)
+{
+	char path[64], l[256]; *pss = *anon = -1;
+	snprintf(path, sizeof path, "/proc/%d/smaps_rollup", pid); FILE *f = fopen(path, "r");
+	if (f) { while (fgets(l, sizeof l, f)) if (!strncmp(l, "Pss:", 4)) { *pss = atol(l + 4); break; } fclose(f); }
+	snprintf(path, sizeof path, "/proc/%d/status", pid); f = fopen(path, "r");
+	if (f) { while (fgets(l, sizeof l, f)) if (!strncmp(l, "RssAnon:", 8)) { *anon = atol(l + 8); break; } fclose(f); }
+}
+/* "frames":[...],"mem":{...} of the last complete round */
+static void tp_json(FILE *f)
+{
+	if (tp_ndone < 0) return;
+	fprintf(f, ",\"ftime\":%lld,\"frames\":[", tp_at);
+	for (int i = 0; i < tp_ndone; i++) fprintf(f, "%s{\"h\":%u,\"p\":%d,\"m\":%d,\"f\":\"%s\",\"up\":\"%s\"}", i ? "," : "", tp_done[i].h, tp_done[i].pid, tp_done[i].main, tp_done[i].f, tp_done[i].up);
+	fprintf(f, "],\"mem\":{");
+	int first = 1;
+	for (int i = 0; i < tp_ndone; i++) {
+		int seen = 0; for (int k = 0; k < i; k++) if (tp_done[k].pid == tp_done[i].pid) { seen = 1; break; }
+		if (seen) continue;
+		long pss, anon; tp_mem(tp_done[i].pid, &pss, &anon);
+		fprintf(f, "%s\"%d\":[%ld,%ld]", first ? "" : ",", tp_done[i].pid, pss, anon); first = 0;
+	}
+	fprintf(f, "}");
+}
+/* the next window to trace (tp_cur), or the round is over */
+static void tp_next(void)
+{
+	for (tp_cur++; tp_cur < tp_nw; tp_cur++) {
+		if (!tp_w[tp_cur].target[0]) continue;
+		if (!tp_w[tp_cur].session[0]) { if (!tp_w[tp_cur].attach_id) { char p[128]; snprintf(p, sizeof p, "{\"targetId\":\"%.63s\",\"flatten\":true}", tp_w[tp_cur].target); tp_w[tp_cur].attach_id = next_id; send_cmd("Target.attachToTarget", p); } return; }
+		send_session(tp_w[tp_cur].session, "Tracing.start", "{\"traceConfig\":{\"includedCategories\":[\"disabled-by-default-devtools.timeline\"],\"excludedCategories\":[\"*\"]},\"transferMode\":\"ReportEvents\"}", &tp_start_id);
+		return;
+	}
+	/* every window done */
+	memcpy(tp_done, tp_f, sizeof tp_f); tp_ndone = tp_nf; tp_cur = -1; tp_at = time(NULL);
+	if (tp_oracle) tp_write_file(); else tm_write();   /* (written at once: the tooltip waits for a round begun after it opened) */
+}
+static void tp_write_file(void)
+{
+	char tmp[280]; snprintf(tmp, sizeof tmp, "%s.tmp", tp_file);
+	FILE *f = fopen(tmp, "w"); if (!f) return;
+	fprintf(f, "{\"time\":%lld", (long long)time(NULL)); tp_json(f); fprintf(f, "}\n"); fclose(f); rename(tmp, tp_file);
+}
+static void tp_gone(void) { if (tp_file[0]) unlink(tp_file); }
+static void tp_sig(int sig) { if (tp_file[0]) unlink(tp_file); signal(sig, SIG_DFL); raise(sig); }   /* (stopped by the session: as before, the file gone too) */
+/* the shell windows to trace: the desktop's (shell_target) or Oracle's (o_win), set by the caller */
+static void tp_set(int i, const char *target)
+{
+	if (i >= 64) return;
+	if (strcmp(tp_w[i].target, target)) { snprintf(tp_w[i].target, sizeof tp_w[i].target, "%s", target); tp_w[i].session[0] = 0; tp_w[i].attach_id = 0; }
+}
+/* every 2 seconds while asked: a round over the windows (one at a time: Chromium traces one session at a time) */
+static void tp_tick(long long now, int nw)
+{
+	struct stat st;
+	if (stat(WANT, &st) || time(NULL) - st.st_mtime > 15 || now - tp_last < 2000) return;
+	if (tp_cur >= 0 && now - tp_t0 < 6000) return;   /* (a round still going: a window that never answered is given up after 6 s) */
+	for (int i = nw; i < tp_nw; i++) tp_w[i].target[0] = 0;
+	tp_nw = nw; tp_last = now; tp_t0 = now; tp_nf = 0; tp_cur = -1; tp_start_id = tp_end_id = 0;
+	if (!tp_file[0] && tp_oracle) { snprintf(tp_file, sizeof tp_file, TPOUT, tm_dir(), (int)getpid()); atexit(tp_gone); }
+	tp_next();
+}
+/* a reply or event of the trace: 1 when handled */
+static int tp_handle(const char *msg)
+{
+	if (tp_cur < 0 && !strstr(msg, "\"Tracing.")) {
+		/* (an attachment answered after its round was given up) */
+		long id = strstr(msg, "\"method\"") ? 0 : num_field(msg, "id");
+		for (int i = 0; id > 0 && i < tp_nw; i++) if (tp_w[i].attach_id == id) { tp_w[i].attach_id = 0; field(msg, "sessionId", tp_w[i].session, sizeof tp_w[i].session); return 1; }
+		return 0;
+	}
+	long id = strstr(msg, "\"method\"") ? 0 : num_field(msg, "id");
+	if (id > 0) {
+		for (int i = 0; i < tp_nw; i++) if (tp_w[i].attach_id == id) {
+			tp_w[i].attach_id = 0; field(msg, "sessionId", tp_w[i].session, sizeof tp_w[i].session);
+			if (i == tp_cur) { if (tp_w[i].session[0]) { tp_cur--; tp_next(); } else tp_next(); }   /* (attached: its trace; refused: the next one) */
+			return 1;
+		}
+		if (id == tp_start_id) { tp_start_id = 0;
+			if (strstr(msg, "\"error\"") || tp_cur < 0) { if (tp_cur >= 0) { tp_w[tp_cur].session[0] = 0; tp_next(); } return 1; }   /* (the window has gone: attached again next time) */
+			send_session(tp_w[tp_cur].session, "Tracing.end", NULL, &tp_end_id); return 1; }
+		if (id == tp_end_id) { tp_end_id = 0; if (strstr(msg, "\"error\"") && tp_cur >= 0) tp_next(); return 1; }
+		return 0;
+	}
+	if (tp_cur < 0 || !tp_w[tp_cur].session[0]) return strstr(msg, "\"method\":\"Tracing.") != NULL;
+	char sid[80]; field(msg, "sessionId", sid, sizeof sid);
+	if (strcmp(sid, tp_w[tp_cur].session)) return strstr(msg, "\"method\":\"Tracing.") != NULL;
+	if (strstr(msg, "\"method\":\"Tracing.dataCollected\"")) { tp_frames(msg); return 1; }
+	if (strstr(msg, "\"method\":\"Tracing.tracingComplete\"")) { tp_next(); return 1; }
+	return strstr(msg, "\"method\":\"Tracing.") != NULL;
+}
 static long long retry_at;
 static long long now_ms(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return t.tv_sec * 1000LL + t.tv_nsec / 1000000; }
 static void open_shell(void)
@@ -165,6 +320,7 @@ static void handle(const char *msg)
 {
 	char v[256], t[64];
 	if (debug) fprintf(stderr, "launch << %.300s\n", msg);
+	if (tp_handle(msg)) return;   /* (1.6.3: the trace of the shell's frames) */
 	if (tm_handle(msg, strstr(msg, "\"method\"") ? 0 : num_field(msg, "id"))) return;
 	if (strstr(msg, "\"sessionId\"")) return;   /* events from the pages attached for the memory probe */
 	/* Chromium refused (not ready yet): try again in a second, for up to a minute */
@@ -457,7 +613,7 @@ int main(int argc, char **argv)
 	int cfd = -1, cfw = -1; (void)cfw;
 	if (oracle) { cfd = open(ctl, O_RDONLY | O_NONBLOCK | O_CLOEXEC); cfw = open(ctl, O_WRONLY | O_NONBLOCK | O_CLOEXEC);   /* (kept open: no end of file between writers) */
 		struct stat st; if (cfd < 0 || fstat(cfd, &st) || !S_ISFIFO(st.st_mode)) { fprintf(stderr, "rudolf-launch: %s is not a FIFO\n", ctl); return 2; } }
-	debug = getenv("RUDOLF_LAUNCH_DEBUG") != NULL;
+	debug = getenv("RUDOLF_LAUNCH_DEBUG") != NULL; tm_paths();
 	int a[2], b[2];
 	if (pipe(a) || pipe(b)) { perror("pipe"); return 1; }
 	pid_t pid = fork();
@@ -496,6 +652,8 @@ int main(int argc, char **argv)
 		snprintf(p, sizeof p, "{\"permission\":{\"name\":\"pointer-lock\"},\"setting\":\"granted\",\"origin\":\"isolated-app://%s\"}", id);
 		send_cmd("Browser.setPermission", p);
 	}
+	tp_oracle = oracle;
+	if (oracle) { signal(SIGTERM, tp_sig); signal(SIGINT, tp_sig); }
 	if (oracle) { ready = 1;   /* (no starting page to wait for: Chromium answers the first window when it can, retried) */
 		send_cmd("Browser.setDownloadBehavior", "{\"behavior\":\"default\",\"eventsEnabled\":true}"); }   /* (where the policy says; told of each one) */
 	static char cbuf[4096]; size_t cl = 0;
@@ -512,15 +670,18 @@ int main(int argc, char **argv)
 			if (got <= 0) break;                     /* Chromium has gone */
 			blen += got;
 			size_t start = 0;
-			for (size_t i = 0; i < blen; i++) if (buf[i] == 0) { if (!oracle || !o_handle(buf + start)) { if (!oracle) handle(buf + start); } start = i + 1; }
+			for (size_t i = 0; i < blen; i++) if (buf[i] == 0) { if (oracle && tp_handle(buf + start)) {} else if (!oracle || !o_handle(buf + start)) { if (!oracle) handle(buf + start); } start = i + 1; }
 			memmove(buf, buf + start, blen - start); blen -= start;
 			if (blen >= sizeof buf - 1) blen = 0;        /* a message too large to matter (none expected) */
 		}
 		if (oracle && o_close_at && now_ms() >= o_close_at) { o_close_at = 0; o_nq = 0; send_cmd("Browser.close", NULL); }   /* (signed out: "logout") */
-		if (oracle) { for (int i = 0; i < o_nq; i++) if (!o_q[i].id || (o_q[i].at && now_ms() >= o_q[i].at)) { o_q[i].at = 0; o_send(i); } }
+		if (oracle) { for (int i = 0; i < o_nq; i++) if (!o_q[i].id || (o_q[i].at && now_ms() >= o_q[i].at)) { o_q[i].at = 0; o_send(i); }
+			for (int i = 0; i < o_n; i++) { tp_set(i, o_win[i].target); }
+			tp_tick(now_ms(), o_n); }   /* (1.6.3: Oracle's windows' frames) */
 		else {
 		if (retry_at && now_ms() >= retry_at) { retry_at = 0; open_shell(); }
 		tm_tick(now_ms());
+		if (shell_target[0]) { tp_set(0, shell_target); tp_tick(now_ms(), 1); }   /* (1.6.3: the shell's frames, for a tab's tooltip) */
 		if (!ready && now_ms() - t0 > 20000 && !open_id) { ready = 1; open_shell(); }   /* no page event: try anyway */
 		}
 		int st;
