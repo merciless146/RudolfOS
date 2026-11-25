@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New: Oracle frees the memory of tabs you have not looked at for 30 minutes (Settings › Oracle › Memory: 15 minutes to
+  2 hours, or Never), and at once when memory runs low: each freed tab keeps its address and scroll (💤) and loads again
+  when chosen; tabs playing sound or holding typed text stay. About 80-95 MB saved a background tab with real websites
+  (plan 1.6.3 Part 4).
 - New (native desktop, not switched on yet): the native Settings has Volume Controls (the system volume, each desktop
   sound's style, switch and volume with its ▶, "Use one style everywhere", App volume, the output, the sound card, the
   microphone and its test, echo cancelling for calls), Multimedia Settings and Accessibility, as the web Settings has them
