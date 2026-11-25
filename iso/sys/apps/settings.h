@@ -119,6 +119,7 @@ void page_acc(void);   /* settings_acc.c */
 void page_bt(void);    /* settings_bt.c (1.6.3 PR 6) */
 void page_remote(void); /* settings_remote.c (1.6.3 PR 6) */
 void page_mob(void);   /* settings_mob.c (1.6.3 PR 6) */
+void page_net(void);   /* settings_net.c (1.6.3 PR 6) */
 /* (settings_vol.c) sound through PulseAudio's simple API, opened when first needed: 16-bit mono at rate, played in a thread of its own */
 void set_play_pcm(const short *pcm, size_t n, int rate);
 void sec_bring(void); /* settings_bring.c */

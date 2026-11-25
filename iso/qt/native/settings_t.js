@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -90,7 +90,7 @@ async function natShots(mode, pages) {
   return out;
 }
 // ---- Search in Settings: the same results for the same words (the page's ssMatch over its pages, with System and About harvested as shown)
-const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3']};
+const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5']};
 const QUERIES = ['time zone', 'sound', 'date', 'wifi', 'dark', 'idle', 'about', 'desktop page', 'lang', 'xyzzy'];
 async function pageSearch() {
   const {ctx, p} = await signin('light');
