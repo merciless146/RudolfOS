@@ -4,7 +4,7 @@
 //   node setsearch59_t.js --write [CHROME]  also writes desktop/settings-index.json (what the build puts in the page),
 //                                            from every page as it shows here; then rebuild (build19.py)
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
-const WWW = path.join(__dirname, '../../../iso/www'), IDX = path.join(__dirname, '../../../desktop/settings-index.json');
+const WWW = path.join(__dirname, '../../../iso/www'), IDX = path.join(__dirname, '../../../desktop/settings-index.json'), DISP = path.join(__dirname, '../../../desktop/settings-disp.json');
 const WRITE = process.argv.includes('--write'), CH = process.argv.slice(2).find(a => !a.startsWith('--'));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 500) : '')) };
 const srv = http.createServer((q, s) => { const [u0] = q.url.split('?'); const u = decodeURIComponent(u0);
@@ -30,6 +30,15 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   for (const k of keys) { await q(`SW.show('${k}',1)`); await wait(1700) }
   const live = await q('JSON.parse(JSON.stringify(SSLIVE))');
   if (WRITE) { const o = {}; for (const k of keys) o[k] = live[k] || []; fs.writeFileSync(IDX, JSON.stringify(o, null, 0).replace(/\],\[/g, '],\n[').replace(/":\[/g, '":\n[') + '\n'); console.log('wrote ' + IDX + ' (' + keys.map(k => o[k].length).reduce((a, x) => a + x, 0) + ' entries)') }
+  /* (1.6.3 Part 3) Display Properties' keys and defaults as the live page has them after every module (fonts47.js's renamed font,
+     native25.js's ?? defaults), and DYN's backgrounds as the built page names their thumbnails: desktop/settings-disp.json, which the
+     native Settings' mksettings.py reads */
+  const disp = await q("JSON.stringify({DKEYS,DEFS:DEFS.disp,ACMODES,ST_NAMES,ST_OF:typeof ST_OF=='object'?ST_OF:{},DYN_LIVE,DYN:Object.fromEntries(Object.keys(DYN).map(k=>[k,{n:DYN[k].n,tl:DYN[k].tl,td:DYN[k].td}]))})");
+  /* (and each drop-down of the page as it shows it: its id and its options, value and words) */
+  await q("SW.show('disp',1)"); await wait(800);
+  const sels = await q("JSON.stringify(Object.fromEntries([...SW.body.querySelectorAll('.sc select[id]')].map(s=>[s.id,[...s.options].map(o=>[o.value,o.textContent])])))");
+  if (WRITE) { fs.writeFileSync(DISP, JSON.stringify(Object.assign(JSON.parse(disp), {SELECTS: JSON.parse(sels)}), null, 1) + '\n'); console.log('wrote ' + DISP) }
+  ok('2b. desktop/settings-disp.json is what the page has (else: --write)', fs.existsSync(DISP) && JSON.stringify(JSON.parse(fs.readFileSync(DISP, 'utf8'))) == JSON.stringify(Object.assign(JSON.parse(disp), {SELECTS: JSON.parse(sels)})));
   const idx = fs.existsSync(IDX) ? JSON.parse(fs.readFileSync(IDX, 'utf8')) : {};
   const miss = keys.filter(k => (live[k] || []).length && !(idx[k] && idx[k].length)), stale = [];
   for (const k of keys) for (const e of live[k] || []) if (!(idx[k] || []).some(x => x[0] == e[0] && x[1] == e[1])) stale.push(k + ': ' + e[0]);

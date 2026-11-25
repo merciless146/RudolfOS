@@ -207,5 +207,31 @@
   "ok": true,
   "on": false,
   "active": false
+ },
+ "screen": {
+  "ok": true,
+  "res": "auto",
+  "fps": 60,
+  "actual": {
+   "w": 1920,
+   "h": 1080,
+   "hz": 60,
+   "kind": "native",
+   "panel": "1920x1080"
+  },
+  "display": "soft",
+  "modes": null,
+  "pending": false,
+  "previous": "",
+  "persistent": true,
+  "monitors": []
+ },
+ "display": {
+  "ok": true,
+  "setting": "games",
+  "active": "soft",
+  "gpu": "amdgpu",
+  "xorg": true,
+  "reason": ""
  }
 }

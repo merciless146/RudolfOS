@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -64,7 +64,7 @@ const line = k => (nst().split('\n').find(x => x.startsWith(k + ' ')) || '').sli
 const lines = k => nst().split('\n').filter(x => x.startsWith(k + ' ')).map(x => x.slice(k.length + 1));
 const rect = n => { const l = line('rect ' + n); return l ? l.split(' ').map(Number) : null };
 async function until(f, ms) { const t = Date.now(); while (Date.now() - t < (ms || 15000)) { if (await f()) return true; await wait(100) } return false }
-function natStart(page, extra) { try { fs.unlinkSync(SF) } catch (e) {} const e = Object.assign(env0(), {RUDOLF_SET_STATE: SF, RUDOLF_SET_NOW: NOWS, RUDOLF_SET_GPU: GPU}, extra || {});
+function natStart(page, extra) { try { fs.unlinkSync(SF) } catch (e) {} const e = Object.assign(env0(), {RUDOLF_SET_STATE: SF, RUDOLF_SET_NOW: NOWS, RUDOLF_SET_GPU: GPU, RUDOLF_SET_WWW: path.join(__dirname, '../../www')}, extra || {});
   const q = NP = cp.spawn(BIN, page ? [page] : [], {env: e, stdio: ['ignore', 'pipe', 'pipe']}); q.log = ''; q.stdout.on('data', d => q.log += d); q.stderr.on('data', d => q.log += d) }
 function natStop() { if (NP) { NP.kill(); NP = null } }
 const xdo = a => sh('xdotool ' + a);
@@ -80,12 +80,17 @@ async function natShots(mode, pages) {
     /* (a view in the middle of a long page: the native one scrolled a few steps, the page then at the same place: pageMid) */
     { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 60; i++) xdo('click 4'); for (let i = 0; i < 6; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(800);
       const f = path.join(OUT, `${mode}-${k}-mid.nat.png`); sh(`import -window root ${f}`); out[k + '-mid'] = {f, b: rect('body'), y: +line('scroll')} }
+    /* (1.6.3: a long page, Display's ~3,500 px, seen at more places on its way down: 5 steps of the wheel each) */
+    for (const at of MIDS[k] || []) { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 5; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(800);
+      const f = path.join(OUT, `${mode}-${k}-${at}.nat.png`); sh(`import -window root ${f}`); out[k + '-' + at] = {f, b: rect('body'), y: +line('scroll')} }
+    try { fs.copyFileSync(SF, path.join(OUT, `${mode}-${k}.state`)) } catch (e) {}   /* (what the native page showed: its parts' places, for comparing) */
     out[k + '-harv'] = lines('harv').filter(x => x.startsWith(k + '|')).map(x => x.split('|').slice(1, 3).join('|') + (x.endsWith('|1') ? '|1' : ''));
     natStop(); await wait(300);
   }
   return out;
 }
 // ---- Search in Settings: the same results for the same words (the page's ssMatch over its pages, with System and About harvested as shown)
+const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7']};
 const QUERIES = ['time zone', 'sound', 'date', 'wifi', 'dark', 'idle', 'about', 'desktop page', 'lang', 'xyzzy'];
 async function pageSearch() {
   const {ctx, p} = await signin('light');
@@ -332,18 +337,49 @@ async function checkVolAccMm() {
     ok('MM5. INSTALLERS folder and Emu: asked of the native shell (open explorer C:\\PROGRAMS\\INSTALLERS, open gameboy)', /act open explorer C:\\PROGRAMS\\INSTALLERS/.test(nst()) && /act open gameboy/.test(nst()), notes(/act open/)) }
   natStop();
 }
+
+// ---- 1.6.3 Part 3, PR 5: Display Properties' checklist (D): what the native one saves and asks, as dispPanelS and its modules do
+async function checkDisp() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark);
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}'), SYS = () => JSON.parse(LS().bd95sys || '{}');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 120; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(250) } await wait(300) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  const confirm = async b => { click(rect(b)); await until(() => rect('dialog'), 3000); xdo('key Return'); await wait(900) };
+  cp.execFileSync('python3', ['-c', 'import sys\nfrom PIL import Image\nImage.new("RGB", (3000, 1500), (200, 80, 40)).save(sys.argv[1])', path.join(D, 'wall.png')]);
+  natStart('disp', {RUDOLF_SET_NOSOUND: '1', RUDOLF_SET_PICK: path.join(D, 'wall.png')}); await until(() => rect('body') && line('page') == 'disp', 20000); await wait(1500);
+  { click(rect('dyn-stag')); await until(() => line('dirty') == '1', 3000); await scrollTo('acsw'); const a = rect('acsw'); xdo(`mousemove ${Math.round(a[0] + 5 * 24.7 + 10)} ${Math.round(a[1] + 10)} click 1`); await wait(400);
+    await confirm('apply'); await until(() => SET().dyn == 'stag', 4000); const st = SET();
+    ok('D1. Moonlit Stag chosen and Green from the swatches, Apply: dyn "stag", accent "#16a34a" (bd95set:ACCT), as the page saves them', st.dyn == 'stag' && st.accent == '#16a34a', st) }
+  { await scrollTo('lkck'); await pick('lkck', 1, 3); await until(() => (SYS().lk || {}).clock == 'small', 3000);
+    ok('D2. Lock and sign-in screen\'s Clock: Small, kept at once for everyone (bd95sys.lk.clock), the rest of bd95sys kept', (SYS().lk || {}).clock == 'small' && SYS().lk.dim === 30, SYS()) }
+  { await scrollTo('ssmin'); await pick('ssmin', 0, 10); await until(() => SYS().ssmin === 1, 3000);
+    ok('D3. Screen saver\'s Start after: 1 minute, kept at once (bd95sys.ssmin 1)', SYS().ssmin === 1, SYS()) }
+  { await scrollTo('dtab'); await pick('dtab', 1, 3); await until(() => SET().tablet == 'on', 3000);
+    ok('D4. Tablet mode On: kept at once (persistS: tablet "on"), not left to Apply', SET().tablet == 'on' && line('dirty') == '0', [SET().tablet, line('dirty')]) }
+  { mark = c0(); await scrollTo('dres'); await pick('dres', 2, 5); await scrollTo('dsap'); click(rect('dsap')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /POST screen\?/.test(since()), 4000);
+    ok('D5. Resolution 1366×768, Apply, Change (confirmed): screen?res=1366x768&fps=60', /POST screen\?res=1366x768&fps=60/.test(since()), since()) }
+  { mark = c0();
+    await scrollTo('wpc'); click(rect('wpc')); await until(() => /POST idbm\/put/.test(since()), 6000); await wait(500); await confirm('apply'); await until(() => SET().wpimg, 4000); const st = SET();
+    ok('D7. Picture, From this computer…: kept as the page keeps it (idbm/put of rudolfos/kv "wp:ID"), then Apply: wpimg ID, wpname "wall.png", dyn ""; bd95wpids:ACCT', /POST idbm\/put\?f=[0-9a-f]{16}/.test(since()) && st.wpimg && st.wpname == 'wall.png' && st.dyn === '' && (LS()['bd95wpids:uAnnA1b2'] || '').includes(st.wpimg), [st.wpimg, st.wpname, st.dyn, nst().split('\n').filter(x => /wpm|idbm|play|POST/.test(x)), since().slice(-300)]) }
+  { mark = c0(); await scrollTo('dgp'); await pick('dgp', 1, 3); await until(() => /POST display\?mode=full/.test(since()), 4000);
+    ok('D6. Graphics card: Use it for games and the desktop (display?mode=full)', /POST display\?mode=full/.test(since()), since()) }
+  natStop();
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
 async function memory() {
   ST.state(D, MODES.light, MORE);
   natStart('sys'); await until(() => rect('body') && line('page') == 'sys', 20000); await wait(12000); const n = rss(NP.pid); natStop();
+  natStart('disp'); await until(() => rect('body') && line('page') == 'disp', 20000); await wait(12000); const nd = rss(NP.pid); natStop();
   const br = await chromium.launch({args: ['--font-render-hinting=none']}); const ctx = await br.newContext({viewport: {width: 860, height: 640}}); const p = await ctx.newPage();
   await p.goto(BASE + '/#app=settings&page=sys'); await wait(25000);
   const pids = cp.execSync(`pgrep -f -- '--type=renderer' || true`).toString().trim().split('\n').filter(Boolean).map(Number);
   let w = null; for (const id of pids) { try { const m = rss(id); if (!w || m.anon > w.anon) w = Object.assign(m, {pid: id}) } catch (e) {} }
   await br.close();
-  const f = x => x == null ? 'n/a' : x.toFixed(1); const res = `native ${f(n.anon)} MB RssAnon, ${f(n.pss)} MB PSS; web (Chromium's renderer, #app=settings, System) ${w ? f(w.anon) : 'n/a'} MB RssAnon, ${w ? f(w.pss) : 'n/a'} MB PSS`;
+  const f = x => x == null ? 'n/a' : x.toFixed(1); const res = `native ${f(n.anon)} MB RssAnon, ${f(n.pss)} MB PSS (with Display open: ${f(nd.anon)} MB RssAnon, ${f(nd.pss)} MB PSS); web (Chromium's renderer, #app=settings, System) ${w ? f(w.anon) : 'n/a'} MB RssAnon, ${w ? f(w.pss) : 'n/a'} MB PSS`;
   fs.writeFileSync(path.join(OUT, 'memory.txt'), res + '\n'); console.log('memory: ' + res);
   ok('24. the memory at idle with System open: the native one under the web one\'s', w && n.anon < w.anon, res);
 }
@@ -360,10 +396,11 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
     { const {ctx, p} = await signin(mode); for (const k of pages) { if (!N[k + '-mid']) continue;
         await p.evaluate(k => { document.querySelectorAll('.ntoast,#ntoasts>*').forEach(e => e.remove()); if (window.SW) { SW._ok = 1; SW.close() } settings(k); SW.el.style.left = '120px'; SW.el.style.top = '60px' }, k);
         for (let i = 0; i < 6; i++) { await p.clock.runFor(500); await wait(200) } await p.mouse.move(5, 5);
-        await p.evaluate(y => { SW.body.querySelector('.sc').scrollTop = y }, N[k + '-mid'].y); await wait(400);
-        const b = await p.evaluate(() => { const r = SW.body.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
-        const f = path.join(OUT, `${mode}-${k}-mid.page.png`); await p.screenshot({path: f}); P[k + '-mid'] = {f, b} } await ctx.close() }
-    for (const k of pages) for (const at of ['top', 'mid', 'end']) { const key = k + '-' + at;
+        for (const at of ['mid'].concat(MIDS[k] || [])) { if (!N[k + '-' + at]) continue;
+          await p.evaluate(y => { SW.body.querySelector('.sc').scrollTop = y }, N[k + '-' + at].y); await wait(400);
+          const b = await p.evaluate(() => { const r = SW.body.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)] });
+          const f = path.join(OUT, `${mode}-${k}-${at}.page.png`); await p.screenshot({path: f}); P[k + '-' + at] = {f, b} } } await ctx.close() }
+    for (const k of pages) for (const at of ['top', 'mid'].concat(MIDS[k] || [], ['end'])) { const key = k + '-' + at;
       if (!P[key] || !N[key] || !N[key].b) { ok(`${mode} ${key}: drawn by both`, false); continue }
       const d = px(P[key].f, N[key].f, P[key].b, N[key].b, path.join(OUT, `${mode}-${key}`)); rows.push([mode, key, d.pct]);
       ok(`${mode} ${k} (${at}): ${d.pct}% of the window's pixels differ (page ${P[key].b.slice(2).join('x')}, native ${N[key].b.slice(2).join('x')})`, d.pct < LIMIT, {box: d.box, map: d.map}) }
@@ -374,6 +411,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('upd-checklist')) await checkUpd();
   if (only('checklist') || only('km-checklist')) await checkKbdMouse();
   if (only('checklist') || only('vam-checklist')) await checkVolAccMm();
+  if (only('checklist') || only('disp-checklist')) await checkDisp();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

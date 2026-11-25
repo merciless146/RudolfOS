@@ -1,0 +1,801 @@
+{
+ "DKEYS": [
+  "bs",
+  "b1",
+  "b2",
+  "ff",
+  "fs",
+  "tx",
+  "ic",
+  "tb",
+  "is",
+  "dyn",
+  "dm",
+  "lat",
+  "accent",
+  "nl",
+  "nlv",
+  "nlsched",
+  "darkui",
+  "icons",
+  "tbgroup",
+  "rot",
+  "scale",
+  "icstyle",
+  "icdyn",
+  "wpimg",
+  "wpfit",
+  "wpname",
+  "tbac",
+  "tbacm",
+  "icac",
+  "icacm",
+  "tbstyle",
+  "tablet",
+  "aur",
+  "aurm",
+  "stm",
+  "lnm",
+  "gmsleep",
+  "gamemode",
+  "twstyle",
+  "twacm",
+  "tbbstyle",
+  "tbbac",
+  "tbbacm",
+  "lpac",
+  "lpacm",
+  "lpbr",
+  "tbpcol"
+ ],
+ "DEFS": {
+  "bs": "solid",
+  "b1": "#008080",
+  "b2": "#000080",
+  "ff": "DejaVu Sans",
+  "fs": 13,
+  "tx": "#000000",
+  "ic": "#ffffff",
+  "tb": "bottom",
+  "is": 100,
+  "dyn": "",
+  "dm": "auto",
+  "lat": "",
+  "accent": "#2563eb",
+  "nl": false,
+  "nlv": 40,
+  "nlsched": false,
+  "darkui": true,
+  "icons": "rudolf",
+  "tbgroup": true,
+  "rot": 0,
+  "icstyle": "rudolf",
+  "icdyn": false,
+  "wpimg": "",
+  "wpfit": "fill",
+  "wpname": "",
+  "tbac": false,
+  "tbacm": "normal",
+  "icac": false,
+  "icacm": "normal",
+  "tbstyle": "standard",
+  "tablet": "auto",
+  "aur": true,
+  "aurm": "normal",
+  "stm": "normal",
+  "lnm": "normal",
+  "gmsleep": true,
+  "gamemode": true,
+  "twstyle": "standard",
+  "twacm": "normal",
+  "tbbstyle": "standard",
+  "tbbac": false,
+  "tbbacm": "normal",
+  "lpac": false,
+  "lpacm": "normal",
+  "lpbr": 100,
+  "tbpcol": "green"
+ },
+ "ACMODES": [
+  [
+   "normal",
+   "Normal"
+  ],
+  [
+   "negative",
+   "Negative"
+  ],
+  [
+   "comp",
+   "Complementary"
+  ]
+ ],
+ "ST_NAMES": {
+  "rat": "Rat",
+  "ox": "Ox",
+  "tiger": "Tiger",
+  "rabbit": "Rabbit",
+  "dragon": "Dragon",
+  "snake": "Snake",
+  "horse": "Horse",
+  "goat": "Goat",
+  "monkey": "Monkey",
+  "rooster": "Rooster",
+  "dog": "Dog",
+  "pig": "Pig",
+  "panda": "Panda",
+  "elephant": "Elephant",
+  "leopard": "Leopard",
+  "deer": "Deer"
+ },
+ "ST_OF": {
+  "#dc2626": "dragon",
+  "#ea580c": "tiger",
+  "#d97706": "leopard",
+  "#ca8a04": "rooster",
+  "#65a30d": "snake",
+  "#16a34a": "horse",
+  "#0d9488": "goat",
+  "#0891b2": "rabbit",
+  "#0284c7": "rat",
+  "#2563eb": "dog",
+  "#4f46e5": "monkey",
+  "#9333ea": "elephant",
+  "#c026d3": "pig",
+  "#db2777": "deer",
+  "#92400e": "ox",
+  "#475569": "panda"
+ },
+ "DYN_LIVE": [
+  "oasis",
+  "lake",
+  "desert"
+ ],
+ "DYN": {
+  "alpine": {
+   "n": "Alpine Peak",
+   "tl": "a/b8662679d2cf8d46.jpg",
+   "td": "a/578140cd3432d281.webp"
+  },
+  "waves": {
+   "n": "Obsidian Waves",
+   "tl": "a/44905b8f7e6881e6.jpg",
+   "td": "a/e155b57bb24f24b1.jpg"
+  },
+  "gold": {
+   "n": "Gilded Crest",
+   "tl": "a/e653b2cba1663add.jpg",
+   "td": "a/32b7c4c37d3c4a8c.jpg"
+  },
+  "teal": {
+   "n": "Teal Prism",
+   "tl": "a/c8ac0682906ca8eb.jpg",
+   "td": "a/fbe1138b7f4a6888.jpg"
+  },
+  "carbon": {
+   "n": "Carbon Fibre",
+   "tl": "a/5a1fbd14b2dbdfad.jpg",
+   "td": "a/acdbcbb222611565.jpg"
+  },
+  "stag": {
+   "n": "Moonlit Stag",
+   "tl": "a/95a4f74f5c32c8ed.jpg",
+   "td": "a/357d3fb8fa4d0c15.jpg"
+  },
+  "panels": {
+   "n": "Slate Panels",
+   "tl": "a/b61aeb94d89e7e51.jpg",
+   "td": "a/c55fbf3573bc93fe.jpg"
+  },
+  "sky": {
+   "n": "Feather Sky",
+   "tl": "a/106e4b576761c00d.jpg",
+   "td": "a/fe78266048d8b787.jpg"
+  },
+  "lake": {
+   "n": "Glacier Lake",
+   "tl": "a/44b0cf91a81bdce6.jpg",
+   "td": "a/02fbc6531389e3de.jpg"
+  },
+  "oasis": {
+   "n": "Spirit Falls",
+   "tl": "a/dff54f14137c9cf0.jpg",
+   "td": "a/494f7c0b9988a545.jpg"
+  },
+  "desert": {
+   "n": "Desert Camp",
+   "tl": "a/f2a560f9cd5ddabb.jpg",
+   "td": "a/ba9e81a09620f447.jpg"
+  }
+ },
+ "SELECTS": {
+  "dm": [
+   [
+    "auto",
+    "Automatic (sunrise / sunset)"
+   ],
+   [
+    "light",
+    "Light mode (locked)"
+   ],
+   [
+    "dark",
+    "Dark mode (locked)"
+   ]
+  ],
+  "daurm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dstm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dlnm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "bs": [
+   [
+    "solid",
+    "solid"
+   ],
+   [
+    "gradient",
+    "gradient"
+   ],
+   [
+    "vertical",
+    "vertical"
+   ],
+   [
+    "radial",
+    "radial"
+   ],
+   [
+    "checker",
+    "checker"
+   ],
+   [
+    "dots",
+    "dots"
+   ],
+   [
+    "grid",
+    "grid"
+   ],
+   [
+    "stripes",
+    "stripes"
+   ]
+  ],
+  "lkbg": [
+   [
+    "desktop",
+    "The desktop’s background"
+   ],
+   [
+    "picture",
+    "A picture of your own"
+   ],
+   [
+    "color",
+    "A colour"
+   ]
+  ],
+  "lkck": [
+   [
+    "large",
+    "Large"
+   ],
+   [
+    "small",
+    "Small"
+   ],
+   [
+    "off",
+    "None"
+   ]
+  ],
+  "lkpos": [
+   [
+    "center",
+    "In the middle"
+   ],
+   [
+    "left",
+    "On the left"
+   ],
+   [
+    "bottom",
+    "Bottom left"
+   ]
+  ],
+  "ff": [
+   [
+    "DejaVu Sans",
+    "DejaVu Sans (default, like Verdana)"
+   ],
+   [
+    "DejaVu Sans Condensed",
+    "DejaVu Sans Condensed (like Tahoma)"
+   ],
+   [
+    "Liberation Sans",
+    "Liberation Sans (like Arial)"
+   ],
+   [
+    "Fira Sans",
+    "Fira Sans (like Trebuchet MS)"
+   ],
+   [
+    "Liberation Serif",
+    "Liberation Serif (like Times New Roman)"
+   ],
+   [
+    "Gelasio",
+    "Gelasio (like Georgia)"
+   ],
+   [
+    "DejaVu Serif",
+    "DejaVu Serif"
+   ],
+   [
+    "Comic Neue",
+    "Comic Neue (like Comic Sans MS)"
+   ],
+   [
+    "Liberation Mono",
+    "Liberation Mono (like Courier New)"
+   ],
+   [
+    "DejaVu Sans Mono",
+    "DejaVu Sans Mono (like Lucida Console)"
+   ]
+  ],
+  "fs": [
+   [
+    "11",
+    "11"
+   ],
+   [
+    "12",
+    "12"
+   ],
+   [
+    "13",
+    "13"
+   ],
+   [
+    "14",
+    "14"
+   ],
+   [
+    "16",
+    "16"
+   ],
+   [
+    "18",
+    "18"
+   ],
+   [
+    "20",
+    "20"
+   ]
+  ],
+  "tb": [
+   [
+    "bottom",
+    "bottom"
+   ],
+   [
+    "top",
+    "top"
+   ],
+   [
+    "left",
+    "left"
+   ],
+   [
+    "right",
+    "right"
+   ]
+  ],
+  "dtbs": [
+   [
+    "standard",
+    "Standard"
+   ],
+   [
+    "wire",
+    "Wireframe"
+   ],
+   [
+    "mono",
+    "Monochrome"
+   ],
+   [
+    "candy",
+    "Candy"
+   ],
+   [
+    "retro",
+    "Retro"
+   ]
+  ],
+  "dtbbs": [
+   [
+    "standard",
+    "Standard (as the taskbar)"
+   ],
+   [
+    "wire",
+    "Wireframe"
+   ],
+   [
+    "mono",
+    "Monochrome"
+   ],
+   [
+    "candy",
+    "Candy"
+   ],
+   [
+    "retro",
+    "Retro"
+   ]
+  ],
+  "dtbbacm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dtbpc": [
+   [
+    "green",
+    "Green (as it comes)"
+   ],
+   [
+    "blue",
+    "Blue"
+   ],
+   [
+    "orange",
+    "Orange"
+   ],
+   [
+    "purple",
+    "Purple"
+   ],
+   [
+    "red",
+    "Red"
+   ],
+   [
+    "accent",
+    "The accent colour"
+   ],
+   [
+    "custom",
+    "Any colour…"
+   ]
+  ],
+  "dtws": [
+   [
+    "standard",
+    "Standard"
+   ],
+   [
+    "wire",
+    "Wireframe"
+   ],
+   [
+    "mono",
+    "Monochrome"
+   ],
+   [
+    "candy",
+    "Candy"
+   ],
+   [
+    "retro",
+    "Retro"
+   ]
+  ],
+  "dtwm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dtbacm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dicacm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dlpacm": [
+   [
+    "normal",
+    "Normal"
+   ],
+   [
+    "negative",
+    "Negative"
+   ],
+   [
+    "comp",
+    "Complementary"
+   ]
+  ],
+  "dic": [
+   [
+    "rudolf",
+    "Rudolf icons"
+   ],
+   [
+    "emoji",
+    "Emoji"
+   ]
+  ],
+  "dis": [
+   [
+    "rudolf",
+    "Rudolf — rounded gradient tiles (default)"
+   ],
+   [
+    "flat",
+    "Flat tiles"
+   ],
+   [
+    "circle",
+    "Circles"
+   ],
+   [
+    "outline",
+    "Outlines"
+   ],
+   [
+    "glyph",
+    "Symbols only"
+   ],
+   [
+    "glass",
+    "Glass"
+   ],
+   [
+    "retro",
+    "Retro 3-D"
+   ],
+   [
+    "sticker",
+    "Stickers"
+   ]
+  ],
+  "dsc": [
+   [
+    "75",
+    "75%"
+   ],
+   [
+    "90",
+    "90%"
+   ],
+   [
+    "100",
+    "100% (default)"
+   ],
+   [
+    "110",
+    "110%"
+   ],
+   [
+    "125",
+    "125%"
+   ],
+   [
+    "150",
+    "150%"
+   ],
+   [
+    "175",
+    "175%"
+   ],
+   [
+    "200",
+    "200%"
+   ]
+  ],
+  "drt": [
+   [
+    "0",
+    "Normal"
+   ],
+   [
+    "90",
+    "90° (portrait)"
+   ],
+   [
+    "180",
+    "180°"
+   ],
+   [
+    "270",
+    "270° (portrait, flipped)"
+   ]
+  ],
+  "dgp": [
+   [
+    "games",
+    "Use it for games and Linux apps (recommended)"
+   ],
+   [
+    "full",
+    "Use it for games and the desktop"
+   ],
+   [
+    "soft",
+    "Do not use it (software display)"
+   ]
+  ],
+  "ssmin": [
+   [
+    "1",
+    "1 minute without input"
+   ],
+   [
+    "2",
+    "2 minutes without input"
+   ],
+   [
+    "3",
+    "3 minutes without input"
+   ],
+   [
+    "5",
+    "5 minutes without input"
+   ],
+   [
+    "10",
+    "10 minutes without input"
+   ],
+   [
+    "15",
+    "15 minutes without input"
+   ],
+   [
+    "20",
+    "20 minutes without input"
+   ],
+   [
+    "30",
+    "30 minutes without input"
+   ],
+   [
+    "45",
+    "45 minutes without input"
+   ],
+   [
+    "60",
+    "60 minutes without input"
+   ]
+  ],
+  "ssst": [
+   [
+    "stars",
+    "Starfield"
+   ],
+   [
+    "clock",
+    "Clock"
+   ],
+   [
+    "rudolf",
+    "Rudolf"
+   ],
+   [
+    "rain",
+    "Code rain"
+   ],
+   [
+    "mystify",
+    "Mystify"
+   ],
+   [
+    "bubbles",
+    "Bubbles"
+   ],
+   [
+    "aurora",
+    "Aurora"
+   ],
+   [
+    "fireworks",
+    "Fireworks"
+   ]
+  ],
+  "dtab": [
+   [
+    "auto",
+    "Automatic (on when there is a touchscreen and no mouse or touchpad)"
+   ],
+   [
+    "on",
+    "On"
+   ],
+   [
+    "off",
+    "Off"
+   ]
+  ]
+ }
+}
