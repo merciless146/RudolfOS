@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -90,7 +90,7 @@ async function natShots(mode, pages) {
   return out;
 }
 // ---- Search in Settings: the same results for the same words (the page's ssMatch over its pages, with System and About harvested as shown)
-const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7']};
+const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3']};
 const QUERIES = ['time zone', 'sound', 'date', 'wifi', 'dark', 'idle', 'about', 'desktop page', 'lang', 'xyzzy'];
 async function pageSearch() {
   const {ctx, p} = await signin('light');
@@ -408,6 +408,38 @@ async function checkRemote() {
     ok('R3. Remote access off, with the administrator\'s permission: remote?on=0, "Remote access off" in the security log', /POST remote\?on=0/.test(since()) && log.includes('Remote access off') && /remote off/.test(lines('act').join('\n')), [since(), log.slice(-2)]) }
   natStop(); for (const f of ['remote.json', 'remote-accounts', 'health']) try { fs.unlinkSync(path.join(D, f)) } catch (e) {}
 }
+// ---- Mobile network (mobile60.js mobPanelS; the stand-in's modems: 0 connected with its SIM's settings, 1 locked with its PIN)
+async function checkMob() {
+  ST.state(D, MODES.light, MORE); try { fs.unlinkSync(path.join(D, 'mobpin')) } catch (e) {}
+  const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const pw = () => { const d = rect('dialog'); if (d) xdo(`mousemove ${d[0] + 5} ${d[1] + 5}`); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); xdo('key Return') };
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(250) } await wait(300) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  const set = re => until(() => re.test(since()), 4000);
+  natStart('mob'); await until(() => rect('body') && line('page') == 'mob', 20000); await wait(1500);
+  { mark = c0(); await scrollTo('mobroam0'); click(rect('mobroam0')); await set(/POST mobile\/settings\?id=0&k=roaming&v=1/);
+    ok('M1. Use mobile data when roaming: mobile/settings?id=0&k=roaming&v=1', /POST mobile\/settings\?id=0&k=roaming&v=1/.test(since()), since()) }
+  { mark = c0(); await scrollTo('moblim0'); click(rect('moblim0')); xdo('key ctrl+a'); xdo('type 2000'); xdo('key Return'); await set(/k=limit&v=2000/);
+    /* (28 days: the menu is not all on the screen; the select's own Down key, as Chromium's, picks the next) */
+    await scrollTo('mobsd0'); click(rect('mobsd0')); await until(() => line('menu'), 3000); xdo('key Escape'); await until(() => !line('menu'), 3000); xdo('key Down'); await set(/k=startday&v=2/);
+    ok('M2. Monthly limit 2000 (Enter) and the month starting on day 2: k=limit&v=2000, k=startday&v=2', /POST mobile\/settings\?id=0&k=limit&v=2000/.test(since()) && /k=startday&v=2/.test(since()), [since(), nst().split('\n').filter(x => /^act|^rect mob|^menu|^focus/.test(x)).slice(-25)]) }
+  { mark = c0(); await scrollTo('mobmode0'); await pick('mobmode0', 2, 4); await set(/k=mode&v=4g/);
+    ok('M3. Network type 4G (LTE) only: k=mode&v=4g', /POST mobile\/settings\?id=0&k=mode&v=4g/.test(since()), since()) }
+  { mark = c0(); await scrollTo('mobcust0'); click(rect('mobcust0')); await until(() => rect('mobapn0'), 3000); click(rect('mobapn0')); xdo('type Inet.Example'); await scrollTo('mobsave0'); click(rect('mobsave0')); await set(/k=apnuser/);
+    ok('M4. Typed in: the APN Inet.Example (its capitals kept), Save: k=apn&v=Inet.Example, then k=apnuser', /POST mobile\/settings\?id=0&k=apn&v=Inet\.Example/.test(since()) && /k=apnuser&v=/.test(since()), since()) }
+  { mark = c0(); await scrollTo('mobauto0'); click(rect('mobauto0')); await set(/k=apn&v=(&|$)/m);
+    ok('M5. Automatic again: k=apn&v= (empty)', /POST mobile\/settings\?id=0&k=apn&v=( |$)/m.test(since()), since()) }
+  { mark = c0(); await scrollTo('mobpin1'); click(rect('mobpin1')); xdo('type 123'); click(rect('mobpinb1')); await until(() => /mobmsg A PIN is 4 to 8 digits\./.test(acts()), 3000);
+    const short = /mobmsg A PIN is 4 to 8 digits\./.test(acts()) && !/mobile\/pin/.test(since());
+    click(rect('mobpin1')); xdo('key ctrl+a'); xdo('type 1234'); click(rect('mobpinb1')); await until(() => rect('dialog'), 3000); pw(); await set(/POST mobile\/pin\?id=1/); await wait(500);
+    let b = {}; try { b = JSON.parse(fs.readFileSync(path.join(D, 'mobpin'), 'utf8')) } catch (e) {}
+    ok('M6. The SIM\'s PIN: 123 refused ("A PIN is 4 to 8 digits."), 1234 with the administrator\'s name and password: mobile/pin?id=1 {n, p, pin}', short && /POST mobile\/pin\?id=1/.test(since()) && b.n == 'Ann' && b.p == PW && b.pin == '1234', [short, since(), Object.keys(b)]) }
+  { mark = c0(); await scrollTo('mobcb0'); click(rect('mobcb0')); await set(/POST mobile\/connect\?id=0&on=0/);
+    ok('M7. Disconnect: mobile/connect?id=0&on=0', /POST mobile\/connect\?id=0&on=0/.test(since()), since()) }
+  natStop(); try { fs.unlinkSync(path.join(D, 'mobpin')) } catch (e) {} try { fs.unlinkSync(path.join(D, 'mobile')) } catch (e) {}
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -455,6 +487,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('disp-checklist')) await checkDisp();
   if (only('checklist') || only('bt-checklist')) await checkBt();
   if (only('checklist') || only('remote-checklist')) await checkRemote();
+  if (only('checklist') || only('mob-checklist')) await checkMob();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

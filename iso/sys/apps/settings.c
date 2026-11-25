@@ -586,7 +586,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "mob", page_mob }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;
@@ -849,6 +849,8 @@ static void show_now(const char *k)
 	snprintf(CUR, sizeof CUR, "%s", k); page_build(); if (SIDE) gtk_widget_queue_draw(SIDE); set_note("show %s", k);
 }
 void set_show(const char *k) { show_now(k); }
+/* (1.6.3 Part 3) the page built again where it is (the page's draw(): its parts replaced, the page not scrolled) */
+void set_show_keep(const char *k) { double v = gtk_adjustment_get_value(fx_adj()); show_now(k); gtk_adjustment_set_value(fx_adj(), v); }
 /* (the page's W.guard: unapplied changes asked about first) */
 static char NEXT[16];
 static void guard_do(int i, void *d)
@@ -1083,6 +1085,16 @@ double s_z(void) { return RUI.z; }
 PangoLayout *s_layout(const char *t, double px, int wt, double w) { return lay(pctx(), t, px, wt, w, 0); }
 double s_asc(double px, int wt, double *desc) { return asc_of(px, wt, desc); }
 /* Chromium's check box (13 px; its blue when on, greyed when disabled), its top left corner at (x, y) CSS px */
+/* (1.6.3 Part 3) Chromium's radio button at (x, y) CSS px (13 px) */
+void s_radio(cairo_t *cr, double x, double y, int on, int sens)
+{
+	double c = 6.5, cx = x + c, cy = y + c, a = sens ? 1 : .5; cairo_save(cr); cairo_scale(cr, RUI.z, RUI.z); cairo_new_path(cr);
+	if (on) { cairo_set_source_rgba(cr, 0, 117 / 255.0, 1, a); cairo_arc(cr, cx, cy, c, 0, 2 * G_PI); cairo_fill(cr);
+		double g = RUI.dark ? .23 : 1; cairo_set_source_rgba(cr, g, g, g, 1); cairo_arc(cr, cx, cy, c - 1.6, 0, 2 * G_PI); cairo_fill(cr);
+		cairo_set_source_rgba(cr, 0, 117 / 255.0, 1, a); cairo_arc(cr, cx, cy, c - 3.4, 0, 2 * G_PI); cairo_fill(cr); }
+	else { double g = RUI.dark ? .23 : 1; cairo_set_source_rgba(cr, g, g, g, a); cairo_arc(cr, cx, cy, c - .5, 0, 2 * G_PI); cairo_fill_preserve(cr); cairo_set_source_rgba(cr, .46, .46, .46, a); cairo_set_line_width(cr, 1); cairo_stroke(cr); }
+	cairo_restore(cr);
+}
 void s_ckbox(cairo_t *cr, double x, double y, int on, int sens)
 {
 	double s = 13; cairo_save(cr); cairo_scale(cr, RUI.z, RUI.z);

@@ -175,6 +175,12 @@ class H(http.server.BaseHTTPRequestHandler):
             # (Settings › Volume Controls, settings_t.js V-checklist: the sound card, the microphone, the echo canceller, as rudolfd answers them)
             if w in ('audio', 'audio/mic') and m == 'POST': return self.j({'ok': True, 'message': 'sound card set' if w == 'audio' else 'microphone chosen'})
             if w == 'sound/echo' and m == 'POST': return self.j({'ok': True, 'on': 'on=1' in q, 'active': 'on=1' in q})
+            # (Settings › Mobile network, settings_t.js M-checklist: rudolfd's mobile/settings, mobile/pin, mobile/puk as rudolfd answers them; the PIN's body kept in DIR/mobpin)
+            if w in ('mobile/settings', 'mobile/pin', 'mobile/puk') and m == 'POST' and 'mobile/settings' in T:
+                if w == 'mobile/settings': return self.j({'ok': True, 'message': 'saved'})
+                open(os.path.join(D, 'mobpin'), 'wb').write(b); o = json.loads(b or b'{}'); k = KEYS.get('Ann')
+                if not k or o.get('n') != 'Ann' or o.get('p') != k['pw']: return self.err(403, 'Wrong password.')
+                return self.j({'ok': True, 'message': 'PIN accepted: the SIM is unlocked.'}) if o.get('pin') == '1234' else self.err(409, 'Wrong PIN. 1 tries left before the SIM asks for its PUK.')
             # (Settings › Remote access, settings_t.js R-checklist: rudolfd's remote, remote?on=, remote/end, remote/accounts (kept in DIR/remote-accounts) and health)
             if (w == 'remote' or w.startswith('remote/')) and 'remote' in T:
                 rp = os.path.join(D, 'remote.json'); S = json.loads(rd('remote.json') or json.dumps(T['remote']))

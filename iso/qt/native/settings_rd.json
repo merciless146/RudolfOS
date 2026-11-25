@@ -308,5 +308,116 @@
   },
   "pending": null,
   "devices": 2
+ },
+ "mobile/status": {
+  "ok": true,
+  "running": true,
+  "route": "wlan0",
+  "cellular": false,
+  "notes": [],
+  "modems": [
+   {
+    "id": 0,
+    "maker": "Quectel",
+    "model": "EG25-G",
+    "state": "connected",
+    "failed": "",
+    "locked": "",
+    "sim": true,
+    "iface": "wwan0",
+    "simName": "Example Mobile",
+    "simOp": "26299",
+    "operator": "Example Mobile",
+    "opcode": "26299",
+    "reg": "home",
+    "signal": "72",
+    "tech": "lte",
+    "imei": "",
+    "power": "on",
+    "fcc": "",
+    "fccId": ""
+   },
+   {
+    "id": 1,
+    "maker": "Sierra Wireless",
+    "model": "EM7455",
+    "state": "locked",
+    "failed": "",
+    "locked": "sim-pin",
+    "sim": true,
+    "iface": "",
+    "simName": "",
+    "simOp": "",
+    "operator": "",
+    "opcode": "",
+    "reg": "",
+    "signal": "0",
+    "tech": "",
+    "retries": {
+     "pin": 2,
+     "puk": 10
+    },
+    "imei": "",
+    "power": "on",
+    "fcc": "",
+    "fccId": ""
+   }
+  ]
+ },
+ "mobile/settings": {
+  "ok": true,
+  "sim": true,
+  "simOp": "26299",
+  "simName": "Example Mobile",
+  "auto": {
+   "name": "Example Mobile",
+   "apn": "internet.example",
+   "user": "",
+   "source": "db"
+  },
+  "usage": {
+   "key": "26299",
+   "used": 2345678901,
+   "start": "Nov 1",
+   "next": "Dec 1",
+   "limit": 5000,
+   "startday": 1,
+   "dataoff": false,
+   "pct": 47,
+   "off": false
+  },
+  "autoconnect": true,
+  "off": false,
+  "apn": "",
+  "apnuser": "",
+  "apnpass": false,
+  "roaming": false,
+  "mode": "auto",
+  "modes": [
+   "auto",
+   "5g",
+   "4g",
+   "3g"
+  ]
+ },
+ "mobile/signal": {
+  "ok": true,
+  "rate": 5,
+  "lte": {
+   "rsrp": -87,
+   "rsrq": -11.5,
+   "sinr": 14.2,
+   "rssi": -61
+  },
+  "nr5g": {
+   "rsrp": null,
+   "rsrq": null,
+   "sinr": null
+  },
+  "umts": {
+   "rscp": null,
+   "ecio": null,
+   "rssi": null
+  }
  }
 }

@@ -76,6 +76,7 @@ void s_range_on_change(GtkWidget *w, void (*cb)(double v, void *d));   /* the pa
 PangoLayout *s_layout(const char *t, double px, int wt, double w);   /* (1.6.3 Part 3) the page's writing laid out (free with g_object_unref) */
 double s_asc(double px, int wt, double *desc);
 void s_ckbox(cairo_t *cr, double x, double y, int on, int sens);   /* Chromium's check box at (x, y) CSS px */
+void s_radio(cairo_t *cr, double x, double y, int on, int sens);   /* (1.6.3) Chromium's radio button at (x, y) CSS px */
 
 /* ---- the pages: each a function that builds its blocks (settings_PAGE.c) */
 void page_about(void);
@@ -85,6 +86,7 @@ typedef int (*SetDirty)(void);
 void set_note(const char *fmt, ...) G_GNUC_PRINTF(1, 2);
 void set_state_soon(void);
 void set_show(const char *k);                         /* another page (the page's W.show) */
+void set_show_keep(const char *k);                    /* (1.6.3) the page built again, not scrolled */
 void set_notify(const char *title, const char *body, int error);
 
 /* (About's blocks) */
@@ -116,6 +118,7 @@ void page_mm(void);    /* settings_mm.c */
 void page_acc(void);   /* settings_acc.c */
 void page_bt(void);    /* settings_bt.c (1.6.3 PR 6) */
 void page_remote(void); /* settings_remote.c (1.6.3 PR 6) */
+void page_mob(void);   /* settings_mob.c (1.6.3 PR 6) */
 /* (settings_vol.c) sound through PulseAudio's simple API, opened when first needed: 16-bit mono at rate, played in a thread of its own */
 void set_play_pcm(const short *pcm, size_t n, int rate);
 void sec_bring(void); /* settings_bring.c */

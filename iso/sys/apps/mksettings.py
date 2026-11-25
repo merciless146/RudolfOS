@@ -399,4 +399,8 @@ out.append('static const char *const WPFITS[][2] = {' + ','.join('{ %s, %s }' % 
 out.append('typedef struct { const char *k, *n, *tl, *td; int live; } SetDyn;')
 out.append('static const SetDyn DYNS[] = {' + ','.join('{ %s, %s, %s, %s, %d }' % (cstr(k), cstr(v['n']), cstr(v.get('tl') or ''), cstr(v.get('td') or ''), 1 + dsp['DYN_LIVE'].index(k) if k in dsp['DYN_LIVE'] else 0) for k, v in dsp['DYN'].items()) + '};')   # (live: its place among the moving ones, from 1)
 out.append('static const unsigned char LOGO_PNG[] = {' + ','.join(str(b) for b in png) + '};')
+# ---------------------------------------------------------------- (1.6.3 Part 3, PR 6) Mobile network: modem59.js's MDM_STATE, mobile60.js's MOB_MODE
+mdm = jsconst(rd('modem59.js'), 'MDM_STATE', 'modem59.js'); mobm = jsconst(rd('mobile60.js'), 'MOB_MODE', 'mobile60.js')
+out.append('static const char *const MDMSTATE[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in mdm.items()) + '};')
+out.append('static const char *const MOBMODE[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in mobm.items()) + '};')
 open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')
