@@ -24,6 +24,7 @@
  * Saved passwords for apps:  rudolf-portal --keyring-list  (JSON: what the account's keyring and its Flatpak apps'
  * secrets hold, names only, never a secret) and  rudolf-portal --keyring-forget ID  (one of them removed).
  * Blitzen's developer tokens (1.6.0, Part 19):  --keyring-store KEY LABEL (stdin), --keyring-lookup KEY, --keyring-clear KEY.
+ * Oracle's own password manager (1.6.3, plan-1.6.3 Part 7):  --webpw list|get|set|del (the site, the user and the password on stdin).
  * 1.6.1 (plan-1.6.1 Part 26):  --keyring-fingerprints  (stdin: "B1 B2", two random bases from rudolfd) prints, for each
  * secret of the unlocked keyring and of the Flatpak apps' secrets, its length and two keyed fingerprints ("LEN H1 H2"),
  * never the secret: rudolfd's guards then hide that value wherever Blitzen would show or send it.
@@ -1011,6 +1012,119 @@ out:
 	if (un) g_variant_unref(un);
 	g_variant_unref(lk); if (e) g_error_free(e); return rc;
 }
+/* ---------------- 1.6.3 (docs/plan-1.6.3.md Part 7, step 1): Oracle's own password manager, its passwords in the account's keyring.
+   rudolf-portal --webpw list   {"ok":true,"items":[{"origin","user","when"}]}: names only, never a password
+   rudolf-portal --webpw get    standard input "ORIGIN\nUSER\n": the password (exit 1: none kept)
+   rudolf-portal --webpw set    standard input "ORIGIN\nUSER\nPASSWORD\n": kept, replacing the one for ORIGIN and USER
+   rudolf-portal --webpw del    standard input "ORIGIN\nUSER\n": removed
+   Attributes application=rudolf-oracle, origin=ORIGIN (https://HOST[:PORT], exactly: a site's own origin, never a parent domain),
+   user=USER; label "Oracle: HOST (USER)". The default (login) keyring, unlocked by the account's sign-in and locked with it.
+   Everything arrives on standard input, so nothing of it is in a command line (any user can read those); the Secret Service's
+   plain session, the account's own session bus only (as --keyring-store). */
+static int webpw_origin_ok(const char *o)
+{
+	if (!o || strncmp(o, "https://", 8)) return 0;
+	const char *h = o + 8; size_t n = strlen(h); if (!n || n > 260) return 0;
+	const char *c = strchr(h, ':'); size_t hl = c ? (size_t)(c - h) : n; if (!hl || hl > 253 || h[0] == '.' || h[0] == '-') return 0;
+	for (size_t i = 0; i < hl; i++) if (!((h[i] >= 'a' && h[i] <= 'z') || (h[i] >= '0' && h[i] <= '9') || h[i] == '.' || h[i] == '-')) return 0;
+	if (c) { size_t pl = strlen(c + 1); if (!pl || pl > 5 || strspn(c + 1, "0123456789") != pl || atoi(c + 1) < 1 || atoi(c + 1) > 65535) return 0; }
+	return 1;
+}
+static int webpw_user_ok(const char *u) { size_t n = u ? strlen(u) : 0; if (n > 200) return 0; for (const unsigned char *c = (const unsigned char *)u; c && *c; c++) if (*c < 0x20 || *c == 0x7f) return 0; return u != NULL; }
+static GVariant *webpw_attrs(const char *origin, const char *user)
+{
+	GVariantBuilder a; g_variant_builder_init(&a, G_VARIANT_TYPE("a{ss}"));
+	g_variant_builder_add(&a, "{ss}", "application", "rudolf-oracle");
+	if (origin) g_variant_builder_add(&a, "{ss}", "origin", origin);
+	if (user) g_variant_builder_add(&a, "{ss}", "user", user);
+	return g_variant_builder_end(&a);
+}
+/* the items for ATTRS, unlocked (a keyring locked though it needs no password of its own is unlocked: blz_unlock); NULL: none */
+static GVariant *webpw_find(GDBusConnection *b, GVariant *attrs, int *locked)
+{
+	GError *e = NULL; *locked = 0;
+	GVariant *sr = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "SearchItems",
+		g_variant_new("(@a{ss})", attrs), G_VARIANT_TYPE("(aoao)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+	if (!sr) { if (e) g_error_free(e); return NULL; }
+	GVariant *un, *lk; g_variant_get(sr, "(@ao@ao)", &un, &lk); g_variant_unref(sr);
+	if (g_variant_n_children(lk)) { if (blz_unlock(b, lk)) { GVariantBuilder m; g_variant_builder_init(&m, G_VARIANT_TYPE("ao")); GVariantIter i; const char *p;
+			g_variant_iter_init(&i, un); while (g_variant_iter_next(&i, "&o", &p)) g_variant_builder_add(&m, "o", p);
+			g_variant_iter_init(&i, lk); while (g_variant_iter_next(&i, "&o", &p)) g_variant_builder_add(&m, "o", p);
+			g_variant_unref(un); un = g_variant_ref_sink(g_variant_builder_end(&m)); }
+		else *locked = 1; }
+	g_variant_unref(lk); return un;
+}
+/* a line of standard input (at most N-1 bytes), its end of line taken off; 0: none */
+static int webpw_line(char *out, size_t n) { if (!fgets(out, n, stdin)) return 0; out[strcspn(out, "\r\n")] = 0; return 1; }
+static int keyring_webpw(const char *op)
+{
+	GDBusConnection *b = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL); if (!b) { fprintf(stderr, "no session bus\n"); return 1; }
+	int locked = 0, rc = 1;
+	if (!strcmp(op, "list")) {
+		GVariant *its = webpw_find(b, webpw_attrs(NULL, NULL), &locked);
+		GString *j = g_string_new("{\"ok\":true,\"locked\":"); g_string_append(j, locked ? "true" : "false"); g_string_append(j, ",\"items\":[");
+		int n = 0; GVariantIter i; const char *ip;
+		if (its) { g_variant_iter_init(&i, its);
+			while (g_variant_iter_next(&i, "&o", &ip) && n < 2000) {
+				GVariant *at = ss_prop(b, ip, "org.freedesktop.Secret.Item", "Attributes"), *cr = ss_prop(b, ip, "org.freedesktop.Secret.Item", "Created");
+				const char *o = NULL, *u = NULL; if (at) { g_variant_lookup(at, "origin", "&s", &o); g_variant_lookup(at, "user", "&s", &u); }
+				if (o && u && webpw_origin_ok(o) && webpw_user_ok(u)) {
+					g_string_append(j, n++ ? ",{\"origin\":" : "{\"origin\":"); jstr(j, o); g_string_append(j, ",\"user\":"); jstr(j, u);
+					g_string_append_printf(j, ",\"when\":%llu}", cr ? (unsigned long long)g_variant_get_uint64(cr) : 0ULL); }
+				if (at) { g_variant_unref(at); } if (cr) { g_variant_unref(cr); }
+			}
+			g_variant_unref(its); }
+		g_string_append(j, "]}"); puts(j->str); g_string_free(j, TRUE); return 0;
+	}
+	char origin[300], user[220], pw[1100];
+	if (!webpw_line(origin, sizeof origin) || !webpw_line(user, sizeof user) || !webpw_origin_ok(origin) || !webpw_user_ok(user)) { fprintf(stderr, "give the site's origin (https://HOST[:PORT]) and the user name on standard input\n"); return 2; }
+	if (!strcmp(op, "get") || !strcmp(op, "del")) {
+		GVariant *its = webpw_find(b, webpw_attrs(origin, user), &locked);
+		if (!its || !g_variant_n_children(its)) { fprintf(stderr, locked ? "the keyring is locked\n" : "none kept\n"); if (its) g_variant_unref(its); return 1; }
+		if (!strcmp(op, "del")) {
+			GVariantIter i; const char *ip; rc = 0; g_variant_iter_init(&i, its);
+			while (g_variant_iter_next(&i, "&o", &ip)) { GVariant *r = g_dbus_connection_call_sync(b, SS, ip, "org.freedesktop.Secret.Item", "Delete", NULL, G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, NULL); if (r) g_variant_unref(r); else rc = 1; }
+			g_variant_unref(its); if (!rc) puts("{\"ok\":true}"); return rc;
+		}
+		char ses[300]; GError *e = NULL; if (!blz_session(b, ses, sizeof ses)) { g_variant_unref(its); fprintf(stderr, "no session with the keyring\n"); return 1; }
+		GVariant *gs = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "GetSecrets",
+			g_variant_new("(@aoo)", its, ses), G_VARIANT_TYPE("(a{o(oayays)})"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+		if (!gs) { fprintf(stderr, "%s\n", e ? e->message : "no secret"); if (e) g_error_free(e); return 1; }
+		GVariant *m; g_variant_get(gs, "(@a{o(oayays)})", &m); GVariantIter it; const char *ip; GVariant *sec; g_variant_iter_init(&it, m);
+		if (g_variant_iter_next(&it, "{&o@(oayays)}", &ip, &sec)) {
+			GVariant *val = g_variant_get_child_value(sec, 2); gsize n; const char *d = g_variant_get_fixed_array(val, &n, 1);
+			fwrite(d, 1, n, stdout); fputc('\n', stdout); rc = 0; g_variant_unref(val); g_variant_unref(sec); }
+		g_variant_unref(m); g_variant_unref(gs); return rc;
+	}
+	if (strcmp(op, "set")) { fprintf(stderr, "list, get, set or del\n"); return 2; }
+	if (!webpw_line(pw, sizeof pw) || !*pw || strlen(pw) > 1000) { explicit_bzero(pw, sizeof pw); fprintf(stderr, "give the password on standard input (1 to 1000 bytes)\n"); return 2; }
+	char ses[300]; GError *e = NULL; if (!blz_session(b, ses, sizeof ses)) { explicit_bzero(pw, sizeof pw); fprintf(stderr, "no session with the keyring\n"); return 1; }
+	GVariant *al = g_dbus_connection_call_sync(b, SS, "/org/freedesktop/secrets", "org.freedesktop.Secret.Service", "ReadAlias", g_variant_new("(s)", "default"), G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+	const char *col = NULL; if (al) g_variant_get(al, "(&o)", &col);
+	if (!al || !strcmp(col, "/")) { explicit_bzero(pw, sizeof pw); fprintf(stderr, "no default keyring\n"); if (al) g_variant_unref(al); if (e) g_error_free(e); return 1; }
+	char label[600]; snprintf(label, sizeof label, "Oracle: %s (%s)", origin + 8, *user ? user : "no user name");
+	GVariantBuilder pr; g_variant_builder_init(&pr, G_VARIANT_TYPE("a{sv}"));
+	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Label", g_variant_new_string(label));
+	g_variant_builder_add(&pr, "{sv}", "org.freedesktop.Secret.Item.Attributes", webpw_attrs(origin, user));
+	GVariant *secret = g_variant_ref_sink(g_variant_new("(o@ay@ays)", ses, g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, "", 0, 1),
+		g_variant_new_fixed_array(G_VARIANT_TYPE_BYTE, pw, strlen(pw), 1), "text/plain"));
+	explicit_bzero(pw, sizeof pw);
+	GVariant *props = g_variant_ref_sink(g_variant_builder_end(&pr));
+	GVariant *cr = g_dbus_connection_call_sync(b, SS, col, "org.freedesktop.Secret.Collection", "CreateItem", g_variant_new("(@a{sv}@(oayays)b)", props, secret, TRUE),
+		G_VARIANT_TYPE("(oo)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+	if (!cr && e && strstr(e->message, "IsLocked")) {   /* (as --keyring-store: a locked keyring that unlocks without a prompt) */
+		const char *one[] = { col }; g_clear_error(&e);
+		if (blz_unlock(b, g_variant_new_objv(one, 1)))
+			cr = g_dbus_connection_call_sync(b, SS, col, "org.freedesktop.Secret.Collection", "CreateItem", g_variant_new("(@a{sv}@(oayays)b)", props, secret, TRUE),
+				G_VARIANT_TYPE("(oo)"), G_DBUS_CALL_FLAGS_NONE, 10000, NULL, &e);
+		else e = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_FAILED, "the keyring is locked");
+	}
+	g_variant_unref(props); g_variant_unref(secret); g_variant_unref(al);
+	if (!cr) { fprintf(stderr, "%s\n", e ? e->message : "not kept"); if (e) g_error_free(e); return 1; }
+	const char *it2, *prm; g_variant_get(cr, "(&o&o)", &it2, &prm);
+	if (strcmp(prm, "/")) fprintf(stderr, "the keyring asks for a prompt to keep it\n"); else { puts("{\"ok\":true}"); rc = 0; }
+	g_variant_unref(cr); return rc;
+}
 /* ---------------- 1.6.0 (docs/plan-1.6.0.md Part 14, third step): the keyring's prompts. gnome-keyring-daemon asks
    gcr's prompter (org.gnome.keyring.SystemPrompter on the session bus) when an app creates a keyring or needs one
    unlocked; Rudolf OS has no gcr-prompter (a GNOME window), so this portal answers in its place, with gcr's protocol
@@ -1318,6 +1432,7 @@ int main(int argc, char **argv)
 	if (argc > 2 && !strcmp(argv[1], "--keyring-lookup")) return keyring_blz("lookup", argv[2], NULL);
 	if (argc > 2 && !strcmp(argv[1], "--keyring-clear")) return keyring_blz("clear", argv[2], NULL);
 	if (argc > 3 && !strcmp(argv[1], "--keyring-store")) return keyring_blz("store", argv[2], argv[3]);
+	if (argc > 2 && !strcmp(argv[1], "--webpw")) return keyring_webpw(argv[2]);   /* 1.6.3 (plan-1.6.3 Part 7): Oracle's passwords */
 	if (argc > 1 && !strcmp(argv[1], "--sx-test")) return sx_test();
 	GError *e = NULL;
 	g_mkdir_with_parents(DIR_ "/req", 0755); g_mkdir_with_parents(DIR_ "/resp", 0755);

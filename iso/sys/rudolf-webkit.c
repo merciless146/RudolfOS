@@ -442,10 +442,93 @@ static void on_tab_hover(WebKitWebView *v, WebKitHitTestResult *h, guint mods, g
 	g_hash_table_insert(HOVER, t, g_strdup(u));
 	char cut[2001]; g_strlcpy(cut, u, sizeof cut); GString *x = g_string_new("\"url\":"); json_str(x, cut); tabev(t, "hover", x->str); g_string_free(x, TRUE);
 }
+/* ------------------------------------------------------------------ 1.6.3 (docs/plan-1.6.3.md Part 7, step 1): Oracle's own password manager
+   As the Chromium shell's (iso/shell/shell.js PW_JS, PW_FILL), in the "rudolf" world of the tab's top frame (the page's own scripts
+   cannot reach it), https: pages only, never a private window's or Guest's tab: {pwf} when a password field has the keyboard, {pws}
+   with the user name and password when a sign-in is sent (WebKit's message goes to this process only: no console, no log). Told to
+   the desktop (tabev pwfocus, pwsave) only for the tab's own https: origin; op pwfill fills only after the person's click in Oracle's
+   bar, only while the page is still at that origin (checked here and in the page) -> tabev pwfilled {id, r}. */
+static const char *PW_JS =
+	"(()=>{if(window.__rudolfPw||window.top!==window||location.protocol!=='https:')return;window.__rudolfPw=1;\n"
+	"const say=o=>{try{window.webkit.messageHandlers.rudolfTab.postMessage(o)}catch(e){}};\n"
+	"const vis=e=>!!(e&&e.isConnected&&!e.disabled&&e.type!=='hidden'&&(e.offsetWidth||e.offsetHeight||e.getClientRects().length));\n"
+	"const pws=r=>[...(r||document).querySelectorAll('input[type=password]')].filter(vis);\n"
+	"const isNew=p=>/new-password/i.test(p.autocomplete||'')||pws(p.form).length>1;\n"
+	"const userOf=p=>{const r=p.form||document,L=[...r.querySelectorAll('input')].filter(e=>vis(e)&&/^(text|email|tel|)$/i.test(e.type||'')&&e.value);\n"
+	" const before=L.filter(e=>e.compareDocumentPosition(p)&Node.DOCUMENT_POSITION_FOLLOWING);const u=(before.length?before[before.length-1]:L[0]);return u?String(u.value).slice(0,200):''};\n"
+	"let last='';\n"
+	"const sent=p=>{if(!p||!p.value)return;const L=pws(p.form);const pw=(isNew(p)&&L.length>1?L.filter(x=>x.value).pop()||p:p).value;if(!pw||pw.length>500)return;\n"
+	" const u=userOf(p),k=u+'\\n'+pw;if(k===last)return;last=k;say({pws:[u,pw]})};\n"
+	"addEventListener('focusin',e=>{const p=e.target;if(e.isTrusted&&p&&p.tagName==='INPUT'&&p.type==='password')say({pwf:isNew(p)?2:1})},true);\n"
+	"addEventListener('submit',e=>{const f=e.target;if(!f||!f.querySelectorAll)return;const L=pws(f).filter(x=>x.value);if(L.length)sent(L[L.length-1])},true);\n"
+	"addEventListener('keydown',e=>{const p=e.target;if(e.isTrusted&&e.key==='Enter'&&p&&p.tagName==='INPUT'&&p.type==='password')sent(p)},true);\n"
+	"addEventListener('click',e=>{if(!e.isTrusted)return;const b=e.target&&e.target.closest&&e.target.closest('button,input[type=submit],input[type=button],[role=button]');if(!b)return;\n"
+	" const sub=(b.form&&(b.type==='submit'))||(!b.form&&/log ?in|sign ?in|continue|next|submit|anmelden|connexion|entrar|iniciar|accedi/i.test(b.textContent||b.value||b.getAttribute('aria-label')||''));if(!sub)return;\n"
+	" const L=pws(b.form||document).filter(x=>x.value);if(L.length)sent(L[L.length-1])},true)})()";
+static const char *PW_FILL_FN =
+	"o=>{if(location.origin!==o.o||location.protocol!=='https:')return'origin';\n"
+	"const vis=e=>!!(e&&e.isConnected&&!e.disabled&&e.type!=='hidden'&&(e.offsetWidth||e.offsetHeight||e.getClientRects().length));\n"
+	"const set=(e,v)=>{const d=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');d.set.call(e,v);e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))};\n"
+	"const L=[...document.querySelectorAll('input[type=password]')].filter(vis);if(!L.length)return'none';\n"
+	"const a=document.activeElement,p=L.includes(a)?a:L[0],F=p.form||document;\n"
+	"if(o.g){const N=[...F.querySelectorAll('input[type=password]')].filter(vis).filter(e=>e!==F.querySelector('input[autocomplete=current-password]'));N.forEach(e=>set(e,o.p));return'ok'}\n"
+	"set(p,o.p);\n"
+	"if(o.u){const U=[...F.querySelectorAll('input')].filter(e=>vis(e)&&/^(text|email|tel|)$/i.test(e.type||'')&&e.compareDocumentPosition(p)&Node.DOCUMENT_POSITION_FOLLOWING);const u=U[U.length-1];if(u&&!u.value)set(u,o.u)}\n"
+	"return'ok'}";
+static int pw_private(tab *t) { return !strncmp(t->part, "priv-", 5); }
+/* the tab's top-level origin when it is https: (https://host[:port], as WebKit gives it: the host in lower case) */
+static int pw_origin(tab *t, char *out, size_t n)
+{
+	const char *u = webkit_web_view_get_uri(WEBKIT_WEB_VIEW(t->view)); *out = 0;
+	if (!u || strncmp(u, "https://", 8)) return 0;
+	size_t l = strcspn(u + 8, "/?#"); if (!l || l + 9 > n || memchr(u + 8, '@', l)) return 0;
+	snprintf(out, n, "https://%.*s", (int)l, u + 8);
+	for (char *c = out + 8; *c; c++) if (!(g_ascii_islower(*c) || g_ascii_isdigit(*c) || *c == '.' || *c == '-' || *c == ':')) { *out = 0; return 0; }
+	return 1;
+}
+/* a message of PW_JS: 1 when it was one */
+static int pw_msg(tab *t, JSCValue *o)
+{
+	int f = jsc_value_object_has_property(o, "pwf"), s = jsc_value_object_has_property(o, "pws"); if (!f && !s) return 0;
+	char origin[300]; if (pw_private(t) || !pw_origin(t, origin, sizeof origin)) return 1;
+	if (f) { GString *x = g_string_new("\"origin\":"); json_str(x, origin); g_string_append(x, (int)jnum(o, "pwf", 1) == 2 ? ",\"newpw\":true" : ",\"newpw\":false"); tabev(t, "pwfocus", x->str); g_string_free(x, TRUE); return 1; }
+	JSCValue *a = jsc_value_object_get_property(o, "pws"); if (!a || !jsc_value_is_array(a)) { if (a) g_object_unref(a); return 1; }
+	JSCValue *u = jsc_value_object_get_property_at_index(a, 0), *p = jsc_value_object_get_property_at_index(a, 1);
+	char *us = u && jsc_value_is_string(u) ? jsc_value_to_string(u) : NULL, *ps = p && jsc_value_is_string(p) ? jsc_value_to_string(p) : NULL;
+	if (us && ps && *ps && strlen(ps) <= 500 && strlen(us) <= 200) {
+		GString *x = g_string_new("\"origin\":"); json_str(x, origin); g_string_append(x, ",\"user\":"); json_str(x, us); g_string_append(x, ",\"pw\":"); json_str(x, ps);
+		tabev(t, "pwsave", x->str); explicit_bzero(x->str, x->len); g_string_free(x, TRUE); }
+	if (ps) { explicit_bzero(ps, strlen(ps)); g_free(ps); } g_free(us);
+	if (u) g_object_unref(u); if (p) g_object_unref(p); g_object_unref(a); return 1;
+}
+typedef struct { char tid[64]; int id; } pwq;
+static void pw_fill_done(GObject *o, GAsyncResult *res, gpointer d)
+{
+	pwq *q = d; GError *e = NULL; JSCValue *v = webkit_web_view_evaluate_javascript_finish(WEBKIT_WEB_VIEW(o), res, &e);
+	tab *t = TABS ? g_hash_table_lookup(TABS, q->tid) : NULL; char *r = v && jsc_value_is_string(v) ? jsc_value_to_string(v) : NULL;
+	if (t) { char x[96]; snprintf(x, sizeof x, "\"id\":%d,\"r\":\"%s\"", q->id, r && !strcmp(r, "ok") ? "ok" : r && !strcmp(r, "origin") ? "origin" : "none"); tabev(t, "pwfilled", x); }
+	g_free(r); if (v) g_object_unref(v); if (e) g_error_free(e); g_free(q);
+}
+static int tab_pw_op(tab *t, const char *op, JSCValue *m)
+{
+	if (strcmp(op, "pwfill")) return 0;
+	int id = (int)jnum(m, "id", 0); char origin[300], x[96];
+	char *o = jstr(m, "origin"), *u = jstr(m, "user"), *p = jstr(m, "pw");
+	if (pw_private(t) || !pw_origin(t, origin, sizeof origin) || !o || strcmp(o, origin) || !p || !*p || strlen(p) > 500) {
+		snprintf(x, sizeof x, "\"id\":%d,\"r\":\"origin\"", id); tabev(t, "pwfilled", x); }
+	else {
+		GString *c = g_string_new("("); g_string_append(c, PW_FILL_FN); g_string_append(c, ")({o:"); json_str(c, origin); g_string_append(c, ",u:");
+		json_str(c, u && strlen(u) <= 200 ? u : ""); g_string_append(c, ",p:"); json_str(c, p); JSCValue *g = jsc_value_object_get_property(m, "gen"); g_string_append(c, g && jsc_value_to_boolean(g) ? ",g:true})" : ",g:false})"); if (g) g_object_unref(g);
+		pwq *q = g_new0(pwq, 1); snprintf(q->tid, sizeof q->tid, "%s", t->tid); q->id = id;
+		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(t->view), c->str, -1, "rudolf", NULL, NULL, pw_fill_done, q);
+		explicit_bzero(c->str, c->len); g_string_free(c, TRUE); }
+	if (p) { explicit_bzero(p, strlen(p)); g_free(p); } g_free(o); g_free(u); return 1;
+}
 /* the page's own scripts (an isolated world): shortcuts, Flash content */
 static void on_tab_msg(WebKitUserContentManager *m, WebKitJavascriptResult *r, gpointer d)
 {
 	(void)m; tab *t = d; JSCValue *o = webkit_javascript_result_get_js_value(r); if (!jsc_value_is_object(o)) return;
+	if (pw_msg(t, o)) return;   /* (1.6.3: Oracle's passwords) */
 	if (jsc_value_object_has_property(o, "blk")) { char x[32]; snprintf(x, sizeof x, "\"n\":%d", (int)jnum(o, "blk", 0)); tabev(t, "adblock", x); return; }   /* (1.6.1: ads and trackers blocked) */
 	if (jsc_value_object_has_property(o, "notice")) { char x[32]; snprintf(x, sizeof x, "\"id\":%d", (int)jnum(o, "notice", 0)); tabev(t, "notice", x); return; }   /* 1.5.9 */
 	/* 1.5.9 (plan 7.3): a phone number clicked (tel:): the desktop asks how to call it */
@@ -505,6 +588,7 @@ static tab *tab_new(const char *tid, const char *part, WebKitWebView *related)
 	webkit_user_content_manager_register_script_message_handler_in_world(ucm, "rudolfTab", "rudolf");
 	g_signal_connect(ucm, "script-message-received::rudolfTab", G_CALLBACK(on_tab_msg), t);
 	webkit_user_content_manager_add_script(ucm, webkit_user_script_new_for_world(PAGE_JS, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, "rudolf", NULL, NULL));
+	if (strncmp(part, "priv-", 5)) webkit_user_content_manager_add_script(ucm, webkit_user_script_new_for_world(PW_JS, WEBKIT_USER_CONTENT_INJECT_TOP_FRAME, WEBKIT_USER_SCRIPT_INJECT_AT_DOCUMENT_START, "rudolf", NULL, NULL));   /* (1.6.3) */
 	if (related) t->view = GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "related-view", related, "user-content-manager", ucm, NULL));
 	else t->view = GTK_WIDGET(g_object_new(WEBKIT_TYPE_WEB_VIEW, "web-context", ctx_for(part), "user-content-manager", ucm, NULL));
 	WebKitSettings *s = webkit_web_view_get_settings(WEBKIT_WEB_VIEW(t->view));
@@ -837,6 +921,7 @@ static void on_tab_op(JSCValue *m)
 		}
 		g_free(adopt); g_free(u); g_free(part);
 	} else if (t && tab_find_op(t, op, m)) {   /* (1.6.1: find in page) */
+	} else if (t && tab_pw_op(t, op, m)) {   /* (1.6.3: Oracle's passwords: the fill) */
 	} else if (t) {
 		WebKitWebView *v = WEBKIT_WEB_VIEW(t->view);
 		if (!strcmp(op, "go")) { char *u = jstr(m, "url"); if (http_url(u)) webkit_web_view_load_uri(v, u); g_free(u); }

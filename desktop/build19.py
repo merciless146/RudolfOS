@@ -55,6 +55,7 @@ for _g,(_fs,_fn,_nm) in LAZY.items():
     _lz+=LAZY_REG[_g]+'\n'
 mods.append('orablock61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 10): Oracle's ad and tracker blocking; its list (desktop/orablock61.json, iso/systools/blocklist.py) put in below
 mods.append('orasleep63.js')   # 1.6.3 (docs/plan-1.6.3.md Part 4): Oracle frees tabs not looked at for a while (after gamesleep59.js, oraenc60.js: Settings › Oracle)
+mods.append('orapw63.js')   # 1.6.3 (docs/plan-1.6.3.md Part 7, step 1): Oracle's own password manager (after oracle58.js and the other __oracleMenu ones)
 mods.append('blzbox61.js')   # 1.6.1 (docs/plan-1.6.1.md Part 27): Blitzen's code runs, links and actions sandboxed (after blitzen26.js, blitzknow60.js, blzdev60.js)
 changes=open(os.path.join(here,'../CHANGELOG.md')).read()   # "What's new" and the notice after an update
 # 1.5.9: Search in Settings: the pages' sections and settings (made by iso/qt/shell2/setsearch59_t.js --write)
