@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Changed: the plan (docs/plan-1.6.3.md Part 7, step 2): measured that a Chromium policy blocking extensions also stops the
+  desktop's own Ruffle extension (Chromium does not start); the ways to keep every other extension out are set out for the owner.
 - Fixed: on Native, the desktop's icons show a change within a second (an icon removed or put back, a file or folder made,
   renamed or deleted, the icon size), even while the computer is busy; with your files on the disk, a window no longer takes
   away the icons another window made.
