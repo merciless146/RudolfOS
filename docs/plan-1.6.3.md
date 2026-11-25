@@ -235,7 +235,12 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   - The screen saver's moving preview and Preview.
   - Displays' arrangement for two or three monitors (screen/arrange); one display is said as the page says it.
   - Changes before Apply show in Settings only.
-- **Left:** Network, Mobile network, Bluetooth, Oracle, Remote; Devices, Storage,
+- **PR 6, in progress (2026-11-25, scheduled task; branch native-settings-7, PR 5's branch merged in until #700 is merged):**
+  Network, Mobile network, Bluetooth, Oracle, Remote.
+  - Done: Bluetooth (`settings_bt.c`), checklist B1-B7, views 0.41-0.87 %.
+  - Done: Remote access (`settings_remote.c`), checklist R1-R3, views 0.54-0.68 %.
+  - Next: Mobile network, Network Settings, Oracle.
+- **Left:** Network, Mobile network, Oracle (PR 6); Devices, Storage,
   Apps, Notifications; Privacy, Security, System health, Users; the switch.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in
