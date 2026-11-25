@@ -503,7 +503,14 @@ on a busy site; a Tor window without them; the reminder and about:safety in the 
   Save; back on its sign-in page: 🔑 Fill fills it after the click; 2. a private and a Tor window: never asked; 3. ☰ › Passwords:
   Show asks for the account's password; Remove; 4. sign out of Rudolf OS and back in: still there (Settings › Privacy › Saved
   passwords for apps names it); 5. Native and Lite: the same; 6. then a real site of the owner's choice.
-- **Next:** step 2 ("Open in a Chromium window" with extensions and the reminder; oracle-safety-page merged in).
+- **Next:** step 2 ("Open in a Chromium window" with extensions and the reminder; oracle-safety-page merged in). Found while starting
+  it (2026-11-25): Rudolf OS's Chromium policy is one file for the whole computer (/etc/chromium/policies/managed/rudolf.json), read by
+  every Chromium it starts (the desktop's, Oracle's own, the Tor windows', the browser window for sign-in sites), so "no extension in
+  the desktop's own Chromium, the vetted list in the Chromium window" needs each to read its own policy: the Chromium window started
+  in a mount namespace of its own with its policy folder bound over (rudolfd starts it as root before it becomes the account's user),
+  the others keeping the blocking file; and the desktop's own Ruffle (`--load-extension`) checked against "every extension blocked"
+  on the releases' Chromium before the policy lands (a first probe with Playwright's Chromium for Testing did not start its
+  debugging port with a managed policy file present: to be measured on the runner with the snap's Chromium).
 
 ### Part 8. Fixes from the owner's use (the owner, 2026-11-24 22:51 CST)
 "Some items to add to 1.6.3:" each fixed with a test that fails before the fix, the same on Native, Chromium and Lite
