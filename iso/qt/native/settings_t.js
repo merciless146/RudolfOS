@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web,notif').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -506,6 +506,20 @@ async function checkWeb() {
     ok('O6. Memory: Free tabs after 1 hour, kept at once (oraFree 60), "Ann set Oracle to free tabs not looked at for 1 hour" in the security log', SET().oraFree === 60 && log.includes('Ann set Oracle to free tabs not looked at for 1 hour'), [SET().oraFree, log.slice(-2)]) }
   natStop();
 }
+// ---- Notifications (settings25.js notifPanel)
+async function checkNotif() {
+  ST.state(D, MODES.light, MORE); const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('notif'); await until(() => rect('body') && line('page') == 'notif', 20000); await wait(1200);
+  click(rect('ndn')); click(rect('nsd')); await until(() => SET().dnd === true && SET().nsnd === false, 3000); await pick('ntm', 3, 4); await until(() => SET().ntime === 12, 3000);
+  ok('T1. Do not disturb on, Sounds off, pop-ups for 12 seconds: kept at once (dnd true, nsnd false, ntime 12), as persistS keeps them', SET().dnd === true && SET().nsnd === false && SET().ntime === 12, [SET().dnd, SET().nsnd, SET().ntime]);
+  { click(rect('nt')); await until(() => /notify This is a test \| Notifications look like this\./.test(lines('act').join('\n')), 3000);
+    ok('T2. Send a test notification: "This is a test", "Notifications look like this." (the desktop\'s notifications, as every native app\'s)', /notify This is a test \| Notifications look like this\./.test(lines('act').join('\n')), lines('act').slice(-3)) }
+  { click(rect('nc')); await until(() => LS()['bd95notif:uAnnA1b2'] == '[]', 3000);
+    ok('T3. Clear history: bd95notif:ACCT [] (svj)', LS()['bd95notif:uAnnA1b2'] == '[]', LS()['bd95notif:uAnnA1b2']) }
+  natStop();
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -556,6 +570,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('mob-checklist')) await checkMob();
   if (only('checklist') || only('net-checklist')) await checkNet();
   if (only('checklist') || only('web-checklist')) await checkWeb();
+  if (only('checklist') || only('notif-checklist')) await checkNotif();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');
