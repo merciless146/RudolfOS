@@ -5,6 +5,12 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New: each of Oracle's tabs says in its tooltip how much memory it uses (its process's, as Task Manager counts it, with the
+  frames of other sites it holds said apart; "shares a process with 2 other tabs" when it does; none for a freed tab 💤),
+  measured when the tooltip opens and while it shows; the same on Chromium and Native, and Lite says what WebKit lets it know
+  (plan 1.6.3 Part 4).
+- Changed: the plan (docs/plan-1.6.3.md Part 7), as the owner chose ("Option C"): Oracle's own password manager in its tabs,
+  and extensions only in a Chromium window opened from Oracle, never in the desktop's own Chromium.
 - New: Oracle frees the memory of tabs you have not looked at for 30 minutes (Settings › Oracle › Memory: 15 minutes to
   2 hours, or Never), and at once when memory runs low: each freed tab keeps its address and scroll (💤) and loads again
   when chosen; tabs playing sound or holding typed text stay. About 80-95 MB saved a background tab with real websites
