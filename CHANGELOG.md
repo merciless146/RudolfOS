@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New: Oracle frees the memory of tabs you have not looked at for 30 minutes (Settings › Oracle › Memory: 15 minutes to
+  2 hours, or Never), and at once when memory runs low: each freed tab keeps its address and scroll (💤) and loads again
+  when chosen; tabs playing sound or holding typed text stay. About 80-95 MB saved a background tab with real websites
+  (plan 1.6.3 Part 4).
 - New: fingerprint readers, the system's side (plan 1.6.3 Part 2, step 1): libfprint in the system, asked only by rudolfd
   through a root helper of its own (no service, nothing that listens). An account's fingerprints are kept encrypted
   with its files' key, so a finger is never the first sign-in after a restart, and they are removed with the account;
