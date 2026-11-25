@@ -5,6 +5,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Fixed: on Native, the desktop's icons show a change within a second (an icon removed or put back, a file or folder made,
+  renamed or deleted, the icon size), even while the computer is busy; with your files on the disk, a window no longer takes
+  away the icons another window made.
 - Changed: Make a Rudolf OS USB stick is in Settings › Storage and backup's Backup part (Update and recovery links to it):
   it says in plain words what each choice puts on the stick, refuses a stick too small for the chosen image before
   anything is written, shows the step and the time left, and at the end what was checked and that the stick can be removed.
