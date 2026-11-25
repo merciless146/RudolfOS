@@ -61,7 +61,7 @@ jobs:
           . iso/systools/hardflags.sh; mkdir -p fix/root
           gcc -O2 $HARD -o fix/rudolfd iso/sys/rudolfd.c -Wl,-Bstatic -lz -Wl,-Bdynamic
           gcc -O2 $HARD -o fix/rudolf-rootd iso/sys/rudolf-rootd.c
-          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c -Wl,-Bstatic -lz -Wl,-Bdynamic; done
+          for h in $(sed -n 's/.*HELPERS\[\] = { \(.*\), NULL };/\1/p' iso/sys/rudolf-rootd.c | tr -d '",'); do [ $h = fprint ] && continue; gcc -O2 $HARD -o fix/root/$h iso/sys/rudolf-$h.c -Wl,-Bstatic -lz -Wl,-Bdynamic; done   # (fprint needs libfprint: fprint-check.yml)
           gcc -O2 $HARD -o fix/root/drives-home iso/sys/rudolf-drives-home.c -Wl,-Bstatic -lz -Wl,-Bdynamic   # (drives part 2: run by the drives helper only)
           python3 iso/systools/hardcheck.py fix/rudolfd fix/rudolf-rootd fix/root/*; ls -laR fix
           gcc -O2 -o rudolf-update iso/sys/rudolf-update.c -lcrypto -ldl
