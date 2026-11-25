@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New: Oracle frees the memory of tabs you have not looked at for 30 minutes (Settings › Oracle › Memory: 15 minutes to
+  2 hours, or Never), and at once when memory runs low: each freed tab keeps its address and scroll (💤) and loads again
+  when chosen; tabs playing sound or holding typed text stay. About 80-95 MB saved a background tab with real websites
+  (plan 1.6.3 Part 4).
 - Changed: the plan (docs/plan-1.6.3.md Part 7): Chromium's own password manager and extensions do not work in Oracle's tabs,
   which are Controlled Frames in Oracle's own Chromium too (measured with Chromium 158); the ways on are set out for the
   owner, and a check notices if a Chromium release changes this.
