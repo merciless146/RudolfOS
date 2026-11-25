@@ -80,6 +80,7 @@ async function natShots(mode, pages) {
     /* (a view in the middle of a long page: the native one scrolled a few steps, the page then at the same place: pageMid) */
     { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 60; i++) xdo('click 4'); for (let i = 0; i < 6; i++) xdo('click 5'); xdo('mousemove 5 5'); await wait(800);
       const f = path.join(OUT, `${mode}-${k}-mid.nat.png`); sh(`import -window root ${f}`); out[k + '-mid'] = {f, b: rect('body'), y: +line('scroll')} }
+    try { fs.copyFileSync(SF, path.join(OUT, `${mode}-${k}.state`)) } catch (e) {}   /* (what the native page showed: its parts' places, for comparing) */
     out[k + '-harv'] = lines('harv').filter(x => x.startsWith(k + '|')).map(x => x.split('|').slice(1, 3).join('|') + (x.endsWith('|1') ? '|1' : ''));
     natStop(); await wait(300);
   }

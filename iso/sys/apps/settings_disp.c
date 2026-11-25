@@ -292,7 +292,7 @@ static void rows_lock(void)
 		if (!strcmp(bg, "color")) { GtkWidget *a = gtk_drawing_area_new(); gtk_widget_add_events(a, GDK_BUTTON_PRESS_MASK); gtk_widget_set_size_request(a, (int)lround(50 * s_z()), (int)lround(27 * s_z())); g_signal_connect(a, "draw", G_CALLBACK(lkcol_draw), NULL); g_signal_connect(a, "button-press-event", G_CALLBACK(lkcol_press), NULL); c_add(c, a, wordw("a a") - wordw("aa"), -1, 0); p_label_named("lkcol", a); }
 		p_r2_more(c); }
 	for (int i = 2; i <= 3; i++) { Cell *c = p_r2(i == 2 ? "Blur" : "Darken"); GtkWidget *r = s_range(0, i == 2 ? 20 : 80, 1, atof(LKV[i]), on_lkrng, GINT_TO_POINTER(i)); gtk_widget_set_size_request(r, (int)lround(129 * s_z()), (int)lround(16 * s_z())); gtk_widget_set_sensitive(r, adm);
-		c_add(c, r, 2, 2, 0); p_label_named(i == 2 ? "lkblur" : "lkdim", r); char t[24]; snprintf(t, sizeof t, i == 2 ? "%s px" : "%s %%", LKV[i]); GtkWidget *v = c_text(c, t, 400); c_gap(v, 2 + wordw("a a") - wordw("aa")); c_dy(v, 6); if (i == 2) LKBV = v; else LKDV = v; c_line(c, 1); p_r2_more(c); }
+		c_add(c, r, 2, 2, 0); p_label_named(i == 2 ? "lkblur" : "lkdim", r); char t[24]; snprintf(t, sizeof t, i == 2 ? "%s px" : "%s %%", LKV[i]); GtkWidget *v = c_text(c, t, 400); c_gap(v, 2 + wordw("a a") - wordw("aa")); c_dy(v, 6); if (i == 2) LKBV = v; else LKDV = v; p_r2_more(c); }
 	{ Cell *c = p_r2("Clock"); c_add(c, lksel(4, "lkck"), 0, 0, 1); p_r2_more(c); }
 	{ Cell *c = p_r2("Position"); c_add(c, lksel(5, "lkpos"), 0, 0, 1); p_r2_more(c); }
 	{ Cell *c = p_r2("Account"); GtkWidget *k = c_check(c, "Show the account’s picture and name when locked", !strcmp(LKV[6], "true"), on_lkuser, NULL); gtk_widget_set_sensitive(k, adm); p_label_named("lkuser", k); p_r2_more(c); }
@@ -316,7 +316,7 @@ static void sec_taskbar(void)
 	{ Cell *c = p_r2("Windows"); dck(c, "tbgroup", "Group windows of the same app"); p_r2_more(c); }
 	{ Cell *c = p_r2("Style"); c_add(c, dsel("dtbs", "tbstyle"), 0, 0, 1); p_r2_more(c); }
 	{ Cell *c = p_r2("Buttons"); c_add(c, dsel("dtbbs", "tbbstyle"), 0, 0, 1); p_r2_more(c); }
-	{ Cell *c = p_r2("Button colours"); GtkWidget *k = dck(c, "tbbac", "Match the theme colours"); (void)k; TBBACM = dsel("dtbbacm", "tbbacm"); gtk_widget_set_sensitive(TBBACM, !strcmp(g("tbbac"), "true"));
+	{ Cell *c = p_r2("Button colours"); GtkWidget *k = rui_check("Match the theme colours", !strcmp(g("tbbac"), "true"), on_ck, (gpointer)"tbbac"); p_label_named("tbbac", k); g_object_set_data_full(G_OBJECT(k), "set-label", g_strdup(rui_tr("Match the theme colours")), g_free); c_add(c, k, 0, 3, 0); TBBACM = dsel("dtbbacm", "tbbacm"); gtk_widget_set_sensitive(TBBACM, !strcmp(g("tbbac"), "true"));
 		c_add(c, TBBACM, 10, 0, 0); c_msg(c, "The start button, pinned apps, open windows, workspaces and the tray. Ticked: the accent colour (Normal, its Negative, or Complementary: the colour opposite it on the colour wheel); unticked: each style's own colours.", 2); p_r2_more(c); }
 	{ Cell *c = p_r2("Progress colour"); char *cur = gs("tbpcol"); int listed = tbp_listed(cur); TBPC = dsel_cb("dtbpc", listed ? cur : "custom", on_tbpc); c_add(c, TBPC, 0, 0, 0);
 		TBPCC = colour("tbpcol", 50); c_add(c, TBPCC, wordw("a a") - wordw("aa"), -1, 0); if (listed) gtk_widget_set_no_show_all(TBPCC, TRUE);
@@ -378,7 +378,7 @@ static void sec_colours(void)
 		gtk_widget_set_size_request(sw, (int)lround((16 * 24.7 - 4) * s_z()), (int)lround(20.7 * s_z())); g_signal_connect(sw, "draw", G_CALLBACK(sw_draw), NULL); g_signal_connect(sw, "button-press-event", G_CALLBACK(sw_press), NULL);
 		c_add(c, sw, 6, 3.2, 0); p_label_named("acsw", sw); p_r2_more(c); }
 	{ Cell *c = p_r2("Accent colour on"); static const char *const K[3][4] = { { "tbac", "The taskbar", "dtbacm", "tbacm" }, { "icac", "The desktop icons", "dicacm", "icacm" }, { "lpac", "The window transitions (LitePoint)", "dlpacm", "lpacm" } };
-		for (int i = 0; i < 3; i++) { GtkWidget *k = c_check(c, K[i][1], !strcmp(g(K[i][0]), "true"), on_acck, (gpointer)K[i][0]); p_label_named(K[i][0], k); c_dy(k, 3); ACSEL[i] = dsel(K[i][2], K[i][3]); gtk_widget_set_sensitive(ACSEL[i], !strcmp(g(K[i][0]), "true")); c_add(c, ACSEL[i], 10, 0, 0); c_line(c, 0); }
+		for (int i = 0; i < 3; i++) { GtkWidget *k = rui_check(K[i][1], !strcmp(g(K[i][0]), "true"), on_acck, (gpointer)K[i][0]); p_label_named(K[i][0], k); g_object_set_data_full(G_OBJECT(k), "set-label", g_strdup(rui_tr(K[i][1])), g_free); c_add(c, k, 0, 3, 0); ACSEL[i] = dsel(K[i][2], K[i][3]); gtk_widget_set_sensitive(ACSEL[i], !strcmp(g(K[i][0]), "true")); c_add(c, ACSEL[i], 10, 0, 0); c_line(c, 0); }
 		{ GtkWidget *l = c_label(c, "Window transitions' light", 2.5); (void)l; GtkWidget *r = s_range(0, 100, 5, gn("lpbr"), on_lpbr, NULL); gtk_widget_set_size_request(r, (int)lround(180 * s_z()), (int)lround(16 * s_z())); c_add(c, r, 12, 2, 0); p_label_named("lpbr", r);
 			char t[16]; snprintf(t, sizeof t, "%g%%", gn("lpbr")); LPV = c_text(c, t, 400); c_gap(LPV, 12); c_dy(LPV, 2.5); }
 		c_msg(c, "Normal is the accent colour; Negative is its negative; Complementary is the colour opposite it on the colour wheel. The desktop icons are Rudolf's own icons (apps' own pictures stay as they are). The window transitions are white unless ticked; their light from Off to full (Reduce motion turns them off).", 2); p_r2_more(c); }
@@ -504,7 +504,7 @@ static void sec_screen(void)
 		char *m = g_strdup_printf("%s%s", now ? now : "", rui_jbool(SCR, "persistent") ? "" : " Not installed: the setting lasts until Rudolf OS restarts."); DRESM = c_msg(c, m, 2); g_free(m); g_free(now); p_r2_more(c); }
 	{ Cell *c = p_r2("Frame rate"); const char *v[4] = { "120", "90", "60", "30" }, *l[4] = { "120 fps", "90 fps", "60 fps", "30 fps" }; char fv[16]; g_ascii_formatd(fv, sizeof fv, "%g", rui_jnum(SCR, "fps", 60));
 		DFPS = s_select(v, l, 4, fv, on_dfps, NULL); c_add(c, DFPS, 0, 0, 0); p_label_named("dfps", DFPS); DFPSM = c_msg(c, "", 2); c_line(c, 6);
-		DSAP = rui_button("Apply", 1); g_signal_connect(DSAP, "clicked", G_CALLBACK(scr_apply), NULL); c_add(c, DSAP, 0, 0, 0); p_label_named("dsap", DSAP); DSMSG = c_text(c, "", 400); c_gap(DSMSG, 8); }
+		DSAP = rui_button("Apply", 1); gtk_widget_set_size_request(DSAP, -1, (int)lround(28 * s_z()));   /* (.rmrow stretches it to its .msg span: 28 px) */ g_signal_connect(DSAP, "clicked", G_CALLBACK(scr_apply), NULL); c_add(c, DSAP, 0, 0, 0); p_label_named("dsap", DSAP); DSMSG = c_text(c, "", 400); c_gap(DSMSG, 8); }
 	scr_fill();
 }
 
@@ -546,7 +546,8 @@ static void act(int what)
 	else { for (int i = 0; i < NK; i++) { g_free(W_[i]); W_[i] = g_strdup(DKEYS[i][1]); } commit(1); KEEP = 1; set_show("disp"); }
 }
 static GtkWidget *DMI;
-static void on_is(double v, void *d) { (void)d; char b[16]; snprintf(b, sizeof b, "%g", v); set("is", g_strdup(b)); }
+static GtkWidget *ISV;
+static void on_is(double v, void *d) { (void)d; char b[16]; snprintf(b, sizeof b, "%g", v); set("is", g_strdup(b)); char t[16]; snprintf(t, sizeof t, "%g%%", v); if (ISV) p_text_set(ISV, t); }
 
 void page_disp(void)
 {
@@ -566,7 +567,8 @@ void page_disp(void)
 	{ Cell *c = p_r2("Font size"); c_add(c, dsel("fs", "fs"), 0, 0, 1); p_r2_more(c); }
 	{ Cell *c = p_r2("Window text color"); c_add(c, colour("tx", 52), 0, 0, 0); p_r2_more(c); }
 	{ Cell *c = p_r2("Icon text color"); c_add(c, colour("ic", 52), 0, 0, 0); p_r2_more(c); }
-	{ Cell *c = p_r2("Icon size"); GtkWidget *r = s_range(100, 200, 5, gn("is"), on_is, NULL); gtk_widget_set_size_request(r, (int)lround(129 * s_z()), (int)lround(16 * s_z())); c_add(c, r, 2, 2, 0); p_label_named("is", r); }
+	{ Cell *c = p_r2("Icon size"); GtkWidget *r = s_range(100, 200, 5, gn("is"), on_is, NULL); gtk_widget_set_size_request(r, (int)lround(129 * s_z()), (int)lround(16 * s_z())); c_add(c, r, 2, 2, 0); p_label_named("is", r);
+		char t[16]; snprintf(t, sizeof t, "%g%%", gn("is")); ISV = c_text(c, t, 400); c_gap(ISV, 2 + wordw("a a") - wordw("aa")); c_dy(ISV, 6); }
 	sec_taskbar();
 	sec_titlebars();
 	sec_colours();
