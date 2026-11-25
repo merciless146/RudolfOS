@@ -60,7 +60,7 @@ static gboolean th_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	if (on) { s_col(cr, "ac", .267); s_rrect(cr, -2, -2, W + 4, H + 4, 10); cairo_fill(cr); }
 	if (RUI.dark) s_col(cr, "bg2", 1); else cairo_set_source_rgb(cr, 1, 1, 1); s_rrect(cr, 0, 0, W, H, 8); cairo_fill(cr);
 	if (on) s_col(cr, "ac", 1); else s_col(cr, "bd", 1); cairo_set_line_width(cr, 2); s_rrect(cr, 1, 1, W - 2, H - 2, 7); cairo_stroke(cr);
-	double tx = 5, ty = 5, tw = W - 10, th = H - 10 - 3 - 12.6; cairo_save(cr); s_rrect(cr, tx, ty, tw, th, 5); cairo_clip(cr);
+	double tx = 5, ty = 5, tw = W - 7, th = H - 10 - 3 - 12.6;   /* (.dth runs past the button's padding to its border: the page's width 100% plus its own padding) */ cairo_save(cr); s_rrect(cr, tx, ty, tw, th, 5); cairo_clip(cr);
 	cairo_set_source_rgb(cr, 0xe5 / 255.0, 0xe7 / 255.0, 0xeb / 255.0); cairo_paint(cr);
 	if (t->pb) { double iw = gdk_pixbuf_get_width(t->pb), ih = gdk_pixbuf_get_height(t->pb), sc = fmax(tw / iw, th / ih); cairo_translate(cr, tx + (tw - iw * sc) / 2, ty + (th - ih * sc) / 2); cairo_scale(cr, sc, sc); gdk_cairo_set_source_pixbuf(cr, t->pb, 0, 0); cairo_paint(cr); }
 	else { cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); double cw; s_lines("✕", 18, 400, 0, &cw); cairo_restore(cr); cairo_restore(cr); cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0);
@@ -115,6 +115,12 @@ static GtkWidget *dsel(const char *id, const char *k)
 	char *cur = gs(k); GtkWidget *w = s_select(v, l, s->n, cur, on_sel, (gpointer)k); g_free(cur); g_free(v); g_free(l); p_label_named(id, w); return w;
 }
 
+static GtkWidget *dsel_cb(const char *id, const char *cur, void (*cb)(const char *, void *))
+{
+	const SetDSel *s = NULL; for (guint i = 0; i < G_N_ELEMENTS(DSELS); i++) if (!strcmp(DSELS[i].id, id)) s = &DSELS[i]; if (!s) return gtk_label_new(id);
+	const char **v = g_new0(const char *, s->n), **l = g_new0(const char *, s->n); for (int i = 0; i < s->n; i++) { v[i] = s->o[i][0]; l[i] = s->o[i][1]; }
+	GtkWidget *w = s_select(v, l, s->n, cur, cb, NULL); g_free(v); g_free(l); p_label_named(id, w); return w;
+}
 /* ================================================================== colours (input type=color) */
 static void rgb_of(const char *h, double *r, double *g2, double *b) { unsigned v = 0; if (strlen(h) == 4) { unsigned a, bb, c; sscanf(h + 1, "%1x%1x%1x", &a, &bb, &c); v = a * 17 << 16 | bb * 17 << 8 | c * 17; } else sscanf(h + 1, "%6x", &v); *r = (v >> 16 & 255) / 255.0; *g2 = (v >> 8 & 255) / 255.0; *b = (v & 255) / 255.0; }
 static gboolean colour_draw(GtkWidget *w, cairo_t *cr, gpointer d)
@@ -282,6 +288,28 @@ static void rows_lock(void)
 	g_free(bg);
 }
 
+
+/* ================================================================== .sp25's Taskbar (settings31.js's group, tbbtn59.js's buttons, tbprog61.js's
+   progress colour): each change a part of the working copy (liveSet) */
+static GtkWidget *TBBACM, *TBPC, *TBPCC;
+static void on_ck(int on, void *d) { const char *k = d; set(k, g_strdup(on ? "true" : "false")); if (!strcmp(k, "tbbac") && TBBACM) gtk_widget_set_sensitive(TBBACM, on); if (!strcmp(k, "aur") && AUR.sel) gtk_widget_set_sensitive(AUR.sel, on); }
+static GtkWidget *dck(Cell *c, const char *k, const char *t) { GtkWidget *w = c ? c_check(c, t, !strcmp(g(k), "true"), on_ck, (gpointer)k) : rui_check(t, !strcmp(g(k), "true"), on_ck, (gpointer)k); p_label_named(k, w); return w; }
+static int tbp_listed(const char *v) { for (guint i = 0; i < G_N_ELEMENTS(DSELS); i++) if (!strcmp(DSELS[i].id, "dtbpc")) for (int k = 0; k < DSELS[i].n; k++) if (!strcmp(DSELS[i].o[k][0], v) && strcmp(v, "custom")) return 1; return 0; }
+static void on_tbpc(const char *v, void *d) { (void)d; if (!strcmp(v, "custom")) { char *cur = gs("tbpcol"); if (*cur != '#') { g_free(cur); cur = g_strdup("#16a34a"); } sets("tbpcol", cur); g_free(cur); } else sets("tbpcol", v); KEEP = 1; p_relayout(); if (TBPCC) gtk_widget_set_visible(TBPCC, !strcmp(v, "custom")); }
+static void sec_taskbar(void)
+{
+	p_h4("Taskbar");
+	{ Cell *c = p_r2("Position"); c_add(c, dsel("tb", "tb"), 0, 0, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Windows"); dck(c, "tbgroup", "Group windows of the same app"); p_r2_more(c); }
+	{ Cell *c = p_r2("Style"); c_add(c, dsel("dtbs", "tbstyle"), 0, 0, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Buttons"); c_add(c, dsel("dtbbs", "tbbstyle"), 0, 0, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Button colours"); GtkWidget *k = dck(c, "tbbac", "Match the theme colours"); (void)k; TBBACM = dsel("dtbbacm", "tbbacm"); gtk_widget_set_sensitive(TBBACM, !strcmp(g("tbbac"), "true"));
+		c_add(c, TBBACM, 10, 0, 0); c_msg(c, "The start button, pinned apps, open windows, workspaces and the tray. Ticked: the accent colour (Normal, its Negative, or Complementary: the colour opposite it on the colour wheel); unticked: each style's own colours.", 2); p_r2_more(c); }
+	{ Cell *c = p_r2("Progress colour"); char *cur = gs("tbpcol"); int listed = tbp_listed(cur); TBPC = dsel_cb("dtbpc", listed ? cur : "custom", on_tbpc); c_add(c, TBPC, 0, 0, 0);
+		TBPCC = colour("tbpcol", 50); c_add(c, TBPCC, wordw("a a") - wordw("aa"), -1, 0); if (listed) gtk_widget_set_no_show_all(TBPCC, TRUE);
+		c_msg(c, "The fill on a minimized window's taskbar button while it is doing something (a download, a page loading, a copy, an installation).", 2); g_free(cur); }
+}
+
 /* ================================================================== the footer */
 static void act(int what)
 {
@@ -311,6 +339,7 @@ void page_disp(void)
 	{ Cell *c = p_r2("Window text color"); c_add(c, colour("tx", 52), 0, 0, 0); p_r2_more(c); }
 	{ Cell *c = p_r2("Icon text color"); c_add(c, colour("ic", 52), 0, 0, 0); p_r2_more(c); }
 	{ Cell *c = p_r2("Icon size"); GtkWidget *r = s_range(100, 200, 5, gn("is"), on_is, NULL); gtk_widget_set_size_request(r, (int)lround(129 * s_z()), (int)lround(16 * s_z())); c_add(c, r, 2, 2, 0); p_label_named("is", r); }
-	/* (to come: Taskbar to Displays) */
+	sec_taskbar();
+	/* (to come: Title bars to Displays) */
 	p_footer(dirty, act);
 }
