@@ -464,9 +464,58 @@ on a busy site; a Tor window without them; the reminder and about:safety in the 
   Oracle's own-profile mode (Oracle there no longer Oracle; Native unlike the Chromium desktop); C. A for passwords, and
   extensions only in a Chromium window opened from Oracle. **The owner chose C (2026-11-24 22:14 CST)**: steps 1 and 2 above.
 - **Tests:** oraframes63_t.js 8/8 with each Chromium (the runner); Lite: none (WebKit has neither).
-#### Status (2026-11-25, scheduled task): option C planned; step 1 next
-- This plan rewritten for option C (PR "Oracle's tab tooltip shows its memory", with Part 4's tooltip). Step 1 (the password
-  manager) and step 2 (the Chromium window, with about:safety from oracle-safety-page) follow, one PR each.
+#### Status (2026-11-25, scheduled task): option C planned
+- This plan rewritten for option C (PR #691 "Oracle's tab tooltip shows its memory", with Part 4's tooltip).
+#### Status (2026-11-25, scheduled task): step 1 built (PR "Oracle's own password manager")
+- **Built:** the store (rudolf-portal `--webpw list|get|set|del`, the account's login keyring, attributes application=rudolf-oracle,
+  origin, user; everything on standard input); rudolfd `oracle/pw/list|get|set|del` (rudolfd-webpw.inc: as the account's Linux user
+  in its session, as Blitzen's tokens; the origin and the user name checked again; Guest or nobody signed in: 409; not narrow: it
+  runs rudolf-portal, as confinepure.py says); the shell's script (shell.js PW_JS, PW_FILL, pwSent, pwFocus) and Lite's
+  (rudolf-webkit.c PW_JS, PW_FILL_FN, pw_msg, tab_pw_op); the page (desktop/orapw63.js: Oracle's bar, ☰ › Passwords; tabs26.js
+  passes the events on).
+- **Where it differs from the design above, and why:** the 🔑 is in **Oracle's own bar** (under the bookmarks bar), not drawn in
+  the page's password field: a key drawn in the page could be covered, imitated or clicked by the page's own script; Oracle's bar
+  is outside the page. "Change" in ☰ › Passwords takes the new password in a plain prompt, after the account's password.
+- **Security review: what a page can and cannot see.**
+  - The script runs in an **isolated world** (Chromium: the Controlled Frame's executeScript world; Lite: WebKit's "rudolf" world),
+    in the **top frame only**, on **https: pages only**, and never in a private window's or Guest's tab (partitions priv-…; the
+    page also never offers or saves in private, Tor or Guest windows). The page's own scripts cannot see it or its pad, nor call it.
+  - **It gives the page nothing:** it reads what the person typed when a sign-in is sent (the form's submit, Enter in the password
+    field, or its sign-in button: keys and clicks must be the person's own, isTrusted; a form the page submits itself still counts,
+    which only makes Oracle ask). It tells the shell the user name and password **under a one-time pad** of 1024 random bytes that
+    only the isolated world and the shell hold: Chromium carries the message as a console message, which Native's Oracle logs
+    (--enable-logging), so a log would hold only the padded bytes; the pad is used once and replaced. Lite's goes by WebKit's own
+    message to rudolf-webkit's process (no console).
+  - **The origin is the tab's, not the page's word:** the shell and rudolf-webkit take it from the tab's committed top-level
+    address, https: only. Kept for that **exact origin** (scheme, host, port): never a parent domain, a subdomain, another port,
+    http: or a look-alike host (tested against the real keyring). A host with letters of other alphabets (xn--) is said in the bar.
+  - **Filled only after the person's click in Oracle's bar** (Fill, Use it), only into the top frame (never a frame of another
+    site), and only while the tab is still at that origin: checked by the shell (or rudolf-webkit) and again by the fill script.
+  - A page can: see the password once filled (it is that site's); make Oracle ask "Save?" by submitting its own form. It cannot:
+    read saved passwords, learn which sites are saved, have Oracle fill without a click, or get another site's password.
+- **Where they are stored and when they are locked:** in the signed-in account's login keyring (gnome-keyring-daemon, in the
+  account's own folder, its user's only, 0600, encrypted as its home folder is), **unlocked by its sign-in and locked when it signs
+  out** (its keyring stops with its session). Never in the page's storage, Oracle's profile, rudolfd's files or a command line
+  (each request's lines go to rudolf-portal on its standard input; rudolfd wipes its copies). ☰ › Passwords lists sites and user
+  names only; Show and Copy ask for the account's password first. "Never for this site" (not secret) is in the account's settings.
+- **Tests:** webpw63_t.sh 14/14 (the real gnome-keyring-daemon: kept, read back, replaced, listed by name only, removed; the
+  origin's rules; nothing in a command line; the keyring file the user's only); orapwjs63_t.js 25/25 (the shell's and Lite's scripts
+  in a real Chromium page's isolated world, read from their sources); orapw63_t.js 26/26 (the page); rudolf-webkit, rudolfd and
+  rudolf-portal built; Oracle's page tests as before (oracle-passwords-check.yml, keyring-check.yml). **Not tested:** rudolfd's
+  oracle/pw requests end to end with a signed-in account (they hand over to rudolf-portal, tested); Lite and Native with a real
+  site: the owner's checklist.
+- **The owner's checklist (Vivobook):** 1. Chromium mode: sign in to a test site with a made-up password: "Save your password?",
+  Save; back on its sign-in page: 🔑 Fill fills it after the click; 2. a private and a Tor window: never asked; 3. ☰ › Passwords:
+  Show asks for the account's password; Remove; 4. sign out of Rudolf OS and back in: still there (Settings › Privacy › Saved
+  passwords for apps names it); 5. Native and Lite: the same; 6. then a real site of the owner's choice.
+- **Next:** step 2 ("Open in a Chromium window" with extensions and the reminder; oracle-safety-page merged in). Found while starting
+  it (2026-11-25): Rudolf OS's Chromium policy is one file for the whole computer (/etc/chromium/policies/managed/rudolf.json), read by
+  every Chromium it starts (the desktop's, Oracle's own, the Tor windows', the browser window for sign-in sites), so "no extension in
+  the desktop's own Chromium, the vetted list in the Chromium window" needs each to read its own policy: the Chromium window started
+  in a mount namespace of its own with its policy folder bound over (rudolfd starts it as root before it becomes the account's user),
+  the others keeping the blocking file; and the desktop's own Ruffle (`--load-extension`) checked against "every extension blocked"
+  on the releases' Chromium before the policy lands (a first probe with Playwright's Chromium for Testing did not start its
+  debugging port with a managed policy file present: to be measured on the runner with the snap's Chromium).
 
 ### Part 8. Fixes from the owner's use (the owner, 2026-11-24 22:51 CST)
 "Some items to add to 1.6.3:" each fixed with a test that fails before the fix, the same on Native, Chromium and Lite
@@ -475,6 +524,16 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    Closing Paint's window, opening another picture or New with unsaved changes asks "Save changes to NAME?" (Save, Don't
    save, Cancel), as Notepad and WordPro do; signing out or shutting down with Paint changed lists it like the other
    apps' unsaved work.
+   - **Status (2026-11-25, scheduled task): asked at close and New** (PR "Paint asks to save"). Paint now knows when its
+     picture changed (a stroke, a shape, a fill, Undo, Redo, Resize) since it was opened, saved or started: its window's ✕
+     (and the taskbar's Close, the native frame's ✕) and New ask "Save changes to NAME?" (Save: the name asked when it has
+     none, then the file written and the window closed; Don't save; Cancel or Esc); New starts an untitled picture (it kept
+     the old file's name, so Save wrote the blank picture over it). Opening another picture opens a window of its own, as
+     before, so nothing is lost there. **Test:** `iso/qt/native/paintsave163_t.js` (paintsave163-check.yml): Chromium mode
+     11, Native 5; **before 2/8 (the rest could not run: the window had closed), after 16/16.** **Not done, a step of its
+     own:** signing out or shutting down lists no app's unsaved work today, on either engine (Notepad's and WordPro's
+     neither: Chromium mode saves the session, Native closes the windows at once, rudolf-native `power("logout")`); Paint
+     now says what it has unsaved (`W.unsaved()`) for that list when it is built.
 2. **Native's transitions are rough.** "Transitions on Native are rough/blocky." Native's window animations (open, close,
    minimize, restore, maximize, the Start menu, menus, pop-ups, LitePoint) drawn smoothly as Chromium's: measured frame
    by frame against Chromium mode (frames dropped, steps visible, the animation's length), on the Vivobook's integrated
@@ -482,6 +541,17 @@ unless the item is Native's own (then Native is made to match Chromium, never th
 3. **Xbox Cloud Gaming and GeForce NOW don't respond.** "Xbox gaming and GeForce apps do not respond when clicked."
    (desktop/game51.js: each opens in Oracle.) Clicking either in the Start menu, the Games tab, a pin or the desktop
    opens it, on every desktop engine (Lite: in Chromium if WebKit can't play them, said plainly); a test for each place.
+   - **Status (2026-11-25, scheduled task): fixed** (PR "Xbox Cloud Gaming and GeForce NOW open from the Start menu"). The
+     cause: in Chromium mode the Start menu's rows call the menu's own table of actions (base_v24.html `A`), which had
+     neither game (nor the Library's games of games58.js), so a click there threw "A[a] is not a function" and did
+     nothing; the pins, the desktop icons, the Games tab and the right-click Open went through `launch` and worked. A row
+     without an action of its own now opens through `launch`, as its pin does. With Lite, WebKitGTK has no WebRTC, which
+     both streams need: they open in Chromium's window (rudolfd's web/open, as the call sites, oracle58.js), with a
+     notification saying so. **Test:** `iso/qt/native/cloudgames163_t.js` (cloudgames163-check.yml): Chromium mode 10
+     places (the Start menu, its right-click Open, the Games tab, a pin, a desktop icon, for each game) and the Library
+     games' rows, Lite 2, Native 6 (the Start menu, a pin, a desktop icon: Oracle's window at the game's address);
+     **15/19 before, 24/24 after**. Native opened both from every place already in the test (Oracle's WebKit window);
+     on the Vivobook Native's Oracle is Rudolf's Chromium: the owner's checklist.
 4. **Desktop icons are slow on Native.** "Desktop icon removal/changes still take several minutes on Native." A desktop
    icon removed, renamed, added or changed shows within a second on Native, as on Chromium; find what Native waits for
    (a poll, a watch, the hidden page's sync) and measure before and after.

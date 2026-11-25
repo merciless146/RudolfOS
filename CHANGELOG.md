@@ -8,6 +8,11 @@ Summary: In progress.
 - Changed: Make a Rudolf OS USB stick is in Settings › Storage and backup's Backup part (Update and recovery links to it):
   it says in plain words what each choice puts on the stick, refuses a stick too small for the chosen image before
   anything is written, shows the step and the time left, and at the end what was checked and that the stick can be removed.
+- New: Oracle has its own password manager. After you sign in to a site, Oracle's bar asks "Save your password for
+  example.com?"; on that site's sign-in form "🔑 Fill" fills it, only after your click, only on that exact site and never in
+  a frame of another one or on an http: page; "Use a strong password" for new accounts. The passwords are kept in your
+  account's keyring and locked when you sign out; Guest, private and Tor windows never keep any. ☰ › Passwords shows them
+  (Show and Copy after your password), changes and removes them. The same on Chromium, Native and Lite (plan 1.6.3 Part 7).
 - New: each of Oracle's tabs says in its tooltip how much memory it uses (its process's, as Task Manager counts it, with the
   frames of other sites it holds said apart; "shares a process with 2 other tabs" when it does; none for a freed tab 💤),
   measured when the tooltip opens and while it shows; the same on Chromium and Native, and Lite says what WebKit lets it know
@@ -16,6 +21,10 @@ Summary: In progress.
   and extensions only in a Chromium window opened from Oracle, never in the desktop's own Chromium.
 - Fixed: on Native, a right-click menu (the desktop's, the taskbar's, a window's) closes when you click anywhere outside it,
   press Esc or Tab, or switch windows, as in Chromium mode; it closed only when a row was chosen.
+- Fixed: Paint asks "Save changes to …?" (Save, Don't save, Cancel) before closing its window or starting a new picture
+  when the picture has changed; New starts an untitled picture instead of keeping the old file's name.
+- Fixed: Xbox Cloud Gaming and GeForce NOW (and the Library's games) open from the Start menu in Chromium mode; a click on
+  their rows did nothing. With the Lite desktop they open in Chromium's window, which can play them, and it says so.
 - Changed: the plan (docs/plan-1.6.3.md Part 8): six fixes from the owner's use: Paint asks to save, Native's transitions,
   Xbox Cloud Gaming and GeForce NOW opening, desktop icons on Native, Make a stick in Backup, Native's menus closing.
 - New: Oracle frees the memory of tabs you have not looked at for 30 minutes (Settings › Oracle › Memory: 15 minutes to
