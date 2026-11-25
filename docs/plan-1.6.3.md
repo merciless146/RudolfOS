@@ -262,8 +262,12 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
     page's one dialog with a field to paste the file's text into.
   - Oracle shows the page's layout without real tabs (rtOn() is the page's own shell connection); on a desktop whose page has real
     tabs the page shows the same settings under "Without real tabs".
-- **Left:** Devices, Storage,
-  Apps, Notifications; Privacy, Security, System health, Users; the switch.
+- **PR 7, in progress (2026-11-25, scheduled task; branch native-settings-8, #702's fix merged in until it is merged):** Devices,
+  Storage and backup, Apps, Notifications.
+  - Done: Notifications (`settings_notif.c`), checklist T1-T3, views 0.32-0.34 %.
+  - Next: Devices (devices26.js devPanel, with its printers, print queue and scanners), Storage and backup, Apps (with Part 40's
+    two Wine rows).
+- **Left:** Devices, Storage, Apps (PR 7); Privacy, Security, System health, Users; the switch.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in
   plain words, a stick too small for the chosen image refused before anything is written, a bar with the step and the time
