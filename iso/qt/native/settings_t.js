@@ -132,7 +132,7 @@ async function checklist(P) {
     ok('5. ...Enter opens the result: System, its Time zone row lit and its control focused', line('page') == 'sys' && line('hit') == 'Time zone' && line('focus') == 'tz', [line('page'), line('hit'), line('focus')]) }
   { click(rect('search')); xdo("type --delay 15 'x'"); await until(() => +line('res') >= 0, 3000); xdo('key Escape'); await until(() => line('res') == '-1', 3000); const a = line('res') == '-1'; xdo('key Escape'); await until(() => line('q') == '', 3000);
     ok('6. ...Escape closes the list, then empties the box', a && line('q') == '') }
-  { click(rect('side-sys')); await until(() => line('page') == 'sys', 4000); await wait(500); focusWin(); xdo('key Up Up Return'); await until(() => line('page') == 'bt', 4000); ok('3. the keyboard: Up, Up and Enter in the sidebar show Bluetooth (not native yet: it says so)', line('page') == 'bt' && line('native') == '0', [line('page'), line('focus'), line('sidefoc'), nst().split('\n').filter(x => /^act/.test(x)).join(' / '), NP && NP.log.slice(-300)]) }
+  { click(rect('side-sys')); await until(() => line('page') == 'sys', 4000); await wait(500); focusWin(); xdo('key Up Up Return'); await until(() => line('page') == 'bt', 4000); ok('3. the keyboard: Up, Up and Enter in the sidebar show Bluetooth (native since 1.6.3 PR 6)', line('page') == 'bt' && line('native') == '1', [line('page'), line('focus'), line('sidefoc'), nst().split('\n').filter(x => /^act/.test(x)).join(' / '), NP && NP.log.slice(-300)]) }
   click(rect('side-sys')); await until(() => line('page') == 'sys', 4000); await wait(800);
   /* System: the working copy, Apply, Revert, Reset */
   mark = c0();
@@ -251,7 +251,7 @@ async function checkKbdMouse() {
   natStart('kbd'); await until(() => rect('body') && line('page') == 'kbd', 20000); await wait(1500);
   { await pick('kbla', 2, 16); click(rect('kbadd')); await until(() => /"de"/.test(LS()['bd95kbl:uAnnA1b2'] || ''), 4000);
     ok('K1. Add a layout: Deutsch chosen, Add: the account\'s layouts ["us","de"] (bd95kbl:ACCT)', LS()['bd95kbl:uAnnA1b2'] == '["us","de"]', LS()['bd95kbl:uAnnA1b2']) }
-  { await until(() => rect('kbup1'), 3000); click(rect('kbup1')); await until(() => LS()['bd95kbl:uAnnA1b2'] == '["de","us"]', 4000); const a = LS()['bd95kbl:uAnnA1b2'];
+  { await until(() => rect('kbup1'), 3000); await wait(500); /* (the page built again after Add: its buttons placed) */ click(rect('kbup1')); await until(() => LS()['bd95kbl:uAnnA1b2'] == '["de","us"]', 4000); const a = LS()['bd95kbl:uAnnA1b2'];
     await until(() => rect('kbrm1'), 3000); await wait(300); click(rect('kbrm0')); await until(() => LS()['bd95kbl:uAnnA1b2'] == '["us"]', 4000);
     ok('K2. ▲ moves Deutsch first (["de","us"]), Remove takes it away (["us"])', a == '["de","us"]' && LS()['bd95kbl:uAnnA1b2'] == '["us"]', [a, LS()['bd95kbl:uAnnA1b2']]) }
   { await wait(500); await pick('kbime', 1, 4); await until(() => SET().ime == 'ja', 4000); await scrollTo('kbch'); click(rect('kbch')); await until(() => SET().cliphist === false, 4000);
