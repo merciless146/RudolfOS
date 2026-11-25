@@ -184,6 +184,35 @@ three and six tabs; then only settings that lower it without weakening anything:
 Oracle's Tor windows and encrypted folders. Kept only with a measured saving (estimated ~50-100 MB a background tab), with
 Oracle's tests passing. The owner's checklist: Oracle on the Vivobook with several tabs, the memory in Task Manager, a
 freed tab coming back as it was.
+#### Status (2026-11-25, scheduled task): built (PR "Oracle's memory")
+- **Measured** (`iso/qt/native/oramem63_t.js`, oracle-memory-check.yml on GitHub's runner): a real Chromium, Oracle's tabs as
+  the shell makes them (Controlled Frames in an account's partition, the same in the desktop's Chromium and Oracle's own), the
+  Pss of every process of that Chromium after the pages settle. Real websites (Wikipedia, GitHub, BBC News, the Guardian,
+  MDN, YouTube), the Chromium snap's 158.0.8127.36 (the releases'): **1 tab** 114 MB more than none; **3 tabs** 838 MB more
+  (BBC News' ads alone opened some 30 processes of their own); **6 tabs** 682 MB more. **Before:** every tab stays alive
+  however long it has not been looked at. **After** (the background ones freed, the shown one alive): 3 tabs 192 MB less
+  (**96 MB a background tab**), 6 tabs 395 MB less (**79 MB a background tab**). Playwright's Chromium 153: 67 and 85 MB a
+  background tab; stand-in news pages: 42 MB. (The test page around the tabs is smaller than Oracle's, so the totals are
+  the tabs' own; Oracle's own page adds its usual share.)
+- **Kept, with that saving: background tabs freed after a while** (desktop/orasleep63.js): a tab that is not its window's
+  current one and has not been for 30 minutes (Settings › Oracle › Memory: 15 minutes, 30 minutes, 1 hour, 2 hours, Never)
+  is freed as game mode frees one: its page closed, its address, title and scroll kept (💤); choosing it loads it again
+  and the shell scrolls it back (shell.js: the busy answer's `y`, `scrollto`). Never a tab playing sound or video, holding
+  typed text, the shown one or a game's. **Under memory pressure** (the memory guard's warning, outside game mode, whose
+  own freeing stays) the background tabs are freed at once, with a notification.
+- **Not changed:** site isolation, Chromium's sandbox, the Tor and private windows' separation, the encrypted folders,
+  the disk cache's size. No Chromium setting was found that frees a live tab's own caches on Linux without one of those,
+  so what memory pressure frees is the background tabs.
+- **The desktops:** Chromium and Native (the same shell and page): as above. Lite: its WebKit tabs are freed the same way
+  and come back at their address, at the top (rudolf-webkit does not say how far a page was scrolled).
+- **Tests:** orasleep63_t.js 19/19; Oracle's page tests as before (oracle58, private59, tor59, orahover61, orasession61,
+  oraclosed61, orafind61, orablock61, orareader61, oraacct60, gamesleep59, oracledl, oraclefile60, oracleart60); the
+  measuring test with each Chromium; the Oracle checks (find, closed tabs, reader, session, blocking, Goes To, downloads)
+  on the branch.
+- **The owner's checklist (Vivobook, Chromium and Native):** 1. open six sites in Oracle, leave five unlooked-at for 30
+  minutes (or choose 15 minutes in Settings › Oracle › Memory): 💤 on them, and Task Manager's Oracle smaller; 2. choose a
+  freed tab: it loads again where it was scrolled; 3. a tab playing music and one with a half-typed message stay awake;
+  4. Never: nothing is freed.
 
 ### Part 5. Oracle's encrypted websites back in the page on Chromium (the owner, 2026-11-23 20:08 and 20:10 CST)
 The owner: "Is it possible to have the Oracle browser in Chromium running in the same Chromium page again?", then "Yes, add

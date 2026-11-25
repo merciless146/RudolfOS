@@ -215,7 +215,8 @@ function tabEvents(t) {
     if (why) { f.stop(); if (!(t.blk && t.blk.startsWith(e.url + ' ') && Date.now() - +t.blk.split(' ')[1] < 3000)) toTab(t.tid, 'blocked', {url: e.url, why, main: true}); if (/^https?:/i.test(t.url) && t.url !== e.url && !fwWhy(t.url)) f.back().catch(() => {}); return }
     toTab(t.tid, 'load', {loading: true});
   });
-  f.addEventListener('loadstop', () => { toTab(t.tid, 'load', {loading: false}); navState(); if (/^https?:/i.test(t.url || '')) f.executeScript({code: HOVER_JS, allFrames: true}).catch(() => {}) });   // (1.6.1: frames added while it loaded)
+  f.addEventListener('loadstop', () => { if (t.sy) { const y = t.sy; t.sy = 0; f.executeScript({code: 'if(!scrollY)scrollTo(0,' + y + ')'}).catch(() => {}) }   // (1.6.3: scrollto)
+    toTab(t.tid, 'load', {loading: false}); navState(); if (/^https?:/i.test(t.url || '')) f.executeScript({code: HOVER_JS, allFrames: true}).catch(() => {}) });   // (1.6.1: frames added while it loaded)
   /* 1.6.0: how far the page has loaded (0..1), for Oracle's loading line (oload60.js) */
   f.addEventListener('loadcommit', e => { if (e.isTopLevel) { t.bn = 0; clearTimeout(t.bnT); t.bnT = 0; toTab(t.tid, 'adblock', {n: 0}) } });   // (1.6.1: a new page's count of blocked requests)
   f.addEventListener('loadprogress', e => { if (e.isTopLevel !== false) toTab(t.tid, 'progress', {p: Math.max(0, Math.min(1, +e.progress || 0))}) });
@@ -382,7 +383,8 @@ ${btn ? `const b=document.createElement('button');b.textContent=${JSON.stringify
 b.onclick=e=>{if(!e.isTrusted)return;try{console.debug(${JSON.stringify(NONCE)}+JSON.stringify({notice:${Number(id) || 0}}))}catch(x){}d.remove()};d.appendChild(b);` : ''}
 (document.body||document.documentElement).appendChild(d);try{d.showPopover()}catch(e){}setTimeout(()=>d.remove(),${sec * 1000})}catch(e){}})()`;
 /* (1.5.9) what the page is doing that sleeping would lose: media playing, text typed and not sent */
-const BUSY_JS = `JSON.stringify({m:[...document.querySelectorAll('video,audio')].some(x=>!x.paused&&!x.muted&&x.readyState>2),
+/* (1.6.3, plan Part 4: and how far it is scrolled, so a tab freed for memory comes back where it was) */
+const BUSY_JS = `JSON.stringify({y:Math.round(scrollY)||0,m:[...document.querySelectorAll('video,audio')].some(x=>!x.paused&&!x.muted&&x.readyState>2),
 f:[...document.querySelectorAll('input,textarea')].some(x=>!x.disabled&&/^(text|search|email|url|tel|number|password|textarea|)$/.test(x.type||'')&&x.value&&x.value!==x.defaultValue)||[...document.querySelectorAll('[contenteditable]')].some(x=>x.isContentEditable&&(x.textContent||'').trim().length>0&&x.contains(document.activeElement))})`;
 /* 1.6.1 (docs/plan-1.6.1.md Part 10): find in page. Oracle's find bar (desktop/orafind61.js) asks {text, mc, back, again, id};
    the Controlled Frame's own find does it (Chromium's highlighting, every frame), its answer (and findupdate's) sent as tabev find
@@ -457,6 +459,9 @@ const TAB_OPS = {
   zoom: (m, t) => t.f.setZoom(Math.max(.25, Math.min(5, num(m.z, 1)))).catch(() => {}),
   focus: (m, t) => t.f.focus(),
   close: (m, t) => { t.f.remove(); TABS.delete(t.tid) },
+  /* 1.6.3 (plan Part 4): a tab freed for memory, opened again: back where it was scrolled once its page has loaded (unless the
+     page itself scrolled already) */
+  scrollto: (m, t) => { t.sy = Math.max(0, Math.min(1e7, Math.round(num(m.y, 0)))) },
   /* 1.5.9 (plan 9.2b): a notice inside the page, in the top layer, so it shows over the page's own full screen too */
   notice: (m, t) => { t.f.executeScript({code: noticeJS(String(m.text || '').slice(0, 300), Math.max(3, Math.min(30, num(m.s, 12))), m.btn ? String(m.btn).slice(0, 40) : '', m.id)}).catch(() => {}) },
   /* 1.5.9 (game mode, plan 9.2): may this tab sleep? Sound playing, or text typed into a form, says no */
@@ -464,7 +469,7 @@ const TAB_OPS = {
     let a = false, r = {};
     try { a = !!(await t.f.getAudioState()) } catch (e) {}
     try { const x = await t.f.executeScript({code: BUSY_JS}); r = JSON.parse((x && x[0]) || '{}') } catch (e) { r = {f: true} }
-    toTab(t.tid, 'busy', {id: m.id, m: a || !!r.m, f: !!r.f});
+    toTab(t.tid, 'busy', {id: m.id, m: a || !!r.m, f: !!r.f, y: Math.max(0, Math.min(1e7, Math.round(num(r.y, 0))))});
   },
   readhtml: (m, t) => { t.f.executeScript({code: READHTML_JS}).then(r => { let o = {}; try { o = JSON.parse((r && r[0]) || '{}') } catch (e) {} toTab(t.tid, 'readhtml', {id: m.id | 0, html: String(o.h || ''), url: String(o.u || ''), title: String(o.t || '').slice(0, 300)}) }).catch(() => toTab(t.tid, 'readhtml', {id: m.id | 0, html: ''})) },   // (1.6.1: reader mode)
   find: (m, t) => tabFind(t, m),   // (1.6.1: find in page)
