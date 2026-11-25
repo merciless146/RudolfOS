@@ -310,6 +310,31 @@ static void sec_taskbar(void)
 		c_msg(c, "The fill on a minimized window's taskbar button while it is doing something (a download, a page loading, a copy, an installation).", 2); g_free(cur); }
 }
 
+
+/* ================================================================== Title bars (titlebar59.js): Style, Colour and the two windows' preview
+   (.twprev: 320 px, each window 36 px with a 1 px #9ca3af border, radius 8, its title bar in the accent colour; TO DO: the styles'
+   own looks and the app's icon) */
+static GtkWidget *TWPREV;
+static gboolean twprev_draw(GtkWidget *w, cairo_t *cr, gpointer d)
+{
+	(void)w; (void)d; double z = s_z();
+	for (int k = 0; k < 2; k++) { double y = k * 40; cairo_save(cr); cairo_scale(cr, z, z);
+		cairo_set_source_rgb(cr, 1, 1, 1); s_rrect(cr, 0, y, 320, 36, 8); cairo_fill(cr);
+		s_col(cr, "ac", 1); cairo_new_path(cr); cairo_move_to(cr, 1, y + 35); cairo_line_to(cr, 1, y + 8); cairo_arc(cr, 8, y + 8, 7, M_PI, 1.5 * M_PI); cairo_line_to(cr, 312, y + 1); cairo_arc(cr, 312, y + 8, 7, 1.5 * M_PI, 2 * M_PI); cairo_line_to(cr, 319, y + 35); cairo_close_path(cr); cairo_fill(cr);
+		cairo_set_source_rgb(cr, 156 / 255.0, 163 / 255.0, 175 / 255.0); cairo_set_line_width(cr, 1); s_rrect(cr, .5, y + .5, 319, 35, 7.5); cairo_stroke(cr); cairo_restore(cr);
+		cairo_set_source_rgb(cr, 1, 1, 1); s_text(cr, rui_tr(k ? "Another window" : "Active window"), 28, y + 11, 12, 600, 0, 14);
+		const char *B[3] = { "_", "□", "✕" }; for (int b = 0; b < 3; b++) { double bw; s_lines(B[b], 12, 600, 0, &bw); s_text(cr, B[b], 233 + b * 27 + (24 - bw) / 2, y + 7 + 5, 12, 600, 0, 12); } }
+	return TRUE;
+}
+static void sec_titlebars(void)
+{
+	p_h4("Title bars");
+	{ Cell *c = p_r2("Style"); c_add(c, dsel("dtws", "twstyle"), 0, 0, 1); p_r2_more(c); }
+	{ Cell *c = p_r2("Colour"); c_add(c, dsel("dtwm", "twacm"), 0, 0, 0);
+		c_msg(c, "The title bar of the window you are using takes the accent colour: Normal is the accent colour; Negative is its negative; Complementary is the colour opposite it on the colour wheel. The styles are the taskbar's.", 2);
+		c_line(c, 6); TWPREV = gtk_drawing_area_new(); gtk_widget_set_size_request(TWPREV, (int)lround(320 * s_z()), (int)lround(76 * s_z())); g_signal_connect(TWPREV, "draw", G_CALLBACK(twprev_draw), NULL); c_add(c, TWPREV, 0, 0, 0); p_label_named("twprev", TWPREV); }
+}
+
 /* ================================================================== the footer */
 static void act(int what)
 {
@@ -340,6 +365,7 @@ void page_disp(void)
 	{ Cell *c = p_r2("Icon text color"); c_add(c, colour("ic", 52), 0, 0, 0); p_r2_more(c); }
 	{ Cell *c = p_r2("Icon size"); GtkWidget *r = s_range(100, 200, 5, gn("is"), on_is, NULL); gtk_widget_set_size_request(r, (int)lround(129 * s_z()), (int)lround(16 * s_z())); c_add(c, r, 2, 2, 0); p_label_named("is", r); }
 	sec_taskbar();
-	/* (to come: Title bars to Displays) */
+	sec_titlebars();
+	/* (to come: Colours and theme to Displays) */
 	p_footer(dirty, act);
 }
