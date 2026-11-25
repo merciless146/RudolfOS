@@ -164,7 +164,7 @@ class H(http.server.BaseHTTPRequestHandler):
         # same for the page's Task Manager and the native one); the actions taken answered as rudolfd answers them (and noted in DIR/calls)
         if rd('tm') is not None:
             T = json.loads(rd('tm'))
-            if w in T and w not in ('bt', 'remote') and (m == 'GET' or w in ('apps/running',)): return self.j(T[w])
+            if w in T and w not in ('bt', 'remote') and (m == 'GET' or w in ('apps/running', 'wifi/scan')): return self.j(T[w])
             if w == 'proc/end' and m == 'POST': return self.j({'ok': True, 'message': 'proc', 'ended': 3, 'kept': 0} if 'tree=1' in q else {'ok': True, 'message': 'proc'})
             if w in ('service/restart', 'apps/end', 'apps/kill', 'shell/switch') and m == 'POST': return self.j({'ok': True, 'message': w})
             if w == 'memory/dropcache' and m == 'POST': return self.j({'ok': True, 'freed': 104857600})

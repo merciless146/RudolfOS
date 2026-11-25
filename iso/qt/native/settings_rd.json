@@ -419,5 +419,97 @@
    "ecio": null,
    "rssi": null
   }
+ },
+ "net": {
+  "ok": true,
+  "gateway": "192.168.1.1",
+  "dns": "192.168.1.1",
+  "wifiTools": true,
+  "interfaces": [
+   {
+    "name": "wlan0",
+    "ip": "192.168.1.5/24",
+    "state": "up",
+    "wireless": true,
+    "virtual": false,
+    "default": true,
+    "ssid": "Home",
+    "rssi": -55,
+    "rx": 1873456789,
+    "tx": 234567890,
+    "internet": true
+   },
+   {
+    "name": "enp2s0",
+    "ip": "",
+    "state": "down",
+    "wireless": false,
+    "virtual": false,
+    "default": false,
+    "rx": 0,
+    "tx": 0
+   }
+  ]
+ },
+ "wifi/status": {
+  "ok": true,
+  "raw": "wpa_state=COMPLETED\nssid=Home\nip_address=192.168.1.5\nRSSI=-55\nLINKSPEED=433\ncountry=DE\nadapter=wlan0\nsaved=0\tHome\tany\t[CURRENT]\nsaved=1\tCafe Guest\tany\t\nwlan=wlan0\t3c:a9:f4:00:11:22\tpci\tiwlwifi\tIntel Wi-Fi 6 AX201"
+ },
+ "wifi/scan": {
+  "ok": true,
+  "raw": "bssid / frequency / signal level / flags / ssid\n3c:a9:f4:aa:00:01\t5180\t-55\t[WPA2-PSK-CCMP][ESS]\tHome\n3c:a9:f4:aa:00:02\t2437\t-62\t[WPA2-PSK-CCMP][ESS]\tHome\n10:20:30:40:50:60\t2412\t-71\t[ESS]\tCafe Guest\n10:20:30:40:50:61\t5500\t-80\t[WPA2-PSK+SAE-CCMP][ESS]\tNeighbour 5G\n10:20:30:40:50:62\t2462\t-84\t[WPA2-EAP-CCMP][ESS]\tOffice"
+ },
+ "net/hotspot": {
+  "ok": true,
+  "on": false,
+  "why": "",
+  "name": "Rudolf-Home",
+  "band": "2.4",
+  "saved": true,
+  "devices": 0,
+  "uplink": ""
+ },
+ "vpn": {
+  "ok": true,
+  "wireguard": true,
+  "active": "",
+  "me": {
+   "name": "Ann",
+   "admin": true,
+   "child": false
+  },
+  "vpns": [
+   {
+    "id": "v1",
+    "name": "Home router",
+    "type": "wireguard",
+    "policy": "everyone",
+    "kill": false,
+    "server": "203.0.113.7:51820",
+    "addresses": [
+     "10.8.0.2/24"
+    ],
+    "dns": [
+     "10.8.0.1"
+    ],
+    "on": false,
+    "state": "",
+    "by": "",
+    "mayOn": true,
+    "mayOff": true,
+    "why": ""
+   }
+  ]
+ },
+ "net/metered": {
+  "ok": true,
+  "connected": true,
+  "if": "wlan0",
+  "kind": "wifi",
+  "key": "wifi:Home",
+  "name": "Home",
+  "metered": false,
+  "manual": false,
+  "used": 0
  }
 }
