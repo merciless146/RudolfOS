@@ -42,7 +42,9 @@ const PAGES = {'/big': '<title>Big</title>Big page' + hold(150), '/one': '<title
   const env = Object.assign({}, process.env, {RUDOLF_TABMEM_DIR: T}, process.env.DBG ? {RUDOLF_LAUNCH_DEBUG: "1"} : {}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete env[k];
   const chromeArgs = prof => [CHROME, '--user-data-dir=' + path.join(T, prof), '--password-store=basic', '--enable-features=IsolatedWebApps,IsolatedWebAppDevMode',
     '--install-isolated-web-app-from-file=' + swbn, '--no-first-run', '--no-default-browser-check', `--host-resolver-rules=MAP *.test 127.0.0.1`]
-    .concat(process.getuid && process.getuid() == 0 ? ['--no-sandbox'] : []);   /* (a root test machine only: the runner is not root) */
+    .concat(process.getuid && process.getuid() == 0 || !/\/snap\//.test(CHROME) ? ['--no-sandbox'] : []);
+    /* (sandboxed with the Chromium snap, as on Rudolf OS: its own profile lets it; Playwright's Chromium runs without, as Playwright runs it,
+       Ubuntu 24.04 refusing it the user namespaces its sandbox needs; and a root test machine) */
   const want = () => { const w = path.join(T, 'rudolf-tabmem.want'); fs.writeFileSync(w, '1'); const t = new Date(); fs.utimesSync(w, t, t) };
   /* the file's frames once a round begun after asked has been written (up to 60 s: the shell and its tabs start) */
   async function frames(file, since) {
@@ -64,7 +66,7 @@ const PAGES = {'/big': '<title>Big</title>Big page' + hold(150), '/one': '<title
     ok(!/test:8726/.test(raw), `${mode}: no address written in the clear`);
     const live = p => { try { return fs.readFileSync(`/proc/${p}/cmdline`, 'utf8').includes('--type=renderer') } catch (e) { return false } };
     ok([B, O, W, F, A].every(f => live(f.p)), `${mode}: each one's process is a live Chromium renderer`, [B, O, W, F, A].map(f => f.p));
-    console.log(`FOUND ${mode}: big ${B.p} (${mem(B.p)[0]} kB Pss, ${mem(B.p)[1]} kB RssAnon), one ${O.p}, two ${W.p}${O.p == W.p ? ' (one process for the site)' : ' (a process each)'}, frame ${F.p}, its other site's frame ${A.p} (${mem(A.p)[0]} kB)`);
+    console.log(`FOUND ${mode} (${/\/snap\//.test(CHROME) ? 'sandboxed' : 'no sandbox'}): big ${B.p} (${mem(B.p)[0]} kB Pss, ${mem(B.p)[1]} kB RssAnon), one ${O.p}, two ${W.p}${O.p == W.p ? ' (one process for the site)' : ' (a process each)'}, frame ${F.p}, its other site's frame ${A.p} (${mem(A.p)[0]} kB)`);
     ok(mem(B.p)[0] > 120 * 1024 && mem(B.p)[0] > mem(O.p)[0] + 100 * 1024, `${mode}: the big page's process holds over 120 MB, more than a small page's`, [mem(B.p), mem(O.p)]);
     ok(mem(B.p)[1] > 120 * 1024, `${mode}: its RssAnon is read too`, mem(B.p));
     ok(A.up == F.f && !A.m && A.p != F.p, `${mode}: the frame of another site is under its page, in a process of its own`, [A, F]);
@@ -86,7 +88,7 @@ const PAGES = {'/big': '<title>Big</title>Big page' + hold(150), '/one': '<title
     const ctl = path.join(T, 'ctl'); cp.execFileSync('mkfifo', [ctl]);
     const t0 = Math.floor(Date.now() / 1000);
     const p = cp.spawn(LAUNCH, ['--oracle', ctl, id, ...chromeArgs('oracle')], {env, stdio: ['ignore', 'pipe', 'pipe']}); let err = ''; p.stderr.on('data', d => err += d); p.stdout.on('data', () => {});
-    await wait(2500); fs.writeFileSync(ctl, 'open 1000 700 0 0 app=browser\n');
+    await wait(2500); let fd = -1; try { fd = fs.openSync(ctl, fs.constants.O_WRONLY | fs.constants.O_NONBLOCK); fs.writeSync(fd, 'open 1000 700 0 0 app=browser\n'); fs.closeSync(fd) } catch (e) { ok(false, 'Oracle\'s own Chromium: rudolf-launch is running (its control FIFO open)', String(e)) }
     const f = path.join(T, `rudolf-tabmem-o${p.pid}.json`); const j = await frames(f, t0);
     check('Oracle\'s own Chromium', j, fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '');
     p.kill('SIGTERM'); await new Promise(r => { p.on('exit', r); setTimeout(r, 15000) }); await wait(500);
