@@ -511,5 +511,90 @@
   "metered": false,
   "manual": false,
   "used": 0
+ },
+ "devices": {
+  "ok": true,
+  "usb": [
+   {
+    "t": "usb",
+    "kind": "USB drive",
+    "name": "SanDisk Ultra",
+    "id": "0781:5581",
+    "driver": 1,
+    "speed": 480,
+    "port": 3
+   },
+   {
+    "t": "usb",
+    "kind": "Mouse",
+    "name": "Wireless Mouse",
+    "id": "046d:c52b",
+    "driver": 1,
+    "speed": 12,
+    "port": 2
+   },
+   {
+    "t": "usb",
+    "kind": "Camera",
+    "name": "USB2.0 HD UVC WebCam",
+    "id": "13d3:56cb",
+    "driver": 1,
+    "speed": 480,
+    "port": 0
+   },
+   {
+    "t": "usb",
+    "kind": "Fingerprint reader",
+    "name": "Fingerprint Sensor",
+    "id": "06cb:00fc",
+    "driver": 0,
+    "speed": 12,
+    "port": 0
+   }
+  ],
+  "drives": [
+   {
+    "t": "drive",
+    "dev": "sdb1",
+    "label": "PHOTOS",
+    "bytes": 31914983424,
+    "fs": "exfat",
+    "path": "/media/sdb1",
+    "model": "SanDisk Ultra",
+    "readonly": false
+   }
+  ],
+  "inputs": [
+   {
+    "kind": "keyboard",
+    "name": "AT Translated Set 2 keyboard"
+   },
+   {
+    "kind": "touchpad",
+    "name": "ASUE1409:00 04F3:3240 Touchpad"
+   },
+   {
+    "kind": "mouse",
+    "name": "Wireless Mouse"
+   }
+  ]
+ },
+ "devices/unsupported": {
+  "ok": true,
+  "devices": [
+   {
+    "bus": "usb",
+    "id": "06cb:00fc",
+    "kind": "Fingerprint reader",
+    "name": "Fingerprint Sensor"
+   }
+  ]
+ },
+ "tb": {
+  "ok": true,
+  "present": false,
+  "devices": [],
+  "kept": [],
+  "dma": false
  }
 }
