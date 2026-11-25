@@ -60,7 +60,8 @@ static gboolean th_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	if (on) { s_col(cr, "ac", .267); s_rrect(cr, -2, -2, W + 4, H + 4, 10); cairo_fill(cr); }
 	if (RUI.dark) s_col(cr, "bg2", 1); else cairo_set_source_rgb(cr, 1, 1, 1); s_rrect(cr, 0, 0, W, H, 8); cairo_fill(cr);
 	if (on) s_col(cr, "ac", 1); else s_col(cr, "bd", 1); cairo_set_line_width(cr, 2); s_rrect(cr, 1, 1, W - 2, H - 2, 7); cairo_stroke(cr);
-	double tx = 5, ty = 5, tw = W - 7, th = H - 10 - 3 - 12.6;   /* (.dth runs past the button's padding to its border: the page's width 100% plus its own padding) */ cairo_save(cr); s_rrect(cr, tx, ty, tw, th, 5); cairo_clip(cr);
+	/* (.dth: 111.8 x 79.8 from (5, 5), its picture 'cover' over its whole box, radius 5; the button's padding box, radius 6, clips its right side) */
+	double tx = 5, ty = 5, tw = W - 10 + 16, th = 79.8; cairo_save(cr); s_rrect(cr, 2, 2, W - 4, H - 4, 6); cairo_clip(cr); s_rrect(cr, tx, ty, tw, th, 5); cairo_clip(cr);
 	cairo_set_source_rgb(cr, 0xe5 / 255.0, 0xe7 / 255.0, 0xeb / 255.0); cairo_paint(cr);
 	if (t->pb) { double iw = gdk_pixbuf_get_width(t->pb), ih = gdk_pixbuf_get_height(t->pb), sc = fmax(tw / iw, th / ih); cairo_translate(cr, tx + (tw - iw * sc) / 2, ty + (th - ih * sc) / 2); cairo_scale(cr, sc, sc); gdk_cairo_set_source_pixbuf(cr, t->pb, 0, 0); cairo_paint(cr); }
 	else { cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); double cw; s_lines("✕", 18, 400, 0, &cw); cairo_restore(cr); cairo_restore(cr); cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0);
@@ -513,6 +514,18 @@ static void sec_graphics(void)
 	DGS = c_msg(c, t, 2); g_free(t); c_msg(c, "Changes take effect when Rudolf OS restarts. If the graphics card cannot be used, Rudolf OS falls back to the software display by itself.", 2); rui_jfree(r);
 }
 
+
+/* ================================================================== Displays (mon61.js monUi): one display, or the arrangement of two or three
+   (TO DO: the arrangement, its pictures, Make main, ◀ Left and Keep this arrangement: screen/arrange) */
+static void sec_displays(void)
+{
+	p_h4("Displays"); RuiJ *ms = rui_jprop(SCR, "monitors"); int n = rui_jtype(ms) == 4 ? rui_jlen(ms) : 0; char *t;
+	if (n < 2) { char sz[40] = ""; if (n == 1) snprintf(sz, sizeof sz, " (%g×%g)", rui_jnum(rui_jat(ms, 0), "w", 0), rui_jnum(rui_jat(ms, 0), "h", 0));
+		t = g_strdup_printf("One display%s. Plug in another monitor (up to three) and each shows one of the three workspaces, with its own wallpaper and taskbar.", sz); }
+	else t = g_strdup_printf("%d displays, side by side from the left. The main display has the tray, the desktop’s icons and the Start menu; each display shows one of the three workspaces. Kept for this set of displays.", n);
+	GtkWidget *m = p_msg(t, 2); p_label_named("dmons", m); g_free(t);
+}
+
 /* ================================================================== the footer */
 static void act(int what)
 {
@@ -550,6 +563,6 @@ void page_disp(void)
 	sec_graphics();
 	sec_saver();
 	sec_tablet();
-	/* (to come: Displays) */
+	sec_displays();
 	p_footer(dirty, act);
 }
