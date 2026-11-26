@@ -1,0 +1,29 @@
+name: Naming a new file (1.6.3)
+# The desktop's New text document and New folder: "Name your new file" / "folder", Create, .TXT given when left out
+# (the owner, 2026-11-26, FreeBuff's second round): newfile63_t.js on the page, native59_t.sh 61-62 on the native desktop.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['newfile-name']
+  pull_request:
+    paths: ['desktop/shell25.js', 'desktop/oneapp59.js', 'iso/qt/shell2/newfile63_t.js', '.github/workflows/newfile63-check.yml']
+permissions: {contents: read}
+jobs:
+  newfile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil gcc xvfb xdotool x11-utils imagemagick libwebkit2gtk-4.1-dev fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page and rudolf-native
+        run: |
+          cd desktop && python3 build19.py ../iso/www/index.html >/dev/null && cd ..
+          gcc -O2 -Wall -Wno-misleading-indentation -Wno-deprecated-declarations -o $RUNNER_TEMP/rudolf-native iso/sys/rudolf-native.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0) -lX11 -lm
+      - name: "newfile63_t.js: the page"
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/newfile63_t.js
+      - name: "native59_t.sh: the native desktop (61-62: the naming dialog)"
+        run: NATIVE59_PORT=8763 NATIVE59_DSP=:95 sh iso/qt/host/native59_t.sh $RUNNER_TEMP/rudolf-native

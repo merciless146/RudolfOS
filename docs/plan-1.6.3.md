@@ -809,9 +809,10 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    with Cancel (paint-savedlg, paintsavedlg63_t.js). The ☰ menu's power button shut down at once with no menu, and closeAll()
    closed windows whatever they answered, so unsaved work was lost: now Shut down, Restart and Sign out close windows as
    their ✕ does and stop on Keep open; ⏻ Power gives the choice in the browser edition; the Shut down dialog has Sign out
-   (power-menu, power63.js, power63_t.js). **Not done yet:** Guest keeps nothing and
-   says so only in Settings (a line at sign-in and a notice on the first save); New text document's naming box is titled
-   "Rename" and the file does not open after; double-clicking a picture opens Paint, not a viewer; a wrong user name
+   (power-menu, power63.js, power63_t.js). New text document's naming box said "Rename": now "Name your new file"
+   / folder and Create, .TXT given when left out, the same on Native (newfile-name, newfile63_t.js, native59_t.sh 61-62);
+   not opened by itself once named, as on Windows. **Not done yet:** Guest keeps nothing and
+   says so only in Settings (a line at sign-in and a notice on the first save); double-clicking a picture opens Paint, not a viewer; a wrong user name
    once gave no message at sign-in (unconfirmed); a battery shown on a computer without one (browser edition).
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 

@@ -4060,6 +4060,8 @@ static void cm_open(double px, double py, const char *title, const CMI *items, i
 
 /* the page's dialogs (.rmodal .rmbox): Rename (renameDlg) and Open with (files25.js openWith) */
 enum { DLG_NONE, DLG_RENAME, DLG_OPENWITH };
+/* (1.6.3: a new file or folder from the desktop's menu, isnew "file"/"folder": "Name your new file" and Create, as shell25.js renameDlg's create) */
+static char DGNEW[8];
 static GtkWidget *DGWIN, *DGAREA; static GdkPixbuf *DGBG; static GtkIMContext *DGIM;
 static int DGK, DGHOV = -1, DGFOC, DGSEL, DGCARET, DGALW, DGBUSY; static guint DGCARET_T;
 static char DGFILE[512], DGNAME[128], DGVAL[128], DGMSG[200], DGEXT[16];
@@ -4093,7 +4095,8 @@ static gboolean dg_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 	Box b; memset(&b, 0, sizeof b); b.bg = cx("#ffffff", 1); b.rad = 12; shd_add(&b, 0, 20, 50, cx("#000000", .4), 0); box_paint(cr, DGX, DGY, DGW, DGH, &b);
 	RGBA ink = cx("#111827", 1); double x = DGX + 20, y = DGY + 18;
 	if (DGK == DLG_RENAME) {
-		css_text(cr, "Rename", UIFAM, 700, 15.21, x, y, 18, ink, 0); y += 28;
+		const char *ttl = !strcmp(DGNEW, "file") ? "Name your new file" : !strcmp(DGNEW, "folder") ? "Name your new folder" : "Rename", *okw = DGNEW[0] ? "Create" : "Rename";
+		css_text(cr, ttl, UIFAM, 700, 15.21, x, y, 18, ink, 0); y += 28;
 		/* the field: 100 % wide plus its padding and border (334 px: the page's), focused, its words chosen at first */
 		{ double fx = x - 4, fy = y - 4, fw = 334 + 8, fh = 23 + 8; snap(&fx, &fy, &fw, &fh); rrect(cr, fx, fy, fw, fh, 8); rrect(cr, fx + 2, fy + 2, fw - 4, fh - 4, 6);   /* (outline 2 px at offset 2) */
 			cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD); srca(cr, cx("#2563eb", 1)); cairo_fill(cr); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING); }
@@ -4105,9 +4108,9 @@ static gboolean dg_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 		if (!DGSEL && DGCARET) { double cx0 = round(x + 7 + tw), cy0 = y + 4; cairo_rectangle(cr, cx0, cy0, 1, 15); srca(cr, cx("#111111", 1)); cairo_fill(cr); }
 		cairo_restore(cr); y += 23 + 6;
 		css_text(cr, DGMSG, UIFAM, 400, 13, x, y, 15.6, cx("#b91c1c", 1), 320); y += 15.6 + 14;
-		double cw = css_width(cr, "Cancel", UIFAM, 400, 13) + 22, rw = css_width(cr, "Rename", UIFAM, 400, 13) + 22;
+		double cw = css_width(cr, "Cancel", UIFAM, 400, 13) + 22, rw = css_width(cr, okw, UIFAM, 400, 13) + 22;
 		DGB[0] = (DRect){ x + 320 - rw - 8 - cw, y, cw, 23 }; DGB[1] = (DRect){ x + 320 - rw, y, rw, 23 }; NDGB = 2;
-		dg_button(cr, "Cancel", DGB[0], 0, DGHOV == 0, 0, 0); dg_button(cr, "Rename", DGB[1], 1, DGHOV == 1, 0, 0);
+		dg_button(cr, "Cancel", DGB[0], 0, DGHOV == 0, 0, 0); dg_button(cr, okw, DGB[1], 1, DGHOV == 1, 0, 0);
 	} else {
 		char h[300]; snprintf(h, sizeof h, "Open “%s” with", DGNAME); css_text(cr, h, UIFAM, 700, 15.21, x, y, 18, ink, 320); y += 28;
 		for (int i = 0; i < NDGAPPS; i++) { char t[160]; snprintf(t, sizeof t, "%s %s", DGAPPS[i].icon, DGAPPS[i].name); DGB[i] = (DRect){ x, y, 320, 33 };
@@ -4134,9 +4137,9 @@ static void dg_ok(void)
 {
 	if (DGK != DLG_RENAME || DGBUSY) return; DGBUSY = 1; DGMSG[0] = 0;
 	/* (the owner's Vivobook, 2026-11-16) by the desktop's service page, signed in already, at once (else a page opened for it) */
-	{ AppWin *sv = svc_page(); if (sv && sv->sready && sv->view && !sv->closing) { GString *js = g_string_new("window.__oaRename&&__oaRename("); json_esc(js, DGFILE); g_string_append_c(js, ','); json_esc(js, DGVAL); g_string_append(js, ")");
+	{ AppWin *sv = svc_page(); if (sv && sv->sready && sv->view && !sv->closing) { GString *js = g_string_new("window.__oaRename&&__oaRename("); json_esc(js, DGFILE); g_string_append_c(js, ','); json_esc(js, DGVAL); g_string_append(js, DGNEW[0] ? ",1)" : ")");
 		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(sv->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); gtk_widget_queue_draw(DGAREA); return; } }
-	char *t = qesc(DGVAL), *ex = g_strdup_printf("&op=rename&to=%s", t); app_open_ex("do-fs", DGFILE, ex, 1); g_free(t); g_free(ex); gtk_widget_queue_draw(DGAREA);
+	char *t = qesc(DGVAL), *ex = g_strdup_printf("&op=rename&to=%s%s", t, DGNEW[0] ? "&new=1" : ""); app_open_ex("do-fs", DGFILE, ex, 1); g_free(t); g_free(ex); gtk_widget_queue_draw(DGAREA);
 }
 /* (1.5.9, 12.3c) Open with chosen in an app's own page (oneapp59.js: its dialog, in Oracle's window or a WebKit window): the app's
    window of its own, as the shell's Open with dialog makes it */
@@ -4254,7 +4257,7 @@ static void dg_open(int kind)
 	seat_grab(DGWIN, TRUE);
 	gtk_widget_grab_focus(DGAREA); gtk_im_context_focus_in(DGIM); if (DGCARET_T) g_source_remove(DGCARET_T); DGCARET_T = g_timeout_add(500, dg_blink, NULL); state_write();
 }
-static void rename_ask(const char *file, const char *name) { snprintf(DGFILE, sizeof DGFILE, "%s", file); snprintf(DGNAME, sizeof DGNAME, "%s", name); snprintf(DGVAL, sizeof DGVAL, "%s", name); DGSEL = 1; dg_open(DLG_RENAME); }
+static void rename_ask(const char *file, const char *name, const char *isnew) { snprintf(DGNEW, sizeof DGNEW, "%s", isnew ? isnew : ""); snprintf(DGFILE, sizeof DGFILE, "%s", file); snprintf(DGNAME, sizeof DGNAME, "%s", name); snprintf(DGVAL, sizeof DGVAL, "%s", name); DGSEL = 1; dg_open(DLG_RENAME); }
 static void openwith_ask(const char *file, const char *ext, const char *apps_json)
 {
 	snprintf(DGFILE, sizeof DGFILE, "%s", file); const char *b = strrchr(file, '\\'); snprintf(DGNAME, sizeof DGNAME, "%s", b ? b + 1 : file); snprintf(DGEXT, sizeof DGEXT, "%s", ext);
@@ -4268,13 +4271,14 @@ static gboolean apps_reload(gpointer d) { (void)d; apps_load(); return G_SOURCE_
 static void xd_done(JSCValue *v);   /* (1.6.1 Part 13: a drop's page finished, below) */
 static void page_done(JSCValue *v)
 {
-	char err[300] = "", ask[24] = "", file[512] = "", name[128] = "", ext[16] = "", ok[8] = ""; char *apps = NULL;
+	char err[300] = "", ask[24] = "", file[512] = "", name[128] = "", ext[16] = "", ok[8] = "", isnew[8] = ""; char *apps = NULL;
+	jsstr(v, "isnew", isnew, sizeof isnew);
 	jsstr(v, "err", err, sizeof err); jsstr(v, "ask", ask, sizeof ask); jsstr(v, "file", file, sizeof file); jsstr(v, "name", name, sizeof name); jsstr(v, "ext", ext, sizeof ext); jsstr(v, "ok", ok, sizeof ok);
 	JSCValue *ap = jsc_value_object_get_property(v, "apps"); if (ap && jsc_value_is_string(ap)) apps = jsc_value_to_string(ap); if (ap) g_object_unref(ap);
 	apps_load();   /* (the page gave its catalogue again: the desktop's files as they are now) */
 	{ char xd[4] = ""; jsstr(v, "xd", xd, sizeof xd); if (xd[0]) xd_done(v); }
 	if (DGK == DLG_RENAME && DGBUSY) { DGBUSY = 0; if (err[0]) { snprintf(DGMSG, sizeof DGMSG, "%s", err); gtk_widget_queue_draw(DGAREA); } else dg_close(); }
-	if (!strcmp(ask, "rename")) rename_ask(file, name);
+	if (!strcmp(ask, "rename")) rename_ask(file, name, isnew);
 	else if (!strcmp(ask, "openwith")) openwith_ask(file, ext, apps);
 	g_free(apps); g_timeout_add(1500, apps_reload, NULL); state_write();
 }
@@ -4829,7 +4833,7 @@ static void on_di_act(const char *a)
 	else if (!strncmp(a, "app:", 4)) app_open(a + 4, NULL);
 	else if (!strcmp(a, "wgpick")) wg_picker();
 	else if (!strcmp(a, "open") && d) di_open(i);
-	else if (!strcmp(a, "rename") && d && d->fp[0]) rename_ask(d->fp, d->n);
+	else if (!strcmp(a, "rename") && d && d->fp[0]) rename_ask(d->fp, d->n, NULL);
 	else if (!strncmp(a, "page:", 5)) di_page(NULL, a + 5, 0);
 	/* (1.6.1 Part 28: Paste, at the menu's cell; it and Paste into folder by the shell's hidden page, as New folder (its files reach the other
 	   windows at once; a page of its own that closes again did not pass them on); a long one from a drive ends with a
@@ -4927,7 +4931,7 @@ static gboolean desk_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	if (ctl && kv == GDK_KEY_v && USER_ID[0] && !LOCKED) { if (FC_N > 0) di_page_at(NULL, "Paste", 1, "-"); return TRUE; }
 	int i = di_sel(); if (i < 0) return FALSE; DIcon *di = &DI[i];
 	if (ctl && (kv == GDK_KEY_c || kv == GDK_KEY_x) && di->fp[0]) { di_page(di->n, kv == GDK_KEY_x ? "Cut" : "Copy", 1); return TRUE; }
-	if (e->keyval == GDK_KEY_F2 && di->fp[0]) { rename_ask(di->fp, di->n); return TRUE; }
+	if (e->keyval == GDK_KEY_F2 && di->fp[0]) { rename_ask(di->fp, di->n, NULL); return TRUE; }
 	if (e->keyval == GDK_KEY_Delete) { if (di->fp[0]) di_page(di->n, "Move to Trash", 1); else if (strcmp(di->kind, "trash")) di_page(di->n, "Remove from desktop", 1); return TRUE; }
 	return FALSE;
 }
@@ -8491,7 +8495,7 @@ static void state_write(void)
 	if (CMWIN && gtk_widget_get_visible(CMWIN)) { g_string_append_printf(s, "cmenu %d %d %d %d %s\n", (int)lround(CMX * Z), (int)lround(CMY * Z), (int)lround(CMBW * Z), (int)lround(CMBH * Z), CMTITLE[0] ? CMTITLE : "-");
 		double ry = CMY + 5 + (CMTITLE[0] ? 22 : 0); for (int i = 0, k = 0; i < NCMI; i++) { if (!CMIT[i].sep && CMIT[i].icon[0]) g_string_append_printf(s, "cmicon %d %s\n", k, CMIT[i].icon); if (!CMIT[i].sep) k++; }
 		for (int i = 0; i < NCMI; i++) { if (!CMIT[i].sep) g_string_append_printf(s, "cmitem %d %d %d %s|%s\n", (int)lround((CMX + 5 + 50) * Z), (int)lround((ry + 12) * Z), CMIT[i].dis, CMIT[i].act, CMIT[i].label); ry += cm_row_h(&CMIT[i]); } }
-	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG);
+	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG); g_string_append_printf(s, "dialognew %s\n", DGK == DLG_RENAME && DGNEW[0] ? DGNEW : "-");
 	for (int i = 0; DGK && i < NDGB; i++) g_string_append_printf(s, "dgbtn %d %d %d\n", i, (int)lround((DGB[i].x + DGB[i].w / 2) * Z), (int)lround((DGB[i].y + DGB[i].h / 2) * Z));
 	if (MENU && gtk_widget_get_visible(MENU)) g_string_append_printf(s, "mbox %d %d %d %d\n", (int)lround(MBX * Z), (int)lround(MBY * Z), (int)lround(MBW * Z), (int)lround(MBH * Z));   /* (the start menu's box, for the tests) */
 	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : FLK == FL_VOL ? "vol" : FLK == FL_NET ? "net" : FLK == FL_QS ? "qs" : FLK == FL_BRI ? "bri" : "nc", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);

@@ -505,14 +505,14 @@ function oaSvcRun(){
    /* (the owner's Vivobook, 2026-11-16) the desktop's New folder and New text document, done here at once: this page is signed in already,
       where a page opened for it (#app=do-desk) had to load and sign in first, seconds on the Vivobook. As Standard's deskNew: the file, the
       icon, then its Rename, which the shell draws (op "done" with ask "rename", as oaDesk reports it) */
-   window.__oaDeskNew=dir=>{let asked=null;const _rd=renameDlg;renameDlg=p=>{asked=p};
+   window.__oaDeskNew=dir=>{let asked=null;const _rd=renameDlg;renameDlg=p=>{asked=p};   /* (1.6.3: asked as a new item: isnew, as shell25.js renameDlg's create) */
     try{deskNew(dir?1:0)}catch(e){console.warn('svc: new',e)}
     setTimeout(async()=>{renameDlg=_rd;try{fsFlush()}catch(e){}try{await oaCatSoon()}catch(e){}
-     oaPost(Object.assign({op:'done'},asked&&asked.length?{ask:'rename',file:asked.join('\\'),name:String(asked[asked.length-1])}:{}))},80);return 1};
+     oaPost(Object.assign({op:'done'},asked&&asked.length?{ask:'rename',file:asked.join('\\'),name:String(asked[asked.length-1]),isnew:dir?'folder':'file'}:{}))},80);return 1};
    /* (and the shell's Rename dialog's answer, as oaFs's rename: renameDlg's checks and messages) */
-   window.__oaRename=(f,to)=>{let r={ok:1};try{const p=resolve(String(f||''),['C:']),nv=String(to||'').trim().toUpperCase(),d=dirOf(p);
+   window.__oaRename=(f,to,isnew)=>{let r={ok:1};try{const p=resolve(String(f||''),['C:']),nv=isnew?newName(p.at(-1),String(to||'').trim().toUpperCase()):String(to||'').trim().toUpperCase(),d=dirOf(p);
      if(!d||!(p.at(-1) in d))r={err:'The file is not there any more.'};else if(!validName(nv))r={err:'That name is not allowed.'};else if(nv!=p.at(-1)&&nv in d)r={err:'That name is already used.'};
-     else{const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f())}}catch(e){r={err:String(e&&e.message||e)}}
+     else{const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f());}}catch(e){r={err:String(e&&e.message||e)}}
     (async()=>{try{fsFlush()}catch(e){}try{await oaCatSoon()}catch(e){}oaPost(Object.assign({op:'done'},r))})();return 1};
    oaPost({op:'svc',ready:'1'});}
 /* (the portal's page's part: #app=do-portal, or the hidden page's) */
@@ -587,7 +587,7 @@ function oaDesk(q=ONEAPP.q,fin=oaFin){const on=q.get('on')||'',item=(q.get('item
 /* #app=do-fs&op=OP: the native desktop's own dialogs' answers, done by the page as its dialogs do them (rename: renameDlg's
    checks and messages; openwith: Open with's choice, Always included) */
 function oaFs(q=ONEAPP.q,file=ONEAPP.file,fin=oaFin){const op=q.get('op')||'',p=resolve(file||'',['C:']);
- if(op=='rename'){const nv=String(q.get('to')||'').trim().toUpperCase(),d=dirOf(p);
+ if(op=='rename'){const isnew=q.get('new')=='1',nv=isnew?newName(p.at(-1),String(q.get('to')||'').trim().toUpperCase()):String(q.get('to')||'').trim().toUpperCase(),d=dirOf(p);
   if(!d||!(p.at(-1) in d))return fin({err:'The file is not there any more.'});
   if(!validName(nv))return fin({err:'That name is not allowed.'});if(nv!=p.at(-1)&&nv in d)return fin({err:'That name is already used.'});
   const v=d[p.at(-1)];delete d[p.at(-1)];d[nv]=v;fsSave();EXPL.forEach(f=>f());return fin({ok:1})}
