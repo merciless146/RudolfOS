@@ -798,5 +798,15 @@
    "tps": 7.4
   },
   "bd95devtools": false
+ },
+ "debian/check": {
+  "ok": true,
+  "persist": "mounted",
+  "persist_fs": "ext4",
+  "persist_kind": "partition",
+  "tmpfile_persist": "ok",
+  "userns": "ok",
+  "max_user_namespaces": "15000 (expected 200000)",
+  "debian": "ok"
  }
 }

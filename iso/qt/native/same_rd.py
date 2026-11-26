@@ -164,7 +164,11 @@ class H(http.server.BaseHTTPRequestHandler):
         # same for the page's Task Manager and the native one); the actions taken answered as rudolfd answers them (and noted in DIR/calls)
         if rd('tm') is not None:
             T = json.loads(rd('tm'))
-            if w in T and w not in ('bt', 'remote') and not (w == 'job' and rd('wifijob')) and (m == 'GET' or w in ('apps/running', 'wifi/scan', 'print/jobs', 'debian/status', 'debian/apps', 'ai/status', 'ai/know/learn', 'ai/know/notes', 'ai/dev/settings')): return self.j(T[w])
+            # (Settings › Apps, settings_t.js Ap-checklist: Blitzen's changes answered ok, each body kept in DIR/body-NAME)
+            if m == 'POST' and (w in ('ai/unload', 'ai/remove', 'ai/know/forget', 'ai/dev/token') or (w == 'ai/know/notes' and 'set=1' in q) or (w == 'ai/dev/settings' and 'repo=' in q) or (w == 'ai/know/learn' and 'on=' in q)):
+                open(os.path.join(D, 'body-' + w.replace('/', '_')), 'wb').write(b)
+                return self.j({'ok': True, 'learn': 'on=1' in q} if w == 'ai/know/learn' else {'ok': True})
+            if w in T and w not in ('bt', 'remote') and not (w == 'job' and rd('wifijob')) and (m == 'GET' or w in ('apps/running', 'wifi/scan', 'print/jobs', 'debian/status', 'debian/apps', 'ai/status', 'ai/know/learn', 'ai/know/notes', 'ai/dev/settings', 'debian/check')): return self.j(T[w])
             if w == 'proc/end' and m == 'POST': return self.j({'ok': True, 'message': 'proc', 'ended': 3, 'kept': 0} if 'tree=1' in q else {'ok': True, 'message': 'proc'})
             if w in ('service/restart', 'apps/end', 'apps/kill', 'shell/switch') and m == 'POST': return self.j({'ok': True, 'message': w})
             if w == 'memory/dropcache' and m == 'POST': return self.j({'ok': True, 'freed': 104857600})

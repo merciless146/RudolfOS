@@ -554,6 +554,39 @@ async function memory() {
   fs.writeFileSync(path.join(OUT, 'memory.txt'), res + '\n'); console.log('memory: ' + res);
   ok('24. the memory at idle with System open: the native one under the web one\'s', w && n.anon < w.anon, res);
 }
+// (1.6.3 Part 3, PR 7) Apps: what each part saves or asks, as the page does
+async function checkApps() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, J = k => { try { return JSON.parse(LS()[k]) } catch (e) { return undefined } };
+  const body = n => { try { return fs.readFileSync(path.join(D, 'body-' + n), 'utf8') } catch (e) { return null } };
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('apps'); await until(() => rect('body') && line('page') == 'apps', 20000); await wait(1500);
+  { await pick('da_png', 1, 4); await until(() => (J('bd95defapps:uAnnA1b2') || {}).PNG == 'paint', 3000); const d = J('bd95defapps:uAnnA1b2') || {};
+    ok('Ap1. .png › Paint: bd95defapps:ACCT PNG "paint", the others kept (MD, DOC)', d.PNG == 'paint' && d.MD == 'code' && d.DOC == 'lx:deb-libreoffice-writer', d) }
+  { await scrollTo('lk_zoommtg'); await pick('lk_zoommtg', 1, 2); await until(() => (J('bd95links:uAnnA1b2') || {}).zoommtg == 'none', 3000);
+    ok('Ap2. Links › zoommtg: Don’t open them: bd95links:ACCT zoommtg "none"', (J('bd95links:uAnnA1b2') || {}).zoommtg == 'none', J('bd95links:uAnnA1b2')) }
+  { await scrollTo('dau'); click(rect('dau')); await until(() => J('bd95debauto') === false, 3000);
+    ok('Ap3. Install Debian\'s updates automatically, off: bd95debauto false', J('bd95debauto') === false, J('bd95debauto')) }
+  { mark = c0(); await scrollTo('dck'); click(rect('dck')); await until(() => /POST debian\/check/.test(since()), 3000); await wait(800);
+    ok('Ap4. Check: debian/check asked (its lines shown under it)', /POST debian\/check/.test(since()), since()) }
+  { await scrollTo('wo62'); click(rect('wo62')); await until(() => /open do-wineold/.test(acts()), 3000);
+    ok('Ap5. Wine\'s Bring them in…: the page\'s own dialog asked of the shell (open do-wineold)', /open do-wineold/.test(acts()), lines('act').slice(-3)) }
+  { mark = c0(); await scrollTo('bun'); click(rect('bun')); await until(() => /POST ai\/unload/.test(since()), 3000);
+    ok('Ap6. Blitzen\'s Unload now: ai/unload', /POST ai\/unload/.test(since()), since()) }
+  { await scrollTo('dvt'); click(rect('dvt')); await until(() => J('bd95devtools') === true, 3000);
+    ok('Ap7. Show developer tools in the Start menu: bd95devtools true', J('bd95devtools') === true, J('bd95devtools')) }
+  { await scrollTo('bkx0'); click(rect('bkx0')); await until(() => body('ai_know_notes') != null, 3000);
+    ok('Ap8. A note\'s ✕: ai/know/notes?set=1 with the other note alone', body('ai_know_notes') == 'My printer is the one in the study.\n', body('ai_know_notes')) }
+  { await scrollTo('bdt'); click(rect('bdt')); xdo('type --delay 20 test-not-a-token'); await wait(300); await scrollTo('bdsave'); mark = c0(); click(rect('bdsave'));
+    await until(() => /POST ai\/dev\/token/.test(since()), 3000); await wait(500);
+    ok('Ap9. Blitzen › Developer Save: ai/dev/settings?repo=ann%2FRudolfOS&base=main&devlink=, the token typed to ai/dev/token?key=github, then "Saved."', /POST ai\/dev\/settings\?repo=ann%2FRudolfOS&base=main&devlink=(\s|$)/m.test(since()) && body('ai_dev_token') == 'test-not-a-token' && /msg Saved\./.test(acts()), since()) }
+  { await scrollTo('ph0'); click(rect('ph0')); await until(() => /browser https:\/\/voice\.google\.com\//.test(acts()), 3000);
+    ok('Ap10. Google Voice\'s Open in Oracle: the shell asked (browser https://voice.google.com/)', /browser https:\/\/voice\.google\.com\//.test(acts()), lines('act').slice(-3)) }
+  natStop();
+}
 const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')));
 (async () => {
   fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(SETD));
@@ -590,6 +623,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('web-checklist')) await checkWeb();
   if (only('checklist') || only('notif-checklist')) await checkNotif();
   if (only('checklist') || only('devs-checklist')) await checkDevs();
+  if (only('checklist') || only('apps-checklist')) await checkApps();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

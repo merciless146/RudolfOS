@@ -177,6 +177,8 @@ let OA_UPD=null;if(ONEAPP&&typeof updNotice=='function'){OA_UPD=updNotice;updNot
 /* (1.6.2, docs/plan-1.6.2.md Part 39) the native Task Manager's Hardware › Check this computer…: the page's own check (hwcheck30.js), in a
    page of its own (#app=do-hwcheck: its dialog over the screen, as Report a problem… is); only in an app window's page, so nothing changes elsewhere */
 if(ONEAPP&&typeof A=='object')A.hwcheck=()=>{if(typeof hwCheck=='function')hwCheck()};
+/* (1.6.3 Part 3) the native Settings › Apps: the page's own dialogs and windows it opens (#app=do-wineold, do-debpasswd, do-blzknows, do-blzdev) */
+if(ONEAPP&&typeof A=='object'){A.wineold=()=>{if(typeof woOffer=='function')woOffer('settings')};A.debpasswd=()=>{if(typeof debPasswd=='function')debPasswd(null)};A.blzknows=()=>{if(typeof blzkSeeWin=='function')blzkSeeWin()};A.blzdev=()=>{if(typeof blzDevApp=='function')blzDevApp()}}
 if(ONEAPP)idleWoke=()=>true;
 if(ONEAPP)window.__oaFs=on=>{if(oaChromium())oaPost({op:'fs',on:on?1:0})};
 /* (1.6.0 Part 12, test finding N1) the same in the native desktop's WebKit windows: the shell's stand-in (an element made full screen fills

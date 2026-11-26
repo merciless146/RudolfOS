@@ -5687,6 +5687,9 @@ static int native_open_page(const char *q)
 {
 	/* (1.6.3 Part 3: Multimedia Settings' folders, "explorer C:\\PROGRAMS\\INSTALLERS": File Explorer at a folder of the page's drive C:) */
 	if (!strncmp(q, "explorer C:\\", 12) && strlen(q) < 120 && strspn(q + 9, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:\\_-") == strlen(q + 9) && !strstr(q, "..")) { app_open("explorer", q + 9); return 1; }
+	/* (Settings › Apps' Calls to phones: "browser https://…", the address in Oracle, as the page's webOpen) */
+	if (!strncmp(q, "browser https://", 16) && strlen(q) < 190) { const char *u = q + 8; for (const char *p = u; *p; p++) if ((unsigned char)*p <= ' ' || *p == 127 || *p == '"' || *p == '<' || *p == '>' || *p == '\\') return 1;
+		char *e = g_uri_escape_string(u, NULL, FALSE), *ex = g_strdup_printf("&url=%s", e); app_open_ex("browser", NULL, ex, 0); g_free(e); g_free(ex); return 1; }
 	/* (Settings › Devices' Open: "explorer-drive DEV", the drive rudolfd lists as DEV in File Explorer, as the page's devOpenDrive) */
 	if (!strncmp(q, "explorer-drive ", 15) && strlen(q + 15) > 0 && strlen(q + 15) < 16 && strspn(q + 15, "abcdefghijklmnopqrstuvwxyz0123456789") == strlen(q + 15)) { char ex[40]; snprintf(ex, sizeof ex, "&drive=%s", q + 15); app_open_ex("explorer", NULL, ex, 0); return 1; }
 	char k[KN], pg[40]; if (sscanf(q, "%31s %39s", k, pg) != 2 || strcmp(k, "help") || strspn(pg, "abcdefghijklmnopqrstuvwxyz0123456789-") != strlen(pg)) return 0;
@@ -5711,7 +5714,8 @@ static int native_ask(Client *c, XClientMessageEvent *m)
 	if (!strcmp(q, "kbcap 1") || !strcmp(q, "kbcap 0")) { native_kbcap(c, q[6] == '1'); return 1; }
 	if (!strncmp(q, "sfx ", 4)) { native_sfx(q + 4); return 1; }   /* (Settings' Volume Controls: a sound tried) */   /* (Settings' Press keys…: every key its own for a moment) */
 	if (!strncmp(q, "open ", 5) && native_open_page(q + 5)) return 1;
-	if (!strncmp(q, "open ", 5)) { const char *k = q + 5; if (key_ok(k) && (app_find(k) || !strcmp(k, "do-hwcheck"))) app_open(k, NULL); return 1; }   /* (do-hwcheck: the page's hardware check, Task Manager's Hardware) */
+	if (!strncmp(q, "open ", 5)) { const char *k = q + 5; if (key_ok(k) && (app_find(k) || !strcmp(k, "do-hwcheck") || !strcmp(k, "do-wineold") || !strcmp(k, "do-debpasswd") || !strcmp(k, "do-blzknows") || !strcmp(k, "do-blzdev"))) app_open(k, NULL); return 1; }   /* (do-hwcheck: the page's hardware check, Task Manager's Hardware; Settings › Apps' do-wineold,
+	   do-debpasswd, do-blzknows and do-blzdev: the page's own dialog or window for it, in a page of one action) */
 	return 1;
 }
 static int tb_win(Client *c) { return c && !c->hidden && !c->trans && (!c->app || (!c->app->hidden && c->app->modal != 2 && strcmp(c->app->k, "do-saver"))); }   /* (not the screen saver: item 6) */   /* (the page's wins: the taskbar's windows) */
