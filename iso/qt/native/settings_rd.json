@@ -914,5 +914,58 @@
     "label": "Chromium Safe Storage"
    }
   ]
+ },
+ "firewall": {
+  "ok": true,
+  "on": true,
+  "blocked": 12,
+  "remote": false
+ },
+ "vault": {
+  "ok": true,
+  "state": "on",
+  "moved": {
+   "debian": true,
+   "flatpak": true,
+   "downloads": true
+  },
+  "data": {
+   "accts": {
+    "uAnnA1b2": 1
+   }
+  }
+ },
+ "secureboot/status": {
+  "ok": true,
+  "efi": true,
+  "on": true,
+  "enrolled": true,
+  "pending": false,
+  "lockdown": "none [integrity] confidentiality",
+  "unverified": ""
+ },
+ "devlink": {
+  "ok": true,
+  "available": true,
+  "on": false,
+  "persistent": true,
+  "hasToken": false,
+  "allowed": true,
+  "home": false,
+  "repo": ""
+ },
+ "sc/status": {
+  "ok": true,
+  "pcscd": true,
+  "readers": [
+   {
+    "name": "Identiv uTrust 2700 R",
+    "card": false
+   }
+  ]
+ },
+ "sc/dod/list": {
+  "ok": true,
+  "certs": []
  }
 }

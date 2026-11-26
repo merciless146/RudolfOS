@@ -190,6 +190,10 @@ if(ONEAPP&&typeof A=='object'){A.stor=()=>{const q=ONEAPP.q;storDo(q.get('op')||
   if(w=='applinux'){const W=appStore();const b=W&&W.body.querySelector(".tmtabs button[data-t='linux']");b&&b.click();return}
   if(w=='steam'||w=='emu'){const k=w=='steam'?Object.keys(APPS).find(x=>/^lx:.*valvesoftware\.Steam/i.test(x)):Object.keys(APPS).find(x=>APPS[x].name=='Emu');return k&&launch(k)}
   if(w=='dlopen'&&p){const path=downloadsPath().concat(p.split('\\'));if(!path.slice(downloadsPath().length).some(x=>!x||x=='..'))return dlOpen(path)}
+  /* (Settings › Security: the page's own dialogs, #app=do-storgo&w=...) */
+  const sec={vsetup:()=>vSetup(()=>{}),vrecover:()=>vRecoverDlg(()=>{}),vmove:()=>vMoveDlg(()=>{}),restart:()=>sbRestart(),sbprepare:()=>sbPrepare(null,()=>{}),bootfiles:()=>bootFilesDlg(()=>{}),
+   devmon:()=>devmOn(()=>{}),devmoff:()=>devmOff(()=>{}),devmreturn:()=>devmReturn(()=>{}),devllog:()=>devlLog(),dodinstall:()=>scDodInstall(null,()=>{})};
+  if(sec[w]){try{return sec[w]()}catch(e){console.warn('storgo '+w,e)}return}
   if(w=='stkbak'&&p)return (async()=>{let part=null;try{const d=(await rd('disks')).disks||[],i=await rd('info');stkBackupParts(d,i).forEach(x=>{if(x.part.name==p)part=x.part})}catch(e){}
    if(!part)return notify('Backup','That drive is not plugged in.',{kind:'error'});notify('Backup','Making the backup…');
    try{const n=await stkBackupTo(part);notify('Backup saved',`${part.label||part.name}: ${STK.BDIR}/${n}`)}catch(x){notify('Backup','The backup could not be saved: '+x.message,{kind:'error'})}})()}}

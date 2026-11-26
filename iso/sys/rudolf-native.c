@@ -5693,7 +5693,7 @@ static int native_open_page(const char *q)
 	   escaped into the address, at most 150 bytes, no control characters */
 	{ int st = !strncmp(q, "stor ", 5), go = !strncmp(q, "storgo ", 7);
 	  if (st || go) { char w[16] = ""; const char *a = q + (go ? 7 : 5); size_t n = strcspn(a, " "); if (n == 0 || n >= sizeof w) return 1; memcpy(w, a, n); a += n; if (*a == ' ') a++;
-		static const char *const OPS[] = { "measure", "emptytrash", "trauto", "dldel", "clipclear", NULL }, *const WS[] = { "home", "dl", "dups", "trash", "backup", "restore", "applinux", "steam", "emu", "dlopen", "stkbak", "keep", NULL };
+		static const char *const OPS[] = { "measure", "emptytrash", "trauto", "dldel", "clipclear", "avscan", "avquar", "qrestore", NULL }, *const WS[] = { "home", "dl", "dups", "trash", "backup", "restore", "applinux", "steam", "emu", "dlopen", "stkbak", "keep", "vsetup", "vrecover", "vmove", "restart", "sbprepare", "bootfiles", "devmon", "devmoff", "devmreturn", "devllog", "dodinstall", NULL };
 		int ok = 0; for (const char *const *o = go ? WS : OPS; *o; o++) if (!strcmp(*o, w)) ok = 1; if (!ok || strlen(a) > 150) return 1;
 		for (const char *p = a; *p; p++) if ((unsigned char)*p < ' ' || *p == 127) return 1;
 		char *e = g_uri_escape_string(a, NULL, FALSE), *ex = g_strdup_printf(go ? "&w=%s&p=%s" : "&op=%s&p=%s", w, e); app_open_ex(go ? "do-storgo" : "do-stor", NULL, ex, go ? 0 : 1); g_free(e); g_free(ex); return 1; } }

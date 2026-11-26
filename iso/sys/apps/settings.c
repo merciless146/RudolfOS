@@ -371,7 +371,8 @@ static gboolean fx_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 		case I_H4: if (RUI.dark) rui_color(cr, "mut", 1); else cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0);
 			if (RUI.dark) setc(cr, LK->msg_dark, 1); { char *u = g_utf8_strup(i->text, -1); text_draw(cr, u, i->x, i->y, 13, 700, 0, .04, i->h); g_free(u); } break;
 		case I_SGRP: fgc(cr, 1); { char *u = g_utf8_strup(i->text, -1); text_draw(cr, u, i->x, i->y, SGRP_FS, 700, 0, .04, i->h); g_free(u); } break;
-		case I_MSG: if (i->grey == 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (i->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
+		case I_MSG: if (g_object_get_data(G_OBJECT(i->wg), "set-color")) { GdkRGBA c; gdk_rgba_parse(&c, g_object_get_data(G_OBJECT(i->wg), "set-color")); cairo_set_source_rgb(cr, c.red, c.green, c.blue); }   /* (1.6.3: a .msg of its own colour: .ok, .bad, an error) */
+			else if (i->grey == 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (i->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
 			{ double fs = i->grey == 2 ? 12 : LK->msg_fs[0]; text_draw(cr, i->text, i->x, i->y, fs, 400, i->w, 0, lh_of(fs, 400)); } break;
 		case I_R2: { Cell *c = i->cell; fgc(cr, 1); text_draw(cr, c->label, c->lx, c->ly, RUI.fs, 400, c->lw, 0, lh_of(RUI.fs, 400));
 			for (guint q = 0; q < c->items->len; q++) { CItem *it = g_ptr_array_index(c->items, q);
@@ -601,7 +602,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "devs", page_devs }, { "apps", page_apps }, { "stor", page_stor }, { "priv", page_priv }, { "notif", page_notif }, { "web", page_web }, { "net", page_net }, { "mob", page_mob }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "devs", page_devs }, { "apps", page_apps }, { "stor", page_stor }, { "priv", page_priv }, { "sec", page_sec }, { "notif", page_notif }, { "web", page_web }, { "net", page_net }, { "mob", page_mob }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;
