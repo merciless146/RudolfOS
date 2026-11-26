@@ -81,6 +81,10 @@ int set_ls_set(const char *k, const char *json)
 	GString *b = g_string_new("{\"part\":1,\"set\":{\""); jesc(b, k); g_string_append(b, "\":\""); jesc(b, json); g_string_append(b, "\"}}");
 	int c = rui_post("/api/lsync", b->str, NULL, 0); g_string_free(b, TRUE); return c;
 }
+int set_ls_del(const char *k)   /* (1.6.3) the page's localStorage.removeItem(k) */
+{
+	GString *b = g_string_new("{\"part\":1,\"set\":{},\"del\":[\""); jesc(b, k); g_string_append(b, "\"]}"); int c = rui_post("/api/lsync", b->str, NULL, 0); g_string_free(b, TRUE); return c;
+}
 int set_store(const char *const *keys, const char *const *vals, int n)
 {
 	/* (persistS: the whole settings object, the keys changed, under bd95set and bd95set:ACCT, as one part of rudolfd's copy) */
@@ -214,11 +218,11 @@ void set_notify(const char *title, const char *body, int error) { rui_notify(tit
 enum { I_H3, I_H4, I_SGRP, I_MSG, I_R2, I_BTNS, I_BLOCK, I_SPACE, I_CUSTOM, I_CHECK };
 typedef struct { int k; GtkWidget *w; double gap, dy, mt, mb; int full; char *text; int grey, weight; double x, y, wd, h; GtkWidget *bt[8]; int nb; } CItem;   /* k: 0 a control, 1 a line break, 2 .msg, 3 writing, 4 label.ck, 5 .rmrow, 6 pre */
 struct Cell { char *label; GPtrArray *items; int more; double lx, ly, lw, lh, y, h, ltop; };   /* (ltop > 0: the label at the row's top, ltop - 1 px down: align-self start) */
-typedef struct { int k; char *text; int grey; double mt, mb, x, y, w, h; GtkWidget *wg; Cell *cell; GtkWidget *btn[8]; int nb; double minh; double (*lay)(void *d, double x, double y, double w); void *ld; } Item;
+typedef struct { int k; char *text; int grey; double mt, mb, x, y, w, h; GtkWidget *wg; Cell *cell; GtkWidget *btn[8]; int nb; double minh; double (*lay)(void *d, double x, double y, double w); void *ld; GPtrArray *more; } Item;
 static GPtrArray *ITEMS; static GtkWidget *FX, *SCR, *FOOT, *FOOTST, *FOOTB[3], *AREA, *OUTER, *SIDE, *SBAR, *SQ, *DD; static int (*FDIRTY)(void); static SetFoot FACT; static double FX_W = 587;
 static int FOOT_FLOW; static double FOOT_FY, FOOT_CT;   /* (1.6.3) a footer sticky in its own box (position: sticky; bottom: 0), its place in the page */
 static char CUR[16];
-static void item_free(gpointer p) { Item *i = p; g_free(i->text); if (i->cell) { g_free(i->cell->label); for (guint k = 0; k < i->cell->items->len; k++) g_free(((CItem *)g_ptr_array_index(i->cell->items, k))->text); g_ptr_array_unref(i->cell->items); g_free(i->cell); } g_free(i); }
+static void item_free(gpointer p) { Item *i = p; g_free(i->text); if (i->more) g_ptr_array_unref(i->more); if (i->cell) { g_free(i->cell->label); for (guint k = 0; k < i->cell->items->len; k++) g_free(((CItem *)g_ptr_array_index(i->cell->items, k))->text); g_ptr_array_unref(i->cell->items); g_free(i->cell); } g_free(i); }
 static Item *add_item(int k, const char *t, double mt, double mb) { Item *i = g_new0(Item, 1); i->k = k; i->text = g_strdup(t ? rui_tr(t) : NULL); i->mt = mt; i->mb = mb; g_ptr_array_add(ITEMS, i); return i; }
 void p_h3(const char *t) { add_item(I_H3, t, LK->h3_m[0], LK->h3_m[2]); }
 void p_h4(const char *t) { add_item(I_H4, t, 16, 8); }   /* (its words as the page has them; drawn in capitals: text-transform) */
@@ -265,6 +269,8 @@ GtkWidget *p_buttons_h(const char *const *labels, int n, GCallback *cbs, void *d
 void p_custom(double (*lay)(void *d, double x, double y, double w), void *d, double mt, double mb) { Item *i = add_item(I_CUSTOM, NULL, mt, mb); i->lay = lay; i->ld = d; }
 /* (the last custom block found by Search in Settings: its label, or (h4) a section's heading that the rows after it are in) */
 void p_custom_find(const char *t, int h4) { Item *i = ITEMS && ITEMS->len ? g_ptr_array_index(ITEMS, ITEMS->len - 1) : NULL; if (!i || i->k != I_CUSTOM) return; g_free(i->text); i->text = g_strdup(rui_tr(t)); i->grey = h4; }
+/* (1.6.3) more rows of the last custom block that Search in Settings finds (its labels inside: User Settings' parental controls) */
+void p_custom_more(const char *t) { Item *i = ITEMS && ITEMS->len ? g_ptr_array_index(ITEMS, ITEMS->len - 1) : NULL; if (!i || i->k != I_CUSTOM || !t) return; if (!i->more) i->more = g_ptr_array_new_with_free_func(g_free); g_ptr_array_add(i->more, g_strdup(rui_tr(t))); }
 void p_put(GtkWidget *w) { gtk_fixed_put(GTK_FIXED(FX), w, 0, 0); gtk_widget_show_all(w); }
 void p_place(GtkWidget *w, double x, double y, double wd, double h) { if (wd > 0 || h > 0) gtk_widget_set_size_request(w, wd > 0 ? R(wd) : -1, h > 0 ? R(h) : -1); gtk_fixed_move(GTK_FIXED(FX), w, R(x), R(y)); }
 double p_nat_w(GtkWidget *w);
@@ -298,7 +304,7 @@ static double cell_lay(Cell *c, double x, double y, double w)
 		/* a block */
 		if (inl) { cy = lt + lhh; inl = 0; }
 		cy += first ? it->mt : fmax(pmb, it->mt); first = 0; it->x = x; it->y = cy; it->wd = w;
-		if (it->k == 2) { double fs = it->grey >= 2 ? 12 : LK->msg_fs[0], lh = lh_of(fs, 400); int n = text_lines(it->text, fs, 400, w, 0, NULL); it->h = it->grey >= 3 ? n * lh : fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }   /* (grey 3, .dmi: no .msg's min-height; grey 4, a span of 12px #6b7280) */
+		if (it->k == 2) { double fs = it->grey >= 2 && it->grey != 5 ? 12 : LK->msg_fs[0], lh = lh_of(fs, 400); int n = text_lines(it->text, fs, 400, w, 0, NULL); it->h = it->grey >= 3 ? n * lh : fmax(LK->msg_mh[0], n * lh); place(it->w, x, cy, w, it->h); }   /* (grey 3, .dmi: no .msg's min-height; grey 4, a span of 12px #6b7280; grey 5, a block of the page's own writing, 13 px, its colour) */
 		else if (it->k == 4) { double lh, h = ck_lines(it->text, w, &lh); it->h = fmax(19, h); rui_check_wrap(it->w, w, it->h); place(it->w, x, cy, 0, 0); }
 		else if (it->k == 6) { PangoLayout *l = lay(pctx(), it->text, 11, 400, w, 0); PangoFontDescription *f = pango_font_description_from_string("monospace"); pango_font_description_set_absolute_size(f, 11 * Z() * PANGO_SCALE); pango_layout_set_font_description(l, f); pango_font_description_free(f);
 			int n = pango_layout_get_line_count(l); g_object_unref(l); it->h = fmin(160, n * pre_lh()); place(it->w, x, cy, w, it->h); }
@@ -378,8 +384,8 @@ static gboolean fx_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 			{ double fs = i->grey == 2 ? 12 : LK->msg_fs[0]; text_draw(cr, i->text, i->x, i->y, fs, 400, i->w, 0, lh_of(fs, 400)); } break;
 		case I_R2: { Cell *c = i->cell; fgc(cr, 1); text_draw(cr, c->label, c->lx, c->ly, RUI.fs, 400, c->lw, 0, lh_of(RUI.fs, 400));
 			for (guint q = 0; q < c->items->len; q++) { CItem *it = g_ptr_array_index(c->items, q);
-				if (it->k == 2) { if (it->grey == 3 && !RUI.dark) cairo_set_source_rgb(cr, 0x4b / 255.0, 0x55 / 255.0, 0x63 / 255.0); else if (it->grey == 4) s_col(cr, "grey", 1); else if (it->grey >= 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (it->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
-					{ double fs = it->grey >= 2 ? 12 : LK->msg_fs[0]; text_draw(cr, it->text, it->x, it->y, fs, 400, it->wd, 0, lh_of(fs, 400)); } }
+				if (it->k == 2) { if (it->grey == 5) fgc(cr, 1); else if (it->grey == 3 && !RUI.dark) cairo_set_source_rgb(cr, 0x4b / 255.0, 0x55 / 255.0, 0x63 / 255.0); else if (it->grey == 4) s_col(cr, "grey", 1); else if (it->grey >= 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (it->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
+					{ double fs = it->grey >= 2 && it->grey != 5 ? 12 : LK->msg_fs[0]; text_draw(cr, it->text, it->x, it->y, fs, 400, it->wd, 0, lh_of(fs, 400)); } }
 				if (it->k == 3) { fgc(cr, 1); text_draw(cr, it->text, it->x, it->y, RUI.fs, it->weight == 700 ? 700 : 400, 0, 0, it->h); }
 				if (it->k == 6) { fgc(cr, 1); PangoLayout *l = lay(pctx(), it->text, 11, 400, it->wd, 0); PangoFontDescription *f = pango_font_description_from_string("monospace"); pango_font_description_set_absolute_size(f, 11 * Z() * PANGO_SCALE); pango_layout_set_font_description(l, f); pango_font_description_free(f);
 					PangoFontMetrics *m = pango_context_get_metrics(pctx(), pango_layout_get_font_description(l), NULL); double a = round(pango_font_metrics_get_ascent(m) / (double)PANGO_SCALE); pango_font_metrics_unref(m);
@@ -408,6 +414,7 @@ void p_footer(int (*dirty)(void), SetFoot act)
 }
 static guint FNOTE;
 static gboolean fnote_end(gpointer d) { (void)d; FNOTE = 0; p_footer_update(); return G_SOURCE_REMOVE; }
+void p_footer_noreset(void) { if (FOOTB[2]) { gtk_widget_destroy(FOOTB[2]); FOOTB[2] = NULL; } }   /* (1.6.3: secFooter's noReset) */
 void p_footer_box(void) { p_custom(fbox_lay, NULL, 0, 0); }
 void p_footer_here(void) { FOOT_FLOW = 1; p_custom(fhere_lay, NULL, LK->sfoot_m[0], 0); }
 void p_footer_update(void)
@@ -604,7 +611,7 @@ void s_date_set(GtkWidget *w, int y, int m, int d) { Dt *t = g_object_get_data(G
 
 /* ================================================================== the pages, the sidebar (.sn) */
 typedef void (*PageFn)(void);
-static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "devs", page_devs }, { "apps", page_apps }, { "stor", page_stor }, { "priv", page_priv }, { "sec", page_sec }, { "health", page_health }, { "notif", page_notif }, { "web", page_web }, { "net", page_net }, { "mob", page_mob }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
+static const struct { const char *k; PageFn fn; } NATIVE_PAGES[] = { { "disp", page_disp }, { "bt", page_bt }, { "devs", page_devs }, { "apps", page_apps }, { "stor", page_stor }, { "priv", page_priv }, { "sec", page_sec }, { "health", page_health }, { "usr", page_usr }, { "notif", page_notif }, { "web", page_web }, { "net", page_net }, { "mob", page_mob }, { "remote", page_remote }, { "vol", page_vol }, { "mm", page_mm }, { "sys", page_sys }, { "kbd", page_kbd }, { "mouse", page_mouse }, { "acc", page_acc }, { "upd", page_upd }, { "about", page_about } };
 static PageFn page_fn(const char *k) { for (guint i = 0; i < G_N_ELEMENTS(NATIVE_PAGES); i++) if (!strcmp(NATIVE_PAGES[i].k, k)) return NATIVE_PAGES[i].fn; return NULL; }
 static int page_i(const char *k) { for (int i = 0; i < NPAGES; i++) if (!strcmp(PAGES[i].k, k)) return i; return -1; }
 static int SIDE_HOV = -1, SIDE_FOC = -1;
@@ -846,6 +853,7 @@ static void harvest(void)
 		if (i->k == I_H4 || i->k == I_SGRP) { const char *orig = g_object_get_data(G_OBJECT(FX), "x") ? NULL : NULL; (void)orig; char *o2 = harv_clean(i->text ? i->text : ""); g_free(sec); sec = o2; if (!*sec) continue; harv_add(o, seen, i->text, "", 1); }
 		if (i->k == I_CHECK) harv_add(o, seen, i->text, sec, 0);
 		if (i->k == I_CUSTOM && i->text) { if (i->grey) { g_free(sec); sec = harv_clean(i->text); harv_add(o, seen, i->text, "", 1); } else harv_add(o, seen, i->text, sec, 0); }
+		if (i->k == I_CUSTOM && i->more) for (guint q = 0; q < i->more->len; q++) harv_add(o, seen, g_ptr_array_index(i->more, q), sec, 0);
 		if (i->k == I_R2) { harv_add(o, seen, i->cell->label, sec, 0); for (guint q = 0; q < i->cell->items->len; q++) { CItem *it = g_ptr_array_index(i->cell->items, q); if (it->k == 4 || (it->k == 3 && it->weight == 1)) harv_add(o, seen, it->text, sec, 0); else if (it->k == 0 && g_object_get_data(G_OBJECT(it->w), "set-label")) harv_add(o, seen, g_object_get_data(G_OBJECT(it->w), "set-label"), sec, 0); } } }
 	g_free(sec); g_hash_table_unref(seen); if (LIVE[pi]) g_ptr_array_unref(LIVE[pi]); LIVE[pi] = o; set_state_soon();
 }
@@ -909,6 +917,7 @@ static void ss_open(SE *e)
 	for (guint k = 0; k < ITEMS->len && !hit; k++) { Item *i = g_ptr_array_index(ITEMS, k);
 		if (i->k == I_H4 || i->k == I_SGRP) { g_free(sec); sec = harv_clean(i->text); char *t = harv_clean(i->text); if (e->h && !strcmp(t, e->t)) hit = i; g_free(t); continue; }
 		if (i->k == I_CUSTOM && i->text && i->grey) { g_free(sec); sec = harv_clean(i->text); char *t = harv_clean(i->text); if (e->h && !strcmp(t, e->t)) hit = i; g_free(t); continue; }
+		if (i->k == I_CUSTOM && i->more && !e->h) { int ok = !e->s || !*e->s || !strcmp(sec, e->s); for (guint q = 0; ok && !hit && q < i->more->len; q++) { char *t = harv_clean(g_ptr_array_index(i->more, q)); if (!strcmp(t, e->t)) hit = i; g_free(t); } if (hit) continue; }
 		if (i->k == I_CUSTOM && i->text && !e->h) { int ok = !e->s || !*e->s || !strcmp(sec, e->s); char *t = harv_clean(i->text); if (ok && !strcmp(t, e->t)) hit = i; g_free(t); continue; }
 		if (i->k != I_R2 || e->h) continue; int secok = !e->s || !*e->s || !strcmp(sec, e->s);
 		char *t = harv_clean(i->cell->label); if (secok && !strcmp(t, e->t)) hit = i; g_free(t);

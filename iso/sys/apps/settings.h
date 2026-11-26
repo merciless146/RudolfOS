@@ -23,7 +23,8 @@ RuiJ *set_stored(void);                               /* the saved settings (SC)
 int set_store(const char *const *keys, const char *const *json_vals, int n);   /* the page's persistS: those keys of SC saved (bd95set and bd95set:ACCT) */
 const char *set_jstr(RuiJ *o, const char *k, const char *dflt);
 RuiJ *set_ls_get(const char *k);                      /* the page's ld(k): {"x": the value} (NULL: none) */
-int set_ls_set(const char *k, const char *json);      /* the page's svj(k, value): the value as JSON */
+int set_ls_set(const char *k, const char *json);
+int set_ls_del(const char *k);                       /* (1.6.3) the page's localStorage.removeItem(k) */      /* the page's svj(k, value): the value as JSON */
 char *set_jesc(const char *s);                        /* a string's JSON escapes (without its quotes) */
 void set_jw(GString *b, RuiJ *v);                    /* (1.6.3) a JSON value written again as it was (numbers as JavaScript writes them) */
 
@@ -58,6 +59,8 @@ void p_space(double mt);
 void p_last_margins(double mt, double mb);            /* (1.6.3) the block just added: its own margins */
 typedef void (*SetFoot)(int what /* 0 apply 1 revert 2 reset */);
 void p_footer(int (*dirty)(void), SetFoot act);      /* .sfoot: Apply, Revert, Reset to defaults, at the page's bottom */
+void p_footer_noreset(void);                          /* (1.6.3) no Reset to defaults (secFooter's noReset) */
+void p_custom_more(const char *t);                    /* (1.6.3) another row of the last custom block found by Search in Settings */
 void p_footer_box(void);                              /* (1.6.3) the top of the box a sticky footer stays in */
 void p_footer_here(void);                             /* (1.6.3) the footer's place in the page: sticky there (position: sticky; bottom: 0) */
 void p_footer_update(void);                           /* the footer's state again (after a change) */
@@ -134,6 +137,7 @@ void page_stor(void);  /* settings_stor.c (1.6.3 PR 7b) */
 void page_priv(void);  /* settings_priv.c (1.6.3 PR 8) */
 void page_sec(void);   /* settings_sec.c (1.6.3 PR 8) */
 void page_health(void); /* settings_health.c (1.6.3 PR 8) */
+void page_usr(void);   /* settings_usr.c (1.6.3 PR 8) */
 /* (settings_net.c: the Web search and Downloads rows, shown on Network Settings and Oracle: one working copy, one footer) */
 void net_search_rows(const char *pfx, int part);       /* part 1: Web search, 2: Downloads, 0: both */
 void net_search_msg(void);

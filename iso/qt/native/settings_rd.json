@@ -1089,5 +1089,31 @@
    "epp": "balance_performance",
    "care": 80
   }
+ },
+ "desktop/keys": {
+  "ok": true,
+  "lib": true,
+  "bad": false,
+  "req": false,
+  "keys": []
+ },
+ "fp/status": {
+  "ok": true,
+  "helper": true,
+  "readers": [
+   {
+    "name": "Goodix fingerprint reader (27c6:538d)",
+    "usb": "27c6:538d"
+   }
+  ],
+  "unsupported": [],
+  "disk": true,
+  "open": true,
+  "ready": true,
+  "why": "",
+  "fingers": [
+   "right-index",
+   "left-index"
+  ]
  }
 }
