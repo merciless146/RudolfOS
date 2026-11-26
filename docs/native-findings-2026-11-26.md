@@ -1,9 +1,9 @@
 # Native vs Standard: test findings (2026-11-26)
 
 A hardware session on the owner's Vivobook, following `docs/native-vivobook-checklist.md` through the development link.
-**No checklist item was run.** The link was not answered for two days, and it came back only 8½ minutes after this
-session's first command was written. Everything in the checklist is therefore recorded as **deferred**, not passed and
-not failed. Nothing below claims that something works on the machine unless the machine said so itself.
+**V58 passed**: the machine starts from its own drive with no stick attached. **Every other item is deferred**, not
+passed and not failed — the link had been dead for two days, and the desktop turned out to be on Standard, where the N
+items cannot be checked. Nothing below claims that something works on the machine unless the machine said so itself.
 
 ## Header
 
@@ -12,10 +12,10 @@ not failed. Nothing below claims that something works on the machine unless the 
 | Build | **Rudolf OS 1.6.2.261124**, serial **2026112422**, **Official Rudolf OS** (from the result's `system` field) |
 | Kernel | `6.18.65-rudolf` (`#1 SMP PREEMPT_DYNAMIC Tue Nov 24 23:06:26 UTC 2026`) |
 | Machine | ASUSTeK **Vivobook Go E1404FA_E1404FA** (board E1404FA) — the test laptop |
-| Started | From the **stick**, not the drive: `/dev/loop0 … /live/media` (40 MB), `rudolf.slot=b`, `rudolf.sb=1`, `lockdown=integrity`; uptime 38 min at 23:27:51Z, so boot at about 22:49Z |
+| Started | From **its own drive**, with **no stick attached**: `/live/media` is `/dev/loop0` backed by **`/dev/nvme0n1`**, no `/dev/sd*` exists, `rudolf.slot=b`, `rudolf.sb=1`, `rudolf.mediadisk=/dev/nvme0n1`, `lockdown=integrity`. That first boot was about 22:49Z (uptime 38 min at 23:27:51Z) |
 | Persistent disk | `/dev/nvme0n1p3`, 116.4 GB, 41.2 GB used (36 %), mounted at `/persist` and `/home/rudolf` |
-| Read-only | **Off** — `sh` ran as `uid=0(root)`, not `nobody`, so *Allow changes to this computer* is ticked |
-| Ask first | **On**, and this command was allowed: `approved: allowed on the computer` (it would read `not asked (Ask first was off)` otherwise) |
+| Read-only | **On**, in the link's own words: the banner reads "can look at this computer (read-only)" and the Allow dialog "It runs read-only". **But** `sh` ran as `uid=0(root)`, where `DEVLINK.md` says it runs as `nobody` — recorded as a question in "Two things the banner and the command disagree on" below |
+| Ask first | **On**: `000584`-`000590` all read `approved: allowed on the computer` (it would read `not asked (Ask first was off)` otherwise). `000591` was **not answered** within 150 s |
 | Home folders | **Not established** — nothing in this session read a home folder |
 | The link | `merciless146/rudolfos-devlink`, branch `link`, `iso/systools/devlink.py` |
 | Today's `main` | `745fcf18`, 2026-11-26 19:43Z, "Merge pull request #712 from merciless146/newfile-name"; this branch is `ros-vivobook-findings` |
@@ -35,7 +35,8 @@ written on.
 - **N1–N32: every fix named in `docs/native-findings-2026-11-15.md` is in today's `main`,** and the harness cases that
   check them are still in `iso/qt/native/same_t.js`. That is a fact about the repository, not about the machine: not one
   of them was re-tested on the Vivobook.
-- **V1–V74: all 72 items deferred.** No screenshot was taken, no window was opened, no key was pressed on the machine.
+- **V58 passed.** The machine restarted on the session's `restart` at **23:34:07Z** and was up **54 s later** on the same build, still with **no stick attached**: it starts from its own drive, no firmware setup screen. Evidence: `docs/native-findings-2026-11-26/V58-native.png`.
+- **V59 was not needed** (the setup screen did not appear), and **the other 70 items are deferred**. No window was opened and no key was pressed by the session: it has no `xdotool`, `wmctrl`, `ydotool`, `import` or `ffmpeg` on that build, and `DISPLAY` is empty in its `sh`.
 - **Nothing was written to the computer.** The single command that ran was a read (`uname`, `/proc/cmdline`, `/run/rudolf`,
   `df`); it changed nothing, and it was not a `put`, a `restart` or a firmware operation.
 
@@ -66,6 +67,33 @@ written on.
 
 The 47½-hour gap between the two is not a fault of the link's protocol: it is the 4-hour inactivity rule, after which
 the computer stops polling, and it polls again only once the link is turned on again.
+
+This session's commands after the header read:
+
+| Command | Kind | Written | Result | Status | Approved |
+|---|---|---|---|---|---|
+| `000585` | `sh` | 2026-11-26T23:33:27Z | same second | `0` | `allowed on the computer` |
+| `000586` | `sh` | 2026-11-26T23:33:36Z | same second | `0` | `allowed on the computer` |
+| `000587` | `restart` | 2026-11-26T23:34:00Z | 2026-11-26T23:34:07Z | `0` | `allowed on the computer` |
+| `000588` | `sh` | 2026-11-26T23:35Z | same second | `0` | `allowed on the computer` |
+| `000589` | `screenshot` | 2026-11-26T23:35Z | same second | `0` | `allowed on the computer` |
+| `000590` | `sh` | 2026-11-26T23:36Z | same second | `0` | `allowed on the computer` |
+| `000591` | `screenshot` | 2026-11-26T23:38Z | **none** | — | — (no answer: no result within 150 s) |
+
+`000587`'s result carries `system: Rudolf OS 1.6.2.261124 (2026112422), Official Rudolf OS`, written seven seconds
+before the machine went down. It came back at 23:35:15Z with `uptime` 54 s.
+
+### Two things the banner and the command disagree on
+
+Not findings with a checklist number, and not acted on: both are for the owner to decide.
+
+1. **`read-only` and `uid=0`.** The red banner and the Allow dialog both say the link is read-only, and `DEVLINK.md`
+   says `sh` then runs as `nobody`; the command ran as `uid=0(root)`. Either the read-only mode no longer drops to
+   `nobody`, or the banner is wrong about what it guarantees. Nothing in this session wrote anything, so the machine is
+   unchanged either way — but the promise and the behaviour should agree.
+2. **What the banner says the link may do** is "look at this computer (read-only)" while the settings page was reported
+   as *Allow changes to this computer* ticked, which is why `restart` was accepted at all (a read-only link refuses it).
+   So the banner's wording and the setting conflict; the setting is what the protocol enforces.
 
 ## N1–N32 checked against today's `main`
 
@@ -117,7 +145,7 @@ Also still open on `main`, and untouched by this session:
   drawn as Chromium's"), which is **after** the machine's build: the machine will not show it, so V47 and V66 on
   1.6.2.261124 are not a test of today's `main`.
 
-## The checklist: every item deferred
+## The checklist: V58 passed, every other item deferred
 
 Every number in `docs/native-vivobook-checklist.md` (V1–V63 and V66–V74; there is no V64 or V65) is deferred. "Needs"
 is what the machine alone can show; none of it was done.
@@ -181,9 +209,9 @@ is what the machine alone can show; none of it was done.
 | V55 | Timers | a timer after Clock's window is closed | deferred |
 | V56 | Task Manager | only it open: no extra row | deferred |
 | V57 | Files | a drag from a Linux app's file manager onto the desktop, a folder, Trash, Notepad | deferred |
-| V58 | Start-up entries | a restart without the stick | **deferred — needs the owner at the keyboard and the stick to hand** |
-| V59 | Start-up entries | Boot › Add New Boot Option if the setup screen appears | **deferred — owner only; never Key Management or F9** |
-| V60 | Start-up entries | Secure Boot › Get new boot files… just opened, or a system report's start-up decisions | **deferred — needs the owner** |
+| V58 | Start-up entries | a restart without the stick | **passed** — the drive started on its own; see "V58" below |
+| V59 | Start-up entries | Boot › Add New Boot Option if the setup screen appears | **not needed** — no setup screen appeared |
+| V60 | Start-up entries | Secure Boot › Get new boot files… just opened, or a system report's start-up decisions | **deferred — needs the owner** (the entries below are the read-only half of it) |
 | V61 | Start-up entries | the boot-entry fix's System health lines | **deferred — needs the owner** |
 | V62 | Start-up entries | "Check this drive's start-up…" with the password | **deferred — needs the owner** |
 | V63 | Start-up entries | "Put back the official start-up files…" on power | **deferred — needs the owner** |
@@ -197,13 +225,43 @@ is what the machine alone can show; none of it was done.
 | V73 | Backgrounds | each background at once, then Revert; again, then Discard | deferred |
 | V74 | Display Properties | accent colour, dark mode, title-bar style, the screen saver's Preview | deferred |
 
-No item is marked `matches`, `minor`, `looks wrong` or `breaks`: this session has no evidence for any of them.
+Only V58 is marked: it `passes`. No other item is marked `matches`, `minor`, `looks wrong` or `breaks`, because this
+session has no evidence for any of them.
+
+## V58: the restart without the stick
+
+**Passed.** What was done, in order:
+
+1. `000585`, read-only, before anything changed: `BootOrder` = **`0006, 0002, 0001, 0000`**; entries `Boot0000 Windows
+   Boot Manager`, `Boot0001 Drive`, `Boot0002 Ubuntu`, `Boot0006 Rudolf OS`; drive `KINGSTON OM8PGP4128P-AB`
+   (`nvme0n1p2`, `nvme0n1p3`); **no `efibootmgr` binary** on the build, so the entries were read from the raw variables.
+2. `000586`, read-only: no `/dev/sd*`, so **no stick was attached**; `/live/media` is `/dev/loop0` over **`/dev/nvme0n1`**.
+   The two drive entries disagree with each other: **`Rudolf OS` (0006) names LBA `0x5AC4`, size `0x36000`** — the current
+   file location — while **`Drive` (0001) still names `0x52EC`, `0x1E000`**, the 1.4.1 location the checklist describes.
+   `Rudolf OS` is first in `BootOrder`, which is why this start worked.
+3. `000587`, `{"kind":"restart"}`: `status 0`, `approved allowed on the computer`, result written 23:34:07Z.
+4. The desktop came back: `000588` at 23:35:15Z showed `uptime` 54 s, the same kernel and build, `rudolf.slot=b`, and
+   `000589`'s screenshot (`V58-native.png`) shows the desktop, its taskbar (`Rudolf OS 1.6.2`, 65 % battery, 17:35
+   local) and the red link banner — over an Allow dialog for the screenshot itself, which is part of the picture.
+
+What this does **not** show: that a *cold* start works (this was a warm restart from a running system), that the
+firmware's setup screen is never reached (one restart is one sample), or that `Drive` (0001) is harmless — it is stale
+and, being third in the order, untested. V60–V63 still need the owner.
+
+### N1–N3 were not started, and why
+
+`000590` found `/run/rudolf/desktop-engine` = **`chromium`**: the desktop was on **Standard**, and N1–N3 are Native
+checks. Switching the engine is Settings › System health › Desktop engine and a restart, which is the owner's to do, so
+the three were left for the next step. Also missing for them: no `xdotool`, `wmctrl`, `ydotool`, `import` or `ffmpeg` on
+that build, `DISPLAY` empty in `sh`, and `~/Videos` empty — so N1 needs a video the owner adds (Media Player › URL… ›
+Add), and each step is the owner's hands with the session taking the pictures.
 
 ## What this session did not do
 
-- No screenshot. `docs/native-findings-2026-11-26/` is not created, because there is nothing to put in it. The brief's
-  rule stands: every visual item needs its `V##-native.png`.
-- No restart, no `put`, no firmware operation. `000584` read files only.
+- No window was opened, no key was pressed, no item performed by the session itself. V58's restart was the one change,
+  and it was the item.
+- N1, N2, N3, and every other item except V58: not run (see the table above).
+- No `put`, no firmware operation, no update.
 - **No fix was made and no code was changed** — this document only. So there is no `deadcheck` run and no page rebuilt
   (`AGENTS.md`'s "Before every PR" applies to code and to the desktop page, not to a findings document).
 - Not checked: anything audible, anything on a second screen, printing on paper, a phone, a gamepad, a printer, an
@@ -211,12 +269,12 @@ No item is marked `matches`, `minor`, `looks wrong` or `breaks`: this session ha
 
 ## Where to start next time
 
-1. **V58–V63 first**, with the owner at the keyboard and the stick to hand, exactly as the brief orders: the machine is
-   running from the stick now (`/live/media`, `rudolf.slot=b`), so whether the drive starts on its own is still the open
-   question, and V59 is the repair if the firmware's setup screen appears. Never the firmware's Key Management, F9, or
-   anything that clears keys.
-2. Then **N1, N2, N3 on this build** — the fixes are in `main` before 1.6.2.261124, so if any of them still reproduces
-   on the machine it is a `breaks` item that outranks the rest of the checklist.
+1. **N1, N2, N3 next, on Native.** Switch Settings › System health › Desktop engine to Native and restart, then: N1 the
+   Media Player's ⛶ on a video, N2 Notepad › Open, N3 Task Manager with Notepad and Settings open. The fixes are all in
+   `main` before 1.6.2.261124, so anything still reproducing here is a `breaks` item that outranks the rest.
+2. **V60–V63** with the owner: the entries above are the read-only half of V60, and V61–V63 need the Secure Boot and
+   start-up pages. Never the firmware's Key Management, F9, or anything that clears keys. V59 stays available as the
+   repair for a start that lands in the setup screen.
 3. Re-read the checklist against **1.6.2.261124** first: it was written for 1.6.0, and `314e319b` (Native's
    transitions, 2026-11-25) is newer than the installed build, so V47 and V66 must not be judged against `main`.
 4. Take the screenshot **before** leaving each item, and name it `V##-native.png`.
