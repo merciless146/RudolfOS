@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Fixed: the setup wizard now speaks the language you choose on its first page, every step (from FreeBuff's user test);
+  a red error in it goes away once you correct the mistake.
 - New: Mute in the notification centre (🔔 on the taskbar): while it is on, no notification pops up or makes a sound, errors
   included; they are still kept in the centre. Do not disturb stays as it was. The same on the native desktop.
 - New (native desktop, not switched on yet): the native Settings has Notifications, Devices (drives, USB devices, Thunderbolt, keyboards,
