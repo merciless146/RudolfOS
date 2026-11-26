@@ -8,6 +8,8 @@ Summary: In progress.
 - Fixed: shutting down, restarting and signing out ask about unsaved work first (Keep open stops them); before, open
   windows were closed without asking. ⏻ Power in the ☰ menu gives a choice in the browser edition, and the Shut down
   dialog has Sign out (FreeBuff's test).
+- Developers: the repository's rules are in AGENTS.md, for any coding agent (CLAUDE.md imports it), and the custom
+  builds guide says what to install first (Python's cryptography package) (FreeBuff's developer test).
 - Fixed: Paint's Save opens the same Save dialog as Notepad, in your Pictures folder, with Cancel; before, it saved
   to C:\ itself (FreeBuff's test).
 - Better: the Command Prompt's HELP explains the commands in groups with examples; HELP ALL lists every one, HELP DIR
