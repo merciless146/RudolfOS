@@ -792,6 +792,13 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    disturb. Native draws the same box and holds back its own pop-ups too (rudolf-native.c nc_check, toast_addf). Tested
    by qsbeh_t.js on both engines (on, off, kept; no pop-up while on). Native Settings' Notifications page (Part 3) may
    add the same switch when it is next changed.
+8. **The setup wizard in the chosen language** (the owner, 2026-11-26, from FreeBuff's user test of a fresh install):
+   choosing Español on the wizard's first page left steps 2-5 in English. Its 23 sentences are now rows of I18N_ROWS
+   (FreeBuff's translations; the Portuguese made Brazilian like the rest, Settings' and Accessibility's names as the
+   desktop's own); "Step n of m", Back/Next/Finish and the dialog's name come from T_; a red error goes once corrected.
+   The password minimum stays 4 (the owner: "Keep 4 for now"). Test: oobe63_t.js. FreeBuff's other findings (the
+   Terminal's HELP, the sign-in date's language, "Guest", Spanish desktop labels running together, windows opening in one
+   place, Emu's first prompt) are not in it yet.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ## Steps

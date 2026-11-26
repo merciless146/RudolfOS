@@ -1,0 +1,21 @@
+name: Setup wizard languages (1.6.3)
+# The setup wizard in the language chosen on its first page (the owner, 2026-11-26): iso/qt/shell2/oobe63_t.js.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['setup-i18n']
+  pull_request:
+    paths: ['desktop/a11y25.js', 'desktop/base_v24.html', 'iso/qt/shell2/oobe63_t.js', '.github/workflows/oobe63-check.yml']
+permissions: {contents: read}
+jobs:
+  wizard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: oobe63_t.js
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/oobe63_t.js
