@@ -41,8 +41,10 @@ async function signin(mode) {
   for (let i = 0; i < 12; i++) { await p.clock.runFor(500); await wait(100) }
   return {ctx, p};
 }
+let SECLOG = null;
 async function pageShots(mode, pages) {
   const {ctx, p} = await signin(mode); const out = {};
+  try { const l = await p.evaluate(() => localStorage.getItem('bd95seclog')); SECLOG = l ? JSON.parse(l) : null } catch (e) {}
   for (const k of pages) {
     await p.evaluate(k => { document.querySelectorAll('.ntoast,#ntoasts>*').forEach(e => e.remove()); if (window.SW) { SW._ok = 1; SW.close() } settings(k); SW.el.style.left = '120px'; SW.el.style.top = '60px' }, k);
     for (let i = 0; i < 6; i++) { await p.clock.runFor(500); await wait(200) }
@@ -70,7 +72,7 @@ function natStop() { if (NP) { NP.kill(); NP = null } }
 const xdo = a => sh('xdotool ' + a);
 const click = (r, btn) => { xdo(`mousemove ${Math.round(r[0] + r[2] / 2)} ${Math.round(r[1] + r[3] / 2)} click ${btn || 1}`) };
 async function natShots(mode, pages) {
-  ST.state(D, Object.assign({restore: false}, MODES[mode]), MORE); const out = {};
+  ST.state(D, Object.assign({restore: false}, MODES[mode]), Object.assign({}, MORE, SECLOG ? {bd95seclog: SECLOG} : {})); const out = {};   // (the security log as the page's own sign-in left it)
   for (const k of pages) {
     natStart(k); await until(() => rect('body') && line('page') == k, 20000); await wait(1500); xdo('mousemove 5 5'); await wait(400);
     for (const at of ['top', 'end']) {
@@ -638,12 +640,40 @@ async function checkPriv() {
     ok('P6. Sites you block too: ads.example.com kept in S.oblock.mine (bd95set:ACCT), blocking still on', ((SET().oblock || {}).mine || []).includes('ads.example.com') && SET().oblock.on === true, SET().oblock) }
   natStop();
 }
+// (1.6.3 Part 3, PR 8) Security Settings: the administrator's prompts and password where the page has them, what is saved and asked
+async function checkSec() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, J = k => { try { return JSON.parse(LS()[k]) } catch (e) { return undefined } };
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 80; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 500) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 500 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('sec'); await until(() => rect('body') && line('page') == 'sec', 20000); await wait(1500);
+  { click(rect('fwn')); await until(() => /elevate Turn off the firewall/.test(acts()), 3000);
+    ok('S1. Firewall off: the administrator\'s prompt first, nothing asked of rudolfd yet', /elevate Turn off the firewall/.test(acts()) && !/firewall\?on/.test(calls()), lines('act').slice(-2)); xdo('key Escape'); await wait(500) }
+  { await scrollTo('fwbi'); click(rect('fwbi')); xdo('type --delay 20 https://www.Bad-Site.example/x'); click(rect('fwba')); await wait(600); await scrollTo('ps'); click(rect('ps')); await wait(300);
+    await scrollTo('sp'); click(rect('sp')); xdo('type --delay 20 wrong-password'); await wait(200); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /say Enter your admin password/.test(acts()), 4000);
+    const s0 = J('bd95sec'); ok('S2. Apply with a wrong password: refused ("Enter your admin password…"), nothing saved', /say Enter your admin password to apply/.test(acts()) && (!s0 || !((s0.fw || {}).block || []).length), [s0, lines('act').slice(-3)]) }
+  { await scrollTo('sp'); click(rect('sp')); xdo('key ctrl+a'); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); await wait(200); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /Security settings applied/.test(acts()), 4000); const s = J('bd95sec') || {};
+    ok('S3. Apply with the password: bd95sec saved (bad-site.example blocked, scripts on), "Security settings applied.", logged', ((s.fw || {}).block || []).includes('bad-site.example') && (s.pol || {}).scripts === true && /Security settings applied/.test(acts()) && /changed security settings/.test(LS().bd95seclog || ''), [s, lines('act').slice(-5)]) }
+  { await scrollTo('scn'); click(rect('scn')); await until(() => /stor avscan/.test(acts()), 3000);
+    ok('S4. Scan now: the hidden page scans the files (stor avscan)', /stor avscan/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('dvb'); click(rect('dvb')); await until(() => /storgo devmon/.test(acts()), 3000);
+    ok('S5. Turn on Developer mode…: the page\'s own dialog (storgo devmon)', /storgo devmon/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('dlon'); click(rect('dlon')); await until(() => /dlerr Write the repository/.test(acts()), 3000);
+    ok('S6. Development link\'s Switch on… with no repository: "Write the repository as owner/name." and nothing asked', /dlerr Write the repository as owner\/name\./.test(acts()) && !/devlink\/on/.test(calls()), lines('act').slice(-2)) }
+  { await scrollTo('dlr'); click(rect('dlr')); xdo('type --delay 20 ann/devlink-test'); click(rect('dlk')); xdo('type --delay 20 test-not-a-token'); await wait(200); await scrollTo('dlon'); click(rect('dlon')); await until(() => /elevate cred Switch the development link on/.test(acts()), 3000);
+    ok('S7. Switch on… with a repository and a token: the administrator\'s name and password asked first (sent with the request)', /elevate cred Switch the development link on: commands from the GitHub repository ann\/devlink-test can look at this computer for 2 hour\(s\)\./.test(acts()) && !/devlink\/on/.test(calls()), lines('act').slice(-2)); xdo('key Escape'); await wait(400) }
+  { await scrollTo('otpq'); await pick('otpq', 1, 3); await until(() => /elevate Change who must use two-step sign-in/.test(acts()), 3000);
+    ok('S8. Two-step sign-in required for administrators: the administrator\'s prompt first', /elevate Change who must use two-step sign-in/.test(acts()) && (J('bd95sys') || {}).mfa === undefined, lines('act').slice(-2)); xdo('key Escape'); await wait(400) }
+  natStop();
+}
 const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')));
 (async () => {
   fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(SETD));
   BR = await chromium.launch({ignoreDefaultArgs: ['--hide-scrollbars'], args: ['--font-render-hinting=none']});
   // (Storage and backup: the page's own figures, as the native desktop's hidden page works them out (storSnap) and keeps them in bd95stor:ACCT)
-  if (PAGES.includes('stor') && (!ONLY || ONLY.split(',').some(x => x == 'stor' || x.startsWith('stor-') || MODES[x] || x == 'checklist'))) { const {ctx, p} = await signin('light'); MORE['bd95stor:' + ST.ACCT] = await p.evaluate(() => storSnap()); await ctx.close() }
+  if ((PAGES.includes('stor') || PAGES.includes('sec')) && (!ONLY || ONLY.split(',').some(x => ['stor', 'sec'].includes(x.split('-')[0]) || MODES[x] || x == 'checklist'))) { const {ctx, p} = await signin('light'); MORE['bd95stor:' + ST.ACCT] = await p.evaluate(() => storSnap()); await ctx.close() }
   const rows = [];
   for (const mode of Object.keys(MODES)) {
     if (!only(mode) && !(ONLY || '').split(',').some(x => PAGES.includes(x))) continue;
@@ -679,6 +709,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('apps-checklist')) await checkApps();
   if (only('checklist') || only('stor-checklist')) await checkStor();
   if (only('checklist') || only('priv-checklist')) await checkPriv();
+  if (only('checklist') || only('sec-checklist')) await checkSec();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

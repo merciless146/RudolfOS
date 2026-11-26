@@ -75,6 +75,7 @@ GtkWidget *rui_check(const char *label, int on, void (*cb)(int on, void *d), voi
 int rui_check_get(GtkWidget *c);
 void rui_check_wrap(GtkWidget *c, double css_w, double css_h);  /* its words wrapped in css_w px (label.ck as wide as its cell), css_h tall */
 void rui_check_set(GtkWidget *c, int on);
+void rui_check_style(GtkWidget *c, int weight, int inl);   /* (1.6.3) its words in bold (600, 700), or (inl) a space after the box, as a plain <label> with its input */
 /* .tmtabs: the tabs, their buttons; cb(i) when one is chosen */
 GtkWidget *rui_tabs(const char *const *labels, int n, void (*cb)(int i, void *d), void *d);
 void rui_tabs_set(GtkWidget *tabs, int i);

@@ -54,6 +54,7 @@ GtkWidget *c_check(Cell *c, const char *t, int on, void (*cb)(int on, void *d), 
 GtkWidget *p_buttons(const char *const *labels, int n, GCallback *cbs, void *d);   /* .rmrow of buttons, at the left */
 void p_block(GtkWidget *w, double mt, double mb);     /* a block of the page's own (its height its own), between margins */
 void p_space(double mt);
+void p_last_margins(double mt, double mb);            /* (1.6.3) the block just added: its own margins */
 typedef void (*SetFoot)(int what /* 0 apply 1 revert 2 reset */);
 void p_footer(int (*dirty)(void), SetFoot act);      /* .sfoot: Apply, Revert, Reset to defaults, at the page's bottom */
 void p_footer_box(void);                              /* (1.6.3) the top of the box a sticky footer stays in */

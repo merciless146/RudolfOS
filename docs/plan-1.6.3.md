@@ -325,9 +325,17 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
     (keyring/list, keyring/forget, each Remove asked first), App permissions (bd95perm:ACCT), Recent activity (bd95permlog:ACCT),
     Other data (Clear clipboard history: the hidden page's, "stor clipclear"), Ads and trackers in Oracle (S.oblock; the list's size
     read from desktop/orablock61.json at build time). Views 0.38-0.55 % light and dark; Search the same 8 rows; checklist P1-P6.
-  - Next: Security Settings (sec50.js secPanelS with sb28, vault50, devmode59, devlink40, otp60, sc60), System health (sec50.js
+  - Security Settings (`settings_sec.c`), in progress: every section drawn (status cards, Firewall, Data encryption, Website blocking,
+    Antivirus, System protection, Confirm, Quarantine, Activity log, Secure Boot, Developer mode, Development link, Smart cards,
+    Two-step sign-in); Apply needs the administrator's own password, checked by rudolfd (desktop/admin) as the page checks it; the
+    firewall, Secure Boot's request, two-step sign-in: the administrator's prompt; the development link's Allow and Switch on… and the
+    DoD certificates' Remove: the administrator's name and password with the request (rui_elevate_cred); what the page does in its own
+    dialogs (encrypting, the recovery key, Secure Boot's preparation, Developer mode, the link's log, installing the DoD's certificates)
+    and Scan now, Quarantine all, Restore: "storgo W" and "stor OP" (sc60.js's install moved into scDodInstall for it). Views 0.42-1.75 %
+    but one place (mid5, a 1 px rounding of the page's fractional layout: 2.1-2.3 %), Search the same 37 rows, checklist S1-S8.
+  - Next: System health (sec50.js
     healthPanel with apps57, gamesleep59, gamemode61, wineold62's row), User Settings (usrPanelS with acct50, devkey59, fido61, fprint63,
-    otp60, power31, saver31), the administrator's and two-step prompts exactly where the web ones are.
+    otp60, power31, saver31), the administrator's and two-step prompts exactly where the web ones are; Security's mid5 view.
 - **Left:** Security, System health, Users (PR 8); the switch.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in

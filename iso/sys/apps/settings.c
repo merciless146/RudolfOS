@@ -257,6 +257,7 @@ GtkWidget *p_buttons(const char *const *labels, int n, GCallback *cbs, void *d)
 }
 void p_block(GtkWidget *w, double mt, double mb) { Item *i = add_item(I_BLOCK, NULL, mt, mb); i->wg = w; gtk_fixed_put(GTK_FIXED(FX), w, 0, 0); }
 void p_space(double mt) { add_item(I_SPACE, NULL, mt, 0); }
+void p_last_margins(double mt, double mb) { Item *i = ITEMS && ITEMS->len ? g_ptr_array_index(ITEMS, ITEMS->len - 1) : NULL; if (i) { i->mt = mt; i->mb = mb; } }
 GtkWidget *p_msg_m(const char *t, int grey, double mt, double mb) { GtkWidget *w = p_msg(t, grey); Item *i = g_object_get_data(G_OBJECT(w), "set-item"); i->mt = mt; i->mb = mb; return w; }
 GtkWidget *p_check(const char *t, int on, void (*cb)(int, void *), void *d) { Item *i = add_item(I_CHECK, t, 0, 0); i->wg = rui_check(t, on, cb, d); gtk_fixed_put(GTK_FIXED(FX), i->wg, 0, 0); return i->wg; }
 GtkWidget *p_buttons_h(const char *const *labels, int n, GCallback *cbs, void *d, double minh) { GtkWidget *b = p_buttons(labels, n, cbs, d); Item *i = g_ptr_array_index(ITEMS, ITEMS->len - 1); i->minh = minh; return b; }

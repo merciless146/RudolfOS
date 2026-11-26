@@ -172,7 +172,7 @@ static void vault_sec(void)
 		for (int i = 0; al && i < rui_jlen(al); i++) { RuiJ *a = rui_jat(al, i); const char *id = set_jstr(a, "id", ""); if (*id && jb(ac, id)) g_string_append_printf(who, "%s%s", who->len ? ", " : "", set_jstr(a, "n", "")); } rui_jfree(up); rui_jfree(uo);
 		char *l = g_strdup_printf("Accounts whose password unlocks it: %s. Not encrypted: the system itself (it is signed and checked instead), settings, logs and the browser's own data (the desktop encrypts each account's home folder itself). Large downloads are in each account's own folder on the disk; Rudolf OS shows each account only its own, but programs running on this computer, such as Linux apps, could reach any of them.", who->len ? who->str : "none yet");
 		p_line(l, 1, 0, 0, 6); g_free(l); g_string_free(who, TRUE); }
-	if (r->n) p_custom(brow_lay, r, 14, 0); else p_custom(brow_lay, r, 0, 0);
+	p_custom(brow_lay, r, 14, 0);   /* (an empty .rmrow still has its 14 px above it) */
 	if (s && !strcmp(st, "off") && !set_admin()) p_msg(" An administrator can turn this on.", 0);
 	rui_jfree(s);
 }
@@ -240,6 +240,9 @@ static void web_sec(void)
 }
 
 /* ================================================================== Antivirus, System protection, Confirm */
+/* (a <span> of 12 px #6b7280 in a line: "Definitions …") */
+static gboolean small_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)d; cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); s_text(cr, g_object_get_data(G_OBJECT(w), "t"), 0, (gtk_widget_get_allocated_height(w) / s_z() - 14) / 2, 12, 400, 0, 14); return FALSE; }
+static GtkWidget *small(const char *t) { GtkWidget *a = gtk_drawing_area_new(); g_object_set_data_full(G_OBJECT(a), "t", g_strdup(t), g_free); g_signal_connect(a, "draw", G_CALLBACK(small_draw), NULL); gtk_widget_set_size_request(a, (int)lround((tw(t, 12, 400) + 1) * s_z()), (int)lround(23 * s_z())); return a; }
 static void on_scan(GtkButton *b, gpointer d) { (void)b; (void)d; if (set_admin()) ask("stor avscan"); }
 static void av_sec(void)
 {
@@ -247,7 +250,7 @@ static void av_sec(void)
 	Cell *c = p_r2("Real-time protection"); GtkWidget *w = c_check(c, "Scan files when they are saved, downloaded, opened or run", SECW.avon, on_chk, &SECW.avon); p_label_named("avo", w); if (!adm) gtk_widget_set_sensitive(w, FALSE); p_r2_more(c);
 	static const char *const AV[2] = { "quarantine", "block" }, *const AL[2] = { "Move it to quarantine", "Block and discard it" };
 	c = p_r2("If a threat is found"); w = s_select(AV, AL, 2, SECW.act, on_act, NULL); c_add(c, w, 0, 0, 1); p_label_named("ava", w); if (!adm) gtk_widget_set_sensitive(w, FALSE); p_r2_more(c);
-	c = p_r2("Virus scan"); GtkWidget *b = rui_button("Scan now", 0); g_signal_connect(b, "clicked", G_CALLBACK(on_scan), NULL); if (!adm) gtk_widget_set_sensitive(b, FALSE); c_add(c, b, 0, 0, 0); p_label_named("scn", b); c_msg_m(c, "Definitions 2026.10.10", 4, 0, 0);
+	c = p_r2("Virus scan"); GtkWidget *b = rui_button("Scan now", 0); g_signal_connect(b, "clicked", G_CALLBACK(on_scan), NULL); if (!adm) gtk_widget_set_sensitive(b, FALSE); c_add(c, b, 0, 0, 0); p_label_named("scn", b); c_add(c, small("Definitions 2026.10.10"), tw(" ", 13, 400), 0, 0); { GtkWidget *z = gtk_drawing_area_new(); gtk_widget_set_size_request(z, 1, 0); c_line(c, 6); c_add(c, z, 0, 0, 0); }   /* (#scr: empty, 6 px under) */
 	/* (the last scan's result, as the page's #scr: the hidden page's count, kept in bd95avscan:ACCT) */
 	char k[120]; snprintf(k, sizeof k, "bd95avscan:%s", ACCT); RuiJ *o = set_ls_get(k), *r = X(o);
 	if (r && rui_jtype(r) == 5) { double n = jnum(r, "files"); RuiJ *f = rui_jprop(r, "found"); int nf = f ? rui_jlen(f) : 0; c_line(c, 6);
@@ -378,7 +381,7 @@ static void on_dlal(int on, void *d)
 }
 static void allow_row(void)
 {
-	DLAL = p_check("Allow the development link on this computer", jb(DL, "allowed"), on_dlal, NULL); p_label_named("dlal", DLAL); g_object_set_data(G_OBJECT(DLAL), "set-weight", GINT_TO_POINTER(600));
+	DLAL = p_check("Allow the development link on this computer", jb(DL, "allowed"), on_dlal, NULL); p_last_margins(6, 6); rui_check_style(DLAL, 600, 1); p_label_named("dlal", DLAL);
 	if (!set_admin() && !jb(DL, "allowed")) gtk_widget_set_sensitive(DLAL, FALSE);
 	p_msg_m("Unticked, it cannot be switched on at all; unticking it ends it at once. Ticking it needs an administrator's password.", 0, 10, 13);
 	GtkWidget *e = p_msg_m(DLALERR ? DLALERR : "", 0, 10, 13); g_object_set_data(G_OBJECT(e), "set-color", "#ee6666"); p_label_named("dlalerr", e);
@@ -410,6 +413,17 @@ static void on_dlc(int on, void *d)
 	(void)d; dl_err(&DLCERR, NULL); if (!on) { char er[300]; RuiJ *j = post_body("devlink/change?on=0", NULL, er, sizeof er); if (!j) dl_err(&DLCERR, er); rui_jfree(j); redraw(); return; }
 	char *r = g_strdup_printf("Allow the development link to change this computer: commands from %s can then install, change settings and restart it.", set_jstr(DL, "repo", "")); set_note("elevate cred %s", r); rui_elevate_cred(SW, r, ch_cred, NULL); g_free(r);
 }
+static double none_lay(void *d, double x, double y, double w) { (void)d; (void)x; (void)y; (void)w; return 0; }
+/* (the development link's form: .r2 with grid-template-columns: auto 1fr, gap 6px 10px, margin 6px 0; its labels and the page's own inputs) */
+typedef struct { const char *l[4]; GtkWidget *w[4], *a; int n; double h[4]; } Form;
+static double form_lay(void *d, double x, double y, double w)
+{
+	Form *f = d; double lw = 0, cy = 0; for (int i = 0; i < f->n; i++) lw = fmax(lw, tw(f->l[i], 13, 400)); lw = ceil(lw * 10) / 10;
+	for (int i = 0; i < f->n; i++) { double h = f->h[i]; p_place(f->w[i], x + lw + 10, y + cy, w - lw - 10, h); cy += h + (i < f->n - 1 ? 6 : 0); }
+	g_object_set_data(G_OBJECT(f->a), "lw", GINT_TO_POINTER((int)(lw * 100))); p_place(f->a, x, y, lw + 1, cy); return cy;
+}
+static gboolean form_draw(GtkWidget *w, cairo_t *cr, gpointer d) { (void)w; Form *f = d; double cy = 0; s_col(cr, "fg", 1); for (int i = 0; i < f->n; i++) { double h = f->h[i]; s_text(cr, f->l[i], 0, cy + (h - 15) / 2, 13, 400, 0, 15); cy += h + 6; } return FALSE; }
+static void form(Form *f) { f->a = gtk_drawing_area_new(); g_signal_connect(f->a, "draw", G_CALLBACK(form_draw), f); p_put(f->a); for (int i = 0; i < f->n; i++) p_put(f->w[i]); p_custom(form_lay, f, 6, 6); p_custom_find(f->l[0], 0); for (int i = 1; i < f->n; i++) { p_custom(none_lay, NULL, 0, 0); p_custom_find(f->l[i], 0); } }
 static char *left(double s) { int m = (int)fmax(0, round((s == s ? s : 0) / 60)); return m >= 60 ? g_strdup_printf("%d h %d min", m / 60, m % 60) : g_strdup_printf("%d min", m); }
 static void devl_sec(void)
 {
@@ -426,14 +440,15 @@ static void devl_sec(void)
 		BRow *r = brow(); bbtn(r, "End now", 1, G_CALLBACK(on_dloff), NULL, "dloff", 0); bbtn(r, "Log…", 0, G_CALLBACK(on_go), "devllog", "dllog", 0); p_custom(brow_lay, r, 14, 0); return; }
 	p_label_named("dls", p_msg_m("Off. When it is on, a developer you choose (for example a Claude session) can run tests on this computer through a private GitHub repository you own: run commands (read-only unless you allow changes), take screenshots and send files; with changes allowed, also bring files and restart it. Use it on a test computer only, never on one with personal files. A red banner shows while it is on.", 0, 10, 13));
 	allow_row();
-	Cell *c = p_r2("Repository"); DLR = rui_entry("owner/name (private)"); gtk_entry_set_text(GTK_ENTRY(DLR), set_jstr(DL, "repo", "")); c_add(c, DLR, 0, 0, 1); p_label_named("dlr", DLR); p_r2_more(c);
-	c = p_r2("Token"); DLK = rui_entry(jb(DL, "hasToken") ? "kept from last time (paste a new one to replace it)" : NULL); gtk_entry_set_visibility(GTK_ENTRY(DLK), FALSE); c_add(c, DLK, 0, 0, 1); p_label_named("dlk", DLK); p_r2_more(c);
+	Form *fm = g_new0(Form, 1); fm->l[0] = "Repository"; fm->l[1] = "Token"; fm->l[2] = "For";
+	DLR = rui_entry("owner/name (private)"); gtk_entry_set_text(GTK_ENTRY(DLR), set_jstr(DL, "repo", "")); p_label_named("dlr", DLR);
+	DLK = rui_entry(jb(DL, "hasToken") ? "kept from last time (paste a new one to replace it)" : NULL); gtk_entry_set_visibility(GTK_ENTRY(DLK), FALSE); p_label_named("dlk", DLK);
 	static const char *const HV[4] = { "1", "2", "4", "8" }, *const HL[4] = { "1 hour", "2 hours", "4 hours", "8 hours" };
-	c = p_r2("For"); DLH = s_select(HV, HL, 4, "2", NULL, NULL); c_add(c, DLH, 0, 0, 1); p_label_named("dlh", DLH);
-	DLA = p_check("Ask first: each command waits for me to allow it (on again after every restart)", 1, NULL, NULL); p_label_named("dla", DLA);
-	DLCH = p_check("Allow changes to this computer (unticked: its commands can only look; unticked again at every start)", 0, NULL, NULL); p_label_named("dlch", DLCH);
-	DLB = p_check("Keep on after restarting (until its time is up)", 0, NULL, NULL); p_label_named("dlb", DLB); if (!jb(DL, "persistent")) { gtk_widget_set_sensitive(DLB, FALSE); gtk_widget_set_tooltip_text(DLB, "Needs the files kept on this drive (RUDOLFDATA)"); }
-	DLHOME = p_check("Let it read files in home folders", jb(DL, "home"), NULL, NULL); p_label_named("dlhome", DLHOME);
+	DLH = s_select(HV, HL, 4, "2", NULL, NULL); p_label_named("dlh", DLH); fm->w[0] = DLR; fm->w[1] = DLK; fm->w[2] = DLH; fm->h[0] = fm->h[1] = 23; fm->h[2] = 25; fm->n = 3; form(fm);
+	DLA = p_check("Ask first: each command waits for me to allow it (on again after every restart)", 1, NULL, NULL); p_label_named("dla", DLA); rui_check_style(DLA, 0, 1);
+	DLCH = p_check("Allow changes to this computer (unticked: its commands can only look; unticked again at every start)", 0, NULL, NULL); p_label_named("dlch", DLCH); rui_check_style(DLCH, 0, 1);
+	DLB = p_check("Keep on after restarting (until its time is up)", 0, NULL, NULL); p_label_named("dlb", DLB); rui_check_style(DLB, 0, 1); if (!jb(DL, "persistent")) { gtk_widget_set_sensitive(DLB, FALSE); gtk_widget_set_tooltip_text(DLB, "Needs the files kept on this drive (RUDOLFDATA)"); }
+	DLHOME = p_check("Let it read files in home folders", jb(DL, "home"), NULL, NULL); p_label_named("dlhome", DLHOME); rui_check_style(DLHOME, 0, 1);
 	p_msg_m("\x03It turns itself off after 4 hours without a command, and when the computer restarts unless you keep it on. On github.com, make a private repository, then a fine-grained personal access token for that repository only, with the permission <b>Contents: Read and write</b>. Paste it here; it is checked with GitHub, kept where only the system can read it, and never shown again. Revoking it on GitHub ends all access.", 0, 10, 13);
 	GtkWidget *e = p_msg_m(DLERR ? DLERR : "", 0, 10, 13); g_object_set_data(G_OBJECT(e), "set-color", "#ee6666"); p_label_named("dlerr", e);
 	BRow *r = brow(); GtkWidget *on = bbtn(r, "Switch on…", 1, G_CALLBACK(on_dlon), NULL, "dlon", 1); if (rui_jprop(DL, "allowed") && !jb(DL, "allowed")) gtk_widget_set_sensitive(on, FALSE);
@@ -456,8 +471,9 @@ static void sc_sec(void)
 	p_msg("Sign in to websites in Oracle with a smart card, such as a DoD Common Access Card (CAC) or a PIV card: when a site asks, Oracle shows the card's certificates, then asks for the card's PIN. Rudolf OS never sees the PIN. A card locks itself after 3 wrong PINs, and only its issuer can unlock it. Not used in Tor windows. With the Lite desktop, open the site in Chromium (Oracle's ☰ menu).", 0);
 	RuiJ *dl = get("sc/dod/list"); int nc = dl && rui_jprop(dl, "certs") ? rui_jlen(rui_jprop(dl, "certs")) : 0; int adm = set_admin();
 	Cell *c = p_r2("DoD certificates"); char *t = !dl ? g_strdup("Not available.") : nc ? g_strdup_printf("Installed (%d certificates).", nc) : g_strdup("Not installed."); c_text(c, t, 400); g_free(t);
-	GtkWidget *bi = rui_button("Install the DoD's certificates", 1); g_signal_connect(bi, "clicked", G_CALLBACK(on_go), "dodinstall"); if (!adm) gtk_widget_set_sensitive(bi, FALSE); c_line(c, 14); c_add(c, bi, 0, 0, 0); p_label_named("scdi", bi);
-	if (nc) { GtkWidget *br = rui_button("Remove them", 0); g_signal_connect(br, "clicked", G_CALLBACK(on_dodrm), NULL); if (!adm) gtk_widget_set_sensitive(br, FALSE); c_add(c, br, 8, 0, 0); p_label_named("scdr", br); }
+	{ /* (.rmrow: its buttons at the right, gap 8) */ GtkWidget *bx = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (int)lround(8 * s_z())), *bi = rui_button("Install the DoD's certificates", 1); g_signal_connect(bi, "clicked", G_CALLBACK(on_go), "dodinstall"); if (!adm) gtk_widget_set_sensitive(bi, FALSE);
+	  if (nc) { GtkWidget *br = rui_button("Remove them", 0); g_signal_connect(br, "clicked", G_CALLBACK(on_dodrm), NULL); if (!adm) gtk_widget_set_sensitive(br, FALSE); gtk_box_pack_end(GTK_BOX(bx), br, FALSE, FALSE, 0); p_label_named("scdr", br); }
+	  gtk_box_pack_end(GTK_BOX(bx), bi, FALSE, FALSE, 0); p_label_named("scdi", bi); gtk_widget_show_all(bx); c_line(c, 14); c_add(c, bx, 0, 0, 1); }
 	c_msg(c, "Sites such as iPERMS and IPPS-A use the DoD's own certificates, which Oracle does not trust by itself. They are downloaded from the DoD's PKI site and installed only if they come from the DoD's root certificates; trusted for websites only, for every account on this computer. The DoD does not support Linux, so a site may still refuse or behave differently.", 0); p_r2_more(c);
 	RuiJ *st = set_stored(); c = p_r2("Card taken out"); GtkWidget *l = c_check(c, "Lock the screen when my card is taken out", jb(st, "sclock"), on_scl, NULL); p_label_named("scl", l); rui_jfree(st); rui_jfree(s); rui_jfree(dl);
 }
