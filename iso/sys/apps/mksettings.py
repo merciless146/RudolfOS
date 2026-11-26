@@ -413,4 +413,45 @@ out.append('static const char *const DEVICON[][2] = {' + ','.join('{ %s, %s }' %
 out.append('static const char *const DEVBUS[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in devbus.items()) + '};')
 out.append('static const char *const PQSTATE[][3] = {' + ','.join('{ %s, %s, %s }' % (cstr(k), cstr(v[0]), cstr(v[1])) for k, v in pqst.items()) + '};')
 out.append('static const char *const MOBMODE[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in mobm.items()) + '};')
+# ---------------------------------------------------------------- (1.6.3 Part 3, PR 7) Apps: Default apps' kinds and the apps that open each
+# (settings25.js appsPanel's exts and the value it tries each with, files25.js OPENERS's tests, each worked out here as the page works it
+# out), linux26.js's LX_MIME and LX_MIME_ALIAS (the Linux apps that open each kind), links60.js's LK_NO, phonecalls59.js's PHONE59
+def jstest(src, e, v):
+    t = src.strip()
+    t = re.sub(r"typeof v=='string'", 'isinstance(v, str)', t)
+    RX = []; t = re.sub(r"/((?:[^/\\]|\\.)+)/\.test\((\w)\)", lambda m: (RX.append(m.group(1).replace('\\/', '/')), 'bool(re.search(RX[%d], %s))' % (len(RX) - 1, m.group(2)))[1], t)
+    t = re.sub(r"(\w)\.startsWith\(('[^']*')\)", r'\1.startswith(\2)', t)
+    t = t.replace('&&', ' and ').replace('||', ' or ').replace('!isinstance', 'not isinstance').replace('!v.', 'not v.')
+    if re.search(r'[^=!<>]=[^=]|=>|\?|`|\bfunction\b', t): die("files25.js OPENERS's test is not one this reads: " + src)
+    return bool(eval(t, {'re': re, 'RX': RX, 'isinstance': isinstance, 'str': str, 'bool': bool}, {'e': e, 'v': v or ''}))
+s25 = rd('settings25.js'); f25 = rd('files25.js')
+am = re.search(r"const exts=\[([^\]]*)\];", s25); fm = re.search(r"const fake=(.*?);s\.innerHTML", s25)
+if not am or not fm: die("settings25.js's appsPanel (exts, fake) has changed: read it anew")
+exts = re.findall(r"'(\w+)'", am.group(1))
+def fake(e):
+    t = fm.group(1)
+    while True:
+        m = re.match(r"^(.*?)\?('[^']*'):(.*)$", t)
+        if not m: return jslit(t, 0)[0] if t.startswith("'") else die('appsPanel fake: ' + t)
+        if jstest(m.group(1), e, None): return m.group(2)[1:-1]
+        t = m.group(3)
+om = re.search(r'const OPENERS=\[.*?\n(.*?)\]\];', f25, re.S)
+if not om: die("files25.js's OPENERS was not found")
+ops = re.findall(r"\['(\w+)','([^']*)','[^']*',((?:\([^)]*\)|e)=>.*?),(?:p=>|null)", om.group(1))
+if len(ops) < 14: die("files25.js's OPENERS was not read whole (%d)" % len(ops))
+rows = []
+for e in exts:
+    v = fake(e); l = [(k, n) for k, n, t in ops if jstest(re.sub(r'^(?:\([^)]*\)|e)=>', '', t), e, v)]
+    rows.append('{ %s, %d, { %s } }' % (cstr(e), len(l), ', '.join('{ %s, %s }' % (cstr(k), cstr(n.replace('Rudolf Prompt', 'Command Prompt'))) for k, n in l) or '{ 0, 0 }'))
+out.append('typedef struct { const char *e; int n; const char *o[16][2]; } SetDefApp;')
+out.append('static const SetDefApp DEFAPPS[] = {' + ','.join(rows) + '};')
+lxs = rd('linux26.js'); lxm = jsconst(lxs, 'LX_MIME', 'linux26.js'); lxa = jsconst(lxs, 'LX_MIME_ALIAS', 'linux26.js')
+if not re.search(r"function lxHandles\(x,e\)\{const m=LX_MIME\[String\(e\|\|''\)\.toLowerCase\(\)\];if\(!m\|\|!x\.mime\)return false;const ms=\[m,\.\.\.\(LX_MIME_ALIAS\[m\]\|\|\[\]\)\];return x\.mime\.split\(';'\)\.some\(t=>t&&ms\.some\(m=>t==m\|\|\(t\.endsWith\('/\*'\)&&m\.startsWith\(t\.slice\(0,-1\)\)\)\)\)\}", lxs): die("linux26.js's lxHandles has changed: read it anew")
+out.append('static const char *const LXMIME[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in lxm.items()) + '};')
+out.append('static const char *const LXALIAS[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(x)) for k, v in lxa.items() for x in v) + '};')
+lkno = re.search(r"const LK_NO=new Set\(\[([^\]]*)\]\)", rd('links60.js'))
+if not lkno or not re.search(r"const lkOk=s=>/\^\[a-z\]\[a-z0-9\+\.-\]\{1,39\}\$/\.test\(s\)&&!LK_NO\.has\(s\);", rd('links60.js')): die("links60.js's LK_NO or lkOk has changed: read them anew")
+out.append('static const char *const LKNO[] = {' + ','.join(cstr(x) for x in re.findall(r"'([^']*)'", lkno.group(1))) + '};')
+ph = jsconst(rd('phonecalls59.js'), 'PHONE59', 'phonecalls59.js')
+out.append('static const char *const PHONE59[][4] = {' + ','.join('{ %s }' % ', '.join(cstr(x) for x in r) for r in ph) + '};')
 open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')

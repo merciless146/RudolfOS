@@ -632,5 +632,171 @@
     "cancel": false
    }
   ]
+ },
+ "debian/status": {
+  "ok": true,
+  "installed": true,
+  "running": false,
+  "version": "13.2",
+  "size": 3418357760,
+  "free": 41231686041,
+  "wine": true
+ },
+ "debian/apps": {
+  "ok": true,
+  "apps": [
+   {
+    "id": "gimp",
+    "name": "GIMP",
+    "icon": "/usr/share/icons/hicolor/48x48/apps/gimp.png",
+    "mime": "image/png;image/jpeg;image/gif;image/x-xcf;",
+    "wmclass": "gimp",
+    "categories": "Graphics;",
+    "menu": true
+   },
+   {
+    "id": "zoom",
+    "name": "Zoom",
+    "icon": "/usr/share/pixmaps/Zoom.png",
+    "mime": "x-scheme-handler/zoommtg;x-scheme-handler/zoomus;x-scheme-handler/tel;",
+    "wmclass": "zoom",
+    "categories": "Network;",
+    "menu": true
+   },
+   {
+    "id": "libreoffice-writer",
+    "name": "LibreOffice Writer",
+    "icon": "libreoffice-writer",
+    "mime": "application/msword;application/vnd.openxmlformats-officedocument.wordprocessingml.document;text/plain;",
+    "wmclass": "libreoffice-writer",
+    "categories": "Office;",
+    "menu": true
+   },
+   {
+    "id": "starport-ge",
+    "name": "Starport GE",
+    "icon": "/usr/share/pixmaps/starport-ge.png",
+    "mime": "",
+    "wmclass": "starport.exe",
+    "categories": "Game;",
+    "menu": true
+   }
+  ]
+ },
+ "wine/old": {
+  "ok": true,
+  "on": true,
+  "offer": true,
+  "pending": false,
+  "running": false,
+  "count": 3,
+  "several": true,
+  "bytes": 1288490188,
+  "inOld": false
+ },
+ "ai/status": {
+  "ok": true,
+  "installed": true,
+  "model": "Blitzen 3B (Q4_K_M)",
+  "size": 2019558400,
+  "licence": "Apache-2.0",
+  "loaded": true,
+  "mem": 6442450944,
+  "need": 3221225472,
+  "python": true,
+  "cpp": false,
+  "debian": true
+ },
+ "ai/know/learn": {
+  "ok": true,
+  "learn": true
+ },
+ "ai/know/notes": {
+  "ok": true,
+  "items": [
+   "I prefer metric units.",
+   "My printer is the one in the study."
+  ]
+ },
+ "ai/dev/settings": {
+  "ok": true,
+  "repo": "ann/RudolfOS",
+  "base": "main",
+  "devlink": "",
+  "github": true,
+  "devlinkToken": false,
+  "keyring": true,
+  "official": false
+ },
+ "_ls": {
+  "bd95debapps": [
+   {
+    "id": "gimp",
+    "name": "GIMP",
+    "icon": "/usr/share/icons/hicolor/48x48/apps/gimp.png",
+    "mime": "image/png;image/jpeg;image/gif;image/x-xcf;",
+    "wmclass": "gimp",
+    "categories": "Graphics;",
+    "menu": true
+   },
+   {
+    "id": "zoom",
+    "name": "Zoom",
+    "icon": "/usr/share/pixmaps/Zoom.png",
+    "mime": "x-scheme-handler/zoommtg;x-scheme-handler/zoomus;x-scheme-handler/tel;",
+    "wmclass": "zoom",
+    "categories": "Network;",
+    "menu": true
+   },
+   {
+    "id": "libreoffice-writer",
+    "name": "LibreOffice Writer",
+    "icon": "libreoffice-writer",
+    "mime": "application/msword;application/vnd.openxmlformats-officedocument.wordprocessingml.document;text/plain;",
+    "wmclass": "libreoffice-writer",
+    "categories": "Office;",
+    "menu": true
+   },
+   {
+    "id": "starport-ge",
+    "name": "Starport GE",
+    "icon": "/usr/share/pixmaps/starport-ge.png",
+    "mime": "",
+    "wmclass": "starport.exe",
+    "categories": "Game;",
+    "menu": true
+   }
+  ],
+  "bd95defapps:uAnnA1b2": {
+   "PNG": "viewer",
+   "MD": "code",
+   "DOC": "lx:deb-libreoffice-writer"
+  },
+  "bd95links:uAnnA1b2": {},
+  "bd95rapps": {
+   "tide": {
+    "id": "tide",
+    "icon": "🌊",
+    "name": "Tide Tables",
+    "version": "1.2.0",
+    "permissions": [
+     "network",
+     "location"
+    ]
+   },
+   "beats": {
+    "id": "beats",
+    "icon": "🥁",
+    "name": "Beat Box",
+    "version": "0.9",
+    "permissions": []
+   }
+  },
+  "bd95debauto": true,
+  "bd95blzkeep": true,
+  "bd95blzspeed": {
+   "tps": 7.4
+  },
+  "bd95devtools": false
  }
 }

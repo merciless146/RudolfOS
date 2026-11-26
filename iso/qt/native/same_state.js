@@ -18,6 +18,7 @@ function state(D, set, more) {
   const ls = JSON.parse(JSON.stringify(LS0)); let g = 0; try { g = +JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).gen || 0 } catch (e) {} ls.gen = Math.max(g, ++GEN) + 1; const s = Object.assign({}, BASESET, set || {});
   ls.data['bd95set:' + ACCT] = ls.data.bd95set = JSON.stringify(s);
   for (const k in (more || {})) ls.data[k] = JSON.stringify(more[k]);
+  try { const T = JSON.parse(fs.readFileSync(path.join(D, 'tm'))); for (const k in (T._ls || {})) if (!(k in (more || {}))) ls.data[k] = JSON.stringify(T._ls[k]) } catch (e) {}   // (settings_rd.json's _ls: the page's storage for a page's stand-in data, Apps' lists)
   fs.writeFileSync(path.join(D, 'ls.json.t'), JSON.stringify(ls)); fs.renameSync(path.join(D, 'ls.json.t'), path.join(D, 'ls.json'));
 }
 module.exports = {state, ACCT, BASESET};
