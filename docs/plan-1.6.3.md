@@ -804,9 +804,9 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    gone. Checked against what the commands do: EXPLORER opens the file manager (not "in this folder"); `CD \` did not go
    to the top (resolve() now treats a leading \ as C:\); EDIT of a missing file showed "cannot be opened" (it now makes
    the empty file where the account may write, then opens it). Test: termhelp63_t.js.
-10. **FreeBuff's second round** (2026-11-26, the owner's screenshots), not done yet: Paint's Save asks "relative to C:"
-   with no folder picker or Cancel and saves to C:\ (should default to Pictures, with the Save As dialog Notepad has);
-   the ☰ menu's power button shuts down at once with no menu and no warning about unsaved work; Guest keeps nothing and
+10. **FreeBuff's second round** (2026-11-26, the owner's screenshots), **done:** Paint's Save
+   asked "relative to C:" with no folder picker or Cancel and saved to C:\; now the Save dialog Notepad has, in Pictures,
+   with Cancel (paint-savedlg, paintsavedlg63_t.js). **Not done yet:** the ☰ menu's power button shuts down at once with no menu and no warning about unsaved work; Guest keeps nothing and
    says so only in Settings (a line at sign-in and a notice on the first save); New text document's naming box is titled
    "Rename" and the file does not open after; double-clicking a picture opens Paint, not a viewer; a wrong user name
    once gave no message at sign-in (unconfirmed); a battery shown on a computer without one (browser edition).

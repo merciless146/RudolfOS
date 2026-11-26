@@ -1,0 +1,21 @@
+name: Paint's Save dialog (1.6.3)
+# Paint's Save: the Save dialog, in Pictures, with Cancel (the owner, 2026-11-26, FreeBuff's second round): paintsavedlg63_t.js.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['paint-savedlg']
+  pull_request:
+    paths: ['desktop/base_v24.html', 'desktop/filedlg59.js', 'iso/qt/shell2/paintsavedlg63_t.js', '.github/workflows/paintsavedlg63-check.yml']
+permissions: {contents: read}
+jobs:
+  paint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: paintsavedlg63_t.js
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/paintsavedlg63_t.js
