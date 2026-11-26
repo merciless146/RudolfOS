@@ -320,7 +320,15 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   Trash's line and the home folder's table change within a few seconds. 3. Open File Explorer, Find duplicates…, Back up everything…
   (the Save dialog), Restore a backup… (the file picker opens). 4. Back up here with a stick plugged in: "Backup saved". 5. Make the
   stick… on a spare stick: the size asked, the bar, "It is safe to remove the stick now". 6. On a live stick: Keep my files on this drive….
-- **Left:** Privacy, Security, System health, Users (PR 8); the switch.
+- **PR 8, in progress (2026-11-26, scheduled task; branch native-settings-10): Privacy, Security Settings, System health, Users.**
+  - Done: Privacy (`settings_priv.c`): the camera's switch (camera?on=, the administrator's prompt), Saved passwords for apps
+    (keyring/list, keyring/forget, each Remove asked first), App permissions (bd95perm:ACCT), Recent activity (bd95permlog:ACCT),
+    Other data (Clear clipboard history: the hidden page's, "stor clipclear"), Ads and trackers in Oracle (S.oblock; the list's size
+    read from desktop/orablock61.json at build time). Views 0.38-0.55 % light and dark; Search the same 8 rows; checklist P1-P6.
+  - Next: Security Settings (sec50.js secPanelS with sb28, vault50, devmode59, devlink40, otp60, sc60), System health (sec50.js
+    healthPanel with apps57, gamesleep59, gamemode61, wineold62's row), User Settings (usrPanelS with acct50, devkey59, fido61, fprint63,
+    otp60, power31, saver31), the administrator's and two-step prompts exactly where the web ones are.
+- **Left:** Security, System health, Users (PR 8); the switch.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in
   plain words, a stick too small for the chosen image refused before anything is written, a bar with the step and the time
