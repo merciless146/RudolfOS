@@ -466,6 +466,11 @@ icons.forEach(([i,n,f])=>{const d=document.createElement('div');d.className='ic'
 var SC=null;let S={bg:'#008080',fs:13,tx:'#000000',ic:'#ffffff',tb:'bottom',tz:Intl.DateTimeFormat().resolvedOptions().timeZone};try{Object.assign(S,JSON.parse(localStorage.getItem('bd95set')))}catch(e){}
 const clk=()=>{if(clk2())return;try{$('#tray').textContent=new Date().toLocaleTimeString(window.__a11y?LOC():[], {hour:'numeric',minute:'2-digit',timeZone:S.tz})}catch(e){}};clk();setInterval(clk,1000);
 /* ===== new apps ===== */
+/* (1.6.3, FreeBuff's second round: Paint's Save asked "File name (relative to C:\)" with no folder and no Cancel, and saved
+   to C:\ itself while Pictures stayed empty. Now Notepad's and WordPro's Save dialog, in the account's Pictures; Cancel
+   leaves the picture unsaved, and a close or New that asked about it stays as it was) */
+function paintSaveAs(cb){if(typeof fileDlg!='function')return nameDlg('PICTURE.PNG',n=>cb(resolve(/\.PNG$/.test(n)?n:n+'.PNG',['C:'])));
+ fileDlg({mode:'save',title:'Save picture',name:'PICTURE.PNG',start:typeof homePath=='function'?homePath('PICTURES'):null,types:[['PNG picture',['PNG']]]}).then(np=>{if(!np)return;if(!/\.PNG$/i.test(np.at(-1)))np=[...np.slice(0,-1),np.at(-1)+'.PNG'];cb(np)})}
 function nameDlg(def,cb){const W=win('Save As','💾',320,110);W.body.innerHTML='<div style="padding:8px">File name (relative to C:\\):<div style="display:flex;gap:4px;margin-top:8px"><input class="sunk" style="flex:1"><button>Save</button></div></div>';const i=W.body.querySelector('input');i.value=def;const go=()=>{const v=i.value.trim();if(v){W.close();cb(v.toUpperCase())}};W.body.querySelector('button').onclick=go;i.onkeydown=e=>{e.stopPropagation();if(e.key=='Enter')go()};i.focus()}
 function calc(){const W=win('Calculator','🧮',290,380);let d=1,ex='';
 W.body.innerHTML='<input class="sunk" style="margin:4px;padding:6px;font:20px monospace;text-align:right" readonly><div style="padding:0 4px"><button class="dg">DEG</button></div><div class="g" style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;padding:4px;flex:1"></div>';
@@ -501,7 +506,7 @@ const pos=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*cv.wi
 cv.onpointerdown=e=>{dr=1;cv.setPointerCapture(e.pointerId);const[a,b]=pos(e);x.strokeStyle=er?'#fff':col;x.lineWidth=sz;x.beginPath();x.moveTo(a,b);x.lineTo(a+.1,b);x.stroke()};
 cv.onpointermove=e=>{if(!dr)return;const[a,b]=pos(e);x.lineTo(a,b);x.stroke();x.beginPath();x.moveTo(a,b)};cv.onpointerup=()=>dr=0;
 q('.pn').onclick=()=>er=0;q('.er').onclick=()=>er=1;q('.sz').onchange=e=>sz=+e.target.value;q('.cl').onclick=blank;
-const sv=()=>{if(!p)return nameDlg('PICTURE.PNG',n=>{p=resolve(/\.PNG$/.test(n)?n:n+'.PNG',['C:']);sv()});const d=dirOf(p);if(!isDir(d))return st.textContent='Path not found';d[p.at(-1)]=cv.toDataURL();save();st.textContent='Saved '+p.join('\\')};q('.sv').onclick=sv}
+const sv=()=>{if(!p)return paintSaveAs(np=>{p=np;sv()});const d=dirOf(p);if(!isDir(d))return st.textContent='Path not found';d[p.at(-1)]=cv.toDataURL();save();st.textContent='Saved '+p.join('\\')};q('.sv').onclick=sv}
 function checkers(host){const W=host||win('Checkers','🔴',350,430);let B,sel,over;
 W.body.innerHTML='<div class="stat sunk"></div><div class="bd" style="display:grid;grid-template-columns:repeat(8,40px);width:320px;margin:6px auto"></div><div style="text-align:center;padding:3px"><button>New Game</button></div>';
 const bd=W.body.querySelector('.bd'),st=W.body.querySelector('.stat');
@@ -902,7 +907,7 @@ function paint(path){const W=win('Paint','🎨',760,540);let tool='pencil',col='
  q('.un').onclick=doUndo;q('.re').onclick=doRedo;q('.cl').onclick=()=>ask(()=>{snap();blank();p=null;dirty=0;W.setTitle('Paint');info()});
  q('.rz').onclick=()=>{dirty=1;const w=Math.max(16,Math.min(2000,+q('.cw').value||640)),h=Math.max(16,Math.min(2000,+q('.ch').value||400)),old=x.getImageData(0,0,cv.width,cv.height);cv.width=w;cv.height=h;blank();x.putImageData(old,0,0);undo=[];redo=[];info()};
  W.el.addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='z'){e.preventDefault();e.shiftKey?doRedo():doUndo()}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='y'){e.preventDefault();doRedo()}});
- const sv=cb=>{if(!p)return nameDlg('PICTURE.PNG',n=>{p=resolve(/\.PNG$/.test(n)?n:n+'.PNG',['C:']);sv(cb)});const d=dirOf(p);if(!isDir(d)){msg('Path not found');sfx('error');return}d[p.at(-1)]=cv.toDataURL('image/png');if(!fsSave()){msg('Disk full: could not save');sfx('error');return}W.setTitle(p.at(-1)+' - Paint');sfx('notify');msg('Saved '+p.join('\\'));EXPL.forEach(f=>f());dirty=0;if(typeof cb=='function')cb()};
+ const sv=cb=>{if(!p)return paintSaveAs(np=>{p=np;sv(cb)});const d=dirOf(p);if(!isDir(d)){msg('Path not found');sfx('error');return}d[p.at(-1)]=cv.toDataURL('image/png');if(!fsSave()){msg('Disk full: could not save');sfx('error');return}W.setTitle(p.at(-1)+' - Paint');sfx('notify');msg('Saved '+p.join('\\'));EXPL.forEach(f=>f());dirty=0;if(typeof cb=='function')cb()};
  q('.sv').onclick=()=>sv();q('.sa').onclick=()=>{p=null;sv()};
  /* (1.6.3 Part 8, item 1, "Paint app does not prompt user to save after unsaved changes are made to images": a picture changed since it
     was opened or saved is asked about, as WordPro's and Notepad's are, before New or closing its window: the ✕, the taskbar's Close, the
