@@ -198,11 +198,15 @@ if(SYSC.sson===undefined){SYSC.sson=SYSC.ssmin>0;if(!SYSC.ssmin)SYSC.ssmin=10;SY
  b.onmouseenter=()=>b.style.background='#ffffff33';b.onmouseleave=()=>b.style.background='#ffffff1f';
  b.onclick=e=>{e.stopPropagation();shutdownDlg()};L.appendChild(b)})();
 /* ---------- shutdown dialog (power button, Start → Shut down) ---------- */
-function shutdownDlg(){const o=document.createElement('div');o.className='rmodal';o.innerHTML=`<div class='rmbox' role='dialog' aria-label='Power'><h3>Power</h3><p>What do you want the computer to do?</p><div class='rmrow'><button data-a='poweroff'>⏻ Shut down</button><button data-a='reboot'>↻ Restart</button><button data-a='suspend'>☾ Sleep</button><button data-a='x'>Cancel</button></div><div class='rmmsg'></div></div>`;document.body.appendChild(o);
+function shutdownDlg(){const o=document.createElement('div');o.className='rmodal';o.innerHTML=`<div class='rmbox' role='dialog' aria-label='Power'><h3>Power</h3><p>What do you want the computer to do?</p><div class='rmrow'><button data-a='poweroff'>⏻ Shut down</button><button data-a='reboot'>↻ Restart</button><button data-a='suspend'>☾ Sleep</button>${SESSION?"<button data-a='logoff'>🚪 Sign out</button>":''}<button data-a='x'>Cancel</button></div><div class='rmmsg'></div></div>`;document.body.appendChild(o);
  o.querySelector('button').focus();o.onclick=async e=>{const a=e.target.dataset&&e.target.dataset.a;if(!a)return;if(a=='x'){o.remove();if(!SESSION)showLogin();return}
   /* 1.5.6: the power button and Start › Shut down no longer sign out before asking: Cancel goes back to the desktop
      as it was (on the Vivobook the power button, pressed to get out of a stuck game, left the person signed out).
      Shut down and Restart sign out once chosen; Sleep keeps the session, behind the lock screen. */
+  /* 1.6.3 (power63.js): Sign out here too, and unsaved work asked about before signing out, shutting down or restarting:
+     Cancel in a window's question leaves everything as it was */
+  if(a=='logoff'){o.remove();A.logoff();return}
+  if(SESSION&&(a=='poweroff'||a=='reboot')&&typeof closeAllAsk=='function'){o.style.visibility='hidden';const k=await closeAllAsk();o.style.visibility='';if(!k){o.remove();return}}
   if(SESSION&&(a=='poweroff'||a=='reboot'))try{userLogout()}catch(x){}
   if(SESSION&&a=='suspend')try{lockScreen()}catch(x){}
   /* 1.4.5: saving gets 3 seconds in all, so a step that stalls cannot keep the computer on; each step's time goes
