@@ -454,4 +454,12 @@ if not lkno or not re.search(r"const lkOk=s=>/\^\[a-z\]\[a-z0-9\+\.-\]\{1,39\}\$
 out.append('static const char *const LKNO[] = {' + ','.join(cstr(x) for x in re.findall(r"'([^']*)'", lkno.group(1))) + '};')
 ph = jsconst(rd('phonecalls59.js'), 'PHONE59', 'phonecalls59.js')
 out.append('static const char *const PHONE59[][4] = {' + ','.join('{ %s }' % ', '.join(cstr(x) for x in r) for r in ph) + '};')
+# ---------------------------------------------------------------- (1.6.3 Part 3, PR 8) Privacy: Oracle's ad and tracker list (desktop/orablock61.json,
+# put into the page by build19.py): how many services, its sources; apps25a.js's PERMNAMES
+ob = json.load(open(os.path.join(DESK, 'orablock61.json'), encoding='utf-8'))
+out.append('#define ORABLOCK_N %d' % (len(ob.get('b') or []) + len(ob.get('tp') or [])))
+out.append('static const char *const ORABLOCK_SRC[] = {' + ','.join(cstr(x) for x in (ob.get('src') or [])) + (',' if ob.get('src') else '') + ' NULL };')
+pn = re.search(r"const PERMNAMES=(\{[^}]*\});", rd('apps25a.js'))
+if not pn: die("apps25a.js's PERMNAMES was not found")
+out.append('static const char *const PERMNAMES[][2] = {' + ','.join('{ %s, %s }' % (cstr(k), cstr(v)) for k, v in jslit(pn.group(1), 0)[0].items()) + '};')
 open(sys.argv[1], 'w', encoding='utf-8').write('\n'.join(out) + '\n')

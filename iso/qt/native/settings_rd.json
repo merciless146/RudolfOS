@@ -814,7 +814,25 @@
   "bd95blzspeed": {
    "tps": 7.4
   },
-  "bd95devtools": false
+  "bd95devtools": false,
+  "bd95perm:uAnnA1b2": {
+   "Tide Tables|location": "allow",
+   "Beat Box|microphone": "deny"
+  },
+  "bd95permlog:uAnnA1b2": [
+   {
+    "at": 1794646800000,
+    "app": "Tide Tables",
+    "perm": "location",
+    "ok": true
+   },
+   {
+    "at": 1794643200000,
+    "app": "Beat Box",
+    "perm": "microphone",
+    "ok": false
+   }
+  ]
  },
  "debian/check": {
   "ok": true,
@@ -867,5 +885,34 @@
   "possible": false,
   "pending": false,
   "reason": "this computer already keeps your files on its disk"
+ },
+ "camera": {
+  "ok": true,
+  "on": true,
+  "devices": 1
+ },
+ "keyring/list": {
+  "ok": true,
+  "signedIn": true,
+  "keyring": true,
+  "items": [
+   {
+    "id": "k1",
+    "app": "Visual Studio Code",
+    "label": "vscode github.auth",
+    "kind": "secret"
+   },
+   {
+    "id": "k2",
+    "kind": "flatpak",
+    "app": "org.signal.Signal",
+    "label": "Signal database key"
+   },
+   {
+    "id": "k3",
+    "schema": "chrome_libsecret_os_crypt_password_v2",
+    "label": "Chromium Safe Storage"
+   }
+  ]
  }
 }

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/5fb708ce79747e8b.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=5fb708ce79747e8b'+location.hash)}catch(e){}})()</script>
+<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/cb5995cfa98a86c4.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=cb5995cfa98a86c4'+location.hash)}catch(e){}})()</script>
 <!-- 1.6.2 (docs/plan-1.6.2.md Part 14): no script from another site runs in this page or its own frames (it holds rudolfd's token); rudolfd sends the same policy (serve_index) -->
 <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:">
 <script>/* (1.6.0, the owner's Vivobook report 1) an app's own window (#app=NAME: oneapp59.js, the native desktop's windows): from its first paint
@@ -15938,6 +15938,7 @@ async function storSnap(){const si=await storageInfo();let pers=false;try{pers=a
 async function storDo(op,p){if(!USER)return;let n=null;
  if(op=='emptytrash'){TR.length=0;trSave();notify('Trash emptied','',{snd:'trash'})}
  else if(op=='trauto')n=trAutoEmpty();
+ else if(op=='clipclear'){if(typeof CLIPH!='undefined')CLIPH=[];return}   /* (Settings › Privacy › Clear clipboard history: the hidden page's) */
  else if(op=='dldel'&&p){const path=downloadsPath().concat(String(p).split('\\'));if(path.slice(downloadsPath().length).some(x=>!x||x=='..'))return;trashPut([path])}
  const s=await storSnap();if(n!=null)s.trDel=n;svj('bd95stor:'+uid(),s)}
 

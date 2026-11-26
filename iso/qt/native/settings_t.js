@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web,notif,devs,apps,stor').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web,notif,devs,apps,stor,priv').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -90,7 +90,7 @@ async function natShots(mode, pages) {
   return out;
 }
 // ---- Search in Settings: the same results for the same words (the page's ssMatch over its pages, with System and About harvested as shown)
-const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5'], web: ['mid2', 'mid3'], devs: ['mid2'], apps: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], stor: ['mid2', 'mid3', 'mid4', 'mid5']};
+const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5'], web: ['mid2', 'mid3'], devs: ['mid2'], apps: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], stor: ['mid2', 'mid3', 'mid4', 'mid5'], priv: ['mid2']};
 const QUERIES = ['time zone', 'sound', 'date', 'wifi', 'dark', 'idle', 'about', 'desktop page', 'lang', 'xyzzy'];
 async function pageSearch() {
   const {ctx, p} = await signin('light');
@@ -614,6 +614,30 @@ async function checkStor() {
     xdo('key Escape'); await wait(400) }
   natStop();
 }
+// (1.6.3 Part 3, PR 8) Privacy: what each part asks or saves, as the page does
+async function checkPriv() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, J = k => { try { return JSON.parse(LS()[k]) } catch (e) { return undefined } }, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('priv'); await until(() => rect('body') && line('page') == 'priv', 20000); await wait(1500);
+  { const r = rect('pl'); xdo(`mousemove ${Math.round(r[0] + r[2] * .65)} ${r[1] + r[3] - 7} click 1`); await until(() => /open help privacy/.test(acts()), 3000);
+    ok('P1. Read the privacy statement: Help\'s privacy page asked of the shell', /open help privacy/.test(acts()), lines('act').slice(-2)) }
+  { click(rect('pcs')); await until(() => /elevate Switch the camera off/.test(acts()), 3000);
+    ok('P2. Camera off: the administrator\'s prompt first, nothing asked of rudolfd yet', /elevate Switch the camera off/.test(acts()) && !/camera\?on/.test(calls()), lines('act').slice(-2)); xdo('key Escape'); await wait(500) }
+  { await scrollTo('pkr1'); click(rect('pkr1')); await until(() => /ask Remove "Signal database key"/.test(acts()), 3000); await wait(400); xdo('key Return'); await wait(300);
+    const d = rect('dialog'); if (d) { xdo('key Escape') } await wait(400);
+    ok('P3. A saved password\'s Remove: asked first (Remove "Signal database key"? …)', /ask Remove "Signal database key"\? org\.signal\.Signal \(Flatpak app\) will be signed out/.test(acts()), lines('act').slice(-3)) }
+  { await scrollTo('ppm1'); await pick('ppm1', 0, 3); await until(() => (J('bd95perm:uAnnA1b2') || {})['Beat Box|microphone'] == 'allow', 3000);
+    ok('P4. Beat Box › use the microphone: Allow (bd95perm:ACCT)', (J('bd95perm:uAnnA1b2') || {})['Beat Box|microphone'] == 'allow', J('bd95perm:uAnnA1b2')) }
+  { await scrollTo('cc'); click(rect('cc')); await until(() => /stor clipclear/.test(acts()), 3000);
+    ok('P5. Clear clipboard history: the hidden page\'s cleared (stor clipclear)', /stor clipclear/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('obin'); click(rect('obin')); xdo('type --delay 20 https://Ads.Example.com/x'); click(rect('obadd')); await until(() => ((SET().oblock || {}).mine || []).includes('ads.example.com'), 3000);
+    ok('P6. Sites you block too: ads.example.com kept in S.oblock.mine (bd95set:ACCT), blocking still on', ((SET().oblock || {}).mine || []).includes('ads.example.com') && SET().oblock.on === true, SET().oblock) }
+  natStop();
+}
 const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')));
 (async () => {
   fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(SETD));
@@ -654,6 +678,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('devs-checklist')) await checkDevs();
   if (only('checklist') || only('apps-checklist')) await checkApps();
   if (only('checklist') || only('stor-checklist')) await checkStor();
+  if (only('checklist') || only('priv-checklist')) await checkPriv();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

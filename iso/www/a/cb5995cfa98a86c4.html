@@ -15270,6 +15270,7 @@ async function storSnap(){const si=await storageInfo();let pers=false;try{pers=a
 async function storDo(op,p){if(!USER)return;let n=null;
  if(op=='emptytrash'){TR.length=0;trSave();notify('Trash emptied','',{snd:'trash'})}
  else if(op=='trauto')n=trAutoEmpty();
+ else if(op=='clipclear'){if(typeof CLIPH!='undefined')CLIPH=[];return}   /* (Settings › Privacy › Clear clipboard history: the hidden page's) */
  else if(op=='dldel'&&p){const path=downloadsPath().concat(String(p).split('\\'));if(path.slice(downloadsPath().length).some(x=>!x||x=='..'))return;trashPut([path])}
  const s=await storSnap();if(n!=null)s.trDel=n;svj('bd95stor:'+uid(),s)}
 
