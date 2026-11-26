@@ -1,0 +1,21 @@
+name: Command Prompt HELP (1.6.3)
+# The Command Prompt's HELP, HELP ALL, HELP <name>; CD \ and EDIT of a new file (the owner, 2026-11-26): termhelp63_t.js.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['term-help']
+  pull_request:
+    paths: ['desktop/termhelp63.js', 'desktop/base_v24.html', 'desktop/pkg25.js', 'iso/qt/shell2/termhelp63_t.js', '.github/workflows/termhelp63-check.yml']
+permissions: {contents: read}
+jobs:
+  help:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: termhelp63_t.js
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/termhelp63_t.js

@@ -1,0 +1,83 @@
+/* ===== 1.6.3: the Command Prompt's HELP a beginner can act on (from FreeBuff's user test, passed on by the owner) =====
+   HELP = a short list in groups, each with an example; HELP ALL = every command; HELP <name> = one command explained.
+   Before, HELP was one line of command names. FreeBuff's text, checked against what each command does here
+   (EXPLORER opens the file manager, not "in this folder"; CD \ goes to the top: resolve() in base_v24.html). */
+const HELP_SHORT=[
+'',
+'  Type a command, then press Enter. You start in C:\\, the top of your drive.',
+'',
+'  FILES AND FOLDERS',
+'    DIR                  list what is in this folder',
+'    CD DOCUMENTS         go into a folder   (CD .. goes up, CD \\ to the top)',
+'    MD PROJECTS          make a folder      (RD PROJECTS removes an empty one)',
+'    TYPE NOTES.TXT       show a text file',
+'    EDIT NOTES.TXT       open a text file in Notepad',
+'    COPY A.TXT B.TXT     copy a file        (REN renames, DEL deletes)',
+'',
+'  PROGRAMS',
+'    LUA -e "print(2+2)"  run one line of Lua   (LUA FILE.LUA runs a file)',
+'    BLOCKLUA             build a program by dragging blocks',
+'    RPK                  install and update programs   (RPK HELP shows how)',
+'    EXPLORER             open the file manager',
+'',
+'  THIS WINDOW',
+'    CLS   clear the screen    VER   version    DATE   date    TIME   time',
+'    EXIT  close this Command Prompt',
+'',
+'  New here? Type HELP ALL for every command, or HELP DIR to explain one.',
+''].join('\n');
+const HELP_FULL=[
+'',
+'  Every command. Type HELP and a name (for example HELP DIR) for one in detail.',
+'',
+'  DIR [folder]            list a folder (no name: this one)',
+'  CD [folder]             change folder; CD .. up, CD \\ to the top',
+'  MD <folder>             make a folder',
+'  RD <folder>             remove an empty folder',
+'  TYPE <file>             show a text file',
+'  EDIT <file>             open a text file in Notepad (a new one if it is not there)',
+'  COPY <file> <file>      copy a file',
+'  REN <file> <newname>    rename a file',
+'  DEL <file>              delete a file (for good: not to the Trash)',
+'  ECHO <text>             print text back',
+'  CLS                     clear the screen',
+'  VER                     the Rudolf OS version',
+'  DATE                    today\'s date',
+'  TIME                    the time now',
+'  LUA <file>              run a Lua program (or type its name: HELLO.LUA)',
+'  LUA -e "code"           run one line of Lua',
+'  BLOCKLUA                open BlockLua, the block builder',
+'  EXPLORER                open the file manager',
+'  RPK                     install, remove and update programs (RPK HELP)',
+'  EXIT                    close this Command Prompt',
+'',
+'  Unix-style commands work too: ls cat grep head tail wc sort cp mv rm mkdir',
+'  touch pwd find tree, with | between them and > to save the result in a file.',
+'  Programs installed with RPK can be run by their name.',
+''].join('\n');
+const HELP_ONE={
+ DIR:'DIR [folder]\n  Lists the files and folders in a folder, with their sizes.\n  Example:  DIR\n            DIR C:\\USERS',
+ CD:'CD [folder]\n  Goes into a folder. CD .. goes up one, CD \\ goes to the top of C:.\n  Example:  CD DOCUMENTS',
+ MD:'MD <folder>\n  Makes a new, empty folder.\n  Example:  MD PROJECTS',
+ RD:'RD <folder>\n  Removes an empty folder. It refuses if the folder still has anything in it.\n  Example:  RD PROJECTS',
+ TYPE:'TYPE <file>\n  Prints a text file on the screen without opening Notepad.\n  Example:  TYPE NOTES.TXT',
+ EDIT:'EDIT <file>\n  Opens a file in Notepad. If it is not there yet, Notepad starts with an empty page.\n  Example:  EDIT HELLO.TXT',
+ COPY:'COPY <file> <destination>\n  Copies a file. A folder as the destination keeps the same name.\n  Example:  COPY NOTES.TXT BACKUP.TXT',
+ REN:'REN <file> <newname>\n  Renames a file in the same folder.\n  Example:  REN NOTES.TXT IDEAS.TXT',
+ DEL:'DEL <file>\n  Deletes a file. It does not go to the Trash: this is for good.\n  Example:  DEL OLD.TXT',
+ ECHO:'ECHO <text>\n  Prints the text back. Useful inside .BAT files.\n  Example:  ECHO Hello',
+ CLS:'CLS\n  Clears the screen. Your files are untouched.',
+ VER:'VER\n  Shows the Rudolf OS version: a good first line for a bug report.',
+ DATE:'DATE\n  Shows today\'s date.',
+ TIME:'TIME\n  Shows the time now.',
+ LUA:'LUA <file>        runs a Lua program (typing its name, HELLO.LUA, does too)\n  LUA -e "<code>"   runs one line\n  Example:  LUA -e "print(2+2)"',
+ BLOCKLUA:'BLOCKLUA\n  Opens BlockLua, where you build a program by dragging blocks.',
+ EXPLORER:'EXPLORER\n  Opens the file manager.',
+ RPK:'RPK\n  Installs, removes and updates programs from the Rudolf OS Library.\n  RPK HELP            what RPK can do\n  RPK LIST            what is installed\n  RPK SEARCH <word>   find a program\n  RPK INSTALL <name>  install a program',
+ HELP:'HELP          this short list\n  HELP ALL      every command\n  HELP <name>   one command in detail, for example HELP DIR',
+ EXIT:'EXIT\n  Closes this Command Prompt. Nothing you saved is lost.'};
+function termHelp(P,a){const k=String((a&&a[0])||'').toUpperCase();
+ if(k==='ALL')return P.print(HELP_FULL);
+ if(HELP_ONE[k])return P.print(HELP_ONE[k]);
+ if(k&&k!=='HELP')return P.print('No help for "'+k+'". Type HELP ALL for the list.');
+ P.print(HELP_SHORT)}

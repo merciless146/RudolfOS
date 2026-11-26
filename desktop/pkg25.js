@@ -135,7 +135,7 @@ async function pkgPrompt(P,args){const c=(args[0]||'help').toLowerCase(),rest=ar
 const PROMPT_BUILTIN=new Set('HELP VER CLS ECHO DATE TIME DIR CD MD RD TYPE DEL COPY REN EDIT LUA BLOCKLUA EXPLORER EXIT'.split(' '));
 {const _p=promptMount;promptMount=function(startCmd,host){const go=startCmd&&/^\s*rpk\b/i.test(startCmd);const P=_p(go?undefined:startCmd,host);const inp=P.input;
  if(inp)inp.addEventListener('keydown',e=>{if(e.key!='Enter')return;const v=inp.value,t=pkgTokens(v.trim()),c=(t[0]||'').toLowerCase();
-  if(c=='help'&&t.length==1){setTimeout(()=>P.print('RPK           packages: rpk help'),0);return}
+  if(c=='help')return;   /* (1.6.3: HELP itself explains RPK now: termhelp63.js) */
   let args=null;if(c=='rpk')args=t.slice(1);
   else if(c&&!PROMPT_BUILTIN.has(c.toUpperCase())&&PKGS&&PKGS.installed){const p=PKGS.installed.find(x=>x.kind=='cli'&&(x.commands||'').split(' ').includes(c));if(p)args=['run',p.name,...t]}
   if(!args)return;e.preventDefault();e.stopImmediatePropagation();
