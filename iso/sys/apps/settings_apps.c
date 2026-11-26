@@ -32,7 +32,7 @@
 static char *fmt_b(double b)
 {
 	if (b < 0) b = 0; if (b < 1024) return g_strdup_printf("%.0f B", b); if (b < 1048576) return g_strdup_printf("%.1f KB", b / 1024);
-	if (b < 1073741824) return g_strdup_printf("%.1f MB", b / 1048576); return g_strdup_printf("%.1f GB", b / 1073741824);
+	if (b < 1073741824) return g_strdup_printf("%.2f MB", b / 1048576); return g_strdup_printf("%.1f GB", b / 1073741824);
 }
 static double tw(const char *t, double px, int wt) { double w = 0; s_lines(t ? t : "", px, wt, 0, &w); return w; }
 static double sp_w(void) { double sp, a1; s_lines("a a", 13, 400, 0, &sp); s_lines("aa", 13, 400, 0, &a1); return sp - a1; }
