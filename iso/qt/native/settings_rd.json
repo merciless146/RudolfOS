@@ -21,7 +21,9 @@
   ],
   "recovery": 0,
   "updateInstalled": false,
-  "bootSecure": 1
+  "bootSecure": 1,
+  "persistFree": 201863462912,
+  "persistTotal": 255550554112
  },
  "sys/status": {
   "ok": true,
@@ -148,6 +150,21 @@
       "fs": "ext4",
       "label": "RUDOLFDATA",
       "mount": "/persist"
+     }
+    ]
+   },
+   {
+    "name": "sdb",
+    "model": "SanDisk Ultra Fit",
+    "bytes": 30752636928,
+    "removable": true,
+    "partitions": [
+     {
+      "name": "sdb1",
+      "fs": "vfat",
+      "label": "STICK",
+      "mount": "/media/sdb1",
+      "bytes": 30748442624
      }
     ]
    }
@@ -808,5 +825,47 @@
   "userns": "ok",
   "max_user_namespaces": "15000 (expected 200000)",
   "debian": "ok"
+ },
+ "storage": {
+  "ok": true,
+  "measuring": false,
+  "result": {
+   "time": 1794649200,
+   "disk": {
+    "used": 53687091200,
+    "total": 255550554112,
+    "free": 201863462912
+   },
+   "items": {
+    "downloads": 2576980377,
+    "flatpak": 7301444403,
+    "steam": 19542101196,
+    "debian": 3435973836,
+    "games": 322122547,
+    "ai": 2040109465,
+    "updates": 10307921510,
+    "rest": 1181116006
+   },
+   "accounts": [
+    {
+     "id": "uAnnA1b2",
+     "files": 4402341478,
+     "trash": 214748364,
+     "downloads": 2576980377
+    },
+    {
+     "id": "uBobB2c3",
+     "files": 1395864371,
+     "trash": 0,
+     "downloads": 107374182
+    }
+   ]
+  }
+ },
+ "keepfiles": {
+  "ok": true,
+  "possible": false,
+  "pending": false,
+  "reason": "this computer already keeps your files on its disk"
  }
 }

@@ -8,6 +8,8 @@ Summary: In progress.
 - New (native desktop, not switched on yet): the native Settings has Notifications, Devices (drives, USB devices, Thunderbolt, keyboards,
   printers, the print queue, scanners) and Apps (default apps, links, installed apps, Linux and Wine, Blitzen, developer tools, calls to
   phones), each as the web one shows it and saving what it saves.
+- New (native desktop, not switched on yet): the native Settings has Storage and backup (the home folder, Downloads kept on the disk,
+  what fills the disk, the Trash, backups, Make a Rudolf OS USB stick), as the web one shows it.
 - New (native desktop, not switched on yet): the native Settings has Network Settings (Wi-Fi, the hardware, a manual address, the
   proxy, metered connections, cellular modems, sharing the connection, VPNs), Mobile network (the SIM's PIN, the operator's
   settings, this month's data, roaming), Bluetooth, Oracle and Remote access, each as the web Settings has it, with the

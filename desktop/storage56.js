@@ -67,3 +67,16 @@ async function storDisk(box){if(!RD)return;box.innerHTML="<h4 class='sh4'>On thi
  const dk=document.createElement('div');dk.className='sd56';
  const bk=[...c.querySelectorAll('h4.sh4')].find(h=>/Backup/.test(h.textContent));if(bk){c.insertBefore(dk,bk);c.insertBefore(ta,bk)}else{c.appendChild(dk);c.appendChild(ta)}
  storDisk(dk)},"storage56.js");}
+/* (1.6.3 Part 3, PR 7b) the native Settings' Storage and backup: what the page itself knows (the browser storage's estimate, the account's
+   files in C:, the Trash, the Downloads kept on the disk), worked out by the native desktop's hidden page and kept in the page's storage
+   (bd95stor:<id>, rudolfd's copy), which the native page reads; storDo: Empty the Trash, the old items' rule, a download's Delete */
+async function storSnap(){const si=await storageInfo();let pers=false;try{pers=await navigator.storage.persisted()}catch(e){}
+ const h=USER?node(homePath()):null,home=[];if(h)Object.keys(h).forEach(k=>{const st=isDir(h[k])?folderStats(h[k]):{bytes:sizeOf(h[k]),files:1};home.push([k,st.files,st.bytes])});
+ let dl=null;try{if(typeof dlOn=='function'&&dlOn())dl=dlWalk(dlCDir(),downloadsPath(),[]).map(x=>{const i=dlRefInfo(x.v)||{};return[x.path.slice(downloadsPath().length).join('\\'),i.s||0]})}catch(e){}
+ return{t:Date.now(),used:si.used,quota:si.quota,pers,idb:!!(IDB&&IDB.db),home,trN:TR.length,trB:TR.reduce((a,x)=>a+trSize(x.v),0),dl,trAuto:trAutoDays(),guest:!USER||USER.r=='guest',
+  steam:Object.keys(APPS).find(x=>/^lx:.*valvesoftware\.Steam/i.test(x))||'',emu:Object.keys(APPS).find(x=>APPS[x].name=='Emu')||'',dups:typeof dupWindow=='function'}}
+async function storDo(op,p){if(!USER)return;let n=null;
+ if(op=='emptytrash'){TR.length=0;trSave();notify('Trash emptied','',{snd:'trash'})}
+ else if(op=='trauto')n=trAutoEmpty();
+ else if(op=='dldel'&&p){const path=downloadsPath().concat(String(p).split('\\'));if(path.slice(downloadsPath().length).some(x=>!x||x=='..'))return;trashPut([path])}
+ const s=await storSnap();if(n!=null)s.trDel=n;svj('bd95stor:'+uid(),s)}

@@ -5687,6 +5687,16 @@ static int native_open_page(const char *q)
 {
 	/* (1.6.3 Part 3: Multimedia Settings' folders, "explorer C:\\PROGRAMS\\INSTALLERS": File Explorer at a folder of the page's drive C:) */
 	if (!strncmp(q, "explorer C:\\", 12) && strlen(q) < 120 && strspn(q + 9, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:\\_-") == strlen(q + 9) && !strstr(q, "..")) { app_open("explorer", q + 9); return 1; }
+	/* (Settings › Storage and backup, 1.6.3 PR 7b) "stor OP [ARG]": the page's own figures worked out again by the hidden page (do-stor:
+	   storDo, kept in bd95stor:ACCT), after Empty the Trash, the old items' rule or a download's Delete; "storgo W [ARG]": what the page
+	   opens, in a page of one action (do-storgo). OP and W only those named; ARG (a download's place in Downloads, a drive's partition)
+	   escaped into the address, at most 150 bytes, no control characters */
+	{ int st = !strncmp(q, "stor ", 5), go = !strncmp(q, "storgo ", 7);
+	  if (st || go) { char w[16] = ""; const char *a = q + (go ? 7 : 5); size_t n = strcspn(a, " "); if (n == 0 || n >= sizeof w) return 1; memcpy(w, a, n); a += n; if (*a == ' ') a++;
+		static const char *const OPS[] = { "measure", "emptytrash", "trauto", "dldel", NULL }, *const WS[] = { "home", "dl", "dups", "trash", "backup", "restore", "applinux", "steam", "emu", "dlopen", "stkbak", "keep", NULL };
+		int ok = 0; for (const char *const *o = go ? WS : OPS; *o; o++) if (!strcmp(*o, w)) ok = 1; if (!ok || strlen(a) > 150) return 1;
+		for (const char *p = a; *p; p++) if ((unsigned char)*p < ' ' || *p == 127) return 1;
+		char *e = g_uri_escape_string(a, NULL, FALSE), *ex = g_strdup_printf(go ? "&w=%s&p=%s" : "&op=%s&p=%s", w, e); app_open_ex(go ? "do-storgo" : "do-stor", NULL, ex, go ? 0 : 1); g_free(e); g_free(ex); return 1; } }
 	/* (Settings › Apps' Calls to phones: "browser https://…", the address in Oracle, as the page's webOpen) */
 	if (!strncmp(q, "browser https://", 16) && strlen(q) < 190) { const char *u = q + 8; for (const char *p = u; *p; p++) if ((unsigned char)*p <= ' ' || *p == 127 || *p == '"' || *p == '<' || *p == '>' || *p == '\\') return 1;
 		char *e = g_uri_escape_string(u, NULL, FALSE), *ex = g_strdup_printf("&url=%s", e); app_open_ex("browser", NULL, ex, 0); g_free(e); g_free(ex); return 1; }
@@ -7136,7 +7146,7 @@ static void bg_tick(void)
 /* a single action for the hidden page: K, the rest of its address and its file as its own page (#app=K) would have had them, run there
    (oneapp59.js __oaDo, which tells the shell when it is done, op "done", as that page did); a page of its own when the hidden page is
    not ready yet or did not take it */
-static const char *const BG_DO[] = {"do-qs", "do-nc", "do-pin", "do-mute", "do-desk", "do-fs", "do-short", NULL};
+static const char *const BG_DO[] = {"do-qs", "do-nc", "do-pin", "do-mute", "do-desk", "do-fs", "do-short", "do-stor", NULL};
 typedef struct { char k[KN]; char *file, *extra; } BgJob;
 static int BG_NOROUTE;
 static void bg_done(GObject *src, GAsyncResult *res, gpointer d)

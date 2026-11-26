@@ -128,6 +128,7 @@ void page_web(void);   /* settings_web.c (1.6.3 PR 6): Oracle */
 void page_notif(void); /* settings_notif.c (1.6.3 PR 7) */
 void page_devs(void);  /* settings_devs.c (1.6.3 PR 7) */
 void page_apps(void);  /* settings_apps.c (1.6.3 PR 7) */
+void page_stor(void);  /* settings_stor.c (1.6.3 PR 7b) */
 /* (settings_net.c: the Web search and Downloads rows, shown on Network Settings and Oracle: one working copy, one footer) */
 void net_search_rows(const char *pfx, int part);       /* part 1: Web search, 2: Downloads, 0: both */
 void net_search_msg(void);

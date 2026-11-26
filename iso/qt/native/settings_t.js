@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web,notif,devs,apps').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web,notif,devs,apps,stor').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -90,7 +90,7 @@ async function natShots(mode, pages) {
   return out;
 }
 // ---- Search in Settings: the same results for the same words (the page's ssMatch over its pages, with System and About harvested as shown)
-const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5'], web: ['mid2', 'mid3'], devs: ['mid2'], apps: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7']};
+const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5'], web: ['mid2', 'mid3'], devs: ['mid2'], apps: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], stor: ['mid2', 'mid3', 'mid4', 'mid5']};
 const QUERIES = ['time zone', 'sound', 'date', 'wifi', 'dark', 'idle', 'about', 'desktop page', 'lang', 'xyzzy'];
 async function pageSearch() {
   const {ctx, p} = await signin('light');
@@ -228,7 +228,7 @@ async function checkUpd() {
       [c.slice(-600), l.bd95seclog, l['bd95bring:uAnnA1b2'], nst().split('\n').filter(x => /^act/.test(x)).slice(-6)]) }
   /* Before an installation (bringStep): Windows found on the disk, Ann's Documents kept on a USB drive, then the installation goes on */
   { const T = JSON.parse(JSON.stringify(SETD)); T['bring/result'] = {ok: true, found: true, total: 1048576, systems: [{name: 'Windows 11', part: 'nvme0n1p3', state: 'hibernated', people: [{id: 'p1', name: 'Ann', bytes: 1048576, folders: [{k: 'Documents', bytes: 1048576, files: 3}]}]}], locked: []};
-    T.disks.disks.push({name: 'sdb', model: 'USB DISK', bytes: 32e9, removable: true, partitions: [{name: 'sdb1', fs: 'exfat', label: 'KEEP', mount: '', bytes: 32e9}]}); T.job = {ok: true, running: false, status: 0, log: 'PROGRESS 3 3 1048576 1048576\nCopied 3 files.\n'};
+    T.disks.disks = T.disks.disks.filter(k => k.name != 'sdb'); T.disks.disks.push({name: 'sdb', model: 'USB DISK', bytes: 32e9, removable: true, partitions: [{name: 'sdb1', fs: 'exfat', label: 'KEEP', mount: '', bytes: 32e9}]}); T.job = {ok: true, running: false, status: 0, log: 'PROGRESS 3 3 1048576 1048576\nCopied 3 files.\n'};
     fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(T)); mark = c0(); await wait(800);
     await scrollTo('install0'); click(rect('install0')); await until(() => rect('dialog'), 3000); pw(); await until(() => rect('bsgo') && /bringstep .* has another system/.test(nst()), 6000); await wait(500);
     sh(`import -window root ${path.join(OUT, 'bringstep.png')}`); const g = rect('bsgo'); const keep = !!rect('bskeep') && !!rect('bsf0') && !!rect('bsto'); xdo(`mousemove ${g[0] + 10} ${g[1] + 8} click 1`); await until(() => /Copied and checked/.test(nst()), 6000); await wait(400);
@@ -587,10 +587,39 @@ async function checkApps() {
     ok('Ap10. Google Voice\'s Open in Oracle: the shell asked (browser https://voice.google.com/)', /browser https:\/\/voice\.google\.com\//.test(acts()), lines('act').slice(-3)) }
   natStop();
 }
+// (1.6.3 Part 3, PR 7b) Storage and backup: what each part asks of the shell or rudolfd, or saves, as the page does
+async function checkStor() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data;
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('stor'); await until(() => rect('body') && line('page') == 'stor', 20000); await wait(1500);
+  ok('S0. Opened: the page\'s own figures asked again of the hidden page (stor measure)', /stor measure/.test(acts()), lines('act').slice(0, 3));
+  { click(rect('et')); await until(() => /stor emptytrash/.test(acts()), 3000);
+    ok('S1. Empty the Trash: done by the hidden page (stor emptytrash)', /stor emptytrash/.test(acts()), lines('act').slice(-2)) }
+  { click(rect('ex')); await until(() => /storgo home/.test(acts()), 3000);
+    ok('S2. Open File Explorer: the home folder in File Explorer (storgo home)', /storgo home/.test(acts()), lines('act').slice(-2)) }
+  { mark = c0(); await scrollTo('sda'); click(rect('sda')); await until(() => /POST storage\/measure/.test(since()), 3000);
+    ok('S3. Measure again: storage/measure', /POST storage\/measure/.test(since()), since()) }
+  { await scrollTo('sda_flatpak'); click(rect('sda_flatpak')); await until(() => /storgo applinux/.test(acts()), 3000);
+    ok('S4. Linux apps\' Manage: the App Store\'s Linux apps (storgo applinux)', /storgo applinux/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('trad'); await pick('trad', 2, 5); await until(() => LS()['bd95trauto:uAnnA1b2'] == '14' && /stor trauto/.test(acts()), 3000);
+    ok('S5. Trash: 14 days: bd95trauto:ACCT 14, the old items deleted by the hidden page (stor trauto)', LS()['bd95trauto:uAnnA1b2'] == '14' && /stor trauto/.test(acts()), [LS()['bd95trauto:uAnnA1b2'], lines('act').slice(-2)]) }
+  { await scrollTo('stkb0'); click(rect('stkb0')); await until(() => /storgo stkbak sdb1/.test(acts()), 3000);
+    ok('S6. Back up here: the backup written to STICK (storgo stkbak sdb1)', /storgo stkbak sdb1/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('stks'); await pick('stks', 1, 2); await wait(600); await scrollTo('stkm0'); click(rect('stkm0')); await until(() => /elevate Make a Rudolf OS USB stick on sdb/.test(acts()), 3000);
+    ok('S7. This Rudolf OS, Make the stick…: the administrator\'s prompt first (nothing asked of rudolfd yet)', /elevate Make a Rudolf OS USB stick on sdb/.test(acts()) && !/mkstick/.test(calls()), lines('act').slice(-2));
+    xdo('key Escape'); await wait(400) }
+  natStop();
+}
 const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')));
 (async () => {
   fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(SETD));
   BR = await chromium.launch({ignoreDefaultArgs: ['--hide-scrollbars'], args: ['--font-render-hinting=none']});
+  // (Storage and backup: the page's own figures, as the native desktop's hidden page works them out (storSnap) and keeps them in bd95stor:ACCT)
+  if (PAGES.includes('stor') && (!ONLY || ONLY.split(',').some(x => x == 'stor' || x.startsWith('stor-') || MODES[x] || x == 'checklist'))) { const {ctx, p} = await signin('light'); MORE['bd95stor:' + ST.ACCT] = await p.evaluate(() => storSnap()); await ctx.close() }
   const rows = [];
   for (const mode of Object.keys(MODES)) {
     if (!only(mode) && !(ONLY || '').split(',').some(x => PAGES.includes(x))) continue;
@@ -624,6 +653,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('notif-checklist')) await checkNotif();
   if (only('checklist') || only('devs-checklist')) await checkDevs();
   if (only('checklist') || only('apps-checklist')) await checkApps();
+  if (only('checklist') || only('stor-checklist')) await checkStor();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

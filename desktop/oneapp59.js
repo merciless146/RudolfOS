@@ -179,6 +179,20 @@ let OA_UPD=null;if(ONEAPP&&typeof updNotice=='function'){OA_UPD=updNotice;updNot
 if(ONEAPP&&typeof A=='object')A.hwcheck=()=>{if(typeof hwCheck=='function')hwCheck()};
 /* (1.6.3 Part 3) the native Settings › Apps: the page's own dialogs and windows it opens (#app=do-wineold, do-debpasswd, do-blzknows, do-blzdev) */
 if(ONEAPP&&typeof A=='object'){A.wineold=()=>{if(typeof woOffer=='function')woOffer('settings')};A.debpasswd=()=>{if(typeof debPasswd=='function')debPasswd(null)};A.blzknows=()=>{if(typeof blzkSeeWin=='function')blzkSeeWin()};A.blzdev=()=>{if(typeof blzDevApp=='function')blzDevApp()}}
+/* (1.6.3 Part 3, PR 7b) the native Settings' Storage and backup: its figures (#app=do-stor, unseen: storDo) and what it opens in a page of
+   one action (#app=do-storgo&w=...: the home folder, Downloads, duplicates, a backup, a restore, the App Store's Linux apps, Steam, Emu, the
+   Trash, a download kept on the disk, a backup to a plugged-in drive) */
+if(ONEAPP&&typeof A=='object'){A.stor=()=>{const q=ONEAPP.q;storDo(q.get('op')||'',q.get('p')||'').catch(e=>console.warn(e)).finally(async()=>{try{if(window.__rudolfLsFlush)await window.__rudolfLsFlush()}catch(e){}oaFin({})})};
+ A.storgo=()=>{const q=ONEAPP.q,w=q.get('w')||'',p=q.get('p')||'';
+  if(w=='home')return explorer(homePath());if(w=='dl')return explorer(downloadsPath());if(w=='dups'&&typeof dupWindow=='function')return dupWindow(homePath());if(w=='trash')return trash();
+  if(w=='backup')return backupAll();if(w=='restore'){const f=document.createElement('input');f.type='file';f.accept='.zip';f.onchange=async()=>{const x=f.files[0];if(!x)return;try{await restoreAll(x)}catch(e){notify('Restore failed',e.message,{kind:'error'})}};f.click();return}
+  if(w=='keep'&&typeof kfMake=='function')return kfMake(null,()=>{});
+  if(w=='applinux'){const W=appStore();const b=W&&W.body.querySelector(".tmtabs button[data-t='linux']");b&&b.click();return}
+  if(w=='steam'||w=='emu'){const k=w=='steam'?Object.keys(APPS).find(x=>/^lx:.*valvesoftware\.Steam/i.test(x)):Object.keys(APPS).find(x=>APPS[x].name=='Emu');return k&&launch(k)}
+  if(w=='dlopen'&&p){const path=downloadsPath().concat(p.split('\\'));if(!path.slice(downloadsPath().length).some(x=>!x||x=='..'))return dlOpen(path)}
+  if(w=='stkbak'&&p)return (async()=>{let part=null;try{const d=(await rd('disks')).disks||[],i=await rd('info');stkBackupParts(d,i).forEach(x=>{if(x.part.name==p)part=x.part})}catch(e){}
+   if(!part)return notify('Backup','That drive is not plugged in.',{kind:'error'});notify('Backup','Making the backup…');
+   try{const n=await stkBackupTo(part);notify('Backup saved',`${part.label||part.name}: ${STK.BDIR}/${n}`)}catch(x){notify('Backup','The backup could not be saved: '+x.message,{kind:'error'})}})()}}
 if(ONEAPP)idleWoke=()=>true;
 if(ONEAPP)window.__oaFs=on=>{if(oaChromium())oaPost({op:'fs',on:on?1:0})};
 /* (1.6.0 Part 12, test finding N1) the same in the native desktop's WebKit windows: the shell's stand-in (an element made full screen fills
@@ -399,7 +413,7 @@ function oaOpen(){if(OA.opened||!ONEAPP)return;OA.opened=1;
      try{if(window.__rudolfLsFlush)await window.__rudolfLsFlush()}catch(e){}try{await oaCatSoon()}catch(e){}oaPost(Object.assign({op:'done'},m||{}))})()};
     /* (what it took, for the tests: OA.doLog) */
     const took=()=>{(OA.doLog||(OA.doLog=[])).push(da);return 1};
-    try{if(da=='nc'&&q.get('op')=='why')return 0;if(da=='desk'){oaDesk(q,fin);return took()}if(da=='fs'&&/^(drop|rename|xdrop)$/.test(q.get('op')||'')){oaFs(q,String(file||''),fin);return took()}if(oaAct(da,q,fin,1))return took()}
+    try{if(da=='nc'&&q.get('op')=='why')return 0;if(da=='desk'){oaDesk(q,fin);return took()}if(da=='stor'&&typeof storDo=='function'){storDo(q.get('op')||'',q.get('p')||'').catch(e=>console.warn(e)).finally(()=>fin({}));return took()}if(da=='fs'&&/^(drop|rename|xdrop)$/.test(q.get('op')||'')){oaFs(q,String(file||''),fin);return took()}if(oaAct(da,q,fin,1))return took()}
     catch(e){console.warn('one-app: '+da,e);fin({err:String(e&&e.message||e)});return 1}return 0};
    if(ONEAPP.q.get('start')=='1')oaStartRun();oaSrchRun();oaPortalRun();oaSvcRun();return}
  if(da0=='portalapp'){OA.want=1;const id=ONEAPP.q.get('req')||'';(async()=>{await oaAppsReady();let j=null;try{j=await lxApi('portal/poll')}catch(e){}
