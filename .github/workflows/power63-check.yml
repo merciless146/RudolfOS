@@ -1,0 +1,21 @@
+name: Power and unsaved work (1.6.3)
+# ⏻ Power gives a choice; Shut down, Restart and Sign out ask about unsaved work (the owner, 2026-11-26, FreeBuff's second round): power63_t.js.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['power-menu']
+  pull_request:
+    paths: ['desktop/power63.js', 'desktop/core25.js', 'desktop/base_v24.html', 'iso/qt/shell2/power63_t.js', '.github/workflows/power63-check.yml']
+permissions: {contents: read}
+jobs:
+  power:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: power63_t.js
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/power63_t.js
