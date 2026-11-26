@@ -164,6 +164,7 @@ class H(http.server.BaseHTTPRequestHandler):
         # same for the page's Task Manager and the native one); the actions taken answered as rudolfd answers them (and noted in DIR/calls)
         if rd('tm') is not None:
             T = json.loads(rd('tm'))
+            if w == 'storage/measure' and m == 'POST' and 'storage' in T: return self.j(T['storage'])   # (Storage and backup's Measure again: measured at once)
             # (Settings › Apps, settings_t.js Ap-checklist: Blitzen's changes answered ok, each body kept in DIR/body-NAME)
             if m == 'POST' and (w in ('ai/unload', 'ai/remove', 'ai/know/forget', 'ai/dev/token') or (w == 'ai/know/notes' and 'set=1' in q) or (w == 'ai/dev/settings' and 'repo=' in q) or (w == 'ai/know/learn' and 'on=' in q)):
                 open(os.path.join(D, 'body-' + w.replace('/', '_')), 'wb').write(b)

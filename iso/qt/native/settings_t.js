@@ -587,6 +587,33 @@ async function checkApps() {
     ok('Ap10. Google Voice\'s Open in Oracle: the shell asked (browser https://voice.google.com/)', /browser https:\/\/voice\.google\.com\//.test(acts()), lines('act').slice(-3)) }
   natStop();
 }
+// (1.6.3 Part 3, PR 7b) Storage and backup: what each part asks of the shell or rudolfd, or saves, as the page does
+async function checkStor() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data;
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('stor'); await until(() => rect('body') && line('page') == 'stor', 20000); await wait(1500);
+  ok('S0. Opened: the page\'s own figures asked again of the hidden page (stor measure)', /stor measure/.test(acts()), lines('act').slice(0, 3));
+  { click(rect('et')); await until(() => /stor emptytrash/.test(acts()), 3000);
+    ok('S1. Empty the Trash: done by the hidden page (stor emptytrash)', /stor emptytrash/.test(acts()), lines('act').slice(-2)) }
+  { click(rect('ex')); await until(() => /storgo home/.test(acts()), 3000);
+    ok('S2. Open File Explorer: the home folder in File Explorer (storgo home)', /storgo home/.test(acts()), lines('act').slice(-2)) }
+  { mark = c0(); await scrollTo('sda'); click(rect('sda')); await until(() => /POST storage\/measure/.test(since()), 3000);
+    ok('S3. Measure again: storage/measure', /POST storage\/measure/.test(since()), since()) }
+  { await scrollTo('sda_flatpak'); click(rect('sda_flatpak')); await until(() => /storgo applinux/.test(acts()), 3000);
+    ok('S4. Linux apps\' Manage: the App Store\'s Linux apps (storgo applinux)', /storgo applinux/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('trad'); await pick('trad', 2, 5); await until(() => LS()['bd95trauto:uAnnA1b2'] == '14' && /stor trauto/.test(acts()), 3000);
+    ok('S5. Trash: 14 days: bd95trauto:ACCT 14, the old items deleted by the hidden page (stor trauto)', LS()['bd95trauto:uAnnA1b2'] == '14' && /stor trauto/.test(acts()), [LS()['bd95trauto:uAnnA1b2'], lines('act').slice(-2)]) }
+  { await scrollTo('stkb0'); click(rect('stkb0')); await until(() => /storgo stkbak sdb1/.test(acts()), 3000);
+    ok('S6. Back up here: the backup written to STICK (storgo stkbak sdb1)', /storgo stkbak sdb1/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('stks'); await pick('stks', 1, 2); await wait(600); await scrollTo('stkm0'); click(rect('stkm0')); await until(() => /elevate Make a Rudolf OS USB stick on sdb/.test(acts()), 3000);
+    ok('S7. This Rudolf OS, Make the stick…: the administrator\'s prompt first (nothing asked of rudolfd yet)', /elevate Make a Rudolf OS USB stick on sdb/.test(acts()) && !/mkstick/.test(calls()), lines('act').slice(-2));
+    xdo('key Escape'); await wait(400) }
+  natStop();
+}
 const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')));
 (async () => {
   fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(SETD));
@@ -626,6 +653,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('notif-checklist')) await checkNotif();
   if (only('checklist') || only('devs-checklist')) await checkDevs();
   if (only('checklist') || only('apps-checklist')) await checkApps();
+  if (only('checklist') || only('stor-checklist')) await checkStor();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');
