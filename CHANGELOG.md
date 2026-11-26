@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New: Mute in the notification centre (🔔 on the taskbar): while it is on, no notification pops up or makes a sound, errors
+  included; they are still kept in the centre. Do not disturb stays as it was. The same on the native desktop.
 - New (native desktop, not switched on yet): the native Settings has Notifications, Devices (drives, USB devices, Thunderbolt, keyboards,
   printers, the print queue, scanners) and Apps (default apps, links, installed apps, Linux and Wine, Blitzen, developer tools, calls to
   phones), each as the web one shows it and saving what it saves.

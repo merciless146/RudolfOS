@@ -3,6 +3,7 @@
 // disturb, Dark mode on and off) and what the page keeps of them, a notification dismissed, Do not disturb in the
 // centre, Clear all, one panel giving way to the other, Settings from quick settings; (1.6.0 Part 2) Airplane mode on and
 // off (rudolfd's mobile/airplane, as same_rd.py keeps it); (Part 3) Mobile data off and on, with a connected modem.
+// (1.6.3, the owner) the centre's Mute: on and off, kept as the page keeps it, and no pop-up while on, an error's included.
 // Run by same_t.sh with SAME_SCRIPT=qsbeh_t.js.   node qsbeh_t.js RUDOLF-NATIVE DIR OUT PORT DISPLAY
 const {chromium} = require('playwright'); const fs = require('fs'), path = require('path'), cp = require('child_process');
 const [BIN, D, OUT, PORT, DSP] = process.argv.slice(2);
@@ -19,14 +20,15 @@ const MORE = {['bd95notif:' + ACCT]: [{id: 1, t: 'Download finished', b: 'report
 /* (dm: the page's default, auto, until a page saved its settings) */
 const kept = async () => { const d = JSON.parse(fs.readFileSync(path.join(D, 'ls.json'), 'utf8')).data, st = JSON.parse(d['bd95set:' + ACCT] || '{}'), nt = JSON.parse(d['bd95notif:' + ACCT] || '[]');
   let air = '0', mob = '-'; try { air = fs.readFileSync(path.join(D, 'airplane'), 'utf8').trim() } catch (e) {} try { mob = fs.readFileSync(path.join(D, 'mobile'), 'utf8').trim() } catch (e) {}
-  return 'dnd=' + (st.dnd ? 1 : 0) + ' dm=' + (st.dm || 'auto') + ' notes=' + nt.length + ' airplane=' + air + ' mobile=' + mob };
+  return 'dnd=' + (st.dnd ? 1 : 0) + ' nmute=' + (st.nmute ? 1 : 0) + ' dm=' + (st.dm || 'auto') + ' notes=' + nt.length + ' airplane=' + air + ' mobile=' + mob };
 const STEPS = [['qs', 'open', 'qs'], ['dnd', 'tile', 'Do not disturb'], ['dark', 'tile', 'Dark mode'], ['light', 'tile', 'Dark mode'], ['air', 'tile', 'Airplane mode'], ['air-off', 'tile', 'Airplane mode'], ['mob-off', 'tile', 'Mobile data'], ['mob-on', 'tile', 'Mobile data'], ['qs-again', 'open', 'qs'],
-  ['nc', 'open', 'notes'], ['dismiss', 'nx', 0], ['nc-dnd', 'dnd'], ['clear', 'clear'], ['qs2', 'open', 'qs'], ['to-nc', 'open', 'notes'], ['outside', 'at', [700, 400]], ['qs3', 'open', 'qs'], ['settings', 'btn', 'settings']];
+  ['nc', 'open', 'notes'], ['dismiss', 'nx', 0], ['nc-dnd', 'dnd'], ['nc-mute', 'mute'], ['nc-unmute', 'mute'], ['clear', 'clear'], ['qs2', 'open', 'qs'], ['to-nc', 'open', 'notes'], ['outside', 'at', [700, 400]], ['qs3', 'open', 'qs'], ['settings', 'btn', 'settings']];
 async function run(e) {
   const O = {}; fs.writeFileSync(path.join(D, 'mobile'), 'connected');   /* (a modem with its SIM unlocked, connected: the tenth switch) */
   for (const [n, what, arg] of STEPS) {
     if (what == 'open') await e.click(await e.bar(arg)); else if (what == 'at') await e.click(arg); else await e.click(await e.part(what, arg));
     await wait(what == 'open' || what == 'at' ? 1500 : 9000); O[n] = [await e.shown(), await e.apps(), await kept()].join(' · ');
+    if (n == 'nc-mute' && e.muteToast) O.muteToast = await e.muteToast();
     if (n == 'settings') await e.closeApps() }
   return O;
 }
@@ -36,11 +38,13 @@ function std(p) {
     bar: k => q(k == 'qs' ? '#qsb' : '#ncb'),
     part: (w, a) => w == 'tile' ? p.evaluate(a => { const e = [...document.querySelectorAll('#qsp .qst')].find(x => x.querySelector('span').textContent == a); const r = e.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] }, a)
       : w == 'nx' ? p.evaluate(i => { const r = document.querySelectorAll('#ncp .nx')[i].getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] }, a)
-      : q(w == 'dnd' ? '#ncp .dnd' : w == 'clear' ? '#ncp .clr' : '#qsp .qset'),
+      : q(w == 'dnd' ? '#ncp .dnd' : w == 'mute' ? '#ncp .nmute' : w == 'clear' ? '#ncp .clr' : '#qsp .qset'),
     click: async c => { await p.mouse.click(c[0], c[1]); await wait(300) },
     shown: () => p.evaluate(() => { const qp = document.querySelector('#qsp'), np = document.querySelector('#ncp');
       if (qp) return 'qs:' + [...qp.querySelectorAll('.qst.on span')].map(s => s.textContent).join(',');
-      if (np) return 'nc:' + (np.querySelector('.dnd').checked ? 1 : 0) + ':' + [...np.querySelectorAll('.nitem b')].map(b => b.textContent).join(','); return '-' }),
+      if (np) return 'nc:' + (np.querySelector('.dnd').checked ? 1 : 0) + ':' + (np.querySelector('.nmute').checked ? 1 : 0) + ':' + [...np.querySelectorAll('.nitem b')].map(b => b.textContent).join(','); return '-' }),
+    /* an error's notification while muted: no pop-up (quiet: not kept, so the lists stay the same as Native's) */
+    muteToast: () => p.evaluate(() => { const h = document.getElementById('ntoasts'), k = h ? h.children.length : 0; notify('Muted test', '', {kind: 'error', quiet: true}); const h2 = document.getElementById('ntoasts'); return (h2 ? h2.children.length : 0) - k }),
     apps: () => p.evaluate(() => wins.map(W => W.app).sort().join(',') || 'none'),
     closeApps: () => p.evaluate(() => wins.slice().forEach(W => W.close()))
   };
@@ -55,10 +59,10 @@ function nat() {
   const btn = k => { const l = nlines('flybtn').find(x => x.split(' ')[1] == k); if (!l) return null; const a = l.split(' '); return [+a[2], +a[3]] };
   return {
     bar: async k => nhit(k + ' -'),
-    part: async (w, a) => w == 'tile' ? btn('qs:' + QSL.indexOf(a)) : w == 'nx' ? btn('nx:' + a) : btn(w == 'dnd' ? 'dnd' : w == 'clear' ? 'clear' : 'settings'),
+    part: async (w, a) => w == 'tile' ? btn('qs:' + QSL.indexOf(a)) : w == 'nx' ? btn('nx:' + a) : btn(w == 'dnd' ? 'dnd' : w == 'mute' ? 'mute' : w == 'clear' ? 'clear' : 'settings'),
     click: async c => { if (c) xdo('mousemove ' + Math.round(c[0]) + ' ' + Math.round(c[1]) + ' click 1'); await wait(400) },
     shown: async () => { const f = (nst('fly') || '-').split(' ')[0]; if (f == 'qs') return 'qs:' + (nst('flyqs') || '').trim().split(' ').filter(Boolean).join(' ').replace(/(\w) (\w)/g, '$1 $2').split(/ (?=[A-Z])/).join(',');
-      if (f == 'nc') { const l = nst('flync') || ''; const [h, ...t] = l.split('|'); const [n, d] = h.split(' '); return 'nc:' + d + ':' + t.join(',') } return '-' },
+      if (f == 'nc') { const l = nst('flync') || ''; const [h, ...t] = l.split('|'); const [n, d] = h.split(' '); return 'nc:' + d + ':' + (nst('nmute') || '0').trim() + ':' + t.join(',') } return '-' },
     apps: async () => nlines('client').map(x => (x.match(/ app=(\S+)/) || [])[1]).filter(k => k && k != '-' && !/^do-/.test(k)).sort().join(',') || 'none',
     closeApps: async () => { for (const l of nlines('client')) { const a = l.split(' '); if (!/ app=(-|do-)/.test(l)) xdo('mousemove ' + (+a[3] + +a[5] + 2 - 9 - 12) + ' ' + (+a[4] + 7 + 11) + ' click 1') } await until(() => !nlines('client').some(l => !/ app=(-|do-)/.test(l)), 15000); await wait(800) }
   };
@@ -80,6 +84,7 @@ function nat() {
   OUTS.nat = await run(nat()); NP.kill();
   for (const [s] of STEPS) ok(s + ': ' + OUTS.std[s], OUTS.std[s] == OUTS.nat[s], {std: OUTS.std[s], nat: OUTS.nat[s]});
   ok('the page\'s own outcomes: Do not disturb kept, Dark mode on then off, one dismissed, all cleared', /dnd=1/.test(OUTS.std.dnd) && /dm=dark/.test(OUTS.std.dark) && /dm=light/.test(OUTS.std.light) && /notes=1/.test(OUTS.std.dismiss) && /notes=0/.test(OUTS.std.clear), OUTS.std);
+  ok('Mute: kept on, then off; no pop-up while on, an error\'s included', /nmute=1/.test(OUTS.std['nc-mute']) && /nmute=0/.test(OUTS.std['nc-unmute']) && OUTS.std.muteToast === 0, {mute: OUTS.std['nc-mute'], unmute: OUTS.std['nc-unmute'], toast: OUTS.std.muteToast});
   fs.writeFileSync(path.join(OUT, 'qsbeh.json'), JSON.stringify(OUTS, null, 1));
   console.log(R.filter(x => x).length + '/' + R.length + ' passed'); process.exit(R.every(x => x) ? 0 : 1);
 })().catch(e => { console.log('FAIL ' + e.stack); if (NP) NP.kill(); process.exit(1) });

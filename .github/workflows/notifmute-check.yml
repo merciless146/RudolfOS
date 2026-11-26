@@ -1,0 +1,28 @@
+name: Notifications' Mute (1.6.3)
+# The notification centre's Mute (the owner, 2026-11-26): no pop-up or sound at all while on, an error's included, on
+# Chromium mode's page and on Native, with the rest of quick settings' and the centre's behaviour (iso/qt/native/qsbeh_t.js).
+on:
+  workflow_dispatch:
+  push:
+    branches: ['notif-mute']
+  pull_request:
+    paths: ['desktop/shell25.js', 'desktop/oneapp59.js', 'iso/sys/rudolf-native.c', 'iso/qt/native/qsbeh_t.js', '.github/workflows/notifmute-check.yml']
+permissions: {contents: read}
+jobs:
+  engines:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python3-pil gcc xvfb xdotool imagemagick libwebkit2gtk-4.1-dev fonts-dejavu-core >/dev/null
+          npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: "qsbeh_t.js: Chromium mode and Native"
+        run: mkdir -p out && NODE_PATH=$PWD/node_modules SAME_SCRIPT=qsbeh_t.js SAME_PORT=8750 SAME_DSP=:93 sh iso/qt/native/same_t.sh $PWD/out
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: notifmute, retention-days: 7, path: out}
