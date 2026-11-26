@@ -31,7 +31,8 @@ void set_jw(GString *b, RuiJ *v);                    /* (1.6.3) a JSON value wri
 typedef struct Cell Cell;
 void p_h3(const char *t);                             /* .sc h3: the page's title */
 void p_h4(const char *t);                             /* .sh4: a section */
-void p_sgrp(const char *t);                           /* .sh4.sgrp: a group of sections (settings31.js) */
+void p_sgrp(const char *t);
+void p_h4_px(const char *t, double px, double mt);   /* (1.6.3) an .sh4 of its own font size and margin above */                           /* .sh4.sgrp: a group of sections (settings31.js) */
 GtkWidget *p_msg(const char *t, int grey);            /* .msg (grey: the page's color:#6b7280, else the page's own colour) */
 Cell *p_r2(const char *label);                        /* a row of .r2: its label, its controls in the cell (each row of the page's grid) */
 void p_r2_more(Cell *c);                              /* (the next row is in the same .r2: no margin between) */

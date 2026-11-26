@@ -668,6 +668,27 @@ async function checkSec() {
     ok('S8. Two-step sign-in required for administrators: the administrator\'s prompt first', /elevate Change who must use two-step sign-in/.test(acts()) && (J('bd95sys') || {}).mfa === undefined, lines('act').slice(-2)); xdo('key Escape'); await wait(400) }
   natStop();
 }
+// (1.6.3 Part 3, PR 8) System health: power/set at once, memory's settings after the administrator's prompt, game mode, the page's windows
+async function checkHealth() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 80; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 500) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 500 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('health'); await until(() => rect('body') && line('page') == 'health', 20000); await wait(1500);
+  { mark = c0(); await scrollTo('pw_sleep_bat'); await pick('pw_sleep_bat', 4, 6); await until(() => /POST power\/set/.test(since()), 3000);
+    ok('H1. Sleep after, on battery: 30 minutes: power/set?sleep_bat=30 at once', /POST power\/set\?sleep_bat=30(\s|$)/m.test(since()), since()) }
+  { mark = c0(); await scrollTo('mca'); click(rect('mca')); await until(() => /elevate Change the memory settings/.test(acts()), 3000);
+    ok('H2. Close apps with no window open: the administrator\'s prompt first, nothing asked of rudolfd yet', /elevate Change the memory settings/.test(acts()) && !/memory\/settings\?/.test(since()), lines('act').slice(-2)); xdo('key Escape'); await wait(500) }
+  { mark = c0(); await scrollTo('gm61ck'); click(rect('gm61ck')); await until(() => SET().gamemode === false && /POST game\/set\?enabled=0/.test(since()), 3000);
+    ok('H3. Game mode off: S.gamemode false (bd95set:ACCT) and game/set?enabled=0', SET().gamemode === false && /POST game\/set\?enabled=0/.test(since()), [SET().gamemode, since()]) }
+  { await scrollTo('hst'); click(rect('hst')); await until(() => /storgo selftest/.test(acts()), 3000);
+    ok('H4. Run the self-test: the page\'s own window (storgo selftest)', /storgo selftest/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('why2'); click(rect('why2')); await until(() => /storgo hlwhy 2/.test(acts()), 3000);
+    ok('H5. The memory event\'s "⚡ Why?": Blitzen asked about that event (storgo hlwhy 2)', /storgo hlwhy 2/.test(acts()), lines('act').slice(-2)) }
+  natStop();
+}
 const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')));
 (async () => {
   fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(SETD));
@@ -710,6 +731,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('stor-checklist')) await checkStor();
   if (only('checklist') || only('priv-checklist')) await checkPriv();
   if (only('checklist') || only('sec-checklist')) await checkSec();
+  if (only('checklist') || only('health-checklist')) await checkHealth();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

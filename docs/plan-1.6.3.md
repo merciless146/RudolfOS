@@ -333,7 +333,12 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
     dialogs (encrypting, the recovery key, Secure Boot's preparation, Developer mode, the link's log, installing the DoD's certificates)
     and Scan now, Quarantine all, Restore: "storgo W" and "stor OP" (sc60.js's install moved into scDodInstall for it). Views 0.42-1.75 %
     but one place (mid5, a 1 px rounding of the page's fractional layout: 2.1-2.3 %), Search the same 37 rows, checklist S1-S8.
-  - Next: System health (sec50.js
+  - System health (`settings_health.c`): the summary of the last 7 days, Power and battery (power/status, power/set at once,
+    administrators only), the development link's and the accounts' Linux users' rows, Memory (memory/settings after the administrator's
+    prompt), Game mode (S.gamemode with game/set, S.gmsleep), the events by kind with each one's "⚡ Why?"; Report a problem…, the
+    self-test, Last starts and Blitzen's answers in a page of one action. Views 0.44-0.87 % light and dark; Search the same 33 rows;
+    checklist H1-H5.
+  - Next: (done: System health) (sec50.js
     healthPanel with apps57, gamesleep59, gamemode61, wineold62's row), User Settings (usrPanelS with acct50, devkey59, fido61, fprint63,
     otp60, power31, saver31), the administrator's and two-step prompts exactly where the web ones are; Security's mid5 view.
 - **Left:** Security, System health, Users (PR 8); the switch.

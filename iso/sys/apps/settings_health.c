@@ -77,7 +77,8 @@ static void pair(Cell *c, const char *k, const char *const *v, const char *const
 	Pair *p = g_new0(Pair, 1); char kb[32], ka[32]; snprintf(kb, sizeof kb, "%s_bat", k); snprintf(ka, sizeof ka, "%s_ac", k); p->s[0] = psel(kb, v, l, n, dis, why); p->s[1] = psel(ka, v, l, n, dis, why);
 	/* (the two selects as wide as the wider: the page's labels are flex items with the same widest option) */
 	p->a = gtk_drawing_area_new(); g_signal_connect(p->a, "draw", G_CALLBACK(pair_draw), p); double w0 = pair_w(p->s[0]), w1 = pair_w(p->s[1]);
-	gtk_widget_set_size_request(p->a, (int)lround((w0 + 8 + w1) * s_z()), (int)lround(13 * s_z())); c_add(c, p->a, 0, 0, 0); c_line(c, 0); c_add(c, p->s[0], 0, 0, 0); c_add(c, p->s[1], 8, 0, 0);
+	g_object_set_data(G_OBJECT(p->s[0]), "set-label", (gpointer)"On battery"); g_object_set_data(G_OBJECT(p->s[1]), "set-label", (gpointer)"Plugged in");   /* (found by Search, as the page's labels) */
+	gtk_widget_set_size_request(p->a, (int)lround((w0 + 8 + w1) * s_z()), (int)lround(13 * s_z())); { char nm[32]; snprintf(nm, sizeof nm, "cap_%s", k); p_label_named(nm, p->a); } c_add(c, p->a, 0, 0, 0); c_line(c, 0); c_add(c, p->s[0], 0, 0, 0); c_add(c, p->s[1], 8, 0, 0);
 }
 static char *bat_time(RuiJ *b)
 {
@@ -88,7 +89,7 @@ static char *bat_time(RuiJ *b)
 static const char *bat_state(RuiJ *b) { const char *s = set_jstr(b, "status", ""); return !strcmp(s, "Charging") ? "charging" : !strcmp(s, "Discharging") ? "on battery" : !strcmp(s, "Full") ? "full" : !strcmp(s, "Not charging") ? "plugged in, not charging" : s; }
 static void power_sec(void)
 {
-	p_sgrp("Power and battery"); rui_jfree(PW); PW = get("power/status");
+	p_h4_px("Power and battery", 15, 18); rui_jfree(PW); PW = get("power/status");
 	if (!PW || !rui_jprop(PW, "set")) { p_msg("The power settings could not be read.", 0); return; }
 	RuiJ *s = rui_jprop(PW, "set"), *cn = rui_jprop(PW, "can"), *b = rui_jprop(PW, "battery"), *now = rui_jprop(PW, "now"); int adm = set_admin();
 	p_h4("Battery");
@@ -122,7 +123,7 @@ static void power_sec(void)
 	c = p_r2("When the power button is pressed"); { GtkWidget *w = psel("button", BV, BL, 3, 0, NULL); c_add(c, w, 0, 0, 1); } p_r2_more(c);
 	static const char *const AV[4] = { "70", "80", "90", "100" }; const char *AL0[4] = { "Stop charging at 70 %", "Stop charging at 80 % (for a laptop that is mostly plugged in)", "Stop charging at 90 %", "Charge to 100 %" }; char *AL[4];
 	RuiJ *kept = rui_jprop(PW, "careKept"); for (int i = 0; i < 4; i++) { double kv = jnum(kept, AV[i]); AL[i] = kv == kv && kv != atof(AV[i]) ? g_strdup_printf("%s (this battery keeps %.0f %% instead)", AL0[i], kv) : g_strdup(AL0[i]); }
-	c = p_r2("Battery care"); c_add(c, psel("care", AV, (const char *const *)AL, 4, !jb(cn, "care"), "This battery does not let Rudolf OS limit its charge."), 0, 0, 0); for (int i = 0; i < 4; i++) g_free(AL[i]);
+	c = p_r2("Battery care"); { GtkWidget *w = psel("care", AV, (const char *const *)AL, 4, !jb(cn, "care"), "This battery does not let Rudolf OS limit its charge."); s_select_width(w, 445); c_add(c, w, 0, 0, 0); }   /* (select: max-width 100%) */ for (int i = 0; i < 4; i++) g_free(AL[i]);
 	if (!jb(cn, "care")) c_msg(c, "This battery does not let Rudolf OS limit its charge.", 0);
 	else { double nc = jnum(now, "care"), sc = jnum(s, "care"); if (nc == nc && nc != sc) { char *m = g_strdup_printf("You chose %.0f %%, but this battery keeps %.0f %%: it takes only some limits and stops where its own firmware chooses.%s", sc, nc, kept && rui_jlen(kept) ? " Choices it does not keep are marked." : ""); c_msg(c, m, 0); g_free(m); } }
 	GString *m = g_string_new(adm ? "Changes apply at once and hold for everyone, also before anyone signs in." : "Only administrators can change these.");
@@ -140,7 +141,7 @@ static void rows_sec(void)
 	if (u && jb(u, "on") && us && rui_jtype(us) == 4) { const char *bad = set_jstr(u, "moveFailed", ""); char *t;
 		if (*bad) t = g_strdup_printf("The files of %s could not all be given to its own Linux user: they stay readable to the account, and it is tried again at the next start (see the events).", bad);
 		else t = g_strdup_printf("Each account's Linux apps run as its own Linux user (%d account%s), so one account's apps cannot read another's files.", rui_jlen(us), rui_jlen(us) == 1 ? "" : "s");
-		Cell *c = p_r2("Accounts' Linux users"); p_r2_mt(c, 6); c_text(c, t, 400); g_free(t); }
+		Cell *c = p_r2("Accounts' Linux users"); p_r2_mt(c, 6); { GtkWidget *m = c_msg_m(c, t, 0, 0, 0); if (*bad) g_object_set_data(G_OBJECT(m), "set-color", "#b91c1c"); } g_free(t); }   /* (a div: its words wrap) */
 	rui_jfree(u);
 }
 
@@ -153,7 +154,7 @@ static void on_mck(int on, void *d) { char q[40]; snprintf(q, sizeof q, "%s=%d",
 static void mem_sec(void)
 {
 	RuiJ *m = get("memory/settings"); if (!m) return; int ed = set_admin() && jb(m, "persistent"); RuiJ *cz = rui_jprop(m, "compressed"); double tot = jnum(m, "total"), used = tot - jnum(m, "available");
-	p_sgrp("Memory");
+	p_h4_px("Memory", 15, 18);
 	char *a = fmt_b(used), *b = fmt_b(tot), *t = g_strdup_printf("%s of %s (%.0f %%)", a, b, round(used * 100 / tot)); Cell *c = p_r2("In use now"); c_text(c, t, 400); g_free(a); g_free(b); g_free(t); p_r2_more(c);
 	if (jb(cz, "on")) { char *x = fmt_b(jnum(cz, "size")), *y = fmt_b(jnum(cz, "stored")), *z = fmt_b(jnum(cz, "used")); double sz = jnum(cz, "size"); char pc[32] = ""; if (sz > 0) snprintf(pc, sizeof pc, " (%.0f %% full)", round(jnum(cz, "stored") * 100 / sz));
 		t = g_strdup_printf("%s, holding %s in %s%s", x, y, z, pc); g_free(x); g_free(y); g_free(z); } else t = g_strdup("Off");
@@ -214,12 +215,12 @@ static void events_sec(void)
 {
 	p_h4("Events"); const char *v[32], *l[32]; char *own[32]; int n = 0; v[n] = ""; l[n++] = "All events";
 	for (guint i = 0; i < G_N_ELEMENTS(KIND); i++) { v[n] = KIND[i][0]; own[i] = g_strdup_printf("%s %s", KIND[i][1], KIND[i][2]); l[n++] = own[i]; }
-	BRow *r = g_new0(BRow, 1); r->gap = 6; GtkWidget *s = s_select(v, l, n, KSEL ? KSEL : "", on_kind, NULL); s_select_width(s, 0); p_put(s); p_label_named("hlk", s); r->b[r->n++] = s; for (guint i = 0; i < G_N_ELEMENTS(KIND); i++) g_free(own[i]);
+	BRow *r = g_new0(BRow, 1); r->gap = 6; GtkWidget *s = s_select(v, l, n, KSEL ? KSEL : "", on_kind, NULL); s_select_width(s, 234);   /* (its widest kind) */ p_put(s); p_label_named("hlk", s); r->b[r->n++] = s; for (guint i = 0; i < G_N_ELEMENTS(KIND); i++) g_free(own[i]);
 	const char *B[5] = { "Refresh", "Report a problem…", "⚡ What's wrong with this computer?", "Run the self-test", "Last starts" }, *K[5] = { NULL, "report", "bzall", "selftest", "starts" }, *N[5] = { "hlr", "hlp", "hlw", "hst", "hss" };
 	for (int i = 0; i < 5; i++) { GtkWidget *b = rui_button(B[i], 0); g_signal_connect(b, "clicked", i ? G_CALLBACK(on_go) : G_CALLBACK(on_refresh), (gpointer)K[i]); p_put(b); p_label_named(N[i], b); if (i < 2) g_object_set_data(G_OBJECT(b), "h25", GINT_TO_POINTER(1)); r->b[r->n++] = b; }
 	p_custom(brow_lay, r, 14, 6);
 	if (!HL) { p_line_grey("The health log is kept by the installed Rudolf OS (bootable disc or USB)."); return; }
-	RuiJ *ev = rui_jprop(HL, "events"); Evs *E = g_new0(Evs, 1); E->rows = g_ptr_array_new(); E->a = gtk_drawing_area_new(); g_signal_connect(E->a, "draw", G_CALLBACK(evs_draw), E); p_put(E->a);
+	RuiJ *ev = rui_jprop(HL, "events"); Evs *E = g_new0(Evs, 1); E->rows = g_ptr_array_new(); E->a = gtk_drawing_area_new(); g_signal_connect(E->a, "draw", G_CALLBACK(evs_draw), E); p_put(E->a); p_label_named("evs", E->a);
 	for (int i = 0; ev && i < rui_jlen(ev) && E->rows->len < 300; i++) { RuiJ *x = rui_jat(ev, i); const char *k = set_jstr(x, "k", ""); if (KSEL && *KSEL && strcmp(KSEL, k)) continue;
 		Ev *e = g_new0(Ev, 1); e->icon = "•"; for (guint q = 0; q < G_N_ELEMENTS(KIND); q++) if (!strcmp(KIND[q][0], k)) e->icon = KIND[q][1]; e->when = when(jnum(x, "t")); e->m = g_strdup(set_jstr(x, "m", ""));
 		/* (bzWhyBtn: the kinds that go wrong, or words that say something did; its kind "error" always shows it) */
@@ -230,10 +231,21 @@ static void events_sec(void)
 	p_custom(evs_lay, E, 0, 0);
 }
 
+/* (a paragraph with the page's <b>: its words laid out with their markup, wrapping in the page's width) */
+typedef struct { GtkWidget *a; char *m; } Rich;
+static PangoLayout *rich_layout(Rich *r, double w) { PangoLayout *l = s_layout("", 13, 400, w); pango_layout_set_markup(l, r->m, -1); return l; }
+static double rich_lay(void *d, double x, double y, double w) { Rich *r = d; PangoLayout *l = rich_layout(r, w); double h = pango_layout_get_line_count(l) * 15; g_object_unref(l); p_place(r->a, x, y, w, h); return h; }
+static gboolean rich_draw(GtkWidget *w, cairo_t *cr, gpointer d)
+{
+	Rich *r = d; double z = s_z(); PangoLayout *l = rich_layout(r, gtk_widget_get_allocated_width(w) / z); s_col(cr, "fg", 1); int n = pango_layout_get_line_count(l); double asc = s_asc(13, 400, NULL);
+	for (int i = 0; i < n; i++) { cairo_save(cr); cairo_scale(cr, 1 / z, 1 / z); cairo_move_to(cr, 0, (i * 15 + (15 - s_lh(13, 400)) / 2 + asc) * z); pango_cairo_show_layout_line(cr, pango_layout_get_line_readonly(l, i)); cairo_restore(cr); }
+	g_object_unref(l); return FALSE;
+}
+static void p_rich(const char *m, double mt, double mb) { Rich *r = g_new0(Rich, 1); r->m = g_strdup(m); r->a = gtk_drawing_area_new(); g_signal_connect(r->a, "draw", G_CALLBACK(rich_draw), r); p_put(r->a); p_label_named("rich", r->a); p_custom(rich_lay, r, mt, mb); }
 void page_health(void)
 {
 	rui_jfree(HL); HL = get("health?n=500"); if (HL && !(rui_jprop(HL, "events") && rui_jtype(rui_jprop(HL, "events")) == 4)) { rui_jfree(HL); HL = NULL; }
 	p_h3("System health");
-	p_msg_m("\x03What happened on this computer: start-ups, crashes, memory, updates, sign-in failures, the firewall and remote access. It is kept on this computer only and is never sent anywhere. Power and battery is here too, below the summary. <b>Report a problem</b> includes the latest events, after you have read the report.", 0, 0, 10);
+	p_rich("What happened on this computer: start-ups, crashes, memory, updates, sign-in failures, the firewall and remote access. It is kept on this computer only and is never sent anywhere. Power and battery is here too, below the summary. <b>Report a problem</b> includes the latest events, after you have read the report.", 0, 10);
 	if (HL) summary(); power_sec(); rows_sec(); mem_sec(); game_sec(); events_sec();
 }

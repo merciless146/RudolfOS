@@ -222,6 +222,7 @@ static void item_free(gpointer p) { Item *i = p; g_free(i->text); if (i->cell) {
 static Item *add_item(int k, const char *t, double mt, double mb) { Item *i = g_new0(Item, 1); i->k = k; i->text = g_strdup(t ? rui_tr(t) : NULL); i->mt = mt; i->mb = mb; g_ptr_array_add(ITEMS, i); return i; }
 void p_h3(const char *t) { add_item(I_H3, t, LK->h3_m[0], LK->h3_m[2]); }
 void p_h4(const char *t) { add_item(I_H4, t, 16, 8); }   /* (its words as the page has them; drawn in capitals: text-transform) */
+void p_h4_px(const char *t, double px, double mt) { p_h4(t); Item *i = g_ptr_array_index(ITEMS, ITEMS->len - 1); i->minh = px; i->mt = mt; }   /* (1.6.3: an .sh4 of its own size: <h4 class='sh4 sgrp' style='font-size:15px;margin-top:18px'>) */
 void p_sgrp(const char *t) { add_item(I_SGRP, t, SGRP_MT, 8); }
 static GtkWidget *placeholder(void) { GtkWidget *w = gtk_drawing_area_new(); gtk_widget_set_size_request(w, 1, 1); return w; }
 GtkWidget *p_msg(const char *t, int grey) { Item *i = add_item(I_MSG, t, LK->msg_mt[0], 0); i->grey = grey; i->wg = placeholder(); gtk_fixed_put(GTK_FIXED(FX), i->wg, 0, 0); g_object_set_data(G_OBJECT(i->wg), "set-item", i); return i->wg; }
@@ -329,7 +330,7 @@ static void lay_all(void)
 		y += first ? i->mt : fmax(pmb, i->mt); first = 0; i->x = x0; i->y = y; i->w = W;
 		switch (i->k) {
 		case I_H3: i->h = lh_of(LK->h3_fs[0], 700); break;
-		case I_H4: i->h = lh_of(13, 700); break;
+		case I_H4: i->h = lh_of(i->minh > 0 ? i->minh : 13, 700); break;
 		case I_SGRP: i->h = lh_of(SGRP_FS, 700); break;
 		case I_MSG: { double fs = i->grey == 2 ? 12 : LK->msg_fs[0]; int n = text_lines(i->text, fs, 400, W, 0, NULL); i->h = fmax(LK->msg_mh[0], n * lh_of(fs, 400)); place(i->wg, x0, y, W, i->h); break; }
 		case I_R2: { Cell *c = i->cell; double gap = LK->r2_gap[0], lw = 130; int n = text_lines(c->label, RUI.fs, 400, lw, 0, NULL); c->lh = n * lh_of(RUI.fs, 400);
@@ -370,7 +371,7 @@ static gboolean fx_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 		switch (i->k) {
 		case I_H3: fgc(cr, 1); text_draw(cr, i->text, i->x, i->y, LK->h3_fs[0], 700, 0, 0, i->h); break;
 		case I_H4: if (RUI.dark) rui_color(cr, "mut", 1); else cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0);
-			if (RUI.dark) setc(cr, LK->msg_dark, 1); { char *u = g_utf8_strup(i->text, -1); text_draw(cr, u, i->x, i->y, 13, 700, 0, .04, i->h); g_free(u); } break;
+			if (RUI.dark) setc(cr, LK->msg_dark, 1); { char *u = g_utf8_strup(i->text, -1); text_draw(cr, u, i->x, i->y, i->minh > 0 ? i->minh : 13, 700, 0, .04, i->h); g_free(u); } break;
 		case I_SGRP: fgc(cr, 1); { char *u = g_utf8_strup(i->text, -1); text_draw(cr, u, i->x, i->y, SGRP_FS, 700, 0, .04, i->h); g_free(u); } break;
 		case I_MSG: if (g_object_get_data(G_OBJECT(i->wg), "set-color")) { GdkRGBA c; gdk_rgba_parse(&c, g_object_get_data(G_OBJECT(i->wg), "set-color")); cairo_set_source_rgb(cr, c.red, c.green, c.blue); }   /* (1.6.3: a .msg of its own colour: .ok, .bad, an error) */
 			else if (i->grey == 2) rui_color(cr, "mut", 1); else if (RUI.dark) setc(cr, LK->msg_dark, 1); else if (i->grey) cairo_set_source_rgb(cr, 107 / 255.0, 114 / 255.0, 128 / 255.0); else fgc(cr, 1);
