@@ -19,7 +19,7 @@ function state(D, set, more) {
   ls.data['bd95set:' + ACCT] = ls.data.bd95set = JSON.stringify(s);
   for (const k in (more || {})) ls.data[k] = JSON.stringify(more[k]);
   try { const T = JSON.parse(fs.readFileSync(path.join(D, 'tm'))); for (const k in (T._ls || {})) if (!(k in (more || {}))) ls.data[k] = JSON.stringify(T._ls[k]) } catch (e) {}   // (settings_rd.json's _ls: the page's storage for a page's stand-in data, Apps' lists)
-  fs.writeFileSync(path.join(D, 'ls.json.t'), JSON.stringify(ls)); fs.renameSync(path.join(D, 'ls.json.t'), path.join(D, 'ls.json'));
+  const tmp = path.join(D, 'ls.json.' + process.pid + '.t'); fs.writeFileSync(tmp, JSON.stringify(ls)); fs.renameSync(tmp, path.join(D, 'ls.json'));   // (a name of its own: the stand-in rudolfd writes ls.json too, when a page saves)
 }
 module.exports = {state, ACCT, BASESET};
 if (require.main === module) state(process.argv[2], JSON.parse(process.argv[3] || '{}'), JSON.parse(process.argv[4] || '{}'));

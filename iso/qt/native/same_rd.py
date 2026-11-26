@@ -154,7 +154,7 @@ class H(http.server.BaseHTTPRequestHandler):
                     for k in o.get('del') or []: d.pop(k, None)
                     d.update({k: v for k, v in (o.get('set') or {}).items() if isinstance(v, str)}); o = {'gen': g, 'data': d}
                 o['gen'] = g
-                p = os.path.join(D, 'ls.json'); open(p + '.t', 'w').write(json.dumps(o)); os.replace(p + '.t', p)
+                p = os.path.join(D, 'ls.json'); open(p + '.rd.t', 'w').write(json.dumps(o)); os.replace(p + '.rd.t', p)   # (a name of its own: the test's same_state.js writes ls.json too)
                 return self.j({'ok': True, 'message': 'saved', 'gen': g})
             if q.startswith('key='):   # (one key of the copy, as rudolfd's api_lsync_get)
                 import urllib.parse; v = (L.get('data') or {}).get(urllib.parse.unquote(q[4:]))
