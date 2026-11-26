@@ -4136,10 +4136,14 @@ static char *qesc(const char *v) { return g_uri_escape_string(v, NULL, FALSE); }
 static void dg_ok(void)
 {
 	if (DGK != DLG_RENAME || DGBUSY) return; DGBUSY = 1; DGMSG[0] = 0;
+	/* (1.6.3: a new text file's name typed without its ending gets .TXT, as shell25.js newName) */
+	if (!strcmp(DGNEW, "file") && g_str_has_suffix(DGNAME, ".TXT")) { const char *dot = strrchr(DGVAL, '.'); int ext = 0;
+		if (dot && dot[1]) { ext = 1; for (const char *c = dot + 1; *c; c++) if (!g_ascii_isalnum(*c)) ext = 0; if (strlen(dot + 1) > 4) ext = 0; }
+		char t[sizeof DGVAL]; snprintf(t, sizeof t, "%s", DGVAL); g_strstrip(t); if (t[0] && !ext && strlen(t) + 4 < sizeof DGVAL) snprintf(DGVAL, sizeof DGVAL, "%s.TXT", t); }
 	/* (the owner's Vivobook, 2026-11-16) by the desktop's service page, signed in already, at once (else a page opened for it) */
-	{ AppWin *sv = svc_page(); if (sv && sv->sready && sv->view && !sv->closing) { GString *js = g_string_new("window.__oaRename&&__oaRename("); json_esc(js, DGFILE); g_string_append_c(js, ','); json_esc(js, DGVAL); g_string_append(js, DGNEW[0] ? ",1)" : ")");
+	{ AppWin *sv = svc_page(); if (sv && sv->sready && sv->view && !sv->closing) { GString *js = g_string_new("window.__oaRename&&__oaRename("); json_esc(js, DGFILE); g_string_append_c(js, ','); json_esc(js, DGVAL); g_string_append(js, ")");
 		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(sv->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); gtk_widget_queue_draw(DGAREA); return; } }
-	char *t = qesc(DGVAL), *ex = g_strdup_printf("&op=rename&to=%s%s", t, DGNEW[0] ? "&new=1" : ""); app_open_ex("do-fs", DGFILE, ex, 1); g_free(t); g_free(ex); gtk_widget_queue_draw(DGAREA);
+	char *t = qesc(DGVAL), *ex = g_strdup_printf("&op=rename&to=%s", t); app_open_ex("do-fs", DGFILE, ex, 1); g_free(t); g_free(ex); gtk_widget_queue_draw(DGAREA);
 }
 /* (1.5.9, 12.3c) Open with chosen in an app's own page (oneapp59.js: its dialog, in Oracle's window or a WebKit window): the app's
    window of its own, as the shell's Open with dialog makes it */
