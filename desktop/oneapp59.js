@@ -459,7 +459,8 @@ html.oavk #vkb{display:block!important;visibility:visible!important;position:fix
  OA.want=1;
  /* (1.5.9, 12.3c) Oracle without Rudolf's Chromium on the native desktop (none, or it would not start): said once */
  if(ONEAPP.k=='browser'&&ONEAPP.q.get('nochrome')=='1')setTimeout(()=>{try{notify('Oracle','Websites will work better on the Chromium desktop: Oracle is running without Rudolf\u2019s Chromium here, so some sites cannot open in its tabs.')}catch(e){}},1500);
- try{if(act)act();else if(ONEAPP.file&&ONEAPP.k=='explorer'&&typeof explorer=='function'){const p=resolve(ONEAPP.file,['C:']);(async()=>{for(let i=0;i<60&&!isDir(node(p));i++)await new Promise(r=>setTimeout(r,100));explorer(isDir(node(p))?p:p.slice(0,-1))})()}   /* (1.6.0: a folder: tm26.js srOpenFolder; the account's home read first) */
+ try{if(act)act();else if(ONEAPP.k=='explorer'&&/^[a-z0-9]{1,15}$/.test(ONEAPP.q.get('drive')||'')&&typeof devOpenDrive=='function'){const dv=ONEAPP.q.get('drive');(async()=>{let d=null;try{d=await rd('devices')}catch(e){}const v=d&&(d.drives||[]).find(x=>x.dev==dv);v?devOpenDrive(v):explorer()})()}   /* (1.6.3 Part 3: Settings › Devices' Open on the native desktop, "open explorer-drive DEV": the drive in File Explorer, as devOpenDrive) */
+  else if(ONEAPP.file&&ONEAPP.k=='explorer'&&typeof explorer=='function'){const p=resolve(ONEAPP.file,['C:']);(async()=>{for(let i=0;i<60&&!isDir(node(p));i++)await new Promise(r=>setTimeout(r,100));explorer(isDir(node(p))?p:p.slice(0,-1))})()}   /* (1.6.0: a folder: tm26.js srOpenFolder; the account's home read first) */
   else if(ONEAPP.file&&app.openFile)launchWith(ONEAPP.k,resolve(ONEAPP.file,['C:']));
   else if(ONEAPP.k=='taskmgr'&&ONEAPP.q.get('urgent')=='1'&&typeof tmUrgent=='function')tmUrgent();   /* (1.6.0: Ctrl+Alt+Del's, tmtop57.js) */
   else{const r=launch(ONEAPP.k);

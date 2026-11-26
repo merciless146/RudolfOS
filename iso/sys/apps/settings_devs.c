@@ -84,7 +84,7 @@ static RuiJ *DEV;
 static void on_open(GtkButton *b, gpointer d)
 {
 	(void)b; RuiJ *dr = rui_jprop(DEV, "drives"); for (int i = 0; i < rui_jlen(dr); i++) { RuiJ *v = rui_jat(dr, i); if (strcmp(set_jstr(v, "dev", ""), d)) continue;
-		char *e = g_uri_escape_string(set_jstr(v, "path", ""), NULL, FALSE), *a = g_strdup_printf("open explorer %s", set_jstr(v, "path", "")); rui_shell(SW, a); set_note("open drive %s", (char *)d); g_free(e); g_free(a); }
+		char a[64]; snprintf(a, sizeof a, "open explorer-drive %s", (char *)d); rui_shell(SW, a); set_note("%s", a); }
 }
 static gboolean later(gpointer d) { (void)d; redraw(); return G_SOURCE_REMOVE; }
 static void on_eject(GtkButton *b, gpointer d) { gtk_widget_set_sensitive(GTK_WIDGET(b), FALSE); char p[64], m[300]; snprintf(p, sizeof p, "/api/eject?dev=%s", (char *)d); if (post(p, m, sizeof m) == 200) g_timeout_add(800, later, NULL); else { gtk_widget_set_sensitive(GTK_WIDGET(b), TRUE); set_notify("Eject", m, 1); } }

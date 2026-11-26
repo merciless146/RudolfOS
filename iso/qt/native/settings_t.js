@@ -520,6 +520,24 @@ async function checkNotif() {
     ok('T3. Clear history: bd95notif:ACCT [] (svj)', LS()['bd95notif:uAnnA1b2'] == '[]', LS()['bd95notif:uAnnA1b2']) }
   natStop();
 }
+// ---- Devices (devices26.js devPanel, printq61.js, scan62.js)
+async function checkDevs() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 40; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(200) } await wait(300) };
+  natStart('devs'); await until(() => rect('body') && line('page') == 'devs', 20000); await wait(1500);
+  { mark = c0(); click(rect('dveject0')); await until(() => /POST eject/.test(since()), 3000);
+    ok('Dv1. The USB stick\'s ⏏ Eject: eject?dev=sdb (its disk, devDisk)', /POST eject\?dev=sdb(\s|$)/m.test(since()), since()) }
+  { click(rect('dvopen0')); await until(() => /open explorer-drive sdb1/.test(acts()), 3000);
+    ok('Dv2. Open: the drive opened in File Explorer (the shell asked: open explorer-drive sdb1)', /open explorer-drive sdb1/.test(acts()), lines('act').slice(-3)) }
+  { mark = c0(); await scrollTo('pqx0'); click(rect('pqx0')); await until(() => /POST print\/cancel/.test(since()), 3000);
+    ok('Dv3. The print queue: Letter.pdf\'s Cancel: print/cancel?id=12', /POST print\/cancel\?id=12/.test(since()), since()) }
+  { await scrollTo('dvscan'); click(rect('dvscan')); await until(() => /open scan/.test(acts()), 3000);
+    ok('Dv4. 📠 Open Scan: the Scan app asked of the shell', /open scan/.test(acts()), lines('act').slice(-3)) }
+  { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 30; i++) xdo('click 4'); await wait(500); await scrollTo('dvmouse1'); click(rect('dvmouse1')); await until(() => line('page') == 'mouse', 3000);
+    ok('Dv5. The touchpad\'s Settings: Mouse and touchpad', line('page') == 'mouse', line('page')) }
+  natStop();
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -571,6 +589,7 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('net-checklist')) await checkNet();
   if (only('checklist') || only('web-checklist')) await checkWeb();
   if (only('checklist') || only('notif-checklist')) await checkNotif();
+  if (only('checklist') || only('devs-checklist')) await checkDevs();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');
