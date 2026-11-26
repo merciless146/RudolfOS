@@ -799,6 +799,17 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    The password minimum stays 4 (the owner: "Keep 4 for now"). Test: oobe63_t.js. FreeBuff's other findings (the
    Terminal's HELP, the sign-in date's language, "Guest", Spanish desktop labels running together, windows opening in one
    place, Emu's first prompt) are not in it yet.
+9. **The Command Prompt's HELP** (the owner, 2026-11-26, FreeBuff's text): HELP = a short list in groups with examples,
+   HELP ALL = every command, HELP <name> = one explained (desktop/termhelp63.js); RPK's extra "packages: rpk help" line
+   gone. Checked against what the commands do: EXPLORER opens the file manager (not "in this folder"); `CD \` did not go
+   to the top (resolve() now treats a leading \ as C:\); EDIT of a missing file showed "cannot be opened" (it now makes
+   the empty file where the account may write, then opens it). Test: termhelp63_t.js.
+10. **FreeBuff's second round** (2026-11-26, the owner's screenshots), not done yet: Paint's Save asks "relative to C:"
+   with no folder picker or Cancel and saves to C:\ (should default to Pictures, with the Save As dialog Notepad has);
+   the ☰ menu's power button shuts down at once with no menu and no warning about unsaved work; Guest keeps nothing and
+   says so only in Settings (a line at sign-in and a notice on the first save); New text document's naming box is titled
+   "Rename" and the file does not open after; double-clicking a picture opens Paint, not a viewer; a wrong user name
+   once gave no message at sign-in (unconfirmed); a battery shown on a computer without one (browser edition).
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ## Steps

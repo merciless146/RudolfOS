@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Better: the Command Prompt's HELP explains the commands in groups with examples; HELP ALL lists every one, HELP DIR
+  (or any name) explains one. CD \ now goes to the top of C:, and EDIT of a new file opens it in Notepad (FreeBuff's test).
 - Fixed: the setup wizard now speaks the language you choose on its first page, every step (from FreeBuff's user test);
   a red error in it goes away once you correct the mistake.
 - New: Mute in the notification centre (🔔 on the taskbar): while it is on, no notification pops up or makes a sound, errors
