@@ -59,7 +59,7 @@ function nat() {
   const btn = k => { const l = nlines('flybtn').find(x => x.split(' ')[1] == k); if (!l) return null; const a = l.split(' '); return [+a[2], +a[3]] };
   return {
     bar: async k => nhit(k + ' -'),
-    part: async (w, a) => w == 'tile' ? btn('qs:' + QSL.indexOf(a)) : w == 'nx' ? btn('nx:' + a) : btn(w == 'dnd' ? 'dnd' : w == 'mute' ? 'mute' : w == 'clear' ? 'clear' : 'settings'),
+    part: async (w, a) => w == 'tile' ? btn('qs:' + QSL.indexOf(a)) : w == 'nx' ? btn('nx:' + a) : btn(w == 'dnd' ? 'dnd' : w == 'mute' ? 'nmute' : w == 'clear' ? 'clear' : 'settings'),
     click: async c => { if (c) xdo('mousemove ' + Math.round(c[0]) + ' ' + Math.round(c[1]) + ' click 1'); await wait(400) },
     shown: async () => { const f = (nst('fly') || '-').split(' ')[0]; if (f == 'qs') return 'qs:' + (nst('flyqs') || '').trim().split(' ').filter(Boolean).join(' ').replace(/(\w) (\w)/g, '$1 $2').split(/ (?=[A-Z])/).join(',');
       if (f == 'nc') { const l = nst('flync') || ''; const [h, ...t] = l.split('|'); const [n, d] = h.split(' '); return 'nc:' + d + ':' + (nst('nmute') || '0').trim() + ':' + t.join(',') } return '-' },

@@ -6062,7 +6062,7 @@ static void nc_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 	/* Notifications · Do not disturb · Clear all */
 	css_text(cr, "Notifications", UIFAM, 700, 13, x, y + (bh - lb) / 2, lb, fg, 0);
 	double cw = css_width(cr, "Clear all", UIFAM, 400, 13) + 22, cx0 = x + W - cw; fl_button(cr, "Clear all", cx0, y, cw, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], "clear"), dark); fl_btn("clear", cx0, y, cw, bh);
-	{ double lx = nc_check(cr, " Do not disturb", S.dnd, "dnd", cx0, y, bh, l13, fg); nc_check(cr, " Mute", S.nmute, "mute", lx, y, bh, l13, fg); }   /* (1.6.3: Mute, left of Do not disturb as in #ncp) */
+	{ double lx = nc_check(cr, " Do not disturb", S.dnd, "dnd", cx0, y, bh, l13, fg); nc_check(cr, " Mute", S.nmute, "nmute", lx, y, bh, l13, fg); }   /* (1.6.3: Mute, left of Do not disturb as in #ncp) */
 	y += bh + 8;
 	if (!NNT) { double tw = css_width(cr, "No new notifications", UIFAM, 400, 13); css_text(cr, "No new notifications", UIFAM, 400, 13, x + (W - tw) / 2, y + 14, l13, (RGBA){ fg.r, fg.g, fg.b, .65 }, 0); }
 	for (int i = 0; i < NNT; i++) { Note *n = &NT[i]; int err = !strcmp(n->k, "error"); double h = ih[i];
@@ -6447,7 +6447,7 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "power")) { fl_close(); power_dialog(); return; }
 	else if (!strcmp(k, "clear")) { NT_CLR = 0; for (int i = 0; i < NNT; i++) NT_CLR = fmax(NT_CLR, NT[i].at); NT_CLRT = g_get_monotonic_time(); NNT = 0; NNTP = 0; app_open_ex("do-nc", NULL, "&op=clear", 1); bar_redraw(); }
 	else if (!strcmp(k, "dnd")) { S.dnd = !S.dnd; qs_pending(2, S.dnd); qs_save(2, S.dnd); char ex[40]; snprintf(ex, sizeof ex, "&op=dnd&on=%d", S.dnd); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
-	else if (!strcmp(k, "mute")) { S.nmute = !S.nmute; NMP.on = S.nmute; NMP.t = g_get_monotonic_time(); set_save("nmute", NULL, S.nmute); char ex[40]; snprintf(ex, sizeof ex, "&op=mute&on=%d", S.nmute); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
+	else if (!strcmp(k, "nmute")) { S.nmute = !S.nmute; NMP.on = S.nmute; NMP.t = g_get_monotonic_time(); set_save("nmute", NULL, S.nmute); char ex[40]; snprintf(ex, sizeof ex, "&op=mute&on=%d", S.nmute); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
 	else if (!strncmp(k, "nx:", 3)) { int i = atoi(k + 3); if (i < 0 || i >= NNT) return; char ex[40]; snprintf(ex, sizeof ex, "&op=dismiss&i=%d", i);
 		if (NNTX == 16) { memmove(&NTX[0], &NTX[1], 15 * sizeof NTX[0]); NNTX--; } NTX[NNTX].at = NT[i].at; snprintf(NTX[NNTX].t, sizeof NTX[0].t, "%s", NT[i].t); NTX[NNTX++].when = g_get_monotonic_time();
 		for (int j = 0; j < NNTP; j++) if (NTP[j].at == NT[i].at && !strcmp(NTP[j].t, NT[i].t)) { memmove(&NTP[j], &NTP[j + 1], (NNTP - j - 1) * sizeof NTP[0]); memmove(&NTPT[j], &NTPT[j + 1], (NNTP - j - 1) * sizeof NTPT[0]); NNTP--; break; }
@@ -6494,7 +6494,7 @@ static gboolean fl_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 static gboolean fl_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 {
 	(void)w; (void)d; if (FLDRAG) { fl_range(e->x); return TRUE; }
-	int h = fl_at(e->x, e->y); if (h >= 0 && (!strcmp(FLBK[h], "range") || !strncmp(FLBK[h], "qs:", 3) || !strcmp(FLBK[h], "dnd") || !strcmp(FLBK[h], "mute") || !strncmp(FLBK[h], "nx:", 3) || (FLBK[h][0] >= '0' && FLBK[h][0] <= '9'))) h = -1;
+	int h = fl_at(e->x, e->y); if (h >= 0 && (!strcmp(FLBK[h], "range") || !strncmp(FLBK[h], "qs:", 3) || !strcmp(FLBK[h], "dnd") || !strcmp(FLBK[h], "nmute") || !strncmp(FLBK[h], "nx:", 3) || (FLBK[h][0] >= '0' && FLBK[h][0] <= '9'))) h = -1;
 	if (h != FLHOV) { FLHOV = h; gtk_widget_queue_draw(FLAREA); }
 	GdkWindow *g = gtk_widget_get_window(FLWIN); if (g) { static GdkCursor *ptr; if (!ptr) ptr = gdk_cursor_new_from_name(gdk_display_get_default(), "pointer"); int k = fl_at(e->x, e->y); gdk_window_set_cursor(g, k >= 0 && !strcmp(FLBK[k], "sounds") ? ptr : NULL); }
 	return TRUE;
