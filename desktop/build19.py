@@ -1,10 +1,14 @@
 import base64,json,os,re,sys
-B='base_v24.html';O=sys.argv[1] if len(sys.argv)>1 else '/mnt/user-data/outputs/blockdos.html'   # e.g. python3 build19.py ../iso/www/index.html
+# Where the page goes: the first argument, else the page on the disc (iso/www/index.html, beside this folder), so
+# "cd desktop && python3 build19.py" is the whole of it. A path given is taken from where you are.
+here=os.path.dirname(os.path.abspath(__file__))
+B=os.path.join(here,'base_v24.html')
+O=os.path.normpath(os.path.join(os.getcwd(),os.path.expanduser(sys.argv[1]))) if len(sys.argv)>1 else os.path.normpath(os.path.join(here,'../iso/www/index.html'))
+if not os.path.isdir(os.path.dirname(O)):sys.exit('cannot write '+O+': '+os.path.dirname(O)+' is not there')
 s=open(B).read()
 def rep(a,b,n=1):
     global s
     c=s.count(a);assert c==n,(a[:90],c,n);s=s.replace(a,b)
-here=os.path.dirname(os.path.abspath(__file__))
 L=lambda f:open(os.path.join(here,f)).read()
 pinyin=open(os.path.join(here,'../libs/pinyin.min.json')).read()
 od=base64.b64encode(open(os.path.join(here,'../libs/od/compiled/OpenDyslexic-Regular.woff2'),'rb').read()).decode()
@@ -197,6 +201,6 @@ s=s.replace("const ORA_RDB_URL = '';","const ORA_RDB_URL = '"+_out('data:text/ja
 import oapage61;_EXT['text/html']='html';s,_oah=oapage61.build(s,L,_out)
 for _n in os.listdir(_A):
     if _n not in _keep:os.remove(os.path.join(_A,_n))
-open(O,'w').write(s);print(len(s),len(_keep),'files in a/')
+open(O,'w').write(s);print(len(s),len(_keep),'files in a/, page',O)
 # 1.5.7: Blitzen's reference material (docsindex.py), beside the desktop
 import docsindex;_j=docsindex.build();open(os.path.join(os.path.dirname(os.path.abspath(O)),'blitzen-docs.json'),'w').write(json.dumps(_j,ensure_ascii=False,separators=(',',':')))

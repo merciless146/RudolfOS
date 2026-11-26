@@ -5,6 +5,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Developers: `cd desktop && python3 build19.py` writes the page where the disc keeps it (iso/www/index.html), with no
+  edit first; iso/BUILD.TXT brought up to date; docs/README.md says what is in docs/ (FreeBuff's developer test).
 - Fixed: shutting down, restarting and signing out ask about unsaved work first (Keep open stops them); before, open
   windows were closed without asking. ⏻ Power in the ☰ menu gives a choice in the browser edition, and the Shut down
   dialog has Sign out (FreeBuff's test).
