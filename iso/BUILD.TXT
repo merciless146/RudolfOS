@@ -1,5 +1,5 @@
-Building Rudolf OS 1.1
-=======================
+Building Rudolf OS 1.6.2
+========================
 
 Host: Ubuntu 24.04 x86-64 with gcc, make, nasm, python3, node, bc, flex,
 bison, libelf headers, libssl-dev, xz-utils, the X11/GTK runtime packages
@@ -11,7 +11,10 @@ Layout of this archive
                  (core25.js, shell25.js, files25.js, apps25a.js, apps25b.js,
                  a11y25.js, settings25.js, styles25.css) and build19.py, which
                  joins them into index.html.
-  libs/          pinyin table and OpenDyslexic font used by build19.py.
+  libs/          pinyin table, the OpenDyslexic and UI fonts, and Mozilla's
+                 Readability, all put in the page by build19.py.
+  iso/www/       the built desktop: index.html, the files it fetches from a/
+                 beside it, and lib/ (pdf.js, xterm.js, Luau, Fengari).
   iso/           everything that turns index.html into the bootable image:
     boot/rboot.asm      Rudolf Boot (BIOS loader, El Torito / hybrid USB)
     boot/mbr.asm        hybrid MBR for USB sticks and hard disks
@@ -23,10 +26,14 @@ Layout of this archive
     qt/                 QEMU test helpers (QMP + serial)
 
 Steps
-  1. Desktop:   cd desktop && python3 build19.py      (writes index.html; edit
-                the output path O in build19.py first)
-     Copy index.html to iso/www/index.html together with lib/pdf.mjs and
-     lib/pdf.worker.mjs from pdf.js 4.10.38 (legacy build).
+  1. Desktop:   cd desktop && python3 build19.py      (writes
+                ../iso/www/index.html; give a path to write somewhere else)
+     It also writes iso/www/a/: the page's pictures, fonts, engines and app
+     pages, named by their contents and deleted when nothing uses them any
+     more; and iso/www/blitzen-docs.json, Blitzen's reference material. There
+     is nothing to copy afterwards: iso/www/lib/ already holds what the page
+     fetches itself (pdf.mjs and lib/pdf.worker.mjs from pdf.js 4.10.38, the
+     legacy build, xterm.js, luau.wasm, fengari-web.js and the Pilot .luau files).
   2. Sources:   put Linux v6.18.55 in iso/src/linux, BusyBox 1_36_1 in
                 iso/src/busybox and squashfs-tools 4.7.5 in iso/src/squashfs-tools.
   3. BusyBox:   cp SOURCE/BUSYBOX.CFG iso/src/busybox/.config &&
