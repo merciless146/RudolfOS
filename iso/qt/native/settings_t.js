@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web,notif,devs,apps').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -90,7 +90,7 @@ async function natShots(mode, pages) {
   return out;
 }
 // ---- Search in Settings: the same results for the same words (the page's ssMatch over its pages, with System and About harvested as shown)
-const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5'], web: ['mid2', 'mid3']};
+const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5'], web: ['mid2', 'mid3'], devs: ['mid2'], apps: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7']};
 const QUERIES = ['time zone', 'sound', 'date', 'wifi', 'dark', 'idle', 'about', 'desktop page', 'lang', 'xyzzy'];
 async function pageSearch() {
   const {ctx, p} = await signin('light');
@@ -506,6 +506,38 @@ async function checkWeb() {
     ok('O6. Memory: Free tabs after 1 hour, kept at once (oraFree 60), "Ann set Oracle to free tabs not looked at for 1 hour" in the security log', SET().oraFree === 60 && log.includes('Ann set Oracle to free tabs not looked at for 1 hour'), [SET().oraFree, log.slice(-2)]) }
   natStop();
 }
+// ---- Notifications (settings25.js notifPanel)
+async function checkNotif() {
+  ST.state(D, MODES.light, MORE); const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('notif'); await until(() => rect('body') && line('page') == 'notif', 20000); await wait(1200);
+  click(rect('ndn')); click(rect('nsd')); await until(() => SET().dnd === true && SET().nsnd === false, 3000); await pick('ntm', 3, 4); await until(() => SET().ntime === 12, 3000);
+  ok('T1. Do not disturb on, Sounds off, pop-ups for 12 seconds: kept at once (dnd true, nsnd false, ntime 12), as persistS keeps them', SET().dnd === true && SET().nsnd === false && SET().ntime === 12, [SET().dnd, SET().nsnd, SET().ntime]);
+  { click(rect('nt')); await until(() => /notify This is a test \| Notifications look like this\./.test(lines('act').join('\n')), 3000);
+    ok('T2. Send a test notification: "This is a test", "Notifications look like this." (the desktop\'s notifications, as every native app\'s)', /notify This is a test \| Notifications look like this\./.test(lines('act').join('\n')), lines('act').slice(-3)) }
+  { click(rect('nc')); await until(() => LS()['bd95notif:uAnnA1b2'] == '[]', 3000);
+    ok('T3. Clear history: bd95notif:ACCT [] (svj)', LS()['bd95notif:uAnnA1b2'] == '[]', LS()['bd95notif:uAnnA1b2']) }
+  natStop();
+}
+// ---- Devices (devices26.js devPanel, printq61.js, scan62.js)
+async function checkDevs() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 40; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(200) } await wait(300) };
+  natStart('devs'); await until(() => rect('body') && line('page') == 'devs', 20000); await wait(1500);
+  { mark = c0(); click(rect('dveject0')); await until(() => /POST eject/.test(since()), 3000);
+    ok('Dv1. The USB stick\'s ⏏ Eject: eject?dev=sdb (its disk, devDisk)', /POST eject\?dev=sdb(\s|$)/m.test(since()), since()) }
+  { click(rect('dvopen0')); await until(() => /open explorer-drive sdb1/.test(acts()), 3000);
+    ok('Dv2. Open: the drive opened in File Explorer (the shell asked: open explorer-drive sdb1)', /open explorer-drive sdb1/.test(acts()), lines('act').slice(-3)) }
+  { mark = c0(); await scrollTo('pqx0'); click(rect('pqx0')); await until(() => /POST print\/cancel/.test(since()), 3000);
+    ok('Dv3. The print queue: Letter.pdf\'s Cancel: print/cancel?id=12', /POST print\/cancel\?id=12/.test(since()), since()) }
+  { await scrollTo('dvscan'); click(rect('dvscan')); await until(() => /open scan/.test(acts()), 3000);
+    ok('Dv4. 📠 Open Scan: the Scan app asked of the shell', /open scan/.test(acts()), lines('act').slice(-3)) }
+  { const bd = rect('body'); xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300}`); for (let i = 0; i < 30; i++) xdo('click 4'); await wait(500); await scrollTo('dvmouse1'); click(rect('dvmouse1')); await until(() => line('page') == 'mouse', 3000);
+    ok('Dv5. The touchpad\'s Settings: Mouse and touchpad', line('page') == 'mouse', line('page')) }
+  natStop();
+}
 // ---- the memory at idle with a page open (System: Display is not native yet), against the web one's
 const rss = pid => { const t = fs.readFileSync(`/proc/${pid}/status`, 'utf8'); const g = k => +((t.match(new RegExp('^' + k + ':\\s+(\\d+)', 'm')) || [])[1] || 0) / 1024; let pss = null;
   try { pss = +((fs.readFileSync(`/proc/${pid}/smaps_rollup`, 'utf8').match(/^Pss:\s+(\d+)/m) || [])[1]) / 1024 } catch (e) {} return {anon: g('RssAnon'), pss} };
@@ -521,6 +553,39 @@ async function memory() {
   const f = x => x == null ? 'n/a' : x.toFixed(1); const res = `native ${f(n.anon)} MB RssAnon, ${f(n.pss)} MB PSS (with Display open: ${f(nd.anon)} MB RssAnon, ${f(nd.pss)} MB PSS); web (Chromium's renderer, #app=settings, System) ${w ? f(w.anon) : 'n/a'} MB RssAnon, ${w ? f(w.pss) : 'n/a'} MB PSS`;
   fs.writeFileSync(path.join(OUT, 'memory.txt'), res + '\n'); console.log('memory: ' + res);
   ok('24. the memory at idle with System open: the native one under the web one\'s', w && n.anon < w.anon, res);
+}
+// (1.6.3 Part 3, PR 7) Apps: what each part saves or asks, as the page does
+async function checkApps() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, J = k => { try { return JSON.parse(LS()[k]) } catch (e) { return undefined } };
+  const body = n => { try { return fs.readFileSync(path.join(D, 'body-' + n), 'utf8') } catch (e) { return null } };
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('apps'); await until(() => rect('body') && line('page') == 'apps', 20000); await wait(1500);
+  { await pick('da_png', 1, 4); await until(() => (J('bd95defapps:uAnnA1b2') || {}).PNG == 'paint', 3000); const d = J('bd95defapps:uAnnA1b2') || {};
+    ok('Ap1. .png › Paint: bd95defapps:ACCT PNG "paint", the others kept (MD, DOC)', d.PNG == 'paint' && d.MD == 'code' && d.DOC == 'lx:deb-libreoffice-writer', d) }
+  { await scrollTo('lk_zoommtg'); await pick('lk_zoommtg', 1, 2); await until(() => (J('bd95links:uAnnA1b2') || {}).zoommtg == 'none', 3000);
+    ok('Ap2. Links › zoommtg: Don’t open them: bd95links:ACCT zoommtg "none"', (J('bd95links:uAnnA1b2') || {}).zoommtg == 'none', J('bd95links:uAnnA1b2')) }
+  { await scrollTo('dau'); click(rect('dau')); await until(() => J('bd95debauto') === false, 3000);
+    ok('Ap3. Install Debian\'s updates automatically, off: bd95debauto false', J('bd95debauto') === false, J('bd95debauto')) }
+  { mark = c0(); await scrollTo('dck'); click(rect('dck')); await until(() => /POST debian\/check/.test(since()), 3000); await wait(800);
+    ok('Ap4. Check: debian/check asked (its lines shown under it)', /POST debian\/check/.test(since()), since()) }
+  { await scrollTo('wo62'); click(rect('wo62')); await until(() => /open do-wineold/.test(acts()), 3000);
+    ok('Ap5. Wine\'s Bring them in…: the page\'s own dialog asked of the shell (open do-wineold)', /open do-wineold/.test(acts()), lines('act').slice(-3)) }
+  { mark = c0(); await scrollTo('bun'); click(rect('bun')); await until(() => /POST ai\/unload/.test(since()), 3000);
+    ok('Ap6. Blitzen\'s Unload now: ai/unload', /POST ai\/unload/.test(since()), since()) }
+  { await scrollTo('dvt'); click(rect('dvt')); await until(() => J('bd95devtools') === true, 3000);
+    ok('Ap7. Show developer tools in the Start menu: bd95devtools true', J('bd95devtools') === true, J('bd95devtools')) }
+  { await scrollTo('bkx0'); click(rect('bkx0')); await until(() => body('ai_know_notes') != null, 3000);
+    ok('Ap8. A note\'s ✕: ai/know/notes?set=1 with the other note alone', body('ai_know_notes') == 'My printer is the one in the study.\n', body('ai_know_notes')) }
+  { await scrollTo('bdt'); click(rect('bdt')); xdo('type --delay 20 test-not-a-token'); await wait(300); await scrollTo('bdsave'); mark = c0(); click(rect('bdsave'));
+    await until(() => /POST ai\/dev\/token/.test(since()), 3000); await wait(500);
+    ok('Ap9. Blitzen › Developer Save: ai/dev/settings?repo=ann%2FRudolfOS&base=main&devlink=, the token typed to ai/dev/token?key=github, then "Saved."', /POST ai\/dev\/settings\?repo=ann%2FRudolfOS&base=main&devlink=(\s|$)/m.test(since()) && body('ai_dev_token') == 'test-not-a-token' && /msg Saved\./.test(acts()), since()) }
+  { await scrollTo('ph0'); click(rect('ph0')); await until(() => /browser https:\/\/voice\.google\.com\//.test(acts()), 3000);
+    ok('Ap10. Google Voice\'s Open in Oracle: the shell asked (browser https://voice.google.com/)', /browser https:\/\/voice\.google\.com\//.test(acts()), lines('act').slice(-3)) }
+  natStop();
 }
 const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')));
 (async () => {
@@ -556,6 +621,9 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('mob-checklist')) await checkMob();
   if (only('checklist') || only('net-checklist')) await checkNet();
   if (only('checklist') || only('web-checklist')) await checkWeb();
+  if (only('checklist') || only('notif-checklist')) await checkNotif();
+  if (only('checklist') || only('devs-checklist')) await checkDevs();
+  if (only('checklist') || only('apps-checklist')) await checkApps();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');

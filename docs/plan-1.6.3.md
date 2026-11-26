@@ -262,8 +262,43 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
     page's one dialog with a field to paste the file's text into.
   - Oracle shows the page's layout without real tabs (rtOn() is the page's own shell connection); on a desktop whose page has real
     tabs the page shows the same settings under "Without real tabs".
-- **Left:** Devices, Storage,
-  Apps, Notifications; Privacy, Security, System health, Users; the switch.
+- **PR 7, done (2026-11-26, scheduled task; branch native-settings-8): Notifications, Devices, Apps** (`settings_notif.c`,
+  `settings_devs.c`, `settings_apps.c`). Each page as the web one builds it, from the same rudolfd requests and the page's own storage:
+  - Notifications: dnd, nsnd, ntime kept at once (persistS), Send a test notification, Clear history (bd95notif:ACCT);
+  - Devices: devices, devices/unsupported, tb (tb/allow with the administrator's prompt, tb/forget), print/usb, print/jobs
+    (print/cancel), eject?dev=; Open asks the shell for a new "explorer-drive DEV" (rudolf-native.c native_open_page: DEV only
+    [a-z0-9], at most 15), which opens File Explorer's page with &drive=DEV and that page does what devOpenDrive does
+    (oneapp59.js); 📠 Open Scan; a keyboard's Settings;
+  - Apps: Default apps (files25.js OPENERS tried as appsPanel tries them, worked out at build time by mksettings.py, with the Linux
+    apps that open each kind: LX_MIME, LX_MIME_ALIAS; bd95defapps:ACCT), Links (bd95links:ACCT), Installed apps (bd95rapps,
+    Uninstall with the administrator's prompt), Linux (debian/status, check, update, remove, wine, the job followed;
+    bd95debauto), Blitzen (ai/status, unload, remove; bd95blzkeep, bd95blzoff with the administrator's prompt), For developers
+    (bd95devtools), Blitzen: what it knows (ai/know/learn, notes, forget), Blitzen › Developer (ai/dev/settings, ai/dev/token:
+    what is typed goes to rudolfd's keyring and is cleared from the field), Calls to phones (the shell's new "browser https://…",
+    the address checked for spaces, quotes, < > and backslashes, opened in Oracle as webOpen does).
+  - The page's own dialogs and windows that Apps opens (the Windows programs from before, Change the Linux password…, See what
+    Blitzen knows…, Open Blitzen Developer) open in a page of one action (do-wineold, do-debpasswd, do-blzknows, do-blzdev:
+    oneapp59.js's A, which the shell's "open" allows by name), as Task Manager's Check this computer… (do-hwcheck) does.
+  Against the web one (light, dark, light-green, dark-pink; the test's rudolfd answering with realistic stand-in data:
+  settings_rd.json, its `_ls` the page's storage): Notifications 0.32-0.34 %; Devices 0.6-0.94 %; Apps 0.55-1.57 % (top, seven
+  places on the way down, the end). Search the same rows (5, 7, 19). Checklists T1-T3, Dv1-Dv5, Ap1-Ap10. The whole test
+  (settings_t.sh): 432/432.
+  **Known differences (PR 7):**
+  - Calls to phones' "Ask each time" (shown only once a phone app was chosen to always open numbers) is a button, not a link.
+  - Uninstall of an App Store app: its open windows are not closed by Settings (the page's rappRemove closes them).
+- **Storage and backup: its own PR (7b), next.** Most of that page is the page's own state, not rudolfd's: the browser storage's
+  estimate, the account's files in C: (encrypted with the account's key in the page), the Trash, the Downloads kept on the disk,
+  Back up everything and Restore (JSZip in the page). The plan: the native page asks the shell, which asks its hidden page (do-bg,
+  __oaDo) for those figures; the hidden page keeps them in the page's storage (bd95stor:ACCT, through rudolfd's copy), which the
+  native page reads; the actions that need the page (Empty the Trash, Back up everything…, Restore a backup…, Find duplicates…, a
+  download's Open and Delete) run there as pages of one action. The rest (On this computer's disk: storage, storage/measure; Keep
+  files on this drive; Make a Rudolf OS USB stick and Back up to a USB stick; RUDOLFDATA's free space) is rudolfd's, drawn natively.
+- **The owner's checklist for PR 7 (Vivobook; `rudolf-settings notif`, `devs`, `apps` from a terminal on the native desktop until
+  the switch):** 1. each page against Chromium mode's, light and dark. 2. Devices: plug in a USB stick; Open shows it in File
+  Explorer; ⏏ Eject; a printer's queue, Cancel. 3. Apps: a default app chosen opens that kind of file; Linux's Check and Update now;
+  Bring them in… and Change the Linux password… open the page's own dialogs; See what Blitzen knows… and Open Blitzen Developer
+  open their windows; Google Voice's Open in Oracle. 4. Notifications: Send a test notification shows it for the chosen time.
+- **Left:** Storage and backup (PR 7b); Privacy, Security, System health, Users; the switch.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in
   plain words, a stick too small for the chosen image refused before anything is written, a bar with the step and the time
