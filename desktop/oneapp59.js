@@ -192,7 +192,10 @@ if(ONEAPP&&typeof A=='object'){A.stor=()=>{const q=ONEAPP.q;storDo(q.get('op')||
   if(w=='dlopen'&&p){const path=downloadsPath().concat(p.split('\\'));if(!path.slice(downloadsPath().length).some(x=>!x||x=='..'))return dlOpen(path)}
   /* (Settings › Security: the page's own dialogs, #app=do-storgo&w=...) */
   const sec={vsetup:()=>vSetup(()=>{}),vrecover:()=>vRecoverDlg(()=>{}),vmove:()=>vMoveDlg(()=>{}),restart:()=>sbRestart(),sbprepare:()=>sbPrepare(null,()=>{}),bootfiles:()=>bootFilesDlg(()=>{}),
-   devmon:()=>devmOn(()=>{}),devmoff:()=>devmOff(()=>{}),devmreturn:()=>devmReturn(()=>{}),devllog:()=>devlLog(),dodinstall:()=>scDodInstall(null,()=>{})};
+   devmon:()=>devmOn(()=>{}),devmoff:()=>devmOff(()=>{}),devmreturn:()=>devmReturn(()=>{}),devllog:()=>devlLog(),dodinstall:()=>scDodInstall(null,()=>{}),
+   /* (System health: Report a problem…, Blitzen's "What's wrong", the self-test, Last starts, an event's "Why?" (its place in the health log)) */
+   report:()=>sysReportDialog(),bzall:()=>bzWhy("What's wrong with this computer?",{all:1}),selftest:()=>selftestShow(),starts:()=>startsShow(),
+   hlwhy:async()=>{const h=await hlGet(500),e=h&&h.events[+p];if(!e)return;const k=HL_KIND[e.k]||['•',e.k];bzWhy((k[1]+': '+e.m).slice(0,300),{detail:k[1]+': '+e.m,when:e.t*1000})}};
   if(sec[w]){try{return sec[w]()}catch(e){console.warn('storgo '+w,e)}return}
   if(w=='stkbak'&&p)return (async()=>{let part=null;try{const d=(await rd('disks')).disks||[],i=await rd('info');stkBackupParts(d,i).forEach(x=>{if(x.part.name==p)part=x.part})}catch(e){}
    if(!part)return notify('Backup','That drive is not plugged in.',{kind:'error'});notify('Backup','Making the backup…');

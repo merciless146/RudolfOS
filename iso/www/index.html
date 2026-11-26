@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
-<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/49be7559a5635b30.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=49be7559a5635b30'+location.hash)}catch(e){}})()</script>
+<script>/* (1.6.1, docs/plan-1.6.1.md Part 23 B, stage 2) the native desktop's apps' page for an app's window: oapage61.py */(()=>{try{if(window.__OAPAGE||/[?&]oa=/.test(location.search))return;const q=new URLSearchParams(String(location.hash||'').replace(/^#/,'')),k=q.get('app')||'';if(!k||/^do-|:/.test(k)||["gameboy", "wordpro", "sheet", "deck", "settings", "store", "blitzen", "blocklua", "weather", "taskmgr", "browser"].includes(k)||q.get('full')=='1'||!(window.webkit&&window.webkit.messageHandlers&&window.webkit.messageHandlers.rudolfNative))return;const x=new XMLHttpRequest();x.open('HEAD','a/da75b94d7f50987f.html',false);x.send();if(x.status!=200)return;window.stop();location.replace('/?oa=da75b94d7f50987f'+location.hash)}catch(e){}})()</script>
 <!-- 1.6.2 (docs/plan-1.6.2.md Part 14): no script from another site runs in this page or its own frames (it holds rudolfd's token); rudolfd sends the same policy (serve_index) -->
 <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:; worker-src 'self' blob:">
 <script>/* (1.6.0, the owner's Vivobook report 1) an app's own window (#app=NAME: oneapp59.js, the native desktop's windows): from its first paint
@@ -20985,7 +20985,10 @@ if(ONEAPP&&typeof A=='object'){A.stor=()=>{const q=ONEAPP.q;storDo(q.get('op')||
   if(w=='dlopen'&&p){const path=downloadsPath().concat(p.split('\\'));if(!path.slice(downloadsPath().length).some(x=>!x||x=='..'))return dlOpen(path)}
   /* (Settings › Security: the page's own dialogs, #app=do-storgo&w=...) */
   const sec={vsetup:()=>vSetup(()=>{}),vrecover:()=>vRecoverDlg(()=>{}),vmove:()=>vMoveDlg(()=>{}),restart:()=>sbRestart(),sbprepare:()=>sbPrepare(null,()=>{}),bootfiles:()=>bootFilesDlg(()=>{}),
-   devmon:()=>devmOn(()=>{}),devmoff:()=>devmOff(()=>{}),devmreturn:()=>devmReturn(()=>{}),devllog:()=>devlLog(),dodinstall:()=>scDodInstall(null,()=>{})};
+   devmon:()=>devmOn(()=>{}),devmoff:()=>devmOff(()=>{}),devmreturn:()=>devmReturn(()=>{}),devllog:()=>devlLog(),dodinstall:()=>scDodInstall(null,()=>{}),
+   /* (System health: Report a problem…, Blitzen's "What's wrong", the self-test, Last starts, an event's "Why?" (its place in the health log)) */
+   report:()=>sysReportDialog(),bzall:()=>bzWhy("What's wrong with this computer?",{all:1}),selftest:()=>selftestShow(),starts:()=>startsShow(),
+   hlwhy:async()=>{const h=await hlGet(500),e=h&&h.events[+p];if(!e)return;const k=HL_KIND[e.k]||['•',e.k];bzWhy((k[1]+': '+e.m).slice(0,300),{detail:k[1]+': '+e.m,when:e.t*1000})}};
   if(sec[w]){try{return sec[w]()}catch(e){console.warn('storgo '+w,e)}return}
   if(w=='stkbak'&&p)return (async()=>{let part=null;try{const d=(await rd('disks')).disks||[],i=await rd('info');stkBackupParts(d,i).forEach(x=>{if(x.part.name==p)part=x.part})}catch(e){}
    if(!part)return notify('Backup','That drive is not plugged in.',{kind:'error'});notify('Backup','Making the backup…');
