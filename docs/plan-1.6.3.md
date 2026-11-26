@@ -286,19 +286,41 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   **Known differences (PR 7):**
   - Calls to phones' "Ask each time" (shown only once a phone app was chosen to always open numbers) is a button, not a link.
   - Uninstall of an App Store app: its open windows are not closed by Settings (the page's rappRemove closes them).
-- **Storage and backup: its own PR (7b), next.** Most of that page is the page's own state, not rudolfd's: the browser storage's
-  estimate, the account's files in C: (encrypted with the account's key in the page), the Trash, the Downloads kept on the disk,
-  Back up everything and Restore (JSZip in the page). The plan: the native page asks the shell, which asks its hidden page (do-bg,
-  __oaDo) for those figures; the hidden page keeps them in the page's storage (bd95stor:ACCT, through rudolfd's copy), which the
-  native page reads; the actions that need the page (Empty the Trash, Back up everything…, Restore a backup…, Find duplicates…, a
-  download's Open and Delete) run there as pages of one action. The rest (On this computer's disk: storage, storage/measure; Keep
-  files on this drive; Make a Rudolf OS USB stick and Back up to a USB stick; RUDOLFDATA's free space) is rudolfd's, drawn natively.
+- **PR 7b, done (2026-11-26, scheduled task; branch native-settings-9, on #703's): Storage and backup** (`settings_stor.c`). Most of
+  the page is the page's own state, not rudolfd's: the browser storage's estimate, the account's files in C: (encrypted with the
+  account's key in the page), the Trash, the Downloads kept on the disk, Back up everything and Restore (JSZip in the page). So:
+  - **The page's figures:** storage56.js's new storSnap works them out where the page is, and storDo does what needs the page
+    (Empty the Trash, the old items' rule, a download's Delete) and keeps the figures in the page's storage, `bd95stor:ACCT`
+    (rudolfd's copy), which the native page reads. The native page asks the shell "stor OP [ARG]" when it opens and after each change;
+    the shell gives it to its hidden page (do-bg's __oaDo, `do-stor`, unseen), or a hidden page of its own while that one is not there;
+    the native page draws again when newer figures come (within 8 s).
+  - **What it opens** (File Explorer at the home folder or Downloads, Find duplicates…, Back up everything…, Restore a backup…, the App
+    Store's Linux apps, Steam, Emu, the Trash, a download kept on the disk, Back up here, Keep my files on this drive…): "storgo W
+    [ARG]", a page of one action (`do-storgo`), as Apps' dialogs.
+  - In both, the shell takes OP and W only from its lists; ARG (a download's place in Downloads, a partition) is escaped into the
+    address, at most 150 bytes, no control characters; the page refuses a download's place with an empty part or "..".
+  - **rudolfd's parts drawn here:** On this computer's disk (storage, storage/measure, every 1.5 s while measuring), RUDOLFDATA's free
+    space (info), Back up to a USB stick's drives (disks), Make a Rudolf OS USB stick (sys/status, install/images, stick/info,
+    sys/urlcheck, mkstick with the administrator's prompt and the size typed as stkConfirm, the job's lines as stkProgress's bar and
+    time left, then what was checked and the notification), Keep files on this drive (keepfiles, power?action=reboot).
+  Against the web one (light, dark, light-green, dark-pink; a USB stick, a measured disk and RUDOLFDATA in the test's rudolfd; the
+  page's own figures as the page works them out): 0.40-1.46 %. Search the same 9 rows. Checklist S0-S7. The whole test
+  (settings_t.sh): 469/469 (its U15 now puts its own USB drive in place of the stand-in's stick).
+  **Known differences (PR 7b):**
+  - The page's own figures are as new as the hidden page's last count: a change made in another window shows once the page is opened
+    again (the web page counts each time it is drawn).
+  - Back up here's steps ("Checking it…", "Writing …") are said as notifications by the page of one action, not under the button.
+  - Restore a backup…'s file picker opens from a page of one action: the owner's checklist.
 - **The owner's checklist for PR 7 (Vivobook; `rudolf-settings notif`, `devs`, `apps` from a terminal on the native desktop until
   the switch):** 1. each page against Chromium mode's, light and dark. 2. Devices: plug in a USB stick; Open shows it in File
   Explorer; ⏏ Eject; a printer's queue, Cancel. 3. Apps: a default app chosen opens that kind of file; Linux's Check and Update now;
   Bring them in… and Change the Linux password… open the page's own dialogs; See what Blitzen knows… and Open Blitzen Developer
   open their windows; Google Voice's Open in Oracle. 4. Notifications: Send a test notification shows it for the chosen time.
-- **Left:** Storage and backup (PR 7b); Privacy, Security, System health, Users; the switch.
+- **The owner's checklist for PR 7b (`rudolf-settings stor`):** 1. against Chromium mode's, light and dark. 2. Empty the Trash: the
+  Trash's line and the home folder's table change within a few seconds. 3. Open File Explorer, Find duplicates…, Back up everything…
+  (the Save dialog), Restore a backup… (the file picker opens). 4. Back up here with a stick plugged in: "Backup saved". 5. Make the
+  stick… on a spare stick: the size asked, the bar, "It is safe to remove the stick now". 6. On a live stick: Keep my files on this drive….
+- **Left:** Privacy, Security, System health, Users (PR 8); the switch.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in
   plain words, a stick too small for the chosen image refused before anything is written, a bar with the step and the time
