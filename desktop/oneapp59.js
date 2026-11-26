@@ -538,7 +538,7 @@ function oaAct(da,q,fin,bg){if(!/^(pin|qs|short|nc|mute)$/.test(da))return false
 function oaAct1(da,q,fin,bg){
   if(da=='pin'){try{pinSet(q.get('k')||'',q.get('on')=='1')}catch(e){}fin({});return true}
   /* (1.6.0 Part 12, item 3) quick settings' switches and the notifications' centre as the native shell draws them: the page's own
-     panels made unseen and the same button pressed (#app=do-qs&item=WORDS; #app=do-nc&op=clear|dnd&on=0|1|dismiss&i=N|why&i=N) */
+     panels made unseen and the same button pressed (#app=do-qs&item=WORDS; #app=do-nc&op=clear|dnd&on=0|1|mute&on=0|1|dismiss&i=N|why&i=N) */
   /* (1.6.0) on=0|1: the switch as the shell shows it now, so a page that had not heard of a change yet does not undo it; the screen
      reader's "Screen reader on" said before the page closes (srSpeak: the voices', or rudolfd's say) */
   if(da=='qs'){let sr=0;try{qsToggle();const it=q.get('item'),on=q.get('on'),b=[...document.querySelectorAll('#qsp .qst')].find(x=>(x.querySelector('span')||{}).textContent==it);
@@ -556,9 +556,10 @@ function oaAct1(da,q,fin,bg){
   if(da=='nc'){const op=q.get('op')||'';try{NC=ld(NCK(),[]);ncToggle(true);const p=document.getElementById('ncp');
     if(op=='clear')p.querySelector('.clr').click();
     else if(op=='dnd'){const c=p.querySelector('.dnd');if(c.checked!=(q.get('on')=='1')){c.checked=q.get('on')=='1';c.dispatchEvent(new Event('change'))}}
+    else if(op=='mute'){const c=p.querySelector('.nmute');if(c&&c.checked!=(q.get('on')=='1')){c.checked=q.get('on')=='1';c.dispatchEvent(new Event('change'))}}
     else if(op=='dismiss'||op=='why'){const it=p.querySelectorAll('.nitem')[+q.get('i')||0],b=it&&it.querySelector(op=='why'?'.bzwhy':'.nx');if(op=='why')OA.want=1;if(b)b.click()}
     p.remove()}catch(e){console.warn(e)}
-   if(op=='why'){setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}if(op=='dnd')oaQsTold();fin({});return true}
+   if(op=='why'){setTimeout(()=>{if(!OA.main&&!OA.done){oaClosed('');oaPost({op:'close'})}},15000);return}if(op=='dnd'||op=='mute')oaQsTold();fin({});return true}
   if(da=='mute'){try{const m=S.snd&&S.snd.master;if(m){m.on=!m.on;trayVol()}}catch(e){}setTimeout(()=>fin({}),400);return}}
 /* (1.6.0 Part 12, item 1's second part) the native desktop's menus do what the page's do: #app=do-desk&on=ICON&item=WORDS
    gives the page's own menu for that desktop icon (its name, or a file's name; none: the desktop's) and chooses the item

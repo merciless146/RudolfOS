@@ -162,19 +162,21 @@ const NCK=()=>'bd95notif:'+uid();let NC=[],ncUnread=0;
 const NCB=document.createElement('button');NCB.id='ncb';NCB.title='Notifications (Super+N)';NCB.setAttribute('aria-label','Notifications');NCB.textContent='🔔';
 const QSB=document.createElement('button');QSB.id='qsb';QSB.title='Quick settings (Super+A)';QSB.setAttribute('aria-label','Quick settings');QSB.textContent='☰';
 $('#tray').before(QSB);$('#tray').before(NCB);
-function ncBadge(){NCB.dataset.n=ncUnread||'';NCB.classList.toggle('dnd',!!S.dnd);NCB.textContent=S.dnd?'🔕':'🔔'}
+function ncBadge(){const q=!!(S.dnd||S.nmute);NCB.dataset.n=ncUnread||'';NCB.classList.toggle('dnd',q);NCB.textContent=q?'🔕':'🔔';NCB.title=S.nmute?'Notifications: muted (Super+N)':'Notifications (Super+N)'}
 window.__notifCentre={add(title,body,opt){opt=opt||{};const n={id:Date.now()+Math.random(),t:String(title),b:String(body||''),k:opt.kind||'info',app:opt.app||'',at:Date.now(),act:opt.action||null};if(opt.blitz){n.bz=opt.blitz;n.wl='Ask Blitzen'}   /* (1.6.1: its own Blitzen button, blitzdiag57.js bzWhyBtn; kept with it) */
  if(!opt.quiet){NC.unshift(n);NC=NC.slice(0,60);ncUnread++;ncBadge();try{USER&&svj(NCK(),NC.map(x=>({...x,act:null})))}catch(e){}}
- if(!S.dnd||n.k=='error'){const d=document.createElement('div');d.className='ntoast '+n.k;d.setAttribute('role',n.k=='error'?'alert':'status');d.innerHTML=`<b></b><div></div>`;d.querySelector('b').textContent=n.t;d.querySelector('div').textContent=n.b;
+ /* (1.6.3, the owner: Mute holds back every pop-up and sound, an error's too; the centre still keeps them) */
+ if(!S.nmute&&(!S.dnd||n.k=='error')){const d=document.createElement('div');d.className='ntoast '+n.k;d.setAttribute('role',n.k=='error'?'alert':'status');d.innerHTML=`<b></b><div></div>`;d.querySelector('b').textContent=n.t;d.querySelector('div').textContent=n.b;
   d.onclick=()=>{d.remove();n.act?n.act():ncToggle(true)};typeof bzWhyBtn=='function'&&bzWhyBtn(d,n);let host=$('#ntoasts');if(!host){host=document.createElement('div');host.id='ntoasts';document.body.appendChild(host)}host.appendChild(d);setTimeout(()=>d.classList.add('out'),opt.toast||5000);setTimeout(()=>d.remove(),(opt.toast||5000)+400);
   try{if(S.sr||S.tts)speak(n.t+'. '+n.b)}catch(e){}}
  /* (1.6.0: a notification may name its own sound, opt.snd: Update ready, Battery low, a device; a quiet one sounds only then) */
- const snd=opt.snd||(opt.quiet?null:'notify');if(snd&&!S.dnd&&opt.sound!==false)try{sfx(snd)}catch(e){}return n}};
+ const snd=opt.snd||(opt.quiet?null:'notify');if(snd&&!S.dnd&&!S.nmute&&opt.sound!==false)try{sfx(snd)}catch(e){}return n}};
 function ncToggle(force){let p=$('#ncp');if(p&&!force){p.remove();return}if(p)p.remove();qsClose();p=document.createElement('div');p.id='ncp';p.className='flyout';p.setAttribute('role','dialog');p.setAttribute('aria-label','Notifications');
- p.innerHTML=`<div class='fh'><b>Notifications</b><span style='flex:1'></span><label class='ck'><input type='checkbox' class='dnd'> Do not disturb</label><button class='clr'>Clear all</button></div><div class='nl'></div>`;
+ p.innerHTML=`<div class='fh'><b>Notifications</b><span style='flex:1'></span><label class='ck' title='No pop-ups or sounds at all, errors included'><input type='checkbox' class='nmute'> Mute</label><label class='ck'><input type='checkbox' class='dnd'> Do not disturb</label><button class='clr'>Clear all</button></div><div class='nl'></div>`;
  const nl=p.querySelector('.nl');const draw=()=>{nl.innerHTML='';if(!NC.length){nl.innerHTML=`<div class='nempty'>No new notifications</div>`;return}NC.forEach(n=>{const d=document.createElement('div');d.className='nitem '+n.k;d.innerHTML=`<div class='nt'><b></b><small></small><button class='nx' aria-label='Dismiss'>✕</button></div><div class='nb'></div>`;d.querySelector('b').textContent=n.t;d.querySelector('small').textContent=clockParts(new Date(n.at)).time;d.querySelector('.nb').textContent=n.b;typeof bzWhyBtn=='function'&&bzWhyBtn(d.querySelector('.nb'),n);
   d.querySelector('.nx').onclick=e=>{e.stopPropagation();NC=NC.filter(x=>x!==n);svj(NCK(),NC);draw()};d.onclick=()=>{n.act&&n.act()};nl.appendChild(d)})};draw();
  p.querySelector('.dnd').checked=!!S.dnd;p.querySelector('.dnd').onchange=e=>{S.dnd=e.target.checked;if(SC)SC.dnd=S.dnd;persistS();ncBadge()};
+ p.querySelector('.nmute').checked=!!S.nmute;p.querySelector('.nmute').onchange=e=>{S.nmute=e.target.checked;if(SC)SC.nmute=S.nmute;persistS();ncBadge()};
  p.querySelector('.clr').onclick=()=>{NC=[];svj(NCK(),[]);draw()};document.body.appendChild(p);ncUnread=0;ncBadge();flyClose(p,NCB)}
 NCB.onclick=e=>{e.stopPropagation();ncToggle()};
 function flyClose(p,btn){setTimeout(()=>{const k=e=>{if(!p.contains(e.target)&&e.target!==btn&&!(e.target.closest&&e.target.closest('.cmenu'))){p.remove();document.removeEventListener('pointerdown',k,true)}};document.addEventListener('pointerdown',k,true)},0)}

@@ -73,6 +73,7 @@ typedef struct {
 	char tbpcol[16];   /* (1.6.1 Part 25: the progress fill's colour on a minimized window's taskbar button, tbprog61.js S.tbpcol) */
 	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][KN];
 	int nl, dnd, sr, mag, hc, vk, touch;   /* (quick settings' switches: item 3) */
+	int nmute;   /* (1.6.3: the notifications' Mute, shell25.js S.nmute: no pop-up or sound at all, an error's included) */
 	int nlv, nlsched; double magz;   /* (1.6.0: Night light's strength and hours, the magnifier's zoom: the shell does them for the whole screen) */
 	int aur, rmotion; char aurm[12], lnm[12];   /* (the dynamic backgrounds' moving parts: test findings N11, N12) */
 	int fs; char tx[16], cb[12];   /* (the title bars: the Font size, the Window text colour, the colour vision filter) */
@@ -1000,7 +1001,7 @@ static void ws_apply(void)
 	if (FOCUS && FOCUS->off) FOCUS = NULL;
 }
 /* ("Workspace N", once the taskbar shows it: the pop-up's window keeps a copy of what is behind it when it comes) */
-static gboolean ws_said(gpointer d) { char t[32]; snprintf(t, sizeof t, "Workspace %d", GPOINTER_TO_INT(d)); if (!S.dnd) toast_text(t, "", 1200); return G_SOURCE_REMOVE; }
+static gboolean ws_said(gpointer d) { char t[32]; snprintf(t, sizeof t, "Workspace %d", GPOINTER_TO_INT(d)); if (!S.dnd && !S.nmute) toast_text(t, "", 1200); return G_SOURCE_REMOVE; }
 static void ws_go(int n)
 {
 	if (NMON > 1) { mon_go(n); return; }   /* (1.6.1 Part 1) */
@@ -2559,7 +2560,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		double a2, d2; a2 = css_ascent(cr, UIFAM, 400, 13 * .85, &d2);
 		css_text(cr, CLOCK_D, UIFAM, 400, 13 * .85, tx + t1 + 8, base - a2 - (0), a2 + d2, (RGBA){b.fg.r, b.fg.g, b.fg.b, .78}, 0);
 		rx -= 4; ri++; }
-	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd ? "🔕" : "🔔", "☰"};   /* (do not disturb: 🔕, shell25.js ncBadge) */
+	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd || S.nmute ? "🔕" : "🔔", "☰"};   /* (do not disturb: 🔕, shell25.js ncBadge) */
 	for (int q = 0; q < 2 && !MONK_CUR; q++, ri++) {
 		double qh = S.touch ? 40 : 30;   /* (touch mode: at least 40 px) */
 		Box b = tb_box(TB_QSB, HV(QK[q], ""), PR(QK[q], "")); double tw = css_width(cr, QT[q], UIFAM, 400, 15), w = fmax(30, 12 + tw + 2 * b.bw), y = mid - qh / 2;
@@ -2673,7 +2674,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 	{ Box b = tb_box(TB_TRAY, HV("clock", ""), 0); clock_text(); double h = 2 * b.bw + 32; by -= h;
 		box_paint(cr, x, by, cw, h, &b); hit_add(x, by, cw, h, "clock", NULL); CLKD[0] = CLKD[1] = -1; CLKBB[0] = x; CLKBB[1] = by; CLKBB[2] = cw; CLKBB[3] = h;
 		css_text(cr, CLOCK_T, UIFAM, 400, 13, x + b.bw + 10, by + b.bw + 3, 26, b.fg, cw - 2 * b.bw - 20); by -= 4; }
-	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd ? "🔕" : "🔔", "☰"};
+	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd || S.nmute ? "🔕" : "🔔", "☰"};
 	for (int q = 0; q < 2 && !MONK_CUR; q++) {
 		Box b = tb_box(TB_QSB, HV(QK[q], ""), PR(QK[q], "")); double tw = css_width(cr, QT[q], UIFAM, 400, 15); by -= 30;
 		box_paint(cr, x, by, cw, 30, &b); hit_add(x, by, cw, 30, QK[q], NULL); css_text(cr, QT[q], UIFAM, 400, 15, x + (cw - tw) / 2, by + b.bw, 30 - 2 * b.bw, b.fg, 0);
@@ -3772,7 +3773,7 @@ static void settings_load(void)
 	jstr(s, "icons", n.icons, sizeof n.icons); n.scale = (int)jnum(s, "scale", 100); if (n.scale < 75 || n.scale > 250) n.scale = 100;
 	n.lpac = jbool(s, "lpac"); jstr(s, "lpacm", n.lpacm, sizeof n.lpacm); n.lpbr = (int)jnum(s, "lpbr", 100);   /* (DEFS.disp lpac false, lpacm normal, lpbr 100) */
 	n.nlv = (int)jnum(s, "nlv", 40); n.nlsched = jbool(s, "nlsched"); n.magz = jnum(s, "magz", 2);
-	n.nl = jbool(s, "nl"); n.dnd = jbool(s, "dnd"); n.sr = jbool(s, "sr"); n.mag = jbool(s, "mag"); n.vk = jbool(s, "vk"); n.touch = jbool(s, "touch"); { char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
+	n.nl = jbool(s, "nl"); n.dnd = jbool(s, "dnd"); n.nmute = jbool(s, "nmute"); n.sr = jbool(s, "sr"); n.mag = jbool(s, "mag"); n.vk = jbool(s, "vk"); n.touch = jbool(s, "touch"); { char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
 	{ JV *dk = jprop(s, "darkui"); n.darkui = !(dk && dk->t == 1 && !dk->n); }   /* (S.darkui!==false) */
 	{ JV *au = jprop(s, "aur"); n.aur = !(au && au->t == 1 && !au->n); } n.rmotion = jbool(s, "rmotion"); jstr(s, "aurm", n.aurm, sizeof n.aurm); jstr(s, "lnm", n.lnm, sizeof n.lnm);   /* (DEFS.disp aur:true) */
 	n.tbac = jbool(s, "tbac"); n.tbbac = jbool(s, "tbbac"); n.h24 = jbool(s, "h24"); n.doff = jnum(s, "doff", 0); n.lat = jnum(s, "lat", NAN);
@@ -6036,6 +6037,14 @@ static void qs_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 	for (int i = 0; i < 3; i++) { double bx = x + i * (cw + 6); fl_button(cr, QB[i], bx, y, cw, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], QBK[i]), dark); fl_btn(QBK[i], bx, y, cw, bh); }
 }
 static double FLSCROLL;   /* (the notifications' centre scrolled: the page's flyout is at most 70 % of the screen's height) */
+/* a checkbox and its words in the centre's heading, right-aligned 6 px left of R (#ncp .fh's gap): its left edge back */
+static double nc_check(cairo_t *cr, const char *t, int on, const char *key, double R, double y, double bh, double l13, RGBA fg)
+{
+	double tw = css_width(cr, t, UIFAM, 400, 13), lw = 20 + 4 + tw, lx = R - 6 - lw, cby = y + (bh - 13) / 2;
+	Box c; memset(&c, 0, sizeof c); c.bg = cx(on ? "#0075ff" : "#ffffff", 1); c.bw = 1; c.bc = cx(on ? "#0075ff" : "#767676", 1); c.rad = 2; box_paint(cr, lx + 4, cby, 13, 13, &c);
+	if (on) { cairo_move_to(cr, lx + 7, cby + 6.5); cairo_line_to(cr, lx + 9.5, cby + 9); cairo_line_to(cr, lx + 14, cby + 4); cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 1.8); cairo_stroke(cr); }
+	css_text(cr, t, UIFAM, 400, 13, lx + 24, y + (bh - l13) / 2, l13, fg, 0); fl_btn(key, lx, y + (bh - 19) / 2, lw, 19); return lx;
+}
 static void nc_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int top)
 {
 	RGBA fg = cx(dark ? "#e2e8f0" : "#111827", 1), mut = cx(dark ? "#94a3b8" : "#6b7280", 1), bd = cx(dark ? "#334155" : "#d1d5db", 1); double W = 340;
@@ -6053,10 +6062,7 @@ static void nc_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 	/* Notifications · Do not disturb · Clear all */
 	css_text(cr, "Notifications", UIFAM, 700, 13, x, y + (bh - lb) / 2, lb, fg, 0);
 	double cw = css_width(cr, "Clear all", UIFAM, 400, 13) + 22, cx0 = x + W - cw; fl_button(cr, "Clear all", cx0, y, cw, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], "clear"), dark); fl_btn("clear", cx0, y, cw, bh);
-	{ double tw = css_width(cr, " Do not disturb", UIFAM, 400, 13), lw = 20 + 4 + tw, lx = cx0 - 6 - lw, cby = y + (bh - 13) / 2;
-		Box c; memset(&c, 0, sizeof c); c.bg = cx(S.dnd ? "#0075ff" : "#ffffff", 1); c.bw = 1; c.bc = cx(S.dnd ? "#0075ff" : "#767676", 1); c.rad = 2; box_paint(cr, lx + 4, cby, 13, 13, &c);
-		if (S.dnd) { cairo_move_to(cr, lx + 7, cby + 6.5); cairo_line_to(cr, lx + 9.5, cby + 9); cairo_line_to(cr, lx + 14, cby + 4); cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 1.8); cairo_stroke(cr); }
-		css_text(cr, " Do not disturb", UIFAM, 400, 13, lx + 24, y + (bh - l13) / 2, l13, fg, 0); fl_btn("dnd", lx, y + (bh - 19) / 2, lw, 19); }
+	{ double lx = nc_check(cr, " Do not disturb", S.dnd, "dnd", cx0, y, bh, l13, fg); nc_check(cr, " Mute", S.nmute, "nmute", lx, y, bh, l13, fg); }   /* (1.6.3: Mute, left of Do not disturb as in #ncp) */
 	y += bh + 8;
 	if (!NNT) { double tw = css_width(cr, "No new notifications", UIFAM, 400, 13); css_text(cr, "No new notifications", UIFAM, 400, 13, x + (W - tw) / 2, y + 14, l13, (RGBA){ fg.r, fg.g, fg.b, .65 }, 0); }
 	for (int i = 0; i < NNT; i++) { Note *n = &NT[i]; int err = !strcmp(n->k, "error"); double h = ih[i];
@@ -6375,10 +6381,12 @@ static void fl_range(double px) { double x = (px + FLWX) / Z; int v = FLVOL;
    saved settings have it too (the page doing it saves it a moment later: settings read in between, another window's save, are older) */
 static struct { int on; gint64 t; } QSP[8];
 static void qs_pending(int i, int on) { if (i >= 0 && i < 8) { QSP[i].on = on; QSP[i].t = g_get_monotonic_time(); } }
+static struct { int on; gint64 t; } NMP;   /* (Mute, shown at once and kept until rudolfd's settings have it: as QSP) */
 static void qs_keep(void)
 {
 	gint64 now = g_get_monotonic_time();
 	for (int i = 0; i < 8; i++) if (QSP[i].t) { if (now - QSP[i].t > 20 * G_USEC_PER_SEC || qs_get(i) == QSP[i].on) QSP[i].t = 0; else qs_set(i, QSP[i].on); }
+	if (NMP.t) { if (now - NMP.t > 20 * G_USEC_PER_SEC || S.nmute == NMP.on) NMP.t = 0; else S.nmute = NMP.on; }
 }
 /* (a JSON value written again as the page's JSON.stringify writes it: numbers as short as they read back the same) */
 static void jv_dump(GString *o, const JV *v)
@@ -6396,13 +6404,20 @@ static void jv_dump(GString *o, const JV *v)
    saved where every window and the shell read it, at once, by the shell: the account's settings in rudolfd's copy of the pages' storage
    (bd95set:ID, as the page's tile saves it: dm, nl, dnd, sr, mag, cb, vk, touch), then the shell and every window told (settings_changed:
    the windows take it from that copy). The page doing the rest (#app=do-qs: the screen reader's words) finds it already so. */
+static void set_save(const char *key, const char *sv, int on);
 static void qs_save(int i, int on)
 {
-	static const char *const K[8] = { "dm", "nl", "dnd", "sr", "mag", "cb", "vk", "touch" }; if (i < 0 || i > 7 || !USER_ID[0] || !id_ok(USER_ID)) return;
+	static const char *const K[8] = { "dm", "nl", "dnd", "sr", "mag", "cb", "vk", "touch" }; if (i < 0 || i > 7) return;
+	set_save(K[i], i == 0 ? (on ? "dark" : "light") : i == 5 ? (on ? "contrast" : "none") : NULL, on);
+}
+/* one of the account's settings (bd95set:ACCT) saved as the page's persistS would: a string (sv) or a true/false (on) */
+static void set_save(const char *key, const char *sv, int on)
+{
+	if (!USER_ID[0] || !id_ok(USER_ID)) return;
 	char p[160]; snprintf(p, sizeof p, "/api/lsync?key=bd95set%%3A%s", USER_ID); JV *r = jget(p); JV *vv = jprop(r, "v"); JV *set = vv && vv->t == 3 && vv->s[0] == '{' ? jparse(vv->s) : NULL;
 	if (!set) { jfree(r); return; }
-	JV *x = jprop(set, K[i]); if (!x) { set->k = g_renew(char *, set->k, set->len + 1); set->v = g_renew(JV *, set->v, set->len + 1); set->k[set->len] = g_strdup(K[i]); x = set->v[set->len++] = g_new0(JV, 1); }
-	g_free(x->s); x->s = NULL; if (i == 0 || i == 5) { x->t = 3; x->s = g_strdup(i == 0 ? (on ? "dark" : "light") : (on ? "contrast" : "none")); } else { x->t = 1; x->n = on; }
+	JV *x = jprop(set, key); if (!x) { set->k = g_renew(char *, set->k, set->len + 1); set->v = g_renew(JV *, set->v, set->len + 1); set->k[set->len] = g_strdup(key); x = set->v[set->len++] = g_new0(JV, 1); }
+	g_free(x->s); x->s = NULL; if (sv) { x->t = 3; x->s = g_strdup(sv); } else { x->t = 1; x->n = on; }
 	GString *js = g_string_new(NULL); jv_dump(js, set); GString *b = g_string_new("{\"gen\":0,\"part\":1,\"set\":{"); char k[100]; snprintf(k, sizeof k, "bd95set:%s", USER_ID); json_esc(b, k); g_string_append_c(b, ':'); json_esc(b, js->str); g_string_append(b, "},\"del\":[]}");
 	int c = http("POST", "/api/lsync", b->str, b->len, NULL); g_string_free(js, TRUE); g_string_free(b, TRUE); jfree(set); jfree(r);
 	if (c == 200) settings_changed(USER_ID, NULL);
@@ -6432,6 +6447,7 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "power")) { fl_close(); power_dialog(); return; }
 	else if (!strcmp(k, "clear")) { NT_CLR = 0; for (int i = 0; i < NNT; i++) NT_CLR = fmax(NT_CLR, NT[i].at); NT_CLRT = g_get_monotonic_time(); NNT = 0; NNTP = 0; app_open_ex("do-nc", NULL, "&op=clear", 1); bar_redraw(); }
 	else if (!strcmp(k, "dnd")) { S.dnd = !S.dnd; qs_pending(2, S.dnd); qs_save(2, S.dnd); char ex[40]; snprintf(ex, sizeof ex, "&op=dnd&on=%d", S.dnd); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
+	else if (!strcmp(k, "nmute")) { S.nmute = !S.nmute; NMP.on = S.nmute; NMP.t = g_get_monotonic_time(); set_save("nmute", NULL, S.nmute); char ex[40]; snprintf(ex, sizeof ex, "&op=mute&on=%d", S.nmute); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
 	else if (!strncmp(k, "nx:", 3)) { int i = atoi(k + 3); if (i < 0 || i >= NNT) return; char ex[40]; snprintf(ex, sizeof ex, "&op=dismiss&i=%d", i);
 		if (NNTX == 16) { memmove(&NTX[0], &NTX[1], 15 * sizeof NTX[0]); NNTX--; } NTX[NNTX].at = NT[i].at; snprintf(NTX[NNTX].t, sizeof NTX[0].t, "%s", NT[i].t); NTX[NNTX++].when = g_get_monotonic_time();
 		for (int j = 0; j < NNTP; j++) if (NTP[j].at == NT[i].at && !strcmp(NTP[j].t, NT[i].t)) { memmove(&NTP[j], &NTP[j + 1], (NNTP - j - 1) * sizeof NTP[0]); memmove(&NTPT[j], &NTPT[j + 1], (NNTP - j - 1) * sizeof NTPT[0]); NNTP--; break; }
@@ -6478,7 +6494,7 @@ static gboolean fl_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 static gboolean fl_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 {
 	(void)w; (void)d; if (FLDRAG) { fl_range(e->x); return TRUE; }
-	int h = fl_at(e->x, e->y); if (h >= 0 && (!strcmp(FLBK[h], "range") || !strncmp(FLBK[h], "qs:", 3) || !strcmp(FLBK[h], "dnd") || !strncmp(FLBK[h], "nx:", 3) || (FLBK[h][0] >= '0' && FLBK[h][0] <= '9'))) h = -1;
+	int h = fl_at(e->x, e->y); if (h >= 0 && (!strcmp(FLBK[h], "range") || !strncmp(FLBK[h], "qs:", 3) || !strcmp(FLBK[h], "dnd") || !strcmp(FLBK[h], "nmute") || !strncmp(FLBK[h], "nx:", 3) || (FLBK[h][0] >= '0' && FLBK[h][0] <= '9'))) h = -1;
 	if (h != FLHOV) { FLHOV = h; gtk_widget_queue_draw(FLAREA); }
 	GdkWindow *g = gtk_widget_get_window(FLWIN); if (g) { static GdkCursor *ptr; if (!ptr) ptr = gdk_cursor_new_from_name(gdk_display_get_default(), "pointer"); int k = fl_at(e->x, e->y); gdk_window_set_cursor(g, k >= 0 && !strcmp(FLBK[k], "sounds") ? ptr : NULL); }
 	return TRUE;
@@ -8072,7 +8088,7 @@ static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 	if (STATEF) { TLOG_N++; snprintf(TLOG[TLOG_N % 32], sizeof TLOG[0], "%s|%s", from ? from->k : "-", t->t); }   /* (the tests count them, item 12: only with RUDOLF_NATIVE_STATE) */
 	/* (1.6.0) Do not disturb: no pop-up, from any window or the shell, but an error's (shell25.js __notifCentre.add: !S.dnd||n.k=='error'), as on
 	   Standard where one page decides; a window whose page had not heard of the switch yet no longer shows one */
-	if (S.dnd && strcmp(t->k, "error")) { NTST--; return; }
+	if (S.nmute || (S.dnd && strcmp(t->k, "error"))) { NTST--; return; }   /* (1.6.3: Mute holds back every pop-up, an error's too) */
 	if (gm61_hold(t->k)) { NTST--; return; }   /* (1.6.1 Part 19: game mode) */
 	toast_place(); if (!g_signal_handler_find(TWIN, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, toast_press, NULL)) { g_signal_connect(TWIN, "button-press-event", G_CALLBACK(toast_press), NULL); g_signal_connect(TWIN, "motion-notify-event", G_CALLBACK(toast_motion), NULL); }
 	toast_anim();
@@ -8433,7 +8449,7 @@ static void state_write(void)
 	g_string_append_printf(s, "signtop %d\nbright %d %d\nflgrab %d\n", x_on_top(SIGN), BRI_HAS, BRI, FL_GRAB);
 	if (VKW && gtk_widget_get_visible(VKW)) { char *k = g_strdup(VKKEYS); for (char *t = strtok(k, "|"); t; t = strtok(NULL, "|")) { char ch[32]; int kx, ky; if (sscanf(t, "%31s %d %d", ch, &kx, &ky) == 3) { char *u = g_uri_unescape_string(ch, NULL); g_string_append_printf(s, "vkkey %s %d %d\n", u ? u : ch, VKX + kx, VKY + ky); g_free(u); } } g_free(k); }
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ontop) g_string_append_printf(s, "ontop %s\n", c->app ? c->app->k : c->ak[0] ? c->ak : "-"); }
-	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
+	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\nnmute %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED, S.nmute);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
 	for (int i = 0; i < NTST; i++) g_string_append_printf(s, "toast %d %d %d %d %d|%s\n", TST[i].why, (int)lround(TSX[i] * Z), (int)lround(TSY[i] * Z), (int)lround(349 * Z), (int)lround(TST[i].h * Z), TST[i].t);
 	for (int i = 0; i < NHITS; i++) g_string_append_printf(s, "hit %s %s %d %d %d %d\n", HITS[i].kind, HITS[i].arg[0] ? HITS[i].arg : "-", HITS[i].x + bx, HITS[i].y + by, HITS[i].w, HITS[i].h);
 	/* the start menu's rows on the screen (mrow ACTION x y w h) */

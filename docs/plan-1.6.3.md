@@ -784,6 +784,14 @@ unless the item is Native's own (then Native is made to match Chromium, never th
      mode's page and Native, **3/12 before, 12/12 after**; tbbeh_t.js and keybeh_t.js unchanged (tbbeh's step 9 fails
      before and after: Command Prompt's key, `terminal` and `prompt`, a test of its own). Found: on Chromium mode's page
      (Playwright, one window) the menu stays open over the page's own Alt+Tab; Native closes it, the owner's words.
+7. **Mute notifications** (the owner, 2026-11-26 05:25 CST): "Add a function to mute/unmute desktop notifications. The
+   mute/unmute checkbox can be in the expanding menu for the notification button on the taskbar." Asked what it should do
+   beside Do not disturb, the owner chose "Mute everything": a **Mute** checkbox in the notification centre's heading, left
+   of Do not disturb. While on: no pop-up and no sound for any notification, an error's included; each is still kept in
+   the centre and counted on the 🔔, which shows 🔕. Kept with the account's settings (`S.nmute`, bd95set) like Do not
+   disturb. Native draws the same box and holds back its own pop-ups too (rudolf-native.c nc_check, toast_addf). Tested
+   by qsbeh_t.js on both engines (on, off, kept; no pop-up while on). Native Settings' Notifications page (Part 3) may
+   add the same switch when it is next changed.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ## Steps
