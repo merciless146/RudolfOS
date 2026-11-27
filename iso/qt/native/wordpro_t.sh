@@ -37,7 +37,8 @@ grep -q '^styles 9$' "$ST" && grep -q '^fonts 12$' "$ST"
 ok "2. the toolbar's lists are the page's: 9 styles, 12 fonts (mkwordpro.py)" "$([ $? = 0 ] && echo 1)" "$(head -20 "$ST")"
 # (the window takes the keys, as a person's first press gives them to it; there is no window manager on this display, so
 #  the focus is set with X's own request and the keys and the press go in as the X server's own events)
-DISPLAY=$DSP xdotool windowfocus --sync "$WIN" 2>/dev/null; DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.3
+DISPLAY=$DSP xdotool windowfocus --sync "$WIN" 2>/dev/null; sleep 0.8
+DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.6
 DISPLAY=$DSP xdotool type --delay 12 'Hello world'
 sleep 1
 grep -q '^words 2$' "$ST" && grep -q '^chars 10$' "$ST"
@@ -49,9 +50,8 @@ DISPLAY=$DSP xdotool key ctrl+f; sleep 0.6
 DISPLAY=$DSP xdotool type --delay 12 'world'; DISPLAY=$DSP xdotool key Return; sleep 0.8
 grep -q '^sel 1$' "$ST" && grep -q '^text Hello world$' "$ST"
 ok "5. Ctrl+F finds 'world' (it is chosen), and the writing is unchanged" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(sel|text) ' "$ST")"
-DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.3
-DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool type --delay 12 'one
-two'
+DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.5
+DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool type --delay 12 'one'; DISPLAY=$DSP xdotool key Return; DISPLAY=$DSP xdotool type --delay 12 'two'
 sleep 1
 grep -q '^words 2$' "$ST" && grep -q '^chars 6$' "$ST"
 ok "6. a second line is counted as text, its newline not a character" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(words|chars|text) ' "$ST")"
