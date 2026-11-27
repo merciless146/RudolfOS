@@ -4,9 +4,10 @@ A hardware session on the owner's Vivobook, following `docs/native-vivobook-chec
 **V58 passed**: the machine starts from its own drive with no stick attached. **N1 matches**: full-screen video on
 Native's GPU path shows the picture, not a black screen. **N2 matches** on the clean attempt: Notepad's Open raises the
 page's own file dialog, centred over a dimmed desktop, every control present. Two earlier clicks raised a blank "Rudolf
-OS" window instead; that is recorded as an unexplained intermittent symptom, not as what Open does. **N3 was not run.**
-Every V item except V58 is deferred. Nothing below claims that something works on the machine unless the machine said so
-itself — and where this session read the screen wrong, it says so.
+OS" window instead; that is recorded as an unexplained intermittent symptom, not as what Open does. **N3 matches**:
+Task Manager's Apps list showed a row for each open window, with Switch to and End task. Every V item except V58 is
+deferred. Nothing below claims that something works on the machine unless the machine said so itself — and where this
+session read the screen wrong, it says so.
 
 ## Header
 
@@ -42,7 +43,7 @@ written on.
 - **N1 matches**: on Native's GPU path (`rudolf-native --draw=gpu`) a full-screen video fills 1920x1080, the taskbar goes away and the picture keeps moving. Evidence: `N1-native.png`, `N1-fullscreen-a.png`.
 - **N2 matches** on a clean attempt (`000644`-`000646`, identical across 15 s): the card `desktop/filedlg59.js` builds — centred, titled Open, path bar `C:\USERS\JOHN\DOCUMENTS`, a list with `REPORT 202511180011.TXT` and `WELCOME.TXT`, File name, Type "Text (.txt)", Cancel and Open — over a **dimmed** desktop. Evidence: `N2-native.png`.
 - **A blank "Rudolf OS" window appeared twice and did not recur.** Two earlier Open clicks raised a ~1345 × 827 window with a pure white body (98.4 % near-white, 3 colours in a 1,180 × 700 crop), once as two stacked windows. The clean attempt produced the correct dialog, so this is an intermittent symptom, not N2's steady state: `N2-anomaly-blank-window.png`, `N2-anomaly-two-blank-windows.png`.
-- **N3 was not run**, and the machine was already swapping (2,279 MB of 3,416 MB used, 1,139 MB of swap), so the session stopped poking it.
+- **N3 matches**: Task Manager's Apps list carried **three rows for three windows** — `Task Manager`, `Notepad` (`Untitled - Notepad`) and `Settings` — each with **Switch to** and **End task**, instead of the one row for itself that 2026-11-15 recorded. Evidence: `N3-native.png`.
 - **V59 was not needed** (the setup screen did not appear), and **the other 70 items are deferred**. No window was opened and no key was pressed by the session: it has no `xdotool`, `wmctrl`, `ydotool`, `import` or `ffmpeg` on that build, and `DISPLAY` is empty in its `sh`.
 - **Nothing was written to the computer.** The single command that ran was a read (`uname`, `/proc/cmdline`, `/run/rudolf`,
   `df`); it changed nothing, and it was not a `put`, a `restart` or a firmware operation.
@@ -115,7 +116,7 @@ machine's build (2026-11-24 22:xx) — if it does not, the machine cannot show i
 |---|---|---|---|---|---|
 | N1 | Full-screen video black | fixed | `d363693` 2026-11-15; case `video-fs` | yes | **yes — matches.** 2026-11-26 on `--draw=gpu`: the picture fills 1920x1080, no taskbar, 1,059-1,091 distinct colours, 61 % of the screen changed between two frames. `N1-native.png`, `N1-fullscreen-a.png` |
 | N2 | File dialog cut off inside the window | fixed | `d363693`; case `dlg-open` | yes | **yes — matches** on the clean attempt: the page's own card, centred, dimmed desktop, path bar/list/File name/Type/Cancel/Open all present. `N2-native.png`. Two earlier clicks showed a blank "Rudolf OS" window; unexplained, not reproducible |
-| N3 | Task Manager lists only itself | fixed | `d363693`; case `tm-apps` | yes | no — deferred |
+| N3 | Task Manager lists only itself | fixed | `d363693`; case `tm-apps` | yes | **yes — matches.** 2026-11-26: rows for Task Manager, Notepad and Settings, each with Switch to and End task. `N3-native.png` |
 | N4 | The page's dialogs in a window of their own | fixed | `d363693`; cases `dlg-ask`, `dlg-camera`, `dlg-print`, `dlg-dark` | yes | **no evidence it reproduces**: the one dialog caught was a centred card over a dimmed desktop. The blank "Rudolf OS" windows had that shape but could not be reproduced; the camera and report dialogs were not tried |
 | N5 | Sliders drawn by GTK | fixed | `6212d1f` 2026-11-15; cases `ctl-volume`, `ctl-mouse`, `ctl-media` | yes | no — deferred |
 | N6 | Drop-down lists without chevrons | fixed, and the dark-mode chevron too | `6212d1f`; `a6da7aa8` 2026-11-16 (dark list); cases `ctl-wordlite`, `ctl-volume-dark` | yes | no — deferred |
@@ -257,7 +258,7 @@ What this does **not** show: that a *cold* start works (this was a warm restart 
 firmware's setup screen is never reached (one restart is one sample), or that `Drive` (0001) is harmless — it is stale
 and, being third in the order, untested. V60–V63 still need the owner.
 
-### N1 and N2: where they stand
+### N1, N2 and N3: where they stand
 
 `000590` found `/run/rudolf/desktop-engine` = **`chromium`**, i.e. Standard, where N1–N3 prove nothing. The owner
 switched Settings › System health › Desktop engine to **Native** and restarted; `000593` at 23:43Z confirmed
@@ -288,7 +289,15 @@ the player *before* full screen was chosen: the taskbar is visible in them, whic
   where a centred dialog is hidden; the third (`000603`) caught the desktop with Notepad at the top left and no dialog,
   and a 12-frame burst (`000605`-`000616`) was identical in every frame with **no Notepad window** at all
   (`N2-attempt-desktop-no-notepad.png`) — the app had been closed, so nothing was clicked.
-- **N3 not started.** It needs Task Manager with Notepad and Settings open.
+- **N3 matches.** `000647` caught the state with Notepad (`Untitled - Notepad`), Settings (on Display Properties) and Task
+  Manager all open. The Apps list had a row per window — `Task Manager`, `Notepad`, `Settings` — with **Switch to** and
+  **End task** on each, and below it the "Apps and programs running" list of background Linux programs, each with End and
+  Force quit. The 2026-11-15 failure (only Task Manager itself, at 0.0 MB) does not reproduce. Evidence:
+  `N3-native.png`.
+
+  One thing worth noting without calling it a finding: the three rows' Memory column read **0.0 MB, 0.0 MB and 0.5 MB**
+  while the machine had Settings and Notepad fully drawn. The row values come from somewhere other than real RSS, which
+  is what V42 will need to watch — but V42 is about the total at idle, and it was not measured.
 
 **Memory while this happened** (`000643`): total **3,416 MB**, used **2,279 MB**, available **694 MB**, and **1,139 MB of
 swap in use**. The owner reached that limit by opening **twelve Notepad windows**, not twelve dialog windows (the
@@ -316,7 +325,7 @@ enough to judge them.
 
 - No window was opened, no key was pressed, no item performed by the session itself. V58's restart was the one change,
   and it was the item.
-- N3 was never started. Everything else except V58, N1 and N2 is unrun (see the table above). For N2 the session saw
+- Everything except V58, N1, N2 and N3 is unrun (see the table above). For N2 the session saw
   the dialog but never clicked in it: whether choosing `WELCOME.TXT` and pressing Open actually opens the file was not
   tried, so "matches" covers the dialog's appearance, its controls and the dimmed desktop — not a file being opened.
 - No `put`, no firmware operation, no update.
@@ -327,8 +336,8 @@ enough to judge them.
 
 ## Where to start next time
 
-1. **N3 first** (Task Manager with Notepad and Settings open), then the rest of the N items on this build. Nothing found
-   today stops a person working, so the checklist's own order applies again.
+1. **The rest of the N items on this build.** N1, N2 and N3 all now match, so nothing found today stops a person working
+   and the checklist's own order applies again: V58-V63 are done or waiting on you, and the V items are next.
 2. **Watch for the blank "Rudolf OS" windows.** They appeared twice after Open clicks and not on a clean attempt. If they
    recur, note what came before: a page still loading, memory pressure, a second window, or Open pressed in a window that
    did not have the focus. That is the thread worth pulling — and until they recur, nothing should be changed for them.
