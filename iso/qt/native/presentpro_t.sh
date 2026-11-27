@@ -28,12 +28,16 @@ python3 "$HERE/same_rd.py" "$PORT" "$D" >"$T/rd.log" 2>&1 & RDP=$!
 Xvfb "$DSP" -screen 0 1400x1000x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 trap 'kill $APPP $RDP $XV 2>/dev/null; rm -rf "$T/ui" "$T/cc"' EXIT
 i=0; while [ $i -lt 40 ] && ! DISPLAY=$DSP xdotool getmouselocation >/dev/null 2>&1; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-# ---- 0b. it opens its window and writes the state the checks read (gdb says why when it does not)
+# ---- 0b. it opens its window and writes the state the checks read (a debug build says where it falls over)
 if command -v gdb >/dev/null 2>&1; then
 	rm -f "$T/smoke"
-	RUDOLF_PP_STATE=$T/smoke DISPLAY=$DSP timeout 12 gdb -batch -ex 'set confirm off' -ex run -ex 'bt 12' --args "$BIN" >"$T/gdb.txt" 2>&1
+	BING=$T/rudolf-present-debug
+	if sh "$R/iso/sys/ui/build.sh" "$T/uig" "$BING" presentpro -g -O1 -fsanitize=address >"$T/gdbb" 2>&1; then
+		RUDOLF_PP_STATE=$T/smoke DISPLAY=$DSP timeout 12 "$BING" >"$T/gdb.txt" 2>&1
+	fi
 	if [ ! -s "$T/smoke" ]; then
-		echo "FAIL the program does not open its window; gdb says:"; tail -40 "$T/gdb.txt"; echo "FAIL 0b"; exit 1
+		echo "FAIL the program does not open its window; the debug build says:"; tail -45 "$T/gdb.txt" 2>/dev/null; tail -5 "$T/gdbb" 2>/dev/null
+		echo "FAIL 0b"; exit 1
 	fi
 	echo "PASS 0b. it opens its window and writes the state the checks read"
 fi
