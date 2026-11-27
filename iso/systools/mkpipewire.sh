@@ -42,7 +42,8 @@ copy() {  # (a file, then what it links that the layer lacks: as mkfprint.sh doe
 	n=$(basename "$x")
 	if [ -e "$ROOT$x" ]; then return 0; fi
 	case "$x" in /usr/*) d=$ROOT$x;; *) d=$ROOT/usr/bin/$n;; esac
-	mkdir -p "$(dirname "$d")"; cp -L "$x" "$d"
+	mkdir -p "$(dirname "$d")" || { echo "mkpipewire: could not make $(dirname "$d")"; exit 1; }
+	cp -L "$x" "$d" || { echo "mkpipewire: could not copy $x"; exit 1; }
 }
 for x in $PW $WP "$L"; do copy "$x"; for d in $(ldd "$x" 2>/dev/null | awk '/=>/{print $3}'); do
 	if [ -e "$ROOT$d" ] || [ -e "$ROOT/usr/lib/$MA/$(basename "$d")" ]; then continue; fi
@@ -57,7 +58,7 @@ for d in /usr/lib/$MA/wireplumber-* ; do
 done
 # (the copy() above runs in a subshell in the pipes: sum the sizes again rather than lose them)
 B=$(find "$ROOT/usr/lib/$MA/pipewire-0.3" "$ROOT/usr/lib/$MA/spa-0.2" "$ROOT/usr/share/pipewire" "$ROOT/usr/share/wireplumber" "$ROOT/usr/bin/pipewire" "$ROOT/usr/bin/wireplumber" -type f 2>/dev/null -printf '%s\n' | awk '{s+=$1} END{print s+0}')
-for d in "$ROOT"/usr/lib/$MA/wireplumber-*; do [ -d "$d" ] && B=$((B + $(find "$d" -type f -printf '%s\n' | awk '{s+=$1} END{print s+0}'))); done
+for d in "$ROOT"/usr/lib/$MA/wireplumber-*; do if [ -d "$d" ]; then B=$((B + $(find "$d" -type f -printf '%s\n' | awk '{s+=$1} END{print s+0}'))); fi; done
 # the configuration that keeps WirePlumber off the sound cards (both of its dialects: 0.4's Lua, 0.5's conf)
 for f in "$ROOT/usr/bin/pipewire" "$ROOT/usr/bin/wireplumber" "$ROOT/usr/lib/$MA/libpipewire-0.3.so.0" "$ROOT/usr/lib/$MA/spa-0.2"; do
 	[ -e "$f" ] || { echo "mkpipewire: $f was not copied: the packages are not what this script knows"; exit 1; }
