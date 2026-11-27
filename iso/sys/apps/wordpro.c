@@ -45,7 +45,6 @@ static int menus_n(void);
 static void obj_counts(int *w, int *c);
 static void state_objs(GString *s);
 static void state_steps(GString *s);
-static const char *cell_text(WpObj *o, int r, int c);
 static void insert_picture_data(guchar *data, gsize len);
 static void open_doc(const char *path);
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
@@ -373,17 +372,6 @@ static void hist_push(void)
 	if (HIST_N == HIST) { hist_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
 	HIST_T[HIST_N++] = h; HIST_I = HIST_N;
 }
-static void state_steps(GString *s)
-{
-	for (int k = 0; k < HIST_N; k++) {   /* (each step: its text's length, its places, and a table's cells -- what a check reads) */
-		Hist *e = HIST_T[k];
-		g_string_append_printf(s, "step %d %d %d", k + 1, (int)strlen(e->t), (int)e->objs->len);
-		for (guint i = 0; i < e->objs->len; i++) { Snap *o = g_ptr_array_index(e->objs, i);
-			if (!o->cells) continue;
-			for (guint j = 0; j < o->cells->len; j++) g_string_append_printf(s, " %s", (char *)g_ptr_array_index(o->cells, j)); }
-		g_string_append_c(s, '\n');
-	}
-}
 static void on_text(GtkTextBuffer *b, gpointer d) { (void)b; (void)d; hist_push(); counts(); state_soon(); }
 static void on_mark(GtkTextBuffer *b, GtkTextIter *i, GtkTextMark *m, gpointer d) { (void)b; (void)i; (void)m; (void)d; counts(); upd_sel(); state_soon(); }
 
@@ -600,6 +588,7 @@ static void obj_counts(int *w, int *c)
 		g_list_free(ch);
 	}
 }
+static const char *cell_text(WpObj *o, int r, int c);   /* (the cell's own text: what a table's entry carries) */
 static void state_objs(GString *s)
 {
 	g_string_append_printf(s, "objs %d\n", OBJ ? (int)OBJ->len : 0);
@@ -896,6 +885,17 @@ static int hist_same(Hist *a, Hist *b)
 	return 1;
 }
 static void hist_free(Hist *h) { if (!h) return; g_free(h->t); g_ptr_array_free(h->objs, TRUE); g_free(h); }
+static void state_steps(GString *s)
+{
+	for (int k = 0; k < HIST_N; k++) {   /* (each step: its text's length, its places, and a table's cells -- what a check reads) */
+		Hist *e = HIST_T[k];
+		g_string_append_printf(s, "step %d %d %d", k + 1, (int)strlen(e->t), (int)e->objs->len);
+		for (guint i = 0; i < e->objs->len; i++) { Snap *o = g_ptr_array_index(e->objs, i);
+			if (!o->cells) continue;
+			for (guint j = 0; j < o->cells->len; j++) g_string_append_printf(s, " %s", (char *)g_ptr_array_index(o->cells, j)); }
+		g_string_append_c(s, '\n');
+	}
+}
 /* (the page as the window opens: the empty step undo walks back to, and the first thing put on the page can be undone) */
 static void hist_empty(void) { HIST_T[0] = hist_now(); HIST_N = HIST_I = 1; }
 static void snap_place(GtkTextChildAnchor *a, Snap *s)
