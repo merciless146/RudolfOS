@@ -5,6 +5,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Fixed: Voice Recorder's Record now says what went wrong (the error's name and message, in a notification) instead of
+  playing the click sound and staying silent, with no clock and no recording; on the Native desktop the start block could
+  throw where nothing caught it. It also cleans up the microphone if it fails, so Record can be tried again (checklist V1).
+- Fixed: the Camera's "Video saved" notification opens the video it just saved, as the photo's notification opens the
+  photo (checklist V3).
 - Better: naming a new text document or folder on the desktop says "Name your new file" (or folder) and Create, not
   Rename; a name typed without .TXT gets it, so the file opens in Notepad (FreeBuff's test). The same on the native desktop.
 - Developers: `cd desktop && python3 build19.py` writes the page where the disc keeps it (iso/www/index.html), with no
