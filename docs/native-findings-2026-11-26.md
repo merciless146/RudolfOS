@@ -341,7 +341,8 @@ list carried no capture plug-in at all (1.6.3 added `video4linux2` on 2026-11-27
 
 Open here, and **answered by N35**: whether Native's silent audio and its missing camera share one cause. **They do not.**
 The camera is refused because the PipeWire device provider is missing — its log says `0 devices` — while the microphone is
-stopped by a missing GStreamer element of its own (`deinterleave`, N35 point 3): PulseAudio and the DMIC itself are fine.
+whose WebAudio path is stopped by a missing GStreamer element of its own (`deinterleave`, N35 point 3): PulseAudio and the
+DMIC itself are fine.
 So a build with `video4linux` added would have proved nothing, and putting PipeWire in the image will not bring the
 microphone back. Also open: does `new MediaRecorder` on
 Native throw, or construct and produce nothing? `MediaRecorderPrivateGStreamer` is present (`000651`), so both are
@@ -386,7 +387,8 @@ through PipeWire, and says so in its own error message. Three consequences:
    `libpipewire-0.3` (≥ 0.3.64) **and** a running PipeWire with WirePlumber, which is what publishes the v4l2 camera as a
    node. The image has none of the three. docs/plan-1.6.3.md Part 9 is that work.
 3. **The silent microphone is a different fault again — and not a device one.** This finding guessed wrong twice before the
-   log's own first line was read; what follows is three facts from the machine (`000652`, `000658`–`000664`).
+   log's own first line was read. What follows is what the machine shows (`000652`, `000658`–`000664`), and — said so
+   where it appears — what it only suggests.
 
    - **The source is `pulsesrc`.** WebKit never names an audio element itself: `pulsesrc`, `alsasrc` and `autoaudiosrc`
      appear nowhere in `libwebkit2gtk-4.1.so.0`. It takes a device from a `GstDeviceMonitor` filtered to `Audio/Source` with
@@ -405,16 +407,21 @@ through PipeWire, and says so in its own error message. Three consequences:
      `gst_element_link_pads_full: assertion 'GST_IS_ELEMENT (dest)' failed`. WebKit's `AudioSourceProviderGStreamer` creates
      `deinterleave` to split the capture into WebAudio's channels; it gets NULL, links NULL, and the
      `WebAudioProvider_MediaStreamTrack_*` pipeline reports `<capture-audiosrcN> … streaming stopped, reason not-linked
-     (-1)`. The track is dead there — which is why the check's level meter sits at −120 dB and the Recorder has nothing to
-     save.
+     (-1)`. **What was seen failing is the WebAudio path**, and only it: the check's level meter reads the microphone
+     through an `AudioContext` (`hwcheck30.js`'s `hwcMicPeak`) and sat at −120 dB through all four attempts
+     (0:01:54–0:03:00). That the **Recorder** fails for the same reason is **inference**: `MediaRecorder` builds its own
+     pipeline, that pipeline is nowhere in this log, and only a build with the plug-in in it can show what the Recorder
+     does.
    - **`deinterleave` ships in `libgstinterleave.so`** (gst-plugins-good's `interleave` plug-in), and the image has
      `libgstinterleave.so: absent` while `libgstinter.so` (the video interleaver) and `libgstaudiofx.so` are there.
      `iso/systools/addwebkit.sh`'s loop names `deinterlace`, `inter` and `audiofx` and **never `interleave`** — and the loop
      skips a plug-in it cannot find without a word. So this is the same shape as the `pipewire` omission: a name missing
      from the list, not a build that lost it. `interleave` is now in the list, with the same kind of warning after it.
-   - **`error reading data -1` is the companion, not the cause.** It arrives 6 s after each `not-linked` (0:02:00, 0:02:08,
-     0:02:32, 0:03:00) and at no other moment: `pulsesrc`'s ring-buffer thread reading into a pipeline that is being torn
-     down. PulseAudio's own log (`--log-target=file:/run/rudolf/pulse.log`) records no stream failure at all.
+   - **`error reading data -1` is the companion — by inference, not by record.** The timings are fact: it arrives 6 s after
+     each `not-linked` (0:02:00, 0:02:08, 0:02:32, 0:03:00) and at no other moment, and PulseAudio's own log
+     (`--log-target=file:/run/rudolf/pulse.log`) records no stream failure at all. What it *is* stays inference:
+     `pulsesrc`'s ring-buffer thread reading into a pipeline that is being torn down. The line names no element behind the
+     `-1`, and nothing in this session ran a capture outside the failing path to compare it with.
 
 Nothing here was changed on the laptop: all ten commands were read-only and ran with `approved: not asked (Ask first was
 off)`. The v4l2 entry came out of `addwebkit.sh` and `pipewire` went in its place, with a warning when the build host has
