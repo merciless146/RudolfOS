@@ -40,7 +40,7 @@ static int EDITING, UPDATING, ALLOCATED, READY;   /* (READY: the window is made,
 static GHashTable *CELLS, *VISIT;
 static const char *MENU_OPEN; static int MENU_OPEN_N;
 static void state_soon(void); static void status_update(void); static void redraw(void); static void layout_ranges(void);
-static void upd_tb(void); static void hist_push(const char *label); static void hist_undo(void); static void hist_redo(void);
+static void upd_tb(void); static void hist_push(void); static void hist_undo(void); static void hist_redo(void);
 static void place_entry(void); static void on_style_btn(GtkWidget *b, gpointer d); static void fx_update(void);
 static void zoom_to(int z); static void new_book(void); static void show_keys(void); static void show_stats(void);
 static void check_errors(void); static int menus_n(void);
@@ -84,7 +84,7 @@ static void style_sel(StyleFn fn, void *d)
 		if (!cl) { if (!fn) continue; cl = g_new0(Cell, 1); g_hash_table_insert(CELLS, GUINT_TO_POINTER(ckey(r, c)), cl); }
 		if (fn) fn(cl, d);
 	}
-	hist_push("Style"); upd_tb(); layout_ranges(); status_update(); fx_update(); redraw();
+	hist_push(); upd_tb(); layout_ranges(); status_update(); fx_update(); redraw();
 }
 static int used_r(void) { int m = -1; GHashTableIter it; gpointer k, v; g_hash_table_iter_init(&it, CELLS);
 	while (g_hash_table_iter_next(&it, &k, &v)) { int r = ((guint)GPOINTER_TO_UINT(k) - 1u) / MAXC; if (r > m) m = r; } return m; }
@@ -356,9 +356,9 @@ static char *cell_show(int r, int c)
    An entry is every cell as it stood after a change (a book of a few thousand cells costs little, and a step of the
    history is exactly the page's "the cells as they were and as they are"). */
 #define HISTP 100
-typedef struct { GHashTable *h; char *label; } Step;
+typedef struct { GHashTable *h; } Step;
 static Step *UNDO[HISTP]; static int UNDO_N, UNDO_I;
-static void step_free(gpointer p) { Step *s = p; if (!s) return; g_hash_table_destroy(s->h); g_free(s->label); g_free(s); }
+static void step_free(gpointer p) { Step *s = p; if (!s) return; g_hash_table_destroy(s->h); g_free(s); }
 static GHashTable *cells_copy_of(GHashTable *src)
 {
 	GHashTable *h = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, cell_free);
@@ -367,14 +367,14 @@ static GHashTable *cells_copy_of(GHashTable *src)
 	return h;
 }
 static GHashTable *cells_copy(void) { return cells_copy_of(CELLS); }
-static void hist_push(const char *label)
+static void hist_push(void)
 {
 	if (UPDATING) return;
 	if (UNDO_I < UNDO_N) { for (int i = UNDO_I; i < UNDO_N; i++) { step_free(UNDO[i]); UNDO[i] = NULL; } UNDO_N = UNDO_I; }
 	if (UNDO_N == HISTP) {
 		step_free(UNDO[0]); memmove(UNDO, UNDO + 1, sizeof(UNDO[0]) * (HISTP - 1)); UNDO_N--; UNDO_I--;
 	}
-	Step *s = g_new0(Step, 1); s->h = cells_copy(); s->label = g_strdup(label ? label : "Change");
+	Step *s = g_new0(Step, 1); s->h = cells_copy();
 	UNDO[UNDO_N++] = s; UNDO_I = UNDO_N;
 	state_soon();
 }
@@ -622,7 +622,7 @@ static void edit_commit(int dr, int dc)
 	char *t = g_strdup(gtk_entry_get_text(GTK_ENTRY(ENTRY)));
 	int r = CUR_R, c = CUR_C;
 	edit_end();
-	if (strcmp(t, cell_raw(r, c))) { cell_set(r, c, t); hist_push("Typing"); }
+	if (strcmp(t, cell_raw(r, c))) { cell_set(r, c, t); hist_push(); }
 	g_free(t);
 	if (dc && !dr) { if (TABFROM < 0) TABFROM = c; }
 	if (dr && !dc && TABFROM >= 0) { int f = TABFROM; TABFROM = -1; layout_ranges(); sel_set(r + 1, f, 0); return; }
@@ -665,7 +665,7 @@ static void clear_cells(void)
 	long area = (long)(SEL_R1 - SEL_R0 + 1) * (SEL_C1 - SEL_C0 + 1);
 	if (area > 20000) return;
 	for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) cell_set(r, c, NULL);
-	hist_push("Clear");
+	hist_push();
 	layout_ranges(); status_update(); fx_update(); redraw();
 }
 static void clear_formats(void)
@@ -675,7 +675,7 @@ static void clear_formats(void)
 		cl->b = cl->i = cl->u = cl->s = 0; cl->ha = 0; cl->sz = 0;
 		g_free(cl->fc); cl->fc = NULL; g_free(cl->bg); cl->bg = NULL; g_free(cl->font); cl->font = NULL;
 	}
-	hist_push("Clear formats");
+	hist_push();
 	upd_tb(); redraw();
 }
 static void autosum(void)
@@ -690,7 +690,7 @@ static void autosum(void)
 	if (bot < 0) { snprintf(SAY, sizeof SAY, "%s", rui_tr("There are no numbers above to add up.")); status_update(); return; }
 	char ca[8], cb[8]; snprintf(ca, sizeof ca, "%s", col_name(c)); snprintf(cb, sizeof cb, "%s", col_name(c));
 	char t[64]; snprintf(t, sizeof t, "=SUM(%s%d:%s%d)", ca, top + 1, cb, bot + 1);
-	cell_set(r, c, t); hist_push("AutoSum");
+	cell_set(r, c, t); hist_push();
 	fx_update(); status_update(); redraw();
 }
 static void copy_sel(int cut)
@@ -717,7 +717,7 @@ static void paste_sel(void)
 		g_strfreev(cols);
 	}
 	g_strfreev(rows); g_free(t);
-	hist_push("Paste");
+	hist_push();
 	layout_ranges(); fx_update(); status_update(); redraw();
 }
 static gboolean area_key(GtkWidget *w, GdkEventKey *e, gpointer d)
@@ -1089,7 +1089,7 @@ static void new_book(void)
 	g_hash_table_destroy(old);
 	CUR_R = CUR_C = SEL_R0 = SEL_C0 = SEL_R1 = SEL_C1 = SEL_AR = SEL_AC = 0;
 	SCX = SCY = 0; TABFROM = -1; SHOWF = 0;
-	hist_push("New book");
+	hist_push();
 	layout_ranges(); nb_update(); fx_update(); upd_tb(); status_update(); redraw();
 }
 static void show_keys(void)
@@ -1169,7 +1169,7 @@ static void menu_do(const Mi *s)
 		if (!tm) break;
 		char b[64];
 		if (!strcmp(s->arg, "date")) strftime(b, sizeof b, "%d %B %Y", tm); else strftime(b, sizeof b, "%H:%M", tm);
-		cell_set(CUR_R, CUR_C, b); hist_push("Date");
+		cell_set(CUR_R, CUR_C, b); hist_push();
 		fx_update(); status_update(); redraw();
 		break; }
 	case OP_RECALC: layout_ranges(); fx_update(); upd_tb(); status_update(); redraw(); break;
@@ -1353,7 +1353,7 @@ static void on_fx(GtkWidget *w, gpointer d)
 {
 	(void)d;
 	char *t = g_strdup(gtk_entry_get_text(GTK_ENTRY(w)));
-	if (strcmp(t, cell_raw(CUR_R, CUR_C))) { cell_set(CUR_R, CUR_C, t); hist_push("Formula bar"); }
+	if (strcmp(t, cell_raw(CUR_R, CUR_C))) { cell_set(CUR_R, CUR_C, t); hist_push(); }
 	g_free(t);
 	layout_ranges(); fx_update(); upd_tb(); status_update(); redraw();
 	gtk_widget_grab_focus(AREA);
@@ -1480,7 +1480,7 @@ int main(int argc, char **argv)
 	VISIT = g_hash_table_new(g_direct_hash, g_direct_equal);
 	build_menubar(); build_toolbar(); build_formula(); build_grid(); build_tabs(); build_status();
 	gtk_window_set_title(GTK_WINDOW(W->win), "Book1 - SpreadsheetPro");
-	hist_push("Start");
+	hist_push();
 	gtk_widget_show_all(W->win);
 	gtk_widget_hide(ENTRY);
 	READY = 1;
