@@ -1,7 +1,9 @@
 #!/bin/sh
 # 1.6.3 (docs/plan-1.6.3.md Part 1): rudolf-wordpro's first step -- the editor and its toolbar -- built as the release
 # builds it (iso/sys/ui/build.sh, RUI_WERROR=1) and then used: the window opens, typing counts words and characters,
-# Ctrl+B tags what is chosen, Ctrl+F finds, and the toolbar's lists are the page's (mkwordpro.py). It reads
+# Ctrl+B tags what is chosen, Ctrl+F finds, and the toolbar's lists are the page's (mkwordpro.py). The last cases are the
+# page's unsaved changes -- the file's name and a * in the title, and its "Save changes to NAME?" before New, Open and
+# Close -- and the format changes that are steps of the history as typed text is. It reads
 # RUDOLF_WP_STATE, so no screenshot is needed here; the page-by-page comparison against the web WordPro comes with the
 # step that makes every one of its views.
 #   sh wordpro_t.sh [OUT]
@@ -28,13 +30,16 @@ i=0; while [ $i -lt 40 ] && ! DISPLAY=$DSP xdotool getmouselocation >/dev/null 2
 ST=$T/state
 # (a backtrace in the log when it stops: the first builds of this step crashed, and the reason is what fixes it)
 RUN=""; command -v gdb >/dev/null && RUN="gdb -batch -ex run -ex bt --args"
-RUDOLF_WP_STATE=$ST DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/app.exit"' sh $RUN "$BIN" >"$T/wp.log" 2>&1 & WPP=$!
+ANS=$T/ans; : > "$ANS"   # (the answer the test would press when the page asks: written when it would press it)
+RUDOLF_WP_STATE=$ST RUDOLF_WP_ANSWER=$ANS DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/app.exit"' sh $RUN "$BIN" >"$T/wp.log" 2>&1 & WPP=$!
 trap 'kill $WPP $RDP $XV 2>/dev/null; rm -rf "$T/ui" "$T/cc"' EXIT
 NP=0; NF=0
 ok() { if [ "$2" = 1 ]; then NP=$((NP+1)); echo "PASS $1"; else NF=$((NF+1)); echo "FAIL $1 - $3"; fi; }
 i=0; while [ $i -lt 60 ] && [ ! -s "$ST" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-WIN=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
-ok "1. the window opens, called WordPro" "$([ -n "$WIN" ] && echo 1)" "no window; $(cat "$T/wp.log")"
+# (the title is the page's own: the file's name, or Untitled, and * while the writing is not in its file -- so the
+#  window is looked for by the end of its title, not by the whole of it)
+WIN=$(DISPLAY=$DSP xdotool search --sync --name 'WordPro$' 2>/dev/null | head -1)
+ok "1. the window opens, called 'Untitled - WordPro'" "$([ -n "$WIN" ] && echo 1)" "no window; $(cat "$T/wp.log")"
 grep -q '^styles 9$' "$ST" && grep -q '^fonts 12$' "$ST"
 ok "2. the toolbar's lists are the page's: 9 styles, 12 fonts (mkwordpro.py)" "$([ $? = 0 ] && echo 1)" "$(head -20 "$ST")"
 # (the window takes the keys, as a person's first press gives them to it; there is no window manager on this display, so
@@ -78,9 +83,11 @@ i=0; while [ $i -lt 40 ] && ! grep -q '^menu ' "$ST2" 2>/dev/null; do timeout 0.
 grep -q '^menu Format 24$' "$ST2"; RC=$?
 kill $WPP2 2>/dev/null
 ok "10. ...and Format opens with the page's items: six toggles, the four cases, the lists, 24 rows with their separators" "$([ $RC = 0 ] && echo 1)" "$(grep '^menu' "$ST2" 2>/dev/null); $(tail -3 "$T/wp2.log" 2>/dev/null)"
-# (New is a step of the history, as the page's own is: undo brings the page back, redo empties it again)
-DISPLAY=$DSP xdotool key ctrl+n; sleep 0.8
-DISPLAY=$DSP xdotool key space; sleep 0.9
+# (New is a step of the history, as the page's own is: undo brings the page back, redo empties it again. There are
+#  unsaved changes on the page, so New asks first, and Don't save -- the answer the test would press -- throws it away)
+echo "Don't save" > "$ANS"
+DISPLAY=$DSP xdotool key ctrl+n; sleep 1.2
+: > "$ANS"
 A=$(grep -c '^words 0$' "$ST")
 DISPLAY=$DSP xdotool key ctrl+z; sleep 0.9
 B=$(grep -c '^words 2$' "$ST")
@@ -163,7 +170,7 @@ ok "17. ...and what was saved here opens and saves again as the very same docume
 #  the only one on the display for its keys to be its own. It runs as itself, so its pid is its window's.)
 kill $WPP 2>/dev/null
 P1=$(DISPLAY=$DSP xdotool getwindowpid "$WIN" 2>/dev/null); [ -n "$P1" ] && kill $P1 2>/dev/null
-i=0; while [ $i -lt 40 ] && [ -n "$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null)" ]; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 40 ] && [ -n "$(DISPLAY=$DSP xdotool search --onlyvisible --name 'WordPro$' 2>/dev/null)" ]; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 ST7=$T/state7.txt; rm -f "$ST7"
 RUDOLF_WP_STATE=$ST7 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP "$BIN" >"$T/wp7.log" 2>&1 & WPP7=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
@@ -255,8 +262,119 @@ grep -q '^obj table 2x2$' "$ST9" && grep -q '^cells|ax|b|c|d$' "$ST9" && grep -q
 	grep -q '^hist 3 3$' "$ST9"; RC=$?
 kill $WPP9 2>/dev/null
 ok "20. a change in a table's cell is a step of the history: Ctrl+Z takes it back, Ctrl+Y puts it in again" "$([ $RC = 0 ] && [ "$C" = 1 ] && [ "$U" = 1 ] && echo 1)" "the letters in the cell: $C, the undo took them back: $U; typed $(grep -E '^(words|hist|cells|text|step) ' "$T/st9.typed" 2>/dev/null | tr '\n' ' '), undone $(grep -E '^(words|hist|cells|text|step) ' "$T/st9.undo" 2>/dev/null | tr '\n' ' '), redone $(grep -E '^(words|hist|cells|text|step) ' "$ST9" 2>/dev/null | tr '\n' ' ')(window $W9, focus $F9, the app $ALIVE9; $(tail -2 "$T/wp9.log" 2>/dev/null | tr '\n' ' '))"
+# (the page's unsaved changes (base_v24.html's confirmDiscard): the file's name and a * in the title while the writing is
+#  not in its file, and the page's own question -- Save changes to NAME?, with Cancel, Don't save and Save -- before New,
+#  Open and Close throw the writing away. Ctrl+N is New here and RUDOLF_WP_CLOSE is the window's close: this display has
+#  no window manager to press a close button on. Escape is Cancel, and RUDOLF_WP_ANSWER names the button the test would
+#  press, in a file the app reads while the question is up)
+ST10=$T/state10.txt; rm -f "$ST10"; A10=$T/ans10; : > "$A10"
+RUDOLF_WP_STATE=$ST10 RUDOLF_WP_ANSWER=$A10 DISPLAY=$DSP "$BIN" >"$T/wp10.log" 2>&1 & WPP10=$!
+i=0; while [ $i -lt 40 ] && [ ! -s "$ST10" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+W10=$(DISPLAY=$DSP xdotool search --sync --onlyvisible --pid "$WPP10" 2>/dev/null | tail -1)
+i=0; while [ $i -lt 60 ] && [ -n "$W10" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W10" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W10" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W10" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W10" 480 300 click 1; sleep 0.8; }
+T0=$(DISPLAY=$DSP xdotool getwindowname "$W10" 2>/dev/null)
+DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1.2
+T1=$(DISPLAY=$DSP xdotool getwindowname "$W10" 2>/dev/null)
+D1=$(grep -c '^dirty 1$' "$ST10")
+DISPLAY=$DSP xdotool key ctrl+n; sleep 1
+i=0; while [ $i -lt 20 ] && ! grep -q '^ask 1$' "$ST10" 2>/dev/null; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+Q1=$(grep -c '^ask 1$' "$ST10"); K1=$(grep -c '^text Hello$' "$ST10")   # (the question is up, and nothing has gone yet)
+DISPLAY=$DSP xdotool key Escape; sleep 1
+Q0=$(grep -c '^ask 0$' "$ST10"); K2=$(grep -c '^text Hello$' "$ST10")   # (Cancel: the page stays as it was)
+DISPLAY=$DSP xdotool key ctrl+n; sleep 1
+i=0; while [ $i -lt 20 ] && ! grep -q '^ask 1$' "$ST10" 2>/dev/null; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+echo "Don't save" > "$A10"; sleep 1.2   # (the answer the test would press: the question's Don't save)
+N1=$(grep -c '^dirty 0$' "$ST10"); N2=$(grep -c '^text $' "$ST10")   # (a new page, with nothing unsaved)
+T2=$(DISPLAY=$DSP xdotool getwindowname "$W10" 2>/dev/null)
+kill $WPP10 2>/dev/null
+ok "21. the unsaved changes: the name and * in the title, and the page's question before New throws the writing away" \
+	"$([ "$T0" = 'Untitled - WordPro' ] && [ "$T1" = 'Untitled * - WordPro' ] && [ "$T2" = 'Untitled - WordPro' ] && [ "$D1$Q1$K1$Q0$K2$N1$N2" = 1111111 ] && echo 1)" \
+	"titles '$T0', '$T1', '$T2'; dirty $D1; asked $Q1 with the writing kept $K1; Cancel $Q0 kept it $K2; after Don't save dirty $N1 and empty $N2 ($(grep -E '^(dirty|ask|answer|text|words|hist) ' "$ST10" 2>/dev/null | tr '\n' ' '); $(tail -2 "$T/wp10.log" 2>/dev/null | tr '\n' ' '))"
+# (Close asks it too, and the window is not taken down until the writing is saved or let go: the close is asked again
+#  while anything is unsaved, so a Cancel is followed by another question, and a Don't save is the one that lets it go)
+ST11=$T/state11.txt; rm -f "$ST11"; A11=$T/ans11; : > "$A11"
+RUDOLF_WP_STATE=$ST11 RUDOLF_WP_ANSWER=$A11 RUDOLF_WP_CLOSE=1 DISPLAY=$DSP "$BIN" >"$T/wp11.log" 2>&1 & WPP11=$!
+i=0; while [ $i -lt 40 ] && [ ! -s "$ST11" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+W11=$(DISPLAY=$DSP xdotool search --sync --onlyvisible --pid "$WPP11" 2>/dev/null | tail -1)
+i=0; while [ $i -lt 60 ] && [ -n "$W11" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W11" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W11" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W11" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W11" 480 300 click 1; sleep 0.8; }
+DISPLAY=$DSP xdotool type --delay 12 'Bye'; sleep 1
+i=0; while [ $i -lt 24 ] && ! grep -q '^ask 1$' "$ST11" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+C1=$(grep -c '^ask 1$' "$ST11"); A1=$(kill -0 $WPP11 2>/dev/null && echo 1)
+DISPLAY=$DSP xdotool key Escape; sleep 1
+A2=$(kill -0 $WPP11 2>/dev/null && echo 1)   # (Cancel has let the window stay, with its writing)
+rm -f "$ST11"   # (nothing written any more would be an answer that left the question up: the state is read afresh below)
+i=0; while [ $i -lt 24 ] && ! grep -q '^ask 1$' "$ST11" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+C2=$(grep -c '^ask 1$' "$ST11"); K=$(grep -c '^text Bye$' "$ST11")   # (the close asks again: the writing is still unsaved)
+echo "Don't save" > "$A11"   # (the answer the test would press: the question's Don't save)
+i=0; while [ $i -lt 24 ] && kill -0 $WPP11 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+G=$(kill -0 $WPP11 2>/dev/null || echo 1)
+ok "22. ...and Close asks the same question: Cancel keeps the window, Don't save lets it go" \
+	"$([ "$C1$A1$C2$K$A2$G" = 111111 ] && echo 1)" \
+	"asked $C1 with the window up $A1; Cancel $C2 kept the writing $K and the window $A2; Don't save took the window down $G ($(grep -E '^(dirty|ask|answer|text) ' "$ST11" 2>/dev/null | tr '\n' ' '); $(tail -2 "$T/wp11.log" 2>/dev/null | tr '\n' ' '))"
+# (a format change is a step of the history as typing is: Ctrl+A and Ctrl+B is a step of its own, so Ctrl+Z takes the bold
+#  away and leaves the writing, Ctrl+Y puts it back, and an underline over the same choice is a step of its own again)
+ST12=$T/state12.txt; rm -f "$ST12"
+RUDOLF_WP_STATE=$ST12 DISPLAY=$DSP "$BIN" >"$T/wp12.log" 2>&1 & WPP12=$!
+i=0; while [ $i -lt 40 ] && [ ! -s "$ST12" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+W12=$(DISPLAY=$DSP xdotool search --sync --onlyvisible --pid "$WPP12" 2>/dev/null | tail -1)
+i=0; while [ $i -lt 60 ] && [ -n "$W12" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W12" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W12" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W12" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W12" 480 300 click 1; sleep 0.8; }
+DISPLAY=$DSP xdotool type --delay 12 'Hello world'; sleep 1.2
+DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key ctrl+b; sleep 1.2
+F1=$(grep -c 'tags b' "$ST12"); H1=$(sed -n 's/^hist //p' "$ST12")
+DISPLAY=$DSP xdotool key ctrl+z; sleep 1.2
+F2=$(grep -c '^tags$' "$ST12"); W2=$(grep -c '^words 2$' "$ST12"); H2=$(sed -n 's/^hist //p' "$ST12")
+DISPLAY=$DSP xdotool key ctrl+y; sleep 1.2
+F3=$(grep -c 'tags b' "$ST12"); C3=$(grep -c '^chars 11$' "$ST12"); H3=$(sed -n 's/^hist //p' "$ST12")
+DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key ctrl+u; sleep 1.2
+U1=$(grep -c 'tags b,u' "$ST12")
+DISPLAY=$DSP xdotool key ctrl+z; sleep 1.2
+U2=$(grep -c 'tags b$' "$ST12")
+NU=${H1#* }
+kill $WPP12 2>/dev/null
+ok "23. a format change is a step of the history: Ctrl+Z takes the bold away, Ctrl+Y puts it back, and the writing stays" \
+	"$([ "$F1$F2$W2$F3$C3$U1$U2" = 1111111 ] && [ "$H2" = "$((NU-1)) $NU" ] && [ "$H3" = "$NU $NU" ] && echo 1)" \
+	"bold $F1 ($H1); undone $F2 ($H2) with the writing kept $W2; redone $F3 ($H3) with the writing $C3; an underline over it $U1, and its undo $U2 ($(grep -E '^(wordshist|words|hist|tags) ' "$ST12" 2>/dev/null | tr '\n' ' '); $(tail -2 "$T/wp12.log" 2>/dev/null | tr '\n' ' '))"
+# (the question's Save: the page's own order is the save first and New after it, so the writing goes to the file it came
+#  from -- the document was opened, so Save writes it without asking where -- and the page that follows is a new one,
+#  Untitled, with nothing unsaved and no * in its title)
+python3 - "$T/save.DOC" <<'PY'
+import sys
+open(sys.argv[1], 'w').write('<!--wp:%7B%7D--><style data-wp>.wp-t{border-collapse:collapse}</style><p>Hi</p>')
+PY
+ST13=$T/state13.txt; rm -f "$ST13"; A13=$T/ans13; : > "$A13"
+RUDOLF_WP_STATE=$ST13 RUDOLF_WP_ANSWER=$A13 RUDOLF_WP_OPEN="$T/save.DOC" DISPLAY=$DSP "$BIN" >"$T/wp13.log" 2>&1 & WPP13=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^text Hi$' "$ST13" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+W13=""; i=0; while [ $i -lt 40 ] && [ -z "$W13" ]; do
+	W13=$(DISPLAY=$DSP xdotool search --onlyvisible --pid "$WPP13" 2>/dev/null | tail -1)
+	[ -n "$W13" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 60 ] && [ -n "$W13" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W13" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W13" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W13" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W13" 480 300 click 1; sleep 0.8; }
+T0=$(DISPLAY=$DSP xdotool getwindowname "$W13" 2>/dev/null)   # (save.DOC - WordPro: the page has a file)
+DISPLAY=$DSP xdotool key ctrl+End; sleep 0.4
+DISPLAY=$DSP xdotool type --delay 12 ' there'; sleep 1.2
+T1=$(DISPLAY=$DSP xdotool getwindowname "$W13" 2>/dev/null)
+D1=$(grep -c '^dirty 1$' "$ST13")
+DISPLAY=$DSP xdotool key ctrl+n; sleep 1
+i=0; while [ $i -lt 20 ] && ! grep -q '^ask 1$' "$ST13" 2>/dev/null; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+Q1=$(grep -c '^ask 1$' "$ST13"); K1=$(grep -c '^words 2$' "$ST13")   # (the question is up, and the writing is still there)
+echo "Save" > "$A13"; sleep 1.5   # (the answer the test would press: the question's Save)
+AN=$(sed -n 's/^answer //p' "$ST13")
+W1=$(grep -c 'there' "$T/save.DOC" 2>/dev/null)   # (the change is in the file it came from)
+N1=$(grep -c '^dirty 0$' "$ST13"); N2=$(grep -c '^text $' "$ST13")
+T2=$(DISPLAY=$DSP xdotool getwindowname "$W13" 2>/dev/null)
+kill $WPP13 2>/dev/null
+ok "24. the question's Save writes the page to its file, and the page that follows is a clean Untitled one" \
+	"$([ "$T0" = 'save.DOC - WordPro' ] && [ "$T1" = 'save.DOC * - WordPro' ] && [ "$D1$Q1$K1$W1" = 1111 ] && [ "$AN" = 2 ] && [ "$N1$N2" = 11 ] && [ "$T2" = 'Untitled - WordPro' ] && echo 1)" \
+	"titles '$T0', '$T1', '$T2'; dirty $D1; asked $Q1 with the writing kept $K1; the file has the change $W1 (answer $AN); after it dirty $N1 and empty $N2 ($(grep -E '^(dirty|ask|answer|text|words|hist) ' "$ST13" 2>/dev/null | tr '\n' ' '); $(grep -o '<p>[^<]*</p>' "$T/save.DOC" 2>/dev/null | head -2 | tr '\n' ' '); $(tail -2 "$T/wp13.log" 2>/dev/null | tr '\n' ' '))"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 
-for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
+for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt" "$T/state10.txt" "$T/state11.txt" "$T/state12.txt" "$T/state13.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
 echo "$NP passed, $NF failed"; [ $NF = 0 ]
