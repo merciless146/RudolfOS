@@ -215,7 +215,7 @@ static void on_clear(GtkWidget *b, gpointer d)
 #define HIST 120
 typedef struct Hist Hist;   /* (the text, and what stands at each of its places: made below, after the objects are) */
 static Hist *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
-static void hist_push(void); static void hist_apply(Hist *h); static void obj_clear(void);
+static void hist_push(void); static void hist_apply(Hist *h); static void obj_clear(void); static void hist_note(const char *w, Hist *h);
 static Hist *hist_now(void); static int hist_same(Hist *a, Hist *b); static void hist_free(Hist *h);
 static void hist_undo(void) { fprintf(stderr, "wp: undo at %d of %d\n", HIST_I, HIST_N);
 	if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
@@ -366,8 +366,7 @@ static void hist_push(void)
 {
 	if (SILENT) return;
 	Hist *h = hist_now();
-	fprintf(stderr, "wp: push %d places in %d bytes%s\n", (int)h->objs->len, (int)strlen(h->t),
-		HIST_N && hist_same(HIST_T[HIST_N - 1], h) ? ", the same" : "");
+	hist_note("push", h);
 	if (HIST_N && hist_same(HIST_T[HIST_N - 1], h)) { hist_free(h); return; }
 	if (HIST_I < HIST_N) { for (int i = HIST_I; i < HIST_N; i++) { hist_free(HIST_T[i]); HIST_T[i] = NULL; } HIST_N = HIST_I; }
 	if (HIST_N == HIST) { hist_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
@@ -816,6 +815,10 @@ static Hist *hist_now(void)
 	for (; gtk_text_iter_compare(&i, &e) < 0; gtk_text_iter_forward_char(&i))
 		if (gtk_text_iter_get_char(&i) == 0xFFFC) g_ptr_array_add(h->objs, snap_of(obj_at(gtk_text_iter_get_child_anchor(&i))));
 	return h;
+}
+static void hist_note(const char *w, Hist *h)
+{
+	fprintf(stderr, "wp: %s %d places in %d bytes\n", w, (int)h->objs->len, (int)strlen(h->t));
 }
 static int hist_same(Hist *a, Hist *b)
 {
