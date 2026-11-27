@@ -128,6 +128,13 @@ void rui_form(RuiWin *w, const char *title, const char *text, const RuiField *f,
 	int pri, void (*cb)(int i, const RuiField *f, void *d), void *d);
 GtkWidget *rui_form_field(GtkWidget *box, int i);   /* (a form's own input: an entry, a check, or a choice) */
 void rui_form_value(GtkWidget *w, const char *v);   /* (that input set as its kind sets it: words, "1"/"0", or a choice's) */
+/* (the page's dialog of small buttons -- its Special characters: a grid of them, as its .wp-chars, where a press gives the
+   cell it chose and leaves the dialog standing, and one of the dialog's own buttons ends it, which is what the page's
+   dialog() does with a click on its body. cb's i is the button pressed (-1 for Escape), with no cell; a cell's press is i
+   -1 and the cell's own character.) */
+void rui_pick(RuiWin *w, const char *title, const char *const *cells, int n, int cols, const char *const *buttons, int nb,
+	int pri, void (*cb)(int button, const char *cell, void *d), void *d);
+int rui_pick_click(GtkWidget *box, const char *cell);   /* (the tests: the cell whose own character is this, pressed) */
 /* the page's elevate: an administrator's account and password, checked by rudolfd; cb(1) allowed, cb(0) not */
 void rui_elevate(RuiWin *w, const char *reason, void (*cb)(int ok, void *d), void *d);
 /* the page's elevate(reason, {cred:true}): cred(name, password) once they are right (rudolfd checks them again with the request: send

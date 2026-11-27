@@ -875,6 +875,63 @@ void rui_form(RuiWin *w, const char *title, const char *text, const RuiField *f,
 	if (last) { gtk_window_set_focus_visible(GTK_WINDOW(w->win), TRUE); gtk_widget_grab_focus(last); }
 }
 
+/* (the page's dialog of small buttons: its Special characters -- a grid where a press gives the cell it chose and leaves
+   the dialog standing, as a click on the page's dialog body does, until one of the dialog's own buttons ends it) */
+typedef struct { void (*cb)(int button, const char *cell, void *d); void *d; } Pick;
+static void pick_done(int i, void *d)
+{
+	Pick *g = d; if (g->cb) g->cb(i, NULL, g->d); g_free(g);
+}
+static void pick_cell(GtkButton *b, gpointer d)
+{
+	Pick *g = d; if (g->cb) g->cb(-1, g_object_get_data(G_OBJECT(b), "rui-cell"), g->d);
+}
+void rui_pick(RuiWin *w, const char *title, const char *const *cells, int n, int cols, const char *const *buttons, int nb,
+	int pri, void (*cb)(int button, const char *cell, void *d), void *d)
+{
+	Dlg *g = dlg_new(w, title, NULL, 420); g->n = nb;
+	Pick *pk = g_new0(Pick, 1); pk->cb = cb; pk->d = d; g->cb = pick_done; g->d = pk;
+	if (cols < 1) cols = 1;
+	GtkWidget *grid = gtk_grid_new();
+	gtk_grid_set_column_homogeneous(GTK_GRID(grid), TRUE); gtk_grid_set_row_homogeneous(GTK_GRID(grid), TRUE);
+	gtk_grid_set_column_spacing(GTK_GRID(grid), (guint)lround(rui_px(2))); gtk_grid_set_row_spacing(GTK_GRID(grid), (guint)lround(rui_px(2)));
+	for (int i = 0; i < n; i++) {
+		GtkWidget *b = rui_button(cells[i], 0);   /* (its own character is what the button says) */
+		gtk_widget_set_size_request(b, (int)lround(rui_px(28)), (int)lround(rui_px(24)));
+		g_object_set_data(G_OBJECT(b), "rui-cell", (gpointer)cells[i]);
+		g_signal_connect(b, "clicked", G_CALLBACK(pick_cell), pk);
+		gtk_grid_attach(GTK_GRID(grid), b, i % cols, i / cols, 1, 1);
+	}
+	gtk_widget_set_halign(grid, GTK_ALIGN_CENTER); gtk_box_pack_start(GTK_BOX(g->box), grid, FALSE, FALSE, 0);
+	GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (int)lround(rui_px(6))); gtk_widget_set_halign(row, GTK_ALIGN_END);
+	GtkWidget *last = NULL;
+	for (int i = 0; i < nb; i++) {
+		GtkWidget *b = rui_button(buttons[i], 0); if (pri && i == nb - 1) cls(b, "pri");
+		g_object_set_data(G_OBJECT(b), "rui-i", GINT_TO_POINTER(i)); g_signal_connect(b, "clicked", G_CALLBACK(dlg_btn), NULL);
+		gtk_box_pack_start(GTK_BOX(row), b, FALSE, FALSE, 0); last = b;
+	}
+	dlg_show(g, row);
+	if (last) { gtk_window_set_focus_visible(GTK_WINDOW(w->win), TRUE); gtk_widget_grab_focus(last); }
+}
+int rui_pick_click(GtkWidget *box, const char *cell)
+{
+	if (!box || !cell) return 0;
+	GtkWidget *hit = NULL; GList *ch = gtk_container_get_children(GTK_CONTAINER(box));
+	for (GList *k = ch; k && !hit; k = k->next) {   /* (the grid is a child of the dialog's box, its cells the grid's) */
+		if (!GTK_IS_CONTAINER(k->data)) continue;
+		GList *in = gtk_container_get_children(GTK_CONTAINER(k->data));
+		for (GList *m = in; m && !hit; m = m->next) {
+			const char *c = g_object_get_data(G_OBJECT(m->data), "rui-cell");
+			if (c && !strcmp(c, cell) && GTK_IS_BUTTON(m->data)) hit = m->data;
+		}
+		g_list_free(in);
+	}
+	g_list_free(ch);
+	if (!hit) return 0;
+	gtk_button_clicked(GTK_BUTTON(hit));
+	return 1;
+}
+
 /* the administrator's permission (core25.js elevate): the account (an administrator), its password, Allow; rudolfd checks it
    (desktop/admin) as it checks a sign-in, so no app ever holds a password hash; refused attempts are counted there */
 static void el_allow(GtkWidget *b, gpointer d)
