@@ -275,8 +275,8 @@ device") and some loose files; "voice" finds the app.
   camera" half of that sentence.
 - Why: the image carries no GStreamer video-capture plug-in. `000650` lists the 39 plug-ins in
   `/usr/lib/x86_64-linux-gnu/gstreamer-1.0/` — `pulseaudio`, `autodetect`, `audioconvert` among them — and **no
-  `libgstvideo4linux`**. `addwebkit.sh`'s copy list names `alsa` and `pulseaudio` and never `video4linux`, so WebKit's
-  camera source is simply not on the disc.
+  `libgstvideo4linux`**. `addwebkit.sh`'s copy list names `alsa` and `pulseaudio` and never `video4linux` — and, as **N35**
+  found on 2026-11-27, this WebKit would never ask for one: it captures through PipeWire, which the image lacks entirely.
 - The camera itself is there: `/dev/video0` and `/dev/video1`, `uvcvideo` bound to "USB2.0 HD UVC WebCam (3277:0034)"
   (`000649`).
 - **No prompt is possible on Native**: the engine grants every permission request silently — `on_perm` calls
@@ -326,7 +326,8 @@ Chromium on the same machine does both. Two faults in Native's media path:
 
 1. **No video capture source**: `libgstvideo4linux` is not in the image — the complete plug-in list from `000651` has
    `pulseaudio` as its only capture source, and `addwebkit.sh`'s copy list names `alsa` and `pulseaudio` but never
-   `video4linux`. Fix direction: add `video4linux` to that list and re-test.
+   `video4linux`. **Corrected 2026-11-27 (N35): adding it is not the answer.** This WebKit has no v4l2 capture path at all;
+   it captures through PipeWire only, and the image carries none.
 2. **Audio that reads all zeros, and an app that stops without a word**: Native captures through `pulsesrc` (the only
    capture plug-in there) while Chromium on the same machine reads −4 dB; why the two differ is open. And Voice
    Recorder's start block is uncaught, so its failure is invisible (V1) — wrapping it would name the cause in the window.
@@ -335,10 +336,12 @@ Not the hardware: `/dev/video0` is claimed by `uvcvideo`, the ALSA cards expose 
 `DMIC capture dmic-hifi-0`, and both work in Chromium. Not the privacy switch: it is on, and Chromium uses it.
 
 **Both faults are in `main` too** (`745fcf18`), so this is not a 1.6.2-only matter: `iso/systools/addwebkit.sh`'s copy
-list still names no `video4linux`, and `desktop/apps25b.js` matches `main` byte for byte at the recorder's start block.
+list carried no capture plug-in at all (1.6.3 added `video4linux2` on 2026-11-27 and took it out the same day, N35), and
+`desktop/apps25b.js` matches `main` byte for byte at the recorder's start block.
 
-Open: whether Native's silent audio and its missing camera share one cause (no capture at all) or are two — a build with
-`video4linux` added would say, since audio already resolves through `pulsesrc`. Also open: does `new MediaRecorder` on
+Open here, and **answered by N35**: whether Native's silent audio and its missing camera share one cause. They do — the
+capture path is PipeWire-only and the image has no PipeWire — so a build with `video4linux` added would have proved
+nothing. Whether audio would then work without moving the sound server is still untested. Also open: does `new MediaRecorder` on
 Native throw, or construct and produce nothing? `MediaRecorderPrivateGStreamer` is present (`000651`), so both are
 possible, and the answer needs the console or the `try`/`catch` above.
 
@@ -351,6 +354,42 @@ same check completes all eleven steps minutes later, so this is the engine, not 
 Also worth recording: the report's `Hardware check:` line names no engine, which is what made the saved report's
 2026-11-17 `camera pass (640×480)` and `microphone fail (no microphone)` look like Native results when they match
 Chromium exactly. The line should say which engine produced it.
+
+### N35 — The capture path is PipeWire-only, and the image has no PipeWire (2026-11-27, devlink 000652 and 000653)
+
+Asked after #716 had merged: *before a build proves it, find which capture source this WebKit actually asks for.* Two
+read-only devlink commands say it plainly.
+
+| probe (`sh`, read-only) | result |
+|---|---|
+| `strings libwebkit2gtk-4.1.so.0 \| grep -c -Fx pipewiresrc` | **1** |
+| `… pipewiredeviceprovider` | **1** |
+| `… v4l2src` | **0** |
+| `… v4l2deviceprovider` | **0** |
+| symbols and file names | `PipeWireCaptureDeviceManager.cpp`, `OpenPipeWireRemote`, `WebKit PipeWire Capture Device Manager`, `webkitpipewirecapturedevicemanager` |
+| a message inside the library | "PipeWire Device Provider is missing or too old. Please install PipeWire >= 0.3.64." |
+| `/usr/bin/pipewire`, `/usr/bin/wireplumber` | absent |
+| `libpipewire-0.3` anywhere under `/usr/lib` | absent |
+| GStreamer plug-in files matching `pipe` or `v4l` | none |
+| the sound server in use | `pulseaudio` |
+| `/dev/video*` | `video0`, `video1` |
+
+So Ubuntu 24.04's WebKitGTK 2.52, as this image carries it, has **no v4l2 capture path at all**: it enumerates and captures
+through PipeWire, and says so in its own error message. Three consequences:
+
+1. **`video4linux2` (PR #716) is inert.** `libgstvideo4linux2.so` is now in the image and nothing will ever request
+   `v4l2src`. The copy is harmless; the claim that it fixed the camera is not, and is withdrawn (CHANGELOG, 1.6.3).
+2. **A plug-in alone would not be enough either.** The capture path needs the `pipewire` GStreamer plug-in **and**
+   `libpipewire-0.3` (≥ 0.3.64) **and** a running PipeWire with WirePlumber, which is what publishes the v4l2 camera as a
+   node. The image has none of the three. docs/plan-1.6.3.md Part 9 is that work.
+3. **The silent microphone probably has the same cause.** The same device manager serves audio capture; with no provider,
+   `getUserMedia` can resolve to a source that delivers only silence, which is exactly the −120 dB floor. That also
+   explains why Chromium, with its own capture stack, reads −4 dB on the same machine.
+
+Nothing here was changed on the laptop: both commands were read-only and ran with `approved: not asked (Ask first was
+off)`. The v4l2 entry was withdrawn from `addwebkit.sh` and `pipewire` put in its place, with a warning when the build host
+has no `libgstpipewire.so` — the loop skips a missing plug-in without a word, which is how a release shipped with no
+capture source at all.
 
 ## V58: the restart without the stick
 

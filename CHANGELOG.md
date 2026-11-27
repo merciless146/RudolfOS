@@ -5,10 +5,14 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
-- Fixed: the Native desktop's camera. The image now carries GStreamer's video4linux2 plug-in: it copied the sound servers'
-  and ALSA's plug-ins but no camera's, so WebKit had no way to open the laptop's camera and Camera said "No camera is
-  available or access is blocked" with the privacy switch on (found on the Vivobook as N33; checklist V2 and V3). It needs
-  the next build to check: nothing could be verified on 1.6.2.261124.
+- Findings: the Native desktop's camera is **not** fixed by copying GStreamer's video4linux2 plug-in, and that line of
+  this list is withdrawn; the plug-in was taken out of addwebkit.sh the same day. On the Vivobook, WebKitGTK 2.52 captures
+  through PipeWire alone — its library names "pipewiresrc" and "pipewiredeviceprovider" and never "v4l2src" — and the
+  image has no PipeWire at all, so Camera still says "No camera is available or access is blocked". The work it needs is
+  docs/plan-1.6.3.md Part 9 (N33 and N35 in docs/native-findings-2026-11-26.md).
+- Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
+  out loud when libgstpipewire.so is not on the build host: the loop skips a missing plug-in without a word, which is how
+  the camera went a release without a capture source.
 - Fixed: Voice Recorder's Record now says what went wrong (the error's name and message, in a notification) instead of
   playing the click sound and staying silent, with no clock and no recording; on the Native desktop the start block could
   throw where nothing caught it. It also cleans up the microphone if it fails, so Record can be tried again (checklist V1).
