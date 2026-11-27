@@ -279,7 +279,7 @@ static Val p_add(P *p)
 static int cmp_val(Val *a, Val *b)   /* (1 when a is the greater, 0 when they are the same, -1 below) */
 {
 	double x, y;
-	if (as_dbl(a, &x) && as_dbl(b, &y)) return x > y ? 1 : x < y ? -1 : 0;
+	if (as_dbl(*a, &x) && as_dbl(*b, &y)) return x > y ? 1 : x < y ? -1 : 0;
 	const char *s = a->k == V_TEXT ? a->s : a->k == V_BOOL ? (a->b ? "TRUE" : "FALSE") : "";
 	const char *t = b->k == V_TEXT ? b->s : b->k == V_BOOL ? (b->b ? "TRUE" : "FALSE") : "";
 	int c = g_ascii_strcasecmp(s, t); return c > 0 ? 1 : c < 0 ? -1 : 0;
@@ -1327,8 +1327,8 @@ static void build_toolbar(void)
 	tb_add(TB, tb_off(tb_button("\xe2\x87\x94", "Merge and centre (a later step)", NULL, NULL)));
 	tb_add(TB, tb_off(tb_button("\xe2\x96\xa6", "Borders (a later step)", NULL, NULL)));
 	tb_sep(TB);
-	tb_add(TB, tb_off(tb_button("A\xe2\x86\x93Z", "Sort ascending (a later step)", NULL, NULL)));
-	tb_add(TB, tb_off(tb_button("Z\xe2\x86\x93A", "Sort descending (a later step)", NULL, NULL)));
+	tb_add(TB, tb_off(tb_button("A\xe2\x86\x93" "Z", "Sort ascending (a later step)", NULL, NULL)));
+	tb_add(TB, tb_off(tb_button("Z\xe2\x86\x93" "A", "Sort descending (a later step)", NULL, NULL)));
 	tb_add(TB, tb_off(tb_button("\xe2\x96\xbd", "Filter (a later step)", NULL, NULL)));
 	tb_add(TB, tb_off(tb_button("\xe2\x97\x8a", "Chart (a later step)", NULL, NULL)));
 	gtk_box_pack_start(GTK_BOX(W->body), TB, FALSE, FALSE, 0);
