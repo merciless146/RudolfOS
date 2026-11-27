@@ -863,7 +863,8 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
    opened. Then with PipeWire stopped, to see what the app says. Two checks for two paths: the hardware check's microphone
    step reads through WebAudio, so it needs `libgstinterleave.so` and should move off −120 dB; V1 and the Camera's
    "Record video" (V3) are the Recorder, which needs `libgsttranscode.so` and should then save a clip. The self-test's `capture` line says whether the image has both plug-ins before either is tried,
-   and its pass names the camera's remaining wait on PipeWire. If either stays dead, its own log line names the factory that is
+   and its pass names the camera's remaining wait on PipeWire. (Host test: `iso/qt/host/selftest_t.sh` 12a–12e, which holds the two
+   plug-ins in, takes each away, and checks the wait is said.) If either stays dead, its own log line names the factory that is
    still missing.
 6. **Cost:** two more daemons and their libraries, and their memory; read the native desktop's idle figure (checklist V42)
    before and after.

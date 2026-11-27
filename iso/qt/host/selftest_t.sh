@@ -70,6 +70,22 @@ ok "10. ...with it: passes" "$(has 'PASS lite-engine' && echo 1)" "$OUT"
 ok "11. 1.5.8: without Mesa's GLX: lite-gpu names it" "$(has 'FAIL lite-gpu - missing: libGLX_mesa.so.0 libxcb-glx.so.0' && echo 1)" "$OUT"
 : > $W/lib/libGLX_mesa.so.0; : > $W/lib/libxcb-glx.so.0; OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
 ok "12. ...with it: passes" "$(has 'PASS lite-gpu' && echo 1)" "$OUT"
+# 1.6.3 (findings N35): the capture plug-ins (the microphone's level meters build deinterleave, MediaRecorder builds
+# uritranscodebin), asked of the image: the two held in, each missing named, and the camera's remaining wait on PipeWire
+# (plan Part 9) said with a pass instead of hidden
+mkdir -p $W/lib/gstreamer-1.0; : > $W/lib/gstreamer-1.0/libgstinterleave.so; : > $W/lib/gstreamer-1.0/libgsttranscode.so
+OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
+ok "12a. 1.6.3: the capture plug-ins there: passes, and says the camera waits on PipeWire" "$(has 'PASS capture - the microphone' && has 'the camera waits on PipeWire (plan Part 9)' && echo 1)" "$OUT"
+: > $W/lib/gstreamer-1.0/libgstpipewire.so; OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
+ok "12b. ...with the camera's plug-in too: the wait is gone" "$(has 'PASS capture - the microphone' && ! has 'waits on PipeWire' && [ "$(echo "$OUT" | grep -c 'capture - ')" = 1 ] && echo 1)" "$OUT"
+mv $W/lib/gstreamer-1.0/libgsttranscode.so $W/lib/gstreamer-1.0/.t; OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
+ok "12c. ...no transcode plug-in (the Recorder): a failure, named" "$(has 'FAIL capture - missing: transcode' && ! has 'missing: interleave' && echo 1)" "$OUT"
+mv $W/lib/gstreamer-1.0/.t $W/lib/gstreamer-1.0/libgsttranscode.so; mv $W/lib/gstreamer-1.0/libgstinterleave.so $W/lib/gstreamer-1.0/.i
+OUT=$(ST_WEBKIT=$W/rudolf-webkit ST_LIBDIR=$W/lib sh $S)
+ok "12d. ...no interleave plug-in (the level meters): a failure, named" "$(has 'FAIL capture - missing: interleave' && ! has 'missing: transcode' && echo 1)" "$OUT"
+mv $W/lib/gstreamer-1.0/.i $W/lib/gstreamer-1.0/libgstinterleave.so
+OUT=$(ST_WEBKIT=$W/none ST_LIBDIR=$W/lib sh $S)
+ok "12e. ...no Lite engine in this build: skipped, not failed" "$(has 'SKIP capture - not in this Rudolf OS' && echo 1)" "$OUT"
 # 1.5.9 (plan 7.2): the camera in use by an app, switched off, or connected without its driver
 touch $ST_DEV/video0; chgrp video $ST_DEV/video0; chmod 660 $ST_DEV/video0; mkdir -p $ST_PROC/300/fd; echo zoom > $ST_PROC/300/comm; ln -s $ST_DEV/video0 $ST_PROC/300/fd/7
 OUT=$(sh $S); ok "13. 1.5.9: the camera in use: which app has it" "$(has 'PASS camera - 1 camera device(s), usable by apps (in use now by zoom)' && echo 1)" "$OUT"
