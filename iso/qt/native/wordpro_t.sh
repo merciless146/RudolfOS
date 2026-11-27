@@ -69,15 +69,25 @@ sleep 1
 grep -q '^words 2$' "$ST" && grep -q '^chars 6$' "$ST"
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
 ok "8. a second line is counted as text, its newline not a character" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(words|chars|text) ' "$ST")"
+grep -q '^menus 8$' "$ST"
+ok "9. the menu bar is the page's eight menus, File to Help" "$([ $? = 0 ] && echo 1)" "$(grep '^menus' "$ST")"
+# (a second copy of the app opens one menu as a press on the bar opens it, so the items that appear are the page's own)
+ST2=$T/state2.txt; rm -f "$ST2"
+RUDOLF_WP_STATE=$ST2 RUDOLF_WP_MENU=Format DISPLAY=$DSP "$BIN" >"$T/wp2.log" 2>&1 & WPP2=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^menu ' "$ST2" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^menu Format 24$' "$ST2"; RC=$?
+kill $WPP2 2>/dev/null
+ok "10. ...and Format opens with the page's items: six toggles, the four cases, the lists, 24 rows with their separators" "$([ $RC = 0 ] && echo 1)" "$(grep '^menu' "$ST2" 2>/dev/null); $(tail -3 "$T/wp2.log" 2>/dev/null)"
+kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/iso/sys/ui" "$T/page/desktop"
 sed 's/const WP_STYLES=/const WP_STYLES_GONE=/' "$R/desktop/base_v24.html" > "$T/page/desktop/base_v24.html"
 cp "$R/iso/sys/apps/mkwordpro.py" "$T/page/iso/sys/apps/mkwordpro.py"
 python3 "$T/page/iso/sys/apps/mkwordpro.py" "$T/gone.h" >"$T/mk.log" 2>&1; RC=$?
 if [ $RC = 1 ] && grep -q 'WP_STYLES' "$T/mk.log"; then
-	ok "9. mkwordpro.py refuses a page it cannot read (no quiet default)" 1
+	ok "11. mkwordpro.py refuses a page it cannot read (no quiet default)" 1
 else
-	ok "9. mkwordpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
+	ok "11. mkwordpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
 fi
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
