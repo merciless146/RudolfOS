@@ -366,6 +366,8 @@ static void hist_push(void)
 {
 	if (SILENT) return;
 	Hist *h = hist_now();
+	fprintf(stderr, "wp: push %d places in %d bytes%s\n", (int)h->objs->len, (int)strlen(h->t),
+		HIST_N && hist_same(HIST_T[HIST_N - 1], h) ? ", the same" : "");
 	if (HIST_N && hist_same(HIST_T[HIST_N - 1], h)) { hist_free(h); return; }
 	if (HIST_I < HIST_N) { for (int i = HIST_I; i < HIST_N; i++) { hist_free(HIST_T[i]); HIST_T[i] = NULL; } HIST_N = HIST_I; }
 	if (HIST_N == HIST) { hist_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
@@ -857,7 +859,7 @@ static void snap_place(GtkTextChildAnchor *a, Snap *s)
 		}
 		o->w = g;
 	}
-	if (!o->w) { img_unref(o->im); g_free(o); return; }   /* (a picture that cannot be read again is not put back empty) */
+	if (!o->w) { fprintf(stderr, "wp: kind %d would not be made again\n", s->kind); img_unref(o->im); g_free(o); return; }
 	obj_place(a, o);
 }
 static void hist_apply(Hist *h)
@@ -877,6 +879,7 @@ static void hist_apply(Hist *h)
 		GtkTextIter a, b; gtk_text_buffer_get_iter_at_offset(BUF, &a, off[k]); b = a; gtk_text_iter_forward_char(&b);
 		gtk_text_buffer_delete(BUF, &a, &b);
 		Snap *s = g_ptr_array_index(h->objs, k);
+		fprintf(stderr, "wp: place %d kind %d (%d bytes of picture, %d cells)\n", k, s->kind, (int)(s->im ? s->im->n : 0), (int)(s->cells ? s->cells->len : 0));
 		if (s->kind == 0) continue;
 		GtkTextIter at; gtk_text_buffer_get_iter_at_offset(BUF, &at, off[k]);
 		snap_place(gtk_text_buffer_create_child_anchor(BUF, &at), s);
