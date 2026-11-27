@@ -740,6 +740,7 @@ static void table_dlg(void)
 		{ "Header row", RUI_F_CHECK, "1" }, { "Borders", RUI_F_CHECK, "1" } };
 	static const char *B[] = { "Cancel", "Insert" };
 	rui_form(W, rui_tr("Insert table"), NULL, f, 4, B, 2, 1, table_dlg_done, NULL);
+	state_soon();   /* (the page says a dialog stands open: a check reads it here) */
 }
 static void insert_table(int rows, int cols, int hdr, int border)
 {

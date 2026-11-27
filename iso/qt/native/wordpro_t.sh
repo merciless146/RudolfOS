@@ -134,14 +134,14 @@ ok "14. a picture keeps its size, and is neither a word nor a character of the w
 #  answer the test would press, in the file the app reads -- takes its defaults: 3 rows, 3 columns, a heading row and
 #  borders, which are the page's own 3 x 3 with <th> in its first row and the .wp-t class)
 ST4=$T/state4.txt; A4=$T/ans4; rm -f "$ST4"; : > "$A4"
-RUDOLF_WP_STATE=$ST4 RUDOLF_WP_ANSWER=$A4 RUDOLF_WP_DIALOG=table DISPLAY=$DSP "$BIN" >"$T/wp4.log" 2>&1 & WPP4=$!
+RUDOLF_WP_STATE=$ST4 RUDOLF_WP_ANSWER=$A4 RUDOLF_WP_DIALOG=table DISPLAY=$DSP $RUN "$BIN" >"$T/wp4.log" 2>&1 & WPP4=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^dialog 1$' "$ST4" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 D4=$(grep -c '^dialog 1$' "$ST4" 2>/dev/null)
 echo "Insert" > "$A4"   # (the answer: the dialog's own Insert)
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST4" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 grep -q '^obj table 3x3$' "$ST4" && grep -q '^tbl hdr 1 nb 0$' "$ST4" && grep -q '^cells|||' "$ST4" && [ "$D4" = 1 ]; RC=$?
 kill $WPP4 2>/dev/null
-ok "15. the page's Insert table dialog opens on its defaults, and its Insert makes the page's 3 x 3 with a heading row and borders" "$([ $RC = 0 ] && echo 1)" "dialog up $D4; $(grep -E '^(objs|obj|tbl) ' "$ST4" 2>/dev/null | tr '\n' ' '); $(tail -2 "$T/wp4.log" 2>/dev/null | tr '\n' ' ')"
+ok "15. the page's Insert table dialog opens on its defaults, and its Insert makes the page's 3 x 3 with a heading row and borders" "$([ $RC = 0 ] && echo 1)" "dialog up $D4; $(grep -E '^(objs|obj|tbl|dialog) ' "$ST4" 2>/dev/null | tr '\n' ' '); $(tail -20 "$T/wp4.log" 2>/dev/null | tr '\n' ' ')"
 # (the page's .DOC: what the web WordPro writes opens here, and what is saved here opens again as it was)
 python3 - "$T/pic.png" "$T/in.DOC" <<'PY'
 import sys, base64
