@@ -80,8 +80,6 @@ def n(k):
 print('fonts %s sizes %s layouts %s themes %s shapes %s' % (n('NPPFONTS'), n('NPPSIZES'), n('NPPLAYOUTS'), n('NPPTHEMES'), n('NPPSHAPES')))
 Y
 )
-Y
-)
 grep -q "^lists $WANT\$" "$ST"
 ok "2. the toolbar's and the menus' lists are the page's ($WANT)" "$([ $? = 0 ] && echo 1)" "wanted '$WANT', got '$(grep '^lists ' "$ST")'"
 stop
