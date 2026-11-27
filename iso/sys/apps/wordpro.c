@@ -504,6 +504,7 @@ static int ASK_WHAT; static char *ASK_PATH;
 static void ask_done(int i, void *d)
 {
 	(void)d; ASK = 0; ASK_LAST = i;   /* (what was answered, for the state the tests read) */
+	if (ED) gtk_widget_grab_focus(ED);   /* (the writing has the keys again once the question is gone, as the page's) */
 	if (i < 0) { state_soon(); return; }   /* (Cancel, or Escape's own answer: the page stays as it is) */
 	if (i == 2 && !save_now()) { state_soon(); return; }   /* (a save that was cancelled: nothing is thrown away) */
 	do_what(ASK_WHAT, ASK_PATH);
