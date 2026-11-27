@@ -448,51 +448,32 @@ static void build_toolbar(void)
 /* ------------------------------------------------------------------ the menu bar, the page's .wp-mb and its eight menus
    Each menu is the page's own MENUS: its items in its order, with its shortcuts. An item the editor cannot do yet is drawn
    as the page draws one that cannot be chosen (dimmed), so the bar reads as the page's while what is there works. The
-   dropdowns are rui_menu, the desktop's menus in the page's own look. */
-typedef struct { const char *label, *key; int off; const char *tag; int z; void (*act)(void); } Mi;
-#define WPS { NULL, NULL, 0, NULL, 0, NULL }
-static void f_undo(void) { hist_undo(); }
-static void f_redo(void) { hist_redo(); }
-static void f_bold(void) { apply_name("b"); }
-static void f_italic(void) { apply_name("i"); }
-static void f_under(void) { apply_name("u"); }
-static void f_strike(void) { apply_name("s"); }
-static void f_sub(void) { apply_name("sub"); }
-static void f_sup(void) { apply_name("sup"); }
-static void f_clear(void) { on_clear(NULL, NULL); }
-static void f_bul(void) { line_prefix("bul"); }
-static void f_num(void) { line_prefix("num"); }
-static void f_ind(void) { line_prefix("ind"); }
-static void f_out(void) { line_prefix("out"); }
-static void f_quote(void)
-{
-	for (int i = 0; i < NWPSTYLES; i++) if (!strcmp(WP_STYLES[i].k, "quote")) { if (STYLEW) gtk_combo_box_set_active(GTK_COMBO_BOX(STYLEW), i); return; }
-}
-static void f_close(void) { gtk_widget_destroy(W->win); }
+   dropdowns are rui_menu, the desktop's menus in the page's own look. An item names one operation: the tables say what an
+   item does, and one dispatch does it, so no item needs a function of its own for a single call. */
+enum { OP_NONE, OP_NEW, OP_CLOSE, OP_UNDO, OP_REDO, OP_CUT, OP_COPY, OP_PASTE, OP_SELALL, OP_FIND, OP_REPLACE, OP_ZOOM,
+	OP_TAG, OP_LIST, OP_QUOTE, OP_CLEAR, OP_CASE, OP_WHEN, OP_STATS, OP_KEYS, OP_ABOUT };
+typedef struct { const char *label, *key; int off; const char *tag; int z; int op; const char *arg; } Mi;
+#define WPS { NULL, NULL, 0, NULL, 0, OP_NONE, NULL }
 static void noop(int i, void *d) { (void)i; (void)d; }
-static void new_do(int i, void *d) { (void)d; if (i == 1) hist_apply(""); gtk_widget_grab_focus(ED); }
-static void f_new(void)
+/* New is a step of the writing's own history, as every other change is: undo brings the page back, redo empties it again
+   (a New that only emptied the buffer would leave undo and redo looking at a page that is no longer there) */
+static void new_do(int i, void *d)
 {
-	char *t = doc_text(); int empty = !t || !*t || strspn(t, " \t\r\n") == strlen(t); g_free(t);
-	if (empty) { hist_apply(""); return; }
+	(void)d; if (i != 1) return;
+	SILENT = 1; gtk_text_buffer_set_text(BUF, "", -1); SILENT = 0;
+	hist_push(); counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
+}
+static void new_page(void)
+{
+	char *t = doc_text(); int has = t && strspn(t, " \t\r\n") != strlen(t); g_free(t);
+	if (!has) { gtk_widget_grab_focus(ED); return; }   /* (an empty page has nothing to discard, and nothing to undo) */
 	static const char *B[] = { "Cancel", "Discard" };
 	rui_confirm(W, "WordPro", rui_tr("Discard what is written on this page?"), B, 2, 0, new_do, NULL);
 }
-static void f_cut(void) { gtk_text_buffer_cut_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), TRUE); counts(); state_soon(); }
-static void f_copy(void) { gtk_text_buffer_copy_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD)); }
-static void f_paste(void)
+static void quote_style(void)
 {
-	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
-	gtk_text_buffer_paste_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), &it, TRUE);
-	counts(); state_soon();
+	for (int i = 0; i < NWPSTYLES; i++) if (!strcmp(WP_STYLES[i].k, "quote")) { if (STYLEW) gtk_combo_box_set_active(GTK_COMBO_BOX(STYLEW), i); return; }
 }
-static void f_selall(void)
-{
-	GtkTextIter s, e; gtk_text_buffer_get_start_iter(BUF, &s); gtk_text_buffer_get_end_iter(BUF, &e);
-	gtk_text_buffer_select_range(BUF, &e, &s); gtk_widget_grab_focus(ED); state_soon();
-}
-static void f_find(void) { on_find_open(NULL, NULL); }
-static void f_replace(void) { gtk_widget_show_all(FIND); gtk_widget_grab_focus(REPL); state_soon(); }
 static void zoom_to(int z)
 {
 	static const int Z[] = { 50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200 };
@@ -500,12 +481,6 @@ static void zoom_to(int z)
 	for (unsigned i = 0; ZOOMW && i < G_N_ELEMENTS(Z); i++) if (Z[i] == z) { UPDATING = 1; gtk_combo_box_set_active(GTK_COMBO_BOX(ZOOMW), (int)i); UPDATING = 0; break; }
 	state_soon();
 }
-static void f_z50(void) { zoom_to(50); }
-static void f_z75(void) { zoom_to(75); }
-static void f_z100(void) { zoom_to(100); }
-static void f_z125(void) { zoom_to(125); }
-static void f_z150(void) { zoom_to(150); }
-static void f_z200(void) { zoom_to(200); }
 /* (UPPERCASE, lowercase, Title Case and Sentence case: the page's caseChange over the choice) */
 static char *case_of(const char *t, int kind)
 {
@@ -526,19 +501,18 @@ static void case_do(int kind)
 	gtk_text_buffer_delete(BUF, &s, &e); gtk_text_buffer_insert(BUF, &s, n, -1);
 	g_free(t); g_free(n); counts(); upd_sel(); state_soon();
 }
-static void f_up(void) { case_do(0); }
-static void f_low(void) { case_do(1); }
-static void f_title(void) { case_do(2); }
-static void f_sen(void) { case_do(3); }
 static void insert_here(const char *t)
 {
 	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
 	gtk_text_buffer_insert(BUF, &it, t, -1); counts(); state_soon();
 }
-static void f_date_long(void) { char b[128]; time_t n = time(NULL); struct tm t; localtime_r(&n, &t); strftime(b, sizeof b, "%A, %B %-d, %Y", &t); insert_here(b); }
-static void f_date_short(void) { char b[64]; time_t n = time(NULL); struct tm t; localtime_r(&n, &t); strftime(b, sizeof b, "%m/%d/%Y", &t); insert_here(b); }
-static void f_time(void) { char b[32]; time_t n = time(NULL); struct tm t; localtime_r(&n, &t); strftime(b, sizeof b, "%I:%M %p", &t); insert_here(b); }
-static void f_stats(void)
+static void insert_when(const char *k)
+{
+	char b[128]; time_t n = time(NULL); struct tm t; localtime_r(&n, &t);
+	strftime(b, sizeof b, !strcmp(k, "long") ? "%A, %B %-d, %Y" : !strcmp(k, "short") ? "%m/%d/%Y" : "%I:%M %p", &t);
+	insert_here(b);
+}
+static void show_stats(void)
 {
 	char *t = doc_text(); int lines = 1;
 	for (const char *p = t; *p; p++) if (*p == '\n') lines++;
@@ -548,74 +522,104 @@ static void f_stats(void)
 	static const char *B[] = { "OK" };
 	rui_confirm(W, rui_tr("Document statistics"), m, B, 1, 1, noop, NULL);
 }
-static void f_keys(void)
+static void show_keys(void)
 {
 	static const char *B[] = { "OK" };
 	rui_confirm(W, rui_tr("Keyboard shortcuts"),
 		"Ctrl+B / I / U - bold, italic, underline\nCtrl+Z / Y - undo, redo\nCtrl+X / C / V - cut, copy, paste\n"
 		"Ctrl+A - select all\nCtrl+F - find\nCtrl+K - insert a link\nCtrl+P - print", B, 1, 1, noop, NULL);
 }
-static void f_about(void)
+static void menu_do(const Mi *s)
 {
-	rui_about(W, "WordPro 1.0", rui_tr("A word processor for Rudolf OS with styles, the four alignments, bullets, numbering, "
-		"find and replace, and the page's own lists. Documents are saved as .DOC files that WordLite and Oracle can also open."));
+	GtkTextIter a, b;
+	switch (s->op) {
+	case OP_NEW: new_page(); break;
+	case OP_CLOSE: gtk_widget_destroy(W->win); break;
+	case OP_UNDO: hist_undo(); break;
+	case OP_REDO: hist_redo(); break;
+	case OP_CUT: gtk_text_buffer_cut_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), TRUE); counts(); state_soon(); break;
+	case OP_COPY: gtk_text_buffer_copy_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD)); break;
+	case OP_PASTE:
+		gtk_text_buffer_get_iter_at_mark(BUF, &a, gtk_text_buffer_get_insert(BUF));
+		gtk_text_buffer_paste_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), &a, TRUE);
+		counts(); state_soon(); break;
+	case OP_SELALL:
+		gtk_text_buffer_get_bounds(BUF, &a, &b); gtk_text_buffer_select_range(BUF, &b, &a);
+		gtk_widget_grab_focus(ED); state_soon(); break;
+	case OP_FIND: on_find_open(NULL, NULL); break;
+	case OP_REPLACE: gtk_widget_show_all(FIND); gtk_widget_grab_focus(REPL); state_soon(); break;
+	case OP_ZOOM: zoom_to(s->z); break;
+	case OP_TAG: apply_name(s->tag); break;
+	case OP_LIST: line_prefix(s->arg); break;
+	case OP_QUOTE: quote_style(); break;
+	case OP_CLEAR: on_clear(NULL, NULL); break;
+	case OP_CASE: case_do(!strcmp(s->arg, "up") ? 0 : !strcmp(s->arg, "low") ? 1 : !strcmp(s->arg, "title") ? 2 : 3); break;
+	case OP_WHEN: insert_when(s->arg); break;
+	case OP_STATS: show_stats(); break;
+	case OP_KEYS: show_keys(); break;
+	case OP_ABOUT:
+		rui_about(W, "WordPro 1.0", rui_tr("A word processor for Rudolf OS with styles, the four alignments, bullets, numbering, "
+			"find and replace, and the page's own lists. Documents are saved as .DOC files that WordLite and Oracle can also open."));
+		break;
+	default: break;
+	}
 }
 static const Mi FILE_I[] = {
-	{ "New", "Ctrl+N", 0, NULL, 0, f_new }, { "Open...", "Ctrl+O", 1, NULL, 0, NULL },
-	{ "Save", "Ctrl+S", 1, NULL, 0, NULL }, { "Save As...", "", 1, NULL, 0, NULL }, WPS,
-	{ "Import text or HTML file...", "", 1, NULL, 0, NULL }, { "Export as text (.TXT)...", "", 1, NULL, 0, NULL },
-	{ "Export as web page (.HTM)...", "", 1, NULL, 0, NULL }, WPS,
-	{ "Page setup...", "", 1, NULL, 0, NULL }, { "Print...", "Ctrl+P", 1, NULL, 0, NULL }, WPS,
-	{ "Document statistics...", "", 0, NULL, 0, f_stats }, { "Close", "", 0, NULL, 0, f_close } };
+	{ "New", "Ctrl+N", 0, NULL, 0, OP_NEW, NULL }, { "Open...", "Ctrl+O", 1, NULL, 0, OP_NONE, NULL },
+	{ "Save", "Ctrl+S", 1, NULL, 0, OP_NONE, NULL }, { "Save As...", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Import text or HTML file...", "", 1, NULL, 0, OP_NONE, NULL }, { "Export as text (.TXT)...", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Export as web page (.HTM)...", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Page setup...", "", 1, NULL, 0, OP_NONE, NULL }, { "Print...", "Ctrl+P", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Document statistics...", "", 0, NULL, 0, OP_STATS, NULL }, { "Close", "", 0, NULL, 0, OP_CLOSE, NULL } };
 static const Mi EDIT_I[] = {
-	{ "Undo", "Ctrl+Z", 0, NULL, 0, f_undo }, { "Redo", "Ctrl+Y", 0, NULL, 0, f_redo }, WPS,
-	{ "Cut", "Ctrl+X", 0, NULL, 0, f_cut }, { "Copy", "Ctrl+C", 0, NULL, 0, f_copy },
-	{ "Paste", "Ctrl+V", 0, NULL, 0, f_paste }, { "Paste as plain text", "Ctrl+Shift+V", 0, NULL, 0, f_paste }, WPS,
-	{ "Select all", "Ctrl+A", 0, NULL, 0, f_selall }, WPS,
-	{ "Find...", "Ctrl+F", 0, NULL, 0, f_find }, { "Find and replace...", "Ctrl+H", 0, NULL, 0, f_replace } };
+	{ "Undo", "Ctrl+Z", 0, NULL, 0, OP_UNDO, NULL }, { "Redo", "Ctrl+Y", 0, NULL, 0, OP_REDO, NULL }, WPS,
+	{ "Cut", "Ctrl+X", 0, NULL, 0, OP_CUT, NULL }, { "Copy", "Ctrl+C", 0, NULL, 0, OP_COPY, NULL },
+	{ "Paste", "Ctrl+V", 0, NULL, 0, OP_PASTE, NULL }, { "Paste as plain text", "Ctrl+Shift+V", 0, NULL, 0, OP_PASTE, NULL }, WPS,
+	{ "Select all", "Ctrl+A", 0, NULL, 0, OP_SELALL, NULL }, WPS,
+	{ "Find...", "Ctrl+F", 0, NULL, 0, OP_FIND, NULL }, { "Find and replace...", "Ctrl+H", 0, NULL, 0, OP_REPLACE, NULL } };
 static const Mi VIEW_I[] = {
-	{ "Print layout", "", 1, NULL, 0, NULL }, { "Web layout", "", 1, NULL, 0, NULL }, WPS,
-	{ "Zoom 50%", "", 0, NULL, 50, f_z50 }, { "Zoom 75%", "", 0, NULL, 75, f_z75 },
-	{ "Zoom 100%", "", 0, NULL, 100, f_z100 }, { "Zoom 125%", "", 0, NULL, 125, f_z125 },
-	{ "Zoom 150%", "", 0, NULL, 150, f_z150 }, { "Zoom 200%", "", 0, NULL, 200, f_z200 }, WPS,
-	{ "Outline pane", "", 1, NULL, 0, NULL }, { "Show formatting marks", "", 1, NULL, 0, NULL },
-	{ "Spell check as you type", "", 1, NULL, 0, NULL }, WPS,
-	{ "Show Notey, the assistant", "", 1, NULL, 0, NULL } };
+	{ "Print layout", "", 1, NULL, 0, OP_NONE, NULL }, { "Web layout", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Zoom 50%", "", 0, NULL, 50, OP_ZOOM, NULL }, { "Zoom 75%", "", 0, NULL, 75, OP_ZOOM, NULL },
+	{ "Zoom 100%", "", 0, NULL, 100, OP_ZOOM, NULL }, { "Zoom 125%", "", 0, NULL, 125, OP_ZOOM, NULL },
+	{ "Zoom 150%", "", 0, NULL, 150, OP_ZOOM, NULL }, { "Zoom 200%", "", 0, NULL, 200, OP_ZOOM, NULL }, WPS,
+	{ "Outline pane", "", 1, NULL, 0, OP_NONE, NULL }, { "Show formatting marks", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Spell check as you type", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Show Notey, the assistant", "", 1, NULL, 0, OP_NONE, NULL } };
 static const Mi INSERT_I[] = {
-	{ "Table...", "", 1, NULL, 0, NULL }, { "Picture...", "", 1, NULL, 0, NULL },
-	{ "Hyperlink...", "Ctrl+K", 1, NULL, 0, NULL }, { "Bookmark...", "", 1, NULL, 0, NULL },
-	{ "Links in this document...", "", 1, NULL, 0, NULL }, { "Horizontal line", "", 1, NULL, 0, NULL },
-	{ "Page break", "Ctrl+Enter", 1, NULL, 0, NULL }, WPS,
-	{ "Date (long)", "", 0, NULL, 0, f_date_long }, { "Date (short)", "", 0, NULL, 0, f_date_short },
-	{ "Time", "", 0, NULL, 0, f_time }, { "Special characters...", "", 1, NULL, 0, NULL }, WPS,
-	{ "Footnote...", "", 1, NULL, 0, NULL }, { "Table of contents / update", "", 1, NULL, 0, NULL }, WPS,
-	{ "Header and footer...", "", 1, NULL, 0, NULL }, { "Page numbers", "", 1, NULL, 0, NULL } };
+	{ "Table...", "", 1, NULL, 0, OP_NONE, NULL }, { "Picture...", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Hyperlink...", "Ctrl+K", 1, NULL, 0, OP_NONE, NULL }, { "Bookmark...", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Links in this document...", "", 1, NULL, 0, OP_NONE, NULL }, { "Horizontal line", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Page break", "Ctrl+Enter", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Date (long)", "", 0, NULL, 0, OP_WHEN, "long" }, { "Date (short)", "", 0, NULL, 0, OP_WHEN, "short" },
+	{ "Time", "", 0, NULL, 0, OP_WHEN, "time" }, { "Special characters...", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Footnote...", "", 1, NULL, 0, OP_NONE, NULL }, { "Table of contents / update", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Header and footer...", "", 1, NULL, 0, OP_NONE, NULL }, { "Page numbers", "", 1, NULL, 0, OP_NONE, NULL } };
 static const Mi FORMAT_I[] = {
-	{ "Bold", "Ctrl+B", 0, "b", 0, f_bold }, { "Italic", "Ctrl+I", 0, "i", 0, f_italic },
-	{ "Underline", "Ctrl+U", 0, "u", 0, f_under }, { "Strikethrough", "", 0, "s", 0, f_strike },
-	{ "Subscript", "", 0, "sub", 0, f_sub }, { "Superscript", "", 0, "sup", 0, f_sup }, WPS,
-	{ "UPPERCASE", "", 0, NULL, 0, f_up }, { "lowercase", "", 0, NULL, 0, f_low },
-	{ "Title Case", "", 0, NULL, 0, f_title }, { "Sentence case", "", 0, NULL, 0, f_sen },
-	{ "Clear formatting", "", 0, NULL, 0, f_clear }, WPS,
-	{ "Paragraph...", "", 1, NULL, 0, NULL }, { "Bulleted list", "", 0, NULL, 0, f_bul },
-	{ "Numbered list", "", 0, NULL, 0, f_num }, { "Increase indent", "", 0, NULL, 0, f_ind },
-	{ "Decrease indent", "", 0, NULL, 0, f_out }, { "Block quote", "", 0, NULL, 0, f_quote }, WPS,
-	{ "One column", "", 1, NULL, 0, NULL }, { "Two columns", "", 1, NULL, 0, NULL },
-	{ "Three columns", "", 1, NULL, 0, NULL }, { "Drop cap", "", 1, NULL, 0, NULL } };
+	{ "Bold", "Ctrl+B", 0, "b", 0, OP_TAG, NULL }, { "Italic", "Ctrl+I", 0, "i", 0, OP_TAG, NULL },
+	{ "Underline", "Ctrl+U", 0, "u", 0, OP_TAG, NULL }, { "Strikethrough", "", 0, "s", 0, OP_TAG, NULL },
+	{ "Subscript", "", 0, "sub", 0, OP_TAG, NULL }, { "Superscript", "", 0, "sup", 0, OP_TAG, NULL }, WPS,
+	{ "UPPERCASE", "", 0, NULL, 0, OP_CASE, "up" }, { "lowercase", "", 0, NULL, 0, OP_CASE, "low" },
+	{ "Title Case", "", 0, NULL, 0, OP_CASE, "title" }, { "Sentence case", "", 0, NULL, 0, OP_CASE, "sen" },
+	{ "Clear formatting", "", 0, NULL, 0, OP_CLEAR, NULL }, WPS,
+	{ "Paragraph...", "", 1, NULL, 0, OP_NONE, NULL }, { "Bulleted list", "", 0, NULL, 0, OP_LIST, "bul" },
+	{ "Numbered list", "", 0, NULL, 0, OP_LIST, "num" }, { "Increase indent", "", 0, NULL, 0, OP_LIST, "ind" },
+	{ "Decrease indent", "", 0, NULL, 0, OP_LIST, "out" }, { "Block quote", "", 0, NULL, 0, OP_QUOTE, NULL }, WPS,
+	{ "One column", "", 1, NULL, 0, OP_NONE, NULL }, { "Two columns", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Three columns", "", 1, NULL, 0, OP_NONE, NULL }, { "Drop cap", "", 1, NULL, 0, OP_NONE, NULL } };
 static const Mi TABLE_I[] = {
-	{ "Insert table...", "", 1, NULL, 0, NULL }, WPS,
-	{ "Insert row above", "", 1, NULL, 0, NULL }, { "Insert row below", "", 1, NULL, 0, NULL },
-	{ "Insert column left", "", 1, NULL, 0, NULL }, { "Insert column right", "", 1, NULL, 0, NULL }, WPS,
-	{ "Delete row", "", 1, NULL, 0, NULL }, { "Delete column", "", 1, NULL, 0, NULL },
-	{ "Delete table", "", 1, NULL, 0, NULL }, WPS,
-	{ "Merge with cell to the right", "", 1, NULL, 0, NULL }, { "Shade cell...", "", 1, NULL, 0, NULL },
-	{ "Toggle borders", "", 1, NULL, 0, NULL }, { "Toggle header row", "", 1, NULL, 0, NULL } };
+	{ "Insert table...", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Insert row above", "", 1, NULL, 0, OP_NONE, NULL }, { "Insert row below", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Insert column left", "", 1, NULL, 0, OP_NONE, NULL }, { "Insert column right", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Delete row", "", 1, NULL, 0, OP_NONE, NULL }, { "Delete column", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Delete table", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Merge with cell to the right", "", 1, NULL, 0, OP_NONE, NULL }, { "Shade cell...", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Toggle borders", "", 1, NULL, 0, OP_NONE, NULL }, { "Toggle header row", "", 1, NULL, 0, OP_NONE, NULL } };
 static const Mi TOOLS_I[] = {
-	{ "Check my writing (Notey)", "", 1, NULL, 0, NULL }, { "Document statistics...", "", 0, NULL, 0, f_stats },
-	{ "Smart quotes while typing", "", 1, NULL, 0, NULL }, WPS,
-	{ "Change page colour...", "", 1, NULL, 0, NULL } };
+	{ "Check my writing (Notey)", "", 1, NULL, 0, OP_NONE, NULL }, { "Document statistics...", "", 0, NULL, 0, OP_STATS, NULL },
+	{ "Smart quotes while typing", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Change page colour...", "", 1, NULL, 0, OP_NONE, NULL } };
 static const Mi HELP_I[] = {
-	{ "Keyboard shortcuts", "", 0, NULL, 0, f_keys }, { "About WordPro", "", 0, NULL, 0, f_about } };
+	{ "Keyboard shortcuts", "", 0, NULL, 0, OP_KEYS, NULL }, { "About WordPro", "", 0, NULL, 0, OP_ABOUT, NULL } };
 static const struct { const char *title; const Mi *items; int n; } MENUS[] = {
 	{ "File", FILE_I, G_N_ELEMENTS(FILE_I) }, { "Edit", EDIT_I, G_N_ELEMENTS(EDIT_I) },
 	{ "View", VIEW_I, G_N_ELEMENTS(VIEW_I) }, { "Insert", INSERT_I, G_N_ELEMENTS(INSERT_I) },
@@ -627,14 +631,14 @@ static int menus_n(void) { return NMENUS; }
 static void menu_pick(int i, void *d)
 {
 	int m = (int)(intptr_t)d; MENU_OPEN = NULL;
-	if (i >= 0 && i < MENUS[m].n && MENUS[m].items[i].act) MENUS[m].items[i].act();
+	if (i >= 0 && i < MENUS[m].n && !MENUS[m].items[i].off) menu_do(&MENUS[m].items[i]);
 	upd_sel(); state_soon();
 }
 static void open_menu(GtkWidget *b, int m)
 {
-	RuiMenuItem *it = g_new0(RuiMenuItem, MENUS[m].n); char *lab[64]; int nlab = 0;
+	RuiMenuItem *it = g_new0(RuiMenuItem, MENUS[m].n); char **lab = g_new0(char *, MENUS[m].n); int nlab = 0;
 	GtkTextIter at; gtk_text_buffer_get_iter_at_mark(BUF, &at, gtk_text_buffer_get_insert(BUF));
-	for (int k = 0; k < MENUS[m].n && k < 64; k++) {
+	for (int k = 0; k < MENUS[m].n; k++) {
 		const Mi *s = &MENUS[m].items[k];
 		it[k].label = s->label; it[k].key = s->key; it[k].off = s->off; it[k].sep = s->label == NULL;
 		if (s->label && ((s->tag && has_tag_at(&at, s->tag)) || (s->z && s->z == ZOOM))) it[k].label = lab[nlab++] = g_strconcat("\xe2\x9c\x93 ", s->label, NULL);
@@ -644,7 +648,7 @@ static void open_menu(GtkWidget *b, int m)
 	MENU_OPEN = MENUS[m].title; MENU_OPEN_N = MENUS[m].n;
 	rui_menu(b, ox, oy + a.height, NULL, it, MENUS[m].n, menu_pick, (void *)(intptr_t)m);
 	for (int k = 0; k < nlab; k++) g_free(lab[k]);
-	g_free(it); state_soon();
+	g_free(lab); g_free(it); state_soon();
 }
 static void mb_click(GtkWidget *b, gpointer d) { open_menu(b, (int)(intptr_t)d); }
 static void build_menubar(void)
@@ -752,6 +756,7 @@ static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	case GDK_KEY_z: hist_undo(); return TRUE;
 	case GDK_KEY_y: hist_redo(); return TRUE;
 	case GDK_KEY_f: gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); return TRUE;
+	case GDK_KEY_n: new_page(); return TRUE;
 	default: return FALSE;
 	}
 }
