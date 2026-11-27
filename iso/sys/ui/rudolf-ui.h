@@ -118,12 +118,16 @@ void rui_confirm(RuiWin *w, const char *title, const char *text, const char *con
 GtkWidget *rui_dialog_box(void);                        /* the dialog open now (the tests) */
 /* (the page's dialog() with fields, which is what a dialog of settings is: a row of its label and its input per field, as
    its grid-template-columns:110px 1fr. The fields the callback is given are the form's own copy, and stand only while it
-   runs -- a text's words as typed, a check's "1" or "0" -- so the dialog outlives the call that opened it; the callback's
-   i is the button pressed, or -1 for Escape.) */
-enum { RUI_F_TEXT = 0, RUI_F_NUM, RUI_F_CHECK };
-typedef struct { const char *label; int kind; const char *value; } RuiField;
+   runs -- a text's words as typed, a check's "1" or "0", a choice's own words -- so the dialog outlives the call that
+   opened it; the callback's i is the button pressed, or -1 for Escape.) */
+enum { RUI_F_TEXT = 0, RUI_F_NUM, RUI_F_CHECK, RUI_F_SEL, RUI_F_FILE };
+typedef struct { const char *label; int kind; const char *value; const char *const *opts; int n; } RuiField;   /* (a SEL's
+				opts are its choices, as the page's <select> has them, its value one of them; a FILE's value is a path, and its
+				row carries the button that chooses one) */
 void rui_form(RuiWin *w, const char *title, const char *text, const RuiField *f, int n, const char *const *buttons, int nb,
 	int pri, void (*cb)(int i, const RuiField *f, void *d), void *d);
+GtkWidget *rui_form_field(GtkWidget *box, int i);   /* (a form's own input: an entry, a check, or a choice) */
+void rui_form_value(GtkWidget *w, const char *v);   /* (that input set as its kind sets it: words, "1"/"0", or a choice's) */
 /* the page's elevate: an administrator's account and password, checked by rudolfd; cb(1) allowed, cb(0) not */
 void rui_elevate(RuiWin *w, const char *reason, void (*cb)(int ok, void *d), void *d);
 /* the page's elevate(reason, {cred:true}): cred(name, password) once they are right (rudolfd checks them again with the request: send
