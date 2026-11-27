@@ -325,10 +325,11 @@ static void counts(void)
 static void state_write(void)
 {
 	const char *f = getenv("RUDOLF_WP_STATE"); if (!f || !BUF) return;
-	GString *s = g_string_new(NULL); char *t = doc_text();
+	GString *s = g_string_new(NULL); char *t = doc_text(); int w = words_of(t), c = chars_of(t);
+	obj_counts(&w, &c);   /* (what the window shows: a table has words in its cells, as counts() counts them) */
 	GtkTextIter a, b; int has = sel(&a, &b);
 	g_string_append_printf(s, "font %s\nsize %.1f\nzoom %d\nwords %d\nchars %d\nsel %d\nsay %s\nstyles %d\nfonts %d\n",
-		FAMILY, PT, ZOOM, words_of(t), chars_of(t), has, SAY, NWPSTYLES, NWPFONTS);
+		FAMILY, PT, ZOOM, w, c, has, SAY, NWPSTYLES, NWPFONTS);
 	g_string_append_printf(s, "menus %d\n", menus_n());
 	if (MENU_OPEN) g_string_append_printf(s, "menu %s %d\n", MENU_OPEN, MENU_OPEN_N);
 	state_objs(s);

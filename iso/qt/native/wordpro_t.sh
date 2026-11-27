@@ -142,7 +142,7 @@ ST5=$T/state5.txt; rm -f "$ST5" "$T/out.DOC"
 RUDOLF_WP_STATE=$ST5 RUDOLF_WP_OPEN="$T/in.DOC" RUDOLF_WP_SAVE="$T/out.DOC" DISPLAY=$DSP "$BIN" >"$T/wp5.log" 2>&1 & WPP5=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 2$' "$ST5" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 i=0; while [ $i -lt 60 ] && [ ! -s "$T/out.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-grep -q '^words 2$' "$ST5" && grep -q '^chars 11$' "$ST5" && grep -q '^tags b' "$ST5" &&
+grep -q '^words 6$' "$ST5" && grep -q '^chars 15$' "$ST5" && grep -q '^tags b' "$ST5" &&
 	grep -q '^obj picture 40x30' "$ST5" && grep -q '^obj table 2x2$' "$ST5" &&
 	grep -q '<th>a</th><th>b</th>' "$T/out.DOC" && grep -q '<td>c</td><td>d</td>' "$T/out.DOC" &&
 	grep -q 'data:image/png;base64,' "$T/out.DOC" && grep -q '<p>Hello <b>world</b>' "$T/out.DOC"; RC=$?
@@ -153,7 +153,7 @@ RUDOLF_WP_STATE=$ST6 RUDOLF_WP_OPEN="$T/out.DOC" RUDOLF_WP_SAVE="$T/out2.DOC" DI
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 2$' "$ST6" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 i=0; while [ $i -lt 60 ] && [ ! -s "$T/out2.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 cmp -s "$T/out.DOC" "$T/out2.DOC"; SAME=$?
-grep -q '^words 2$' "$ST6" && grep -q '^chars 11$' "$ST6" && grep -q '^tags b' "$ST6" &&
+grep -q '^words 6$' "$ST6" && grep -q '^chars 15$' "$ST6" && grep -q '^tags b' "$ST6" &&
 	grep -q '^obj picture 40x30' "$ST6" && grep -q '^obj table 2x2$' "$ST6" && [ $SAME = 0 ]; RC=$?
 kill $WPP6 2>/dev/null
 ok "17. ...and what was saved here opens and saves again as the very same document (the round trip)" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST6" 2>/dev/null); the second save is $( [ $SAME = 0 ] && echo 'the same bytes' || echo 'different' ) ($(stat -c %s "$T/out.DOC" 2>/dev/null) and $(stat -c %s "$T/out2.DOC" 2>/dev/null) bytes)"
@@ -191,6 +191,37 @@ ALIVE=$(kill -0 $WPP7 2>/dev/null && echo alive || echo gone)
 grep -q '^objs 1$' "$ST7" && grep -q '^obj picture 40x30 [0-9][0-9]*$' "$ST7" && grep -q '^words 0$' "$ST7" && grep -q '^chars 0$' "$ST7"; RC=$?
 kill $WPP7 2>/dev/null
 ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(grep -E '^(objs|obj|words|chars|hist) ' "$ST7" 2>/dev/null | tr '\n' ' ')(window $W7 of $WPP7, focus $FOCUS, the app $ALIVE; $(tail -3 "$T/wp7.log" 2>/dev/null | tr '\n' ' '))"
+# (a table is a place too, and its entry keeps the cells: a redo that rebuilt an empty grid would still say "obj table" and
+#  count no words, so the cells are the thing to look at. A page's .DOC holding only a 2 x 2 table opens, the table is
+#  undone away, and a redo brings the table back -- with a, b, c and d standing in its cells again)
+python3 - "$T/tab.DOC" <<'PY'
+import sys
+doc = ('<!--wp:%7B%7D--><style data-wp>.wp-t{border-collapse:collapse}</style>'
+       '<table class="wp-t"><tr><th>a</th><th>b</th></tr><tr><td>c</td><td>d</td></tr></table>')
+open(sys.argv[1], 'w').write(doc)
+PY
+ST8=$T/state8.txt; rm -f "$ST8"
+RUDOLF_WP_STATE=$ST8 RUDOLF_WP_OPEN="$T/tab.DOC" DISPLAY=$DSP "$BIN" >"$T/wp8.log" 2>&1 & WPP8=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^obj table 2x2$' "$ST8" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+W8=""; i=0; while [ $i -lt 40 ] && [ -z "$W8" ]; do
+	W8=$(DISPLAY=$DSP xdotool search --onlyvisible --pid "$WPP8" 2>/dev/null | tail -1)
+	[ -n "$W8" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+F8=""
+[ -n "$W8" ] && DISPLAY=$DSP xdotool windowraise "$W8" 2>/dev/null
+i=0; while [ $i -lt 60 ] && [ -n "$W8" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W8" 2>/dev/null
+	F8=$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)
+	[ "$F8" = "$W8" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W8" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W8" 480 300 click 1; sleep 0.8; }
+B=0
+i=0; while [ $i -lt 12 ]; do
+	DISPLAY=$DSP xdotool key ctrl+z; sleep 0.5
+	grep -q '^objs 0$' "$ST8" && { B=1; break; }; i=$((i+1)); done
+i=0; while [ $i -lt 12 ]; do
+	DISPLAY=$DSP xdotool key ctrl+y; sleep 0.5
+	grep -q '^obj table 2x2$' "$ST8" && break; i=$((i+1)); done
+grep -q '^obj table 2x2$' "$ST8" && grep -q '^words 4$' "$ST8" && grep -q '^chars 4$' "$ST8"; RC=$?
+kill $WPP8 2>/dev/null
+ok "19. undo takes the table away, and redo brings the table back with its cells" "$([ $RC = 0 ] && [ "$B" = 1 ] && echo 1)" "the undo took it away: $B, after redo $(grep -E '^(objs|obj|words|chars|hist) ' "$ST8" 2>/dev/null | tr '\n' ' ')(window $W8 of $WPP8, focus $F8)"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
