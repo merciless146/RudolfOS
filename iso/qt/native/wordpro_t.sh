@@ -100,5 +100,33 @@ else
 	ok "12. mkwordpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
 fi
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
+# (the shortcuts the bar advertises: Ctrl+H is the Find bar's replace box, as the page's)
+DISPLAY=$DSP xdotool key ctrl+h; sleep 0.8
+DISPLAY=$DSP xdotool type --delay 12 'TWO'; sleep 0.8
+grep -q '^findbar 1$' "$ST" && grep -q '^repl TWO$' "$ST" && grep -q '^find world$' "$ST"
+ok "13. Ctrl+H opens the Find bar on its replace box, not its find box" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(findbar|find|repl) ' "$ST")"
+# (a picture and a table are places in the writing, with their own data, not characters or words of it)
+python3 - "$T/pic.png" <<'PY'
+import sys, zlib, struct
+w, h = 40, 30
+raw = b''.join(b'\x00' + b'\xc0\x00\x00' * w for _ in range(h))
+def chunk(t, d):
+    return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+png = (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0))
+       + chunk(b'IDAT', zlib.compress(raw)) + chunk(b'IEND', b''))
+open(sys.argv[1], 'wb').write(png)
+PY
+ST3=$T/state3.txt; rm -f "$ST3"
+RUDOLF_WP_STATE=$ST3 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP "$BIN" >"$T/wp3.log" 2>&1 & WPP3=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST3" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^obj picture 40x30' "$ST3" && grep -q '^words 0$' "$ST3" && grep -q '^chars 0$' "$ST3"; RC=$?
+kill $WPP3 2>/dev/null
+ok "14. a picture keeps its size, and is neither a word nor a character of the writing" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(objs|obj|words|chars) ' "$ST3" 2>/dev/null); $(tail -2 "$T/wp3.log" 2>/dev/null)"
+ST4=$T/state4.txt; rm -f "$ST4"
+RUDOLF_WP_STATE=$ST4 RUDOLF_WP_INSERT="table" DISPLAY=$DSP "$BIN" >"$T/wp4.log" 2>&1 & WPP4=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST4" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^obj table 3x3$' "$ST4"; RC=$?
+kill $WPP4 2>/dev/null
+ok "15. a table is its own place too: the page's default 3 x 3" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(objs|obj) ' "$ST4" 2>/dev/null)"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 echo "$NP passed, $NF failed"; [ $NF = 0 ]

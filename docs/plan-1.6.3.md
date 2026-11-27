@@ -92,11 +92,39 @@ accent colours), its memory at idle against the web version, built in the releas
   statistics, the keyboard shortcuts and About -- and what needs a later step is drawn unavailable, as the page draws an
   item that cannot be chosen. A toggle that is on, and the zoom in use, carry the page's check mark. The dropdowns are
   `rui_menu`, the desktop's menus in the page's look.
+- **Branch `wordpro-4`: the bar's shortcuts, and step 2 begun** (tables and pictures): Ctrl+H opens the Find bar on its
+  replace box and Shift+Ctrl+V pastes the clipboard's text alone, as the bar advertises; the document model is decided
+  below; pictures and tables are places in the writing with their own data (a picture's bytes and size, a table's cells),
+  the page's default 3 x 3 table, and a picture chosen through GTK's own file chooser until the page's dialog comes.
 - **Not in this step, by the plan's own split:** the dialogs of those items (open, save, import, export, page setup,
   print, table, picture, link, special characters, header and footer), tables, pictures, links, page setup, headers and
   footers, the table of contents, printing, and opening and saving the page's .DOC (its HTML with the page's
   stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
+
+#### The document model (decided 2026-11-27, step 2 begins: tables and pictures)
+The native document is the page's document, not a text buffer that happens to look like one.
+- **What a document is:** a sequence of blocks. A block is a paragraph -- text with its inline tags (bold, italic,
+  underline, strikethrough, sub- and superscript, the colours, the font and size, the paragraph styles and alignments) --
+  or an object: a picture or a table. Text lives in the text view's buffer; an object is a place in that same buffer (a
+  child anchor, which the page itself keeps as its placeholder character U+FFFC) whose data is held beside it, so the
+  cursor, the counts and the undo still move through one writing in order.
+- **A picture** is its image, its pixel size and its alt text. **A table** is a grid of cells, each cell an ordered list
+  of blocks (the page's `<td>` holds paragraphs, lists and nested tables too); the first cut gives each cell one
+  paragraph -- the page's default 3 x 3 with a header row and borders -- and its cells' words are part of the page's
+  word count.
+- **What it means for the page's .DOC** (exactly the file the web WordPro writes, its `serialize()`): saving writes that
+  file -- `<!--wp:{meta}-->`, `<style data-wp>` carrying the page's own stylesheet, then the blocks as the page's HTML: a
+  paragraph as `<p>`/`<h1>`-`<h4>` with the page's classes and its inline tags as `<b>`, `<i>`, `<u>`, `<s>`, `<sub>`,
+  `<sup>`, `<span style="color:...">`, `<span style="font-family:...;font-size:...">`; a table as `<table>` with `<th>`
+  and `<td>`; a picture as `<img src="data:image/png;base64,...">` with its width and height. Opening parses that same
+  subset back into blocks, and refuses out loud a file it cannot read rather than dropping silently what it does not
+  understand (the page's own rule). The test the save must pass: a document the web WordPro saved opens here unchanged,
+  and one saved here opens there unchanged.
+- **What it costs, and what the first cut leaves out:** undo keeps the text and not the objects, so an undo across a
+  picture or a table drops it from the page (and this line says so); a cell holds one paragraph, with no inline spans
+  inside it yet; the page's insert dialogs (rows, columns, header row, borders; a picture's size and text) come with the
+  dialogs step, so the menu inserts the page's default table and asks for a picture's file through GTK's own chooser.
 
 ### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
 A dedicated fingerprint sensor is needed (in the power button, a corner of the touchpad, a pad beside the keyboard, or
