@@ -845,6 +845,9 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
    (`sound`, `hotkey mic`, the volume overlay) working.
 3. If it runs beside PulseAudio, turn WirePlumber's ALSA monitor off in its configuration, leaving the v4l2 (and libcamera)
    monitors: otherwise it takes the sound cards PulseAudio is using.
+   `addwebkit.sh` already refuses to build when `interleave` or `transcode` is missing (`addwebkit.sh` exits 1, and the
+   release build stops): `pipewire` only warns there until this Part lands, since its plug-in has nothing to reach without
+   the server. When this Part installs PipeWire, add `pipewire` to that script's `FATAL` list in the same change.
 4. **The microphone and the Recorder are not this camera fault** (findings N35 point 3): its source is `pulsesrc`, and what stops its WebAudio
    path — the one the level meter reads — is a GStreamer element the image does not carry: `deinterleave`, from
    gst-plugins-good's `interleave` plug-in (`libgstinterleave.so`), so each attempt ends `not-linked`. That plug-in is now
@@ -852,11 +855,14 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
    with it. **The Recorder is a third fault and needs its own plug-in:** WebKitGTK 2.52's `MediaRecorderPrivateGStreamer`
    builds `uritranscodebin` (GStreamer Bad's `transcode` plug-in, `libgsttranscode.so`), which the image also lacks — so
    `rec.start()` throws `NotSupportedError` and the button stays dead. `transcode` is in `addwebkit.sh`'s list now, and its
-   library pulls `libgsttranscoder-1.0.so.0` with it through the script's existing `ldd` pass.
+   library pulls `libgsttranscoder-1.0.so.0` with it through the script's existing `ldd` pass. **This is V3's fault as well
+   as V1's:** the Camera records its video through the same `MediaRecorder` (camera track plus microphone audio in one
+   `MediaStream`, `apps25b.js`), so a working camera would still leave "Record video" dead until `libgsttranscode.so` is
+   in the image — V3 needs both fixes, and needs them for different reasons.
 5. **Test on the Vivobook** (checklist V2 and V3): the camera's preview at 640×480, a photo and a 5 s video saved and
    opened. Then with PipeWire stopped, to see what the app says. Two checks for two paths: the hardware check's microphone
-   step reads through WebAudio, so it needs `libgstinterleave.so` and should move off −120 dB; V1 is the Recorder, which
-   needs `libgsttranscode.so` and should then save a clip. If either stays dead, its own log line names the factory that is
+   step reads through WebAudio, so it needs `libgstinterleave.so` and should move off −120 dB; V1 and the Camera's
+   "Record video" (V3) are the Recorder, which needs `libgsttranscode.so` and should then save a clip. If either stays dead, its own log line names the factory that is
    still missing.
 6. **Cost:** two more daemons and their libraries, and their memory; read the native desktop's idle figure (checklist V42)
    before and after.

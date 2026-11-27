@@ -424,6 +424,11 @@ through PipeWire, and says so in its own error message. Three consequences:
      What the Recorder needs is `uritranscodebin`, from GStreamer Bad's `transcode` plug-in (`libgsttranscode.so`), and the
      image does not have it: the 39 plug-ins include no `libgsttranscode.so`, and `addwebkit.sh` named neither it nor the plug-in until 2026-11-27, when `transcode` joined the list beside
      `interleave`.
+     **V3 needs this plug-in too, and not only V1:** the Camera's Record button builds the same `MediaRecorder` —
+     `apps25b.js` puts the camera's video track and, if the microphone prompt is allowed, its audio track into one
+     `MediaStream` and records that — so a clip cannot start without `uritranscodebin` even once the camera captures. The
+     camera fault (PipeWire) and the Recorder fault (`transcode`) are two separate things V3 needs, and fixing the camera
+     alone would leave its Record button as dead as V1's.
      When that factory returns NULL, `preparePipeline()` returns false, `MediaRecorderPrivateGStreamer::create` returns
      null, and `MediaRecorder::startRecording` turns it into `NotSupportedError: The MediaRecorder is unsupported on this
      platform` out of `rec.start()` — which the Recorder page calls before it sets its clock, in a block with no `catch`,
@@ -433,7 +438,10 @@ through PipeWire, and says so in its own error message. Three consequences:
    - **`deinterleave` ships in `libgstinterleave.so`** (gst-plugins-good's `interleave` plug-in), and the image has
      `libgstinterleave.so: absent` while `libgstinter.so` (the video interleaver) and `libgstaudiofx.so` are there.
      `iso/systools/addwebkit.sh`'s loop names `deinterlace`, `inter` and `audiofx` and **never `interleave`** — and the loop
-     skips a plug-in it cannot find without a word. So this is the same shape as the `pipewire` omission: a name missing
+     then skipped a plug-in it could not find without a word (since 2026-11-27 it names every one it cannot find, and
+     refuses the build when `interleave` or `transcode` is missing: a host without those packages is the wrong host, one
+     apt-get from right, whereas a missing `pipewire` still only warns until Part 9 gives the image a PipeWire to reach).
+     So this is the same shape as the `pipewire` omission: a name missing
      from the list, not a build that lost it. `interleave` is now in the list, with the same kind of warning after it.
    - **`error reading data -1` is the companion — by inference, not by record.** The timings are fact: it arrives 6 s after
      each `not-linked` (0:02:00, 0:02:08, 0:02:32, 0:03:00) and at no other moment, and PulseAudio's own log

@@ -6,12 +6,14 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 ## 1.6.3 (in progress)
 Summary: In progress.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
-  out loud when libgstpipewire.so is not on the build host: the loop skips a missing plug-in without a word, which is how
-  the camera went a release without a capture source.
+  out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
+  is how the camera went a release without a capture source; it now names every plug-in it cannot find.
 - Better: addwebkit.sh also copies the interleave plug-in: AudioSourceProviderGStreamer needs its `deinterleave` for a
   microphone capture, and without it a capture's WebAudio path ends "not-linked" (findings N35).
 - Better: addwebkit.sh also copies the `transcode` plug-in, whose `uritranscodebin` is what MediaRecorder builds its
-  pipeline with: without it `rec.start()` throws and the Recorder's button stays dead (findings N35).
+  pipeline with: without it `rec.start()` throws and the Recorder's button stays dead, in the Voice Recorder and in the
+  Camera's video too (findings N35). The build now stops instead of warning when it or the interleave plug-in is missing:
+  a host without their packages would ship a silent microphone and a Recorder that never starts.
 - Fixed: Voice Recorder's Record now says what went wrong (the error's name and message, in a notification) instead of
   playing the click sound and staying silent, with no clock and no recording; on the Native desktop the start block could
   throw where nothing caught it. It also cleans up the microphone if it fails, so Record can be tried again (checklist V1).
