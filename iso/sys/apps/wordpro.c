@@ -170,8 +170,15 @@ static void on_clear(GtkWidget *b, gpointer d)
 	(void)b; (void)d; GtkTextIter s, e; if (!need_sel()) return;
 	gtk_text_buffer_remove_all_tags(BUF, &s, &e); counts(); state_soon();
 }
-static void on_undo(GtkWidget *b, gpointer d) { (void)b; (void)d; if (gtk_text_buffer_can_undo(BUF)) gtk_text_buffer_undo(BUF); counts(); state_soon(); }
-static void on_redo(GtkWidget *b, gpointer d) { (void)b; (void)d; if (gtk_text_buffer_can_redo(BUF)) gtk_text_buffer_redo(BUF); counts(); state_soon(); }
+/* undo and redo: GTK 3's text buffer keeps no history of its own, so the writing is kept step by step (the page's undo and
+   redo, bounded to the last 120 changes) */
+#define HIST 120
+static char *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
+static void hist_apply(const char *t) { SILENT = 1; gtk_text_buffer_set_text(BUF, t, -1); SILENT = 0; counts(); state_soon(); }
+static void hist_undo(void) { if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
+static void hist_redo(void) { if (HIST_I < HIST_N) { HIST_I++; hist_apply(HIST_T[HIST_I - 1]); } }
+static void on_undo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_undo(); }
+static void on_redo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_redo(); }
 static void on_zoom(GtkComboBox *c, gpointer d)
 {
 	(void)d; static const int Z[] = { 50, 60, 70, 80, 90, 100, 110, 125, 150, 175, 200 };
@@ -246,9 +253,11 @@ static void state_write(void)
 		for (; !gtk_text_iter_is_end(&j) && gtk_text_iter_get_char(&j) != '\n'; gtk_text_iter_forward_char(&j)) {
 			GSList *l = gtk_text_iter_get_tags(&j);
 			for (GSList *k = l; k; k = k->next) {
-				const char *n = gtk_text_tag_get_name(GTK_TEXT_TAG(k->data));
-				if (!n || strstr(line, n)) continue;
+				char *nm = NULL; g_object_get(G_OBJECT(k->data), "name", &nm, NULL);
+				if (!nm || strstr(line, nm)) { g_free(nm); continue; }
+				const char *n = nm;
 				size_t at = strlen(line); snprintf(line + at, sizeof line - at, "%s%s", at ? "," : "", n);
+				g_free(nm);
 			}
 			g_slist_free(l);
 		}
@@ -260,14 +269,24 @@ static void state_write(void)
 }
 static gboolean state_tick(gpointer d) { (void)d; state_write(); return G_SOURCE_REMOVE; }
 static void state_soon(void) { if (getenv("RUDOLF_WP_STATE")) g_timeout_add(120, state_tick, NULL); }
-static void on_text(GtkTextBuffer *b, gpointer d) { (void)b; (void)d; counts(); state_soon(); }
+static void hist_push(void)
+{
+	if (SILENT) return;
+	char *t = doc_text();
+	if (HIST_N && HIST_T[HIST_N - 1] && !strcmp(HIST_T[HIST_N - 1], t)) { g_free(t); return; }
+	if (HIST_I < HIST_N) { for (int i = HIST_I; i < HIST_N; i++) { g_free(HIST_T[i]); HIST_T[i] = NULL; } HIST_N = HIST_I; }
+	if (HIST_N == HIST) { g_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
+	HIST_T[HIST_N++] = t; HIST_I = HIST_N;
+}
+static void on_text(GtkTextBuffer *b, gpointer d) { (void)b; (void)d; hist_push(); counts(); state_soon(); }
 static void on_mark(GtkTextBuffer *b, GtkTextIter *i, GtkTextMark *m, gpointer d) { (void)b; (void)i; (void)m; (void)d; counts(); state_soon(); }
 
 /* ------------------------------------------------------------------ the toolbar, drawn as the page's .wp-tb */
 static GtkWidget *tb_button(const char *label, const char *tip, GCallback cb, const char *d)
 {
-	GtkWidget *b = rui_button("", 0); GtkWidget *l = gtk_label_new(NULL);
+	GtkWidget *b = gtk_button_new(); GtkWidget *l = gtk_label_new(NULL);
 	gtk_label_set_markup(GTK_LABEL(l), label); gtk_container_add(GTK_CONTAINER(b), l);
+	gtk_style_context_add_class(gtk_widget_get_style_context(b), "rui");
 	gtk_widget_set_tooltip_text(b, rui_tr(tip));
 	if (cb) g_signal_connect(b, "clicked", cb, (gpointer)d);
 	gtk_style_context_add_class(gtk_widget_get_style_context(b), "wp-tb");
@@ -386,7 +405,7 @@ static void build_editor(void)
 	gtk_text_view_set_right_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
 	gtk_text_view_set_top_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
 	gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
-	gtk_text_buffer_set_enable_undo(BUF, TRUE);
+	HIST_T[0] = g_strdup(""); HIST_N = 1; HIST_I = 1;   /* (the history undo and redo walk, from the empty page) */
 	gtk_text_buffer_create_tag(BUF, "b", "weight", PANGO_WEIGHT_BOLD, NULL);
 	gtk_text_buffer_create_tag(BUF, "i", "style", PANGO_STYLE_ITALIC, NULL);
 	gtk_text_buffer_create_tag(BUF, "u", "underline", PANGO_UNDERLINE_SINGLE, NULL);
@@ -433,8 +452,8 @@ static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	case GDK_KEY_b: apply_name("b"); return TRUE;
 	case GDK_KEY_i: apply_name("i"); return TRUE;
 	case GDK_KEY_u: apply_name("u"); return TRUE;
-	case GDK_KEY_z: gtk_text_buffer_undo(BUF); state_soon(); return TRUE;
-	case GDK_KEY_y: gtk_text_buffer_redo(BUF); state_soon(); return TRUE;
+	case GDK_KEY_z: hist_undo(); return TRUE;
+	case GDK_KEY_y: hist_redo(); return TRUE;
 	case GDK_KEY_f: gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); return TRUE;
 	default: return FALSE;
 	}
