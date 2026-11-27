@@ -6,6 +6,8 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 ## 1.6.3 (in progress)
 Summary: In progress.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
+- Better: addwebkit.sh also copies the interleave plug-in: AudioSourceProviderGStreamer needs its `deinterleave`
+  for a microphone capture, and without it every recording ends "not-linked" (findings N35)
   out loud when libgstpipewire.so is not on the build host: the loop skips a missing plug-in without a word, which is how
   the camera went a release without a capture source.
 - Fixed: Voice Recorder's Record now says what went wrong (the error's name and message, in a notification) instead of
