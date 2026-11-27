@@ -811,6 +811,13 @@ static int hist_same(Hist *a, Hist *b)
 	return 1;
 }
 static void hist_free(Hist *h) { if (!h) return; g_free(h->t); g_ptr_array_free(h->objs, TRUE); g_free(h); }
+/* (the page as the window opens: the empty step undo walks back to, and the first thing put on the page can be undone) */
+static void hist_empty(void)
+{
+	Hist *h = g_new0(Hist, 1);
+	h->t = g_strdup(""); h->objs = g_ptr_array_new_with_free_func(snap_free);
+	HIST_T[0] = h; HIST_N = 1; HIST_I = 1;
+}
 static void snap_place(GtkTextChildAnchor *a, Snap *s)
 {
 	WpObj *o = g_new0(WpObj, 1);
@@ -1290,7 +1297,7 @@ static void build_editor(void)
 	gtk_text_view_set_right_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
 	gtk_text_view_set_top_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
 	gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
-	HIST_T[0] = g_strdup(""); HIST_N = 1; HIST_I = 1;   /* (the history undo and redo walk, from the empty page) */
+	hist_empty();   /* (the history undo and redo walk, from the empty page) */
 	gtk_text_buffer_create_tag(BUF, "b", "weight", PANGO_WEIGHT_BOLD, NULL);
 	gtk_text_buffer_create_tag(BUF, "i", "style", PANGO_STYLE_ITALIC, NULL);
 	gtk_text_buffer_create_tag(BUF, "u", "underline", PANGO_UNDERLINE_SINGLE, NULL);
@@ -1366,6 +1373,6 @@ int main(int argc, char **argv)
 	{ const char *ins = getenv("RUDOLF_WP_INSERT");   /* (the tests: a picture or a table put in as the menu puts it) */
 	  if (ins && *ins) g_timeout_add(400, insert_hook, (gpointer)ins); }
 	gtk_widget_grab_focus(ED);   /* (the page's window opens with its writing ready: typing goes into it at once) */
-	counts(); hist_push(); state_soon();   /* (an empty page is the first step of the history: the first thing put on it can be undone) */
+	counts(); state_soon();
 	gtk_main(); return 0;
 }
