@@ -208,11 +208,15 @@ static void on_clear(GtkWidget *b, gpointer d)
 	(void)b; (void)d; GtkTextIter s, e; if (!need_sel()) return;
 	gtk_text_buffer_remove_all_tags(BUF, &s, &e); counts(); state_soon();
 }
-/* undo and redo: GTK 3's text buffer keeps no history of its own, so the writing is kept step by step (the page's undo and
-   redo, bounded to the last 120 changes) */
+/* undo and redo: GTK 3's text buffer keeps no history of its own, so the writing is kept step by step -- and what stands at
+   each of its places with it (the page's undo and redo, bounded to the last 120 changes). An entry is the text *with* its
+   placeholder characters and a copy of each object beside it, so an undo takes a picture or a table away and a redo makes
+   the object itself again: a place is never put back with nothing behind it. */
 #define HIST 120
-static char *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
-static void hist_apply(const char *t) { SILENT = 1; gtk_text_buffer_set_text(BUF, t, -1); SILENT = 0; counts(); state_soon(); }
+typedef struct Hist Hist;   /* (the text, and what stands at each of its places: made below, after the objects are) */
+static Hist *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
+static void hist_push(void); static void hist_apply(Hist *h);
+static Hist *hist_now(void); static int hist_same(Hist *a, Hist *b); static void hist_free(Hist *h);
 static void hist_undo(void) { if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
 static void hist_redo(void) { if (HIST_I < HIST_N) { HIST_I++; hist_apply(HIST_T[HIST_I - 1]); } }
 static void on_undo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_undo(); }
@@ -355,22 +359,14 @@ static void state_write(void)
 }
 static gboolean state_tick(gpointer d) { (void)d; state_write(); return G_SOURCE_REMOVE; }
 static void state_soon(void) { if (getenv("RUDOLF_WP_STATE")) g_timeout_add(120, state_tick, NULL); }
-/* (a place has no place in the history: an entry that kept it would put back a character with no picture or table to show)
- */
-static char *no_places(const char *t)
-{
-	GString *o = g_string_new(NULL);
-	for (const char *p = t; *p; p++) { if (!strncmp(p, "\xef\xbf\xbc", 3)) { p += 2; continue; } g_string_append_c(o, *p); }
-	return g_string_free(o, FALSE);
-}
 static void hist_push(void)
 {
 	if (SILENT) return;
-	char *raw = doc_text(), *t = no_places(raw); g_free(raw);
-	if (HIST_N && HIST_T[HIST_N - 1] && !strcmp(HIST_T[HIST_N - 1], t)) { g_free(t); return; }
-	if (HIST_I < HIST_N) { for (int i = HIST_I; i < HIST_N; i++) { g_free(HIST_T[i]); HIST_T[i] = NULL; } HIST_N = HIST_I; }
-	if (HIST_N == HIST) { g_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
-	HIST_T[HIST_N++] = t; HIST_I = HIST_N;
+	Hist *h = hist_now();
+	if (HIST_N && hist_same(HIST_T[HIST_N - 1], h)) { hist_free(h); return; }
+	if (HIST_I < HIST_N) { for (int i = HIST_I; i < HIST_N; i++) { hist_free(HIST_T[i]); HIST_T[i] = NULL; } HIST_N = HIST_I; }
+	if (HIST_N == HIST) { hist_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
+	HIST_T[HIST_N++] = h; HIST_I = HIST_N;
 }
 static void on_text(GtkTextBuffer *b, gpointer d) { (void)b; (void)d; hist_push(); counts(); state_soon(); }
 static void on_mark(GtkTextBuffer *b, GtkTextIter *i, GtkTextMark *m, gpointer d) { (void)b; (void)i; (void)m; (void)d; counts(); upd_sel(); state_soon(); }
@@ -561,9 +557,15 @@ static void show_keys(void)
    a table's cells are entries of their own, whose words are part of the page's word count. There is no cap on how many a
    page holds, and an object leaves the list when its widget goes -- which is what undo, New and a Backspace do to it. */
 enum { OBJ_PIC = 1, OBJ_TABLE };
-typedef struct { int kind, wpx, hpx, rows, cols; GtkWidget *w; GtkTextChildAnchor *at; guchar *img; gsize img_len; } WpObj;
+typedef struct { guchar *d; gsize n; int refs; } Img;   /* (a picture's bytes, shared: the writing and every history entry
+															that has it point at one copy, so keeping the history costs no
+															new memory for a picture that has not changed) */
+static Img *img_new(guchar *data, gsize len) { Img *i = g_new0(Img, 1); i->d = data; i->n = len; i->refs = 1; return i; }
+static Img *img_ref(Img *i) { if (i) i->refs++; return i; }
+static void img_unref(Img *i) { if (i && --i->refs <= 0) { g_free(i->d); g_free(i); } }
+typedef struct { int kind, wpx, hpx, rows, cols; GtkWidget *w; GtkTextChildAnchor *at; Img *im; } WpObj;
 static GPtrArray *OBJ;
-static void obj_free(gpointer p) { WpObj *o = p; g_free(o->img); g_free(o); }
+static void obj_free(gpointer p) { WpObj *o = p; img_unref(o->im); g_free(o); }
 static void obj_gone(GtkWidget *w, gpointer d)
 {
 	(void)d; if (!OBJ) return;
@@ -587,21 +589,32 @@ static void state_objs(GString *s)
 	g_string_append_printf(s, "objs %d\n", OBJ ? (int)OBJ->len : 0);
 	if (!OBJ) return;
 	for (guint i = 0; i < OBJ->len; i++) { WpObj *o = g_ptr_array_index(OBJ, i);
-		if (o->kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %u\n", o->wpx, o->hpx, (unsigned)o->img_len);
+		if (o->kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %u\n", o->wpx, o->hpx, (unsigned)(o->im ? o->im->n : 0));
 		else g_string_append_printf(s, "obj table %dx%d\n", o->rows, o->cols);
 	}
 }
-static void obj_add(GtkWidget *w, int kind, guchar *img, gsize img_len, int wpx, int hpx, int rows, int cols)
+/* (the object's widget goes into the writing at the anchor it was made for: the menu and the parser create the anchor,
+   the history makes it again where an entry had one, and all three come through here) */
+static void obj_place(GtkTextChildAnchor *a, WpObj *o)
 {
 	if (!OBJ) OBJ = g_ptr_array_new_with_free_func(obj_free);
-	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
-	GtkTextChildAnchor *a = gtk_text_buffer_create_child_anchor(BUF, &it);
-	WpObj *o = g_new0(WpObj, 1);
-	o->kind = kind; o->wpx = wpx; o->hpx = hpx; o->rows = rows; o->cols = cols; o->w = w; o->at = a; o->img = img; o->img_len = img_len;
-	g_signal_connect(w, "destroy", G_CALLBACK(obj_gone), NULL);
+	o->at = a;
+	g_signal_connect(o->w, "destroy", G_CALLBACK(obj_gone), NULL);
 	g_ptr_array_add(OBJ, o);
-	gtk_text_view_add_child_at_anchor(GTK_TEXT_VIEW(ED), w, a);
+	gtk_text_view_add_child_at_anchor(GTK_TEXT_VIEW(ED), o->w, a);
+}
+static void obj_add(GtkWidget *w, int kind, guchar *img, gsize img_len, int wpx, int hpx, int rows, int cols)
+{
+	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
+	SILENT = 1;   /* (the anchor is not a step of the history of its own: the object standing at it is, below) */
+	GtkTextChildAnchor *a = gtk_text_buffer_create_child_anchor(BUF, &it);
+	SILENT = 0;
+	WpObj *o = g_new0(WpObj, 1);
+	o->kind = kind; o->wpx = wpx; o->hpx = hpx; o->rows = rows; o->cols = cols; o->w = w;
+	o->im = img ? img_new(img, img_len) : NULL;
+	obj_place(a, o);
 	counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
+	hist_push();
 }
 static void insert_picture(const char *path)
 {
@@ -724,29 +737,128 @@ static void run_close(GString *o, Run *r)
 	if (r->i) g_string_append(o, "</i>");
 	if (r->b) g_string_append(o, "</b>");
 }
+static const char *cell_text(WpObj *o, int r, int c)
+{
+	const char *t = "";
+	if (!o->w) return t;
+	GList *ch = gtk_container_get_children(GTK_CONTAINER(o->w));
+	for (GList *k = ch; k; k = k->next) { gpointer x = g_object_get_data(G_OBJECT(k->data), "wp-cell");
+		if (x && GPOINTER_TO_INT(x) == r * 100 + c + 1) { t = gtk_entry_get_text(GTK_ENTRY(k->data)); break; } }
+	g_list_free(ch);
+	return t;
+}
 static void obj_html(GString *o, WpObj *ob)
 {
 	if (!ob) return;
 	if (ob->kind == OBJ_PIC) {
-		char *b = g_base64_encode(ob->img, ob->img_len);
+		char *b = g_base64_encode(ob->im->d, ob->im->n);
 		g_string_append_printf(o, "<img src=\"data:image/png;base64,%s\" width=\"%d\" height=\"%d\">", b, ob->wpx, ob->hpx);
 		g_free(b);
 		return;
 	}
 	g_string_append(o, "<table class=\"wp-t\">");
-	GList *ch = gtk_container_get_children(GTK_CONTAINER(ob->w));
 	for (int r = 0; r < ob->rows; r++) {
 		g_string_append(o, "<tr>");
 		for (int c = 0; c < ob->cols; c++) {
-			const char *tag = r == 0 ? "th" : "td"; const char *txt = "";
-			for (GList *k = ch; k; k = k->next) { gpointer x = g_object_get_data(G_OBJECT(k->data), "wp-cell");
-				if (x && GPOINTER_TO_INT(x) == r * 100 + c + 1) { txt = gtk_entry_get_text(GTK_ENTRY(k->data)); break; } }
+			const char *tag = r == 0 ? "th" : "td", *txt = cell_text(ob, r, c);
 			g_string_append_printf(o, "<%s>", tag); esc_into(o, txt, (int)strlen(txt)); g_string_append_printf(o, "</%s>", tag);
 		}
 		g_string_append(o, "</tr>");
 	}
-	g_list_free(ch);
 	g_string_append(o, "</table>");
+}
+/* ------------------------------------------------------------------ an entry of the writing's history
+   The text with its places, and what stands at each: a picture's bytes and size (shared, not copied), a table's cells.
+   Putting an entry back writes its text, turns each placeholder character into a place again, and makes the object that
+   stood at it -- so undo and redo move the picture or the table itself, and a place with nothing behind it cannot be left
+   (an entry whose place has lost its object drops the place). */
+typedef struct { int kind, wpx, hpx, rows, cols; Img *im; GPtrArray *cells; } Snap;
+struct Hist { char *t; GPtrArray *objs; };
+static void snap_free(gpointer p)
+{
+	Snap *s = p; img_unref(s->im); if (s->cells) g_ptr_array_free(s->cells, TRUE); g_free(s);
+}
+static Snap *snap_of(WpObj *o)
+{
+	Snap *s = g_new0(Snap, 1);
+	if (!o) return s;   /* (kind 0: a place the list has already lost; it takes its turn in the order, and no place back) */
+	s->kind = o->kind; s->wpx = o->wpx; s->hpx = o->hpx; s->rows = o->rows; s->cols = o->cols; s->im = img_ref(o->im);
+	if (o->kind == OBJ_TABLE) {
+		s->cells = g_ptr_array_new_with_free_func(g_free);
+		for (int r = 0; r < o->rows; r++) for (int c = 0; c < o->cols; c++) g_ptr_array_add(s->cells, g_strdup(cell_text(o, r, c)));
+	}
+	return s;
+}
+static Hist *hist_now(void)
+{
+	Hist *h = g_new0(Hist, 1);
+	h->t = doc_text();
+	h->objs = g_ptr_array_new_with_free_func(snap_free);
+	GtkTextIter i, e; gtk_text_buffer_get_start_iter(BUF, &i); gtk_text_buffer_get_end_iter(BUF, &e);
+	for (; gtk_text_iter_compare(&i, &e) < 0; gtk_text_iter_forward_char(&i))
+		if (gtk_text_iter_get_char(&i) == 0xFFFC) g_ptr_array_add(h->objs, snap_of(obj_at(gtk_text_iter_get_child_anchor(&i))));
+	return h;
+}
+static int hist_same(Hist *a, Hist *b)
+{
+	if (!a || !b || strcmp(a->t, b->t) || a->objs->len != b->objs->len) return 0;
+	for (guint i = 0; i < a->objs->len; i++) {
+		Snap *x = g_ptr_array_index(a->objs, i), *y = g_ptr_array_index(b->objs, i);
+		if (x->kind != y->kind || x->wpx != y->wpx || x->hpx != y->hpx || x->rows != y->rows || x->cols != y->cols) return 0;
+		if (x->kind != OBJ_TABLE) continue;
+		for (guint k = 0; k < x->cells->len; k++) if (strcmp(g_ptr_array_index(x->cells, k), g_ptr_array_index(y->cells, k))) return 0;
+	}
+	return 1;
+}
+static void hist_free(Hist *h) { if (!h) return; g_free(h->t); g_ptr_array_free(h->objs, TRUE); g_free(h); }
+static void snap_place(GtkTextChildAnchor *a, Snap *s)
+{
+	WpObj *o = g_new0(WpObj, 1);
+	o->kind = s->kind; o->wpx = s->wpx; o->hpx = s->hpx; o->rows = s->rows; o->cols = s->cols; o->im = img_ref(s->im);
+	if (s->kind == OBJ_PIC) {
+		GdkPixbufLoader *l = gdk_pixbuf_loader_new(); GdkPixbuf *pb = NULL;
+		if (s->im && gdk_pixbuf_loader_write(l, s->im->d, s->im->n, NULL) && gdk_pixbuf_loader_close(l, NULL))
+			pb = gdk_pixbuf_loader_get_pixbuf(l);
+		if (pb) { g_object_ref(pb); o->w = gtk_image_new_from_pixbuf(pb); g_object_unref(pb); }
+		g_object_unref(l);
+	} else {
+		GtkWidget *g = gtk_grid_new(); gtk_style_context_add_class(gtk_widget_get_style_context(g), "wp-table");
+		for (int r = 0; r < s->rows; r++) for (int c = 0; c < s->cols; c++) {
+			GtkWidget *e = gtk_entry_new(); gtk_entry_set_width_chars(GTK_ENTRY(e), 8);
+			gtk_widget_set_size_request(e, (int)lround(rui_px(96)), (int)lround(rui_px(26)));
+			gtk_style_context_add_class(gtk_widget_get_style_context(e), "wp-cell");
+			guint k = (guint)(r * s->cols + c);
+			if (s->cells && k < s->cells->len) gtk_entry_set_text(GTK_ENTRY(e), g_ptr_array_index(s->cells, k));
+			g_object_set_data(G_OBJECT(e), "wp-cell", GINT_TO_POINTER(r * 100 + c + 1));
+			gtk_grid_attach(GTK_GRID(g), e, c, r, 1, 1);
+		}
+		o->w = g;
+	}
+	if (!o->w) { img_unref(o->im); g_free(o); return; }   /* (a picture that cannot be read again is not put back empty) */
+	obj_place(a, o);
+}
+static void hist_apply(Hist *h)
+{
+	if (!h) return;
+	SILENT = 1;
+	gtk_text_buffer_set_text(BUF, h->t, -1);
+	int n = (int)h->objs->len, have = 0; int *off = g_new0(int, n > 0 ? (gsize)n : 1);
+	GtkTextIter i, e; gtk_text_buffer_get_start_iter(BUF, &i); gtk_text_buffer_get_end_iter(BUF, &e);
+	for (; gtk_text_iter_compare(&i, &e) < 0 && have < n; gtk_text_iter_forward_char(&i))
+		if (gtk_text_iter_get_char(&i) == 0xFFFC) off[have++] = gtk_text_iter_get_offset(&i);
+	/* (from the last place back, so that each one's offset still holds when the ones before it are made) */
+	for (int k = n - 1; k >= 0; k--) {
+		if (k >= have) continue;
+		GtkTextIter a, b; gtk_text_buffer_get_iter_at_offset(BUF, &a, off[k]); b = a; gtk_text_iter_forward_char(&b);
+		gtk_text_buffer_delete(BUF, &a, &b);
+		Snap *s = g_ptr_array_index(h->objs, k);
+		if (s->kind == 0) continue;
+		GtkTextIter at; gtk_text_buffer_get_iter_at_offset(BUF, &at, off[k]);
+		snap_place(gtk_text_buffer_create_child_anchor(BUF, &at), s);
+	}
+	g_free(off);
+	SILENT = 0;
+	counts(); upd_sel(); state_soon();
 }
 static char *doc_html(void)
 {
@@ -1254,6 +1366,6 @@ int main(int argc, char **argv)
 	{ const char *ins = getenv("RUDOLF_WP_INSERT");   /* (the tests: a picture or a table put in as the menu puts it) */
 	  if (ins && *ins) g_timeout_add(400, insert_hook, (gpointer)ins); }
 	gtk_widget_grab_focus(ED);   /* (the page's window opens with its writing ready: typing goes into it at once) */
-	counts(); state_soon();
+	counts(); hist_push(); state_soon();   /* (an empty page is the first step of the history: the first thing put on it can be undone) */
 	gtk_main(); return 0;
 }

@@ -157,7 +157,23 @@ grep -q '^words 2$' "$ST6" && grep -q '^chars 11$' "$ST6" && grep -q '^tags b' "
 	grep -q '^obj picture 40x30' "$ST6" && grep -q '^obj table 2x2$' "$ST6" && [ $SAME = 0 ]; RC=$?
 kill $WPP6 2>/dev/null
 ok "17. ...and what was saved here opens and saves again as the very same document (the round trip)" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST6" 2>/dev/null); the second save is $( [ $SAME = 0 ] && echo 'the same bytes' || echo 'different' ) ($(stat -c %s "$T/out.DOC" 2>/dev/null) and $(stat -c %s "$T/out2.DOC" 2>/dev/null) bytes)"
+# (the picture is a step of the history: undo takes it away, redo brings the picture itself back -- not a place with
+#  nothing behind it. A copy of the app takes the keys: the same window, focused on this display as the first one was)
+ST7=$T/state7.txt; rm -f "$ST7"
+RUDOLF_WP_STATE=$ST7 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP "$BIN" >"$T/wp7.log" 2>&1 & WPP7=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+W7=$(DISPLAY=$DSP xdotool search --sync --pid "$WPP7" 2>/dev/null | tail -1)
+[ -n "$W7" ] || W7=$(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null | tail -1)
+i=0; while [ $i -lt 60 ] && [ -n "$W7" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W7" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W7" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W7" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W7" 480 300 click 1; sleep 0.6; }
+DISPLAY=$DSP xdotool key ctrl+z; sleep 1
+A=$(grep -c '^objs 0$' "$ST7")
+DISPLAY=$DSP xdotool key ctrl+y; sleep 1
+grep -q '^objs 1$' "$ST7" && grep -q '^obj picture 40x30 [0-9][0-9]*$' "$ST7" && grep -q '^words 0$' "$ST7" && grep -q '^chars 0$' "$ST7"; RC=$?
+kill $WPP7 2>/dev/null
+ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(grep -E '^(objs|obj|words|chars) ' "$ST7" 2>/dev/null | tr '\n' ' ')"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
-for f in "$T/state5.txt" "$T/state6.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
+for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
 echo "$NP passed, $NF failed"; [ $NF = 0 ]

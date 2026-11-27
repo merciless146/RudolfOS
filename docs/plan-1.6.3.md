@@ -128,10 +128,12 @@ The native document is the page's document, not a text buffer that happens to lo
   subset back into blocks, and refuses out loud a file it cannot read rather than dropping silently what it does not
   understand (the page's own rule). The test the save must pass: a document the web WordPro saved opens here unchanged,
   and one saved here opens there unchanged.
-- **What it costs, and what the first cut leaves out:** undo keeps the text and not the objects, so an undo across a
-  picture or a table drops it from the page (and this line says so); a cell holds one paragraph, with no inline spans
-  inside it yet; the page's insert dialogs (rows, columns, header row, borders; a picture's size and text) come with the
-  dialogs step, so the menu inserts the page's default table and asks for a picture's file through GTK's own chooser.
+- **What it costs, and what the first cut leaves out:** an entry of the history is the text with its places and, at each
+  place, the object itself -- a picture's bytes (one copy shared by the writing and every entry that has it, so an
+  unchanged picture costs nothing per step) and a table's cells -- so undo and redo take an object away and put the object
+  back, never a place with nothing behind it; a cell holds one paragraph, with no inline spans inside it yet; the page's
+  insert dialogs (rows, columns, header row, borders; a picture's size and text) come with the dialogs step, so the menu
+  inserts the page's default table and asks for a picture's file through GTK's own chooser.
 
 ### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
 A dedicated fingerprint sensor is needed (in the power button, a corner of the touchpad, a pad beside the keyboard, or
