@@ -173,10 +173,11 @@ i=0; while [ $i -lt 60 ] && [ -n "$W7" ]; do DISPLAY=$DSP xdotool windowfocus --
 	FOCUS=$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)
 	[ "$FOCUS" = "$W7" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W7" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W7" 480 300 click 1; sleep 0.8; }
+# (the state file is written again whenever the page changes: the undo is read here, before the redo takes its place)
+A=0
 i=0; while [ $i -lt 4 ]; do   # (a first press into a window that has just appeared can be lost: tried again, as a person would)
 	DISPLAY=$DSP xdotool key ctrl+z; sleep 0.9
-	grep -q '^objs 0$' "$ST7" && break; i=$((i+1)); done
-A=$(grep -c '^objs 0$' "$ST7")
+	grep -q '^objs 0$' "$ST7" && { A=1; break; }; i=$((i+1)); done
 i=0; while [ $i -lt 4 ]; do
 	DISPLAY=$DSP xdotool key ctrl+y; sleep 0.9
 	grep -q '^objs 1$' "$ST7" && break; i=$((i+1)); done
