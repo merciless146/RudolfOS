@@ -26,7 +26,9 @@ Xvfb "$DSP" -screen 0 1280x900x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 trap 'kill $RDP $XV 2>/dev/null; rm -rf "$T/ui" "$T/cc"' EXIT
 i=0; while [ $i -lt 40 ] && ! DISPLAY=$DSP xdotool getmouselocation >/dev/null 2>&1; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 ST=$T/state
-RUDOLF_WP_STATE=$ST DISPLAY=$DSP sh -c '"$0"; echo "app exit $?" >> "$1"' "$BIN" "$T/app.exit" >"$T/wp.log" 2>&1 & WPP=$!
+# (a backtrace in the log when it stops: the first builds of this step crashed, and the reason is what fixes it)
+RUN=""; command -v gdb >/dev/null && RUN="gdb -batch -ex run -ex bt --args"
+RUDOLF_WP_STATE=$ST DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/app.exit"' sh $RUN "$BIN" >"$T/wp.log" 2>&1 & WPP=$!
 trap 'kill $WPP $RDP $XV 2>/dev/null; rm -rf "$T/ui" "$T/cc"' EXIT
 NP=0; NF=0
 ok() { if [ "$2" = 1 ]; then NP=$((NP+1)); echo "PASS $1"; else NF=$((NF+1)); echo "FAIL $1 - $3"; fi; }

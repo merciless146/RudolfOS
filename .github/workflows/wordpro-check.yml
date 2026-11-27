@@ -33,7 +33,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends libgtk-3-dev pkg-config fontconfig \
-            libfontconfig1-dev xvfb xdotool imagemagick x11-utils
+            libfontconfig1-dev xvfb xdotool imagemagick x11-utils gdb
       - name: build and use it (the editor and its toolbar)
         run: sh iso/qt/native/wordpro_t.sh out
       - name: the state and the log, when something failed
