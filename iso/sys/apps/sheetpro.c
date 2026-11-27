@@ -1,4 +1,4 @@
-/* ===== 1.6.3 (sheetpro): SpreadsheetPro as a native program (/usr/bin/rudolf-sheets) -- docs/plan-1.6.3.md Part 1,
+/* ===== 1.6.3 (sheetpro): SpreadsheetPro as a native program (/usr/bin/rudolf-sheetpro) -- docs/plan-1.6.3.md Part 1,
    step 1: the page's window, its toolbar, its eight menus, its formula bar and its grid, with values, formulas, undo and
    the page's keys. The page is desktop/spro45.js (the window and its commands), desktop/sprof45.js (the book: a sheet's
    cells, and what a typed text means) and desktop/spreng45.js (the engine: values, references, ranges, functions); its look
@@ -1473,9 +1473,9 @@ static gboolean goto_hook(gpointer d)
 }
 int main(int argc, char **argv)
 {
-	rui_init(&argc, &argv, "sheets");
+	rui_init(&argc, &argv, "sheetpro");
 	css();
-	W = rui_window("sheets", "SpreadsheetPro", 1000, 660);
+	W = rui_window("sheetpro", "SpreadsheetPro", 1000, 660);
 	CELLS = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, cell_free);
 	VISIT = g_hash_table_new(g_direct_hash, g_direct_equal);
 	build_menubar(); build_toolbar(); build_formula(); build_grid(); build_tabs(); build_status();

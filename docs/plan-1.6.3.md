@@ -59,7 +59,7 @@ Library's publish still sign on main; a computer on the new release trusts both 
 ### Part 1. The Office apps as native programs (moved from 1.6.2 Part 39, item 4)
 WordPro, SpreadsheetPro and PresentPro, about 130 MB each today as web windows (1.6.2 Part 38's readings), rewritten as
 native programs on librudolf-ui as the native Task Manager (1.6.2 #660) and native Settings (1.6.2 Part 39) were: each
-its own /usr/bin program (rudolf-wordpro, rudolf-sheets, rudolf-present), its checklist made from the web app's code and
+its own /usr/bin program (rudolf-wordpro, rudolf-sheetpro, rudolf-present), its checklist made from the web app's code and
 tests, its windows screenshot-compared with the web version in Chromium mode (under 2 % different, light and dark, two
 accent colours), its memory at idle against the web version, built in the release build within the base layer's budget.
 - **The order:** WordPro first, then SpreadsheetPro, then PresentPro; one PR per app, or per part of an app when it is
@@ -91,7 +91,7 @@ accent colours), its memory at idle against the web version, built in the releas
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
 #### Status (2026-11-27, scheduled task): SpreadsheetPro begun, step 1 (the window, the grid and its formulas)
-- **Branch `sheetpro-1`:** `iso/sys/apps/sheetpro.c` (`/usr/bin/rudolf-sheets`, with librudolf-ui) has the page's window
+- **Branch `sheetpro-1`:** `iso/sys/apps/sheetpro.c` (`/usr/bin/rudolf-sheetpro`, with librudolf-ui) has the page's window
   (1000 x 660) as `desktop/spro45.js` draws it: the page's eight menus (File, Edit, View, Insert, Format, Data, Tools,
   Help -- File's 15 rows and Data's 12, each of them working here or greyed as the page draws an item it cannot choose),
   the toolbar (the fonts and the sizes, bold, italic, underline, strikethrough, the text and fill colours, the three

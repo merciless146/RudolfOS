@@ -1,5 +1,5 @@
 #!/bin/sh
-# 1.6.3 (docs/plan-1.6.3.md Part 1): rudolf-sheets's first step -- the page's window, its toolbar, its eight menus, its
+# 1.6.3 (docs/plan-1.6.3.md Part 1): rudolf-sheetpro's first step -- the page's window, its toolbar, its eight menus, its
 # formula bar and its grid, with values and formulas, undo and redo, and the page's keys -- built as the release builds it
 # (iso/sys/ui/build.sh) and then used: typing puts values in cells and Enter goes down, a formula is worked out and shown,
 # Tab and Enter run along a row and come back to its first column, Ctrl+` shows the formulas, Ctrl+B marks a cell, undo and
@@ -12,10 +12,10 @@
 HERE=$(cd "$(dirname "$0")" && pwd); R=$(cd "$HERE/../../.." && pwd); T=$(mktemp -d /tmp/sp_t.XXXXXX)
 PORT=${SP_PORT:-8685}; DSP=${SP_DSP:-:89}; OUT=${1:-$T/out}; mkdir -p "$OUT"
 command -v Xvfb >/dev/null && command -v xdotool >/dev/null || { echo "SKIP: needs Xvfb and xdotool"; exit 0; }
-BIN=$T/rudolf-sheets
+BIN=$T/rudolf-sheetpro
 sh "$R/iso/sys/ui/build.sh" "$T/ui" "$BIN" sheetpro 2>"$T/cc" || { cat "$T/cc"; echo "FAIL build"; exit 1; }
-[ -s "$T/cc" ] && { echo "FAIL rudolf-sheets builds with warnings:"; cat "$T/cc"; exit 1; }
-echo "PASS 0. rudolf-sheets builds without a warning ($(stat -c %s "$BIN") bytes)"
+[ -s "$T/cc" ] && { echo "FAIL rudolf-sheetpro builds with warnings:"; cat "$T/cc"; exit 1; }
+echo "PASS 0. rudolf-sheetpro builds without a warning ($(stat -c %s "$BIN") bytes)"
 export FONTCONFIG_FILE=$HERE/fonts-test.conf
 D=$T/d; mkdir -p "$D"
 node "$R/iso/qt/host/fixtures/deskls.js" "$D/ls.json" "$D/keys.json" || { echo "FAIL node"; exit 1; }

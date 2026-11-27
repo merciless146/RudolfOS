@@ -16,6 +16,10 @@ Summary: In progress.
 - **WordPro, native** (Part 1, begun): its window, its toolbar (the page's styles and fonts read from the page at build
   time, bold and italic and underline, the colours, the alignments, the lists, the spacing, undo and Find) and its
   editing page are now a program of its own, `rudolf-wordpro`, so WordPro is no longer only a web app.
+- **SpreadsheetPro, native** (Part 1, begun): its window, its toolbar (the fonts and sizes read from the page at build
+  time, bold, italic, underline, strikethrough, the two colours, the three alignments, undo and redo), its name box
+  and formula bar, its grid with values and formulas, its sheet tab and its status line are now a program of its own,
+  `rudolf-sheetpro`, so SpreadsheetPro is no longer only a web app.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
   is how the camera went a release without a capture source; it now names every plug-in it cannot find.

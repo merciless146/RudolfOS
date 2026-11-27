@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""rudolf-sheets's generated part (1.6.3, docs/plan-1.6.3.md Part 1: the Office apps native), made at build time from the
+"""rudolf-sheetpro's generated part (1.6.3, docs/plan-1.6.3.md Part 1: the Office apps native), made at build time from the
 web SpreadsheetPro itself, so the native toolbar's lists are the page's and never drift from it:
 
     python3 mksheetpro.py OUT.h
