@@ -340,9 +340,10 @@ list carried no capture plug-in at all (1.6.3 added `video4linux2` on 2026-11-27
 `desktop/apps25b.js` matches `main` byte for byte at the recorder's start block.
 
 Open here, and **answered by N35**: whether Native's silent audio and its missing camera share one cause. **They do not.**
-The camera is refused because the PipeWire device provider is missing — its log says `0 devices` — while the microphone
-reaches a real audio source whose reads fail, with no device-manager warning at all. So a build with `video4linux` added
-would have proved nothing, and putting PipeWire in the image will not by itself bring the microphone back. Also open: does `new MediaRecorder` on
+The camera is refused because the PipeWire device provider is missing — its log says `0 devices` — while the microphone is
+stopped by a missing GStreamer element of its own (`deinterleave`, N35 point 3): PulseAudio and the DMIC itself are fine.
+So a build with `video4linux` added would have proved nothing, and putting PipeWire in the image will not bring the
+microphone back. Also open: does `new MediaRecorder` on
 Native throw, or construct and produce nothing? `MediaRecorderPrivateGStreamer` is present (`000651`), so both are
 possible, and the answer needs the console or the `try`/`catch` above.
 
@@ -356,7 +357,7 @@ Also worth recording: the report's `Hardware check:` line names no engine, which
 2026-11-17 `camera pass (640×480)` and `microphone fail (no microphone)` look like Native results when they match
 Chromium exactly. The line should say which engine produced it.
 
-### N35 — The capture path is PipeWire-only, and the image has no PipeWire (2026-11-27, devlink 000652–000657)
+### N35 — The capture path is PipeWire-only, and the image has no PipeWire (2026-11-27, devlink 000652–000664)
 
 Asked after #716 had merged: *before a build proves it, find which capture source this WebKit actually asks for.* Two
 read-only devlink commands say it plainly.
@@ -384,24 +385,38 @@ through PipeWire, and says so in its own error message. Three consequences:
 2. **A plug-in alone would not be enough either.** The capture path needs the `pipewire` GStreamer plug-in **and**
    `libpipewire-0.3` (≥ 0.3.64) **and** a running PipeWire with WirePlumber, which is what publishes the v4l2 camera as a
    node. The image has none of the three. docs/plan-1.6.3.md Part 9 is that work.
-3. **The silent microphone is a different fault — it does not share this one**, and the first version of this finding
-guessed that it did. The desktop's own logs (`000656`, `000657`, read-only) show each failure separately:
-   - `/persist/var/log/starts/1/native-desktop.log`: `WARN webkitpipewirecapturedevicemanager
-     PipeWireCaptureDeviceManager.cpp:62:computeCaptureDevices: PipeWire Device Provider is missing or too old. Please
-     install PipeWire >= 0.3.64.` followed by `Video capture was requested but no device was found amongst 0 devices`.
-     That is the camera, named by WebKit itself.
-   - `/persist/var/log/starts/3/native-desktop.log`: the same warning at the camera's request, and minutes later the audio
-     track's own pipeline — `WebAudioProvider_MediaStreamTrack_…` →
-     `WebKitMediaStreamSrc:webkitmediastreamsrc3/GstAppSrc:capture-audiosrc3` — with `basesrc … streaming stopped, reason
-     not-linked (-1)`, while an audio source's ring buffer reports `audiosrc
-     gstaudiosrc.c:227:audioringbuffer_thread_func:<Audio…> error reading data -1 (reason: Success), skipping segment`. No
-     `audio capture … no device was found` line, and no device-manager warning at that moment: WebKit reaches a real audio
-     source and that source cannot read from it.
-   - Which element it is (`pulsesrc` or `alsasrc`; both plug-ins are in the image) and why the read fails are still open.
-     `pactl` is not in the image, so the sound server has to be asked another way; Chromium, with its own capture stack,
-     reads −4 dB on the same machine.
+3. **The silent microphone is a different fault again — and not a device one.** This finding guessed wrong twice before the
+   log's own first line was read; what follows is three facts from the machine (`000652`, `000658`–`000664`).
 
-Nothing here was changed on the laptop: all four commands were read-only and ran with `approved: not asked (Ask first was
+   - **The source is `pulsesrc`.** WebKit never names an audio element itself: `pulsesrc`, `alsasrc` and `autoaudiosrc`
+     appear nowhere in `libwebkit2gtk-4.1.so.0`. It takes a device from a `GstDeviceMonitor` filtered to `Audio/Source` with
+     `audio/x-raw`, and `gst_device_create_element()` builds whatever that device's provider offers. In the image the only
+     audio provider is PulseAudio's — `libgstpulseaudio.so` carries `pulsesrc` and `pulsedeviceprovider` — and
+     **`libgstalsa.so` is not in the image at all** (39 plug-ins: no ALSA, no OSS, no PipeWire). So Native's microphone is
+     `pulsesrc` into PulseAudio 16.1 (`pulseaudio --daemonize=yes -n -F /run/rudolf/pulse.pa`, as `rudolf`), whose
+     `module-alsa-card device_id=2 name=card2` opens the DMIC — card 2 `acp6x`, PCM `DMIC capture dmic-hifi-0`, S32_LE,
+     2 channels, 48 kHz — which PulseAudio holds and reads (`RUNNING`, its ring buffer advancing). Device and server are
+     both fine, which is why Chromium reads −4 dB through the same PulseAudio.
+   - **What stops it is a GStreamer element that is not in the image: `deinterleave`.** Each of the four attempts in
+     `starts/3` begins, 65 ms before anything else:
+     `WARN GST_ELEMENT_FACTORY gstelementfactory.c:765:gst_element_factory_make_valist: no such element factory
+     "deinterleave"!` and `GStreamer element deinterleave not found. Please install it`, then
+     `g_object_set: assertion 'G_IS_OBJECT (object)' failed` and
+     `gst_element_link_pads_full: assertion 'GST_IS_ELEMENT (dest)' failed`. WebKit's `AudioSourceProviderGStreamer` creates
+     `deinterleave` to split the capture into WebAudio's channels; it gets NULL, links NULL, and the
+     `WebAudioProvider_MediaStreamTrack_*` pipeline reports `<capture-audiosrcN> … streaming stopped, reason not-linked
+     (-1)`. The track is dead there — which is why the check's level meter sits at −120 dB and the Recorder has nothing to
+     save.
+   - **`deinterleave` ships in `libgstinterleave.so`** (gst-plugins-good's `interleave` plug-in), and the image has
+     `libgstinterleave.so: absent` while `libgstinter.so` (the video interleaver) and `libgstaudiofx.so` are there.
+     `iso/systools/addwebkit.sh`'s loop names `deinterlace`, `inter` and `audiofx` and **never `interleave`** — and the loop
+     skips a plug-in it cannot find without a word. So this is the same shape as the `pipewire` omission: a name missing
+     from the list, not a build that lost it. `interleave` is now in the list, with the same kind of warning after it.
+   - **`error reading data -1` is the companion, not the cause.** It arrives 6 s after each `not-linked` (0:02:00, 0:02:08,
+     0:02:32, 0:03:00) and at no other moment: `pulsesrc`'s ring-buffer thread reading into a pipeline that is being torn
+     down. PulseAudio's own log (`--log-target=file:/run/rudolf/pulse.log`) records no stream failure at all.
+
+Nothing here was changed on the laptop: all ten commands were read-only and ran with `approved: not asked (Ask first was
 off)`. The v4l2 entry came out of `addwebkit.sh` and `pipewire` went in its place, with a warning when the build host has
 no `libgstpipewire.so` — the loop skips a missing plug-in without a word, which is how a release shipped with no capture
 source at all. Seen in the same logs, and not this session's business: `Could not open log file
