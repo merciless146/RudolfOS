@@ -111,7 +111,7 @@ static GtkTextBuffer *BUF, *NBUF;
 static Slide *SL; static int SLN, SLC, CUR, PHCUR, TH, READY, UPDATING, DIRTY, EDIT_ON, EDIT_PH;
 static double STK = 1, STX, STY;   /* (the stage's scale and where the slide's corner is: for the mouse and the editor) */
 static int ZOOMF = 1; static int ZOOM = 100;
-static Snap *HS; static int HSN, HSC, HSI;
+static Snap *HS; static int HSN, HSC, HSI = -1;   /* (HSI: the step on the screen; -1 while the deck has no step) */
 static char SAY[200] = "Ready";
 static const char *MENU_OPEN; static int MENU_OPEN_N;
 static void state_soon(void); static void status_update(void); static void redraw(void);
