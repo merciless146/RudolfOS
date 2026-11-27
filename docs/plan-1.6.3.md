@@ -320,7 +320,8 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   Trash's line and the home folder's table change within a few seconds. 3. Open File Explorer, Find duplicates…, Back up everything…
   (the Save dialog), Restore a backup… (the file picker opens). 4. Back up here with a stick plugged in: "Backup saved". 5. Make the
   stick… on a spare stick: the size asked, the bar, "It is safe to remove the stick now". 6. On a live stick: Keep my files on this drive….
-- **PR 8, in progress (2026-11-26, scheduled task; branch native-settings-10): Privacy, Security Settings, System health, Users.**
+- **PR 8, done (2026-11-27; branches native-settings-10 and native-settings-pr8): Privacy, Security Settings, System health,
+  Users, and the switch.**
   - Done: Privacy (`settings_priv.c`): the camera's switch (camera?on=, the administrator's prompt), Saved passwords for apps
     (keyring/list, keyring/forget, each Remove asked first), App permissions (bd95perm:ACCT), Recent activity (bd95permlog:ACCT),
     Other data (Clear clipboard history: the hidden page's, "stor clipclear"), Ads and trackers in Oracle (S.oblock; the list's size
@@ -338,10 +339,24 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
     prompt), Game mode (S.gamemode with game/set, S.gmsleep), the events by kind with each one's "⚡ Why?"; Report a problem…, the
     self-test, Last starts and Blitzen's answers in a page of one action. Views 0.44-0.87 % light and dark; Search the same 33 rows;
     checklist H1-H5.
-  - Next: (done: System health) (sec50.js
-    healthPanel with apps57, gamesleep59, gamemode61, wineold62's row), User Settings (usrPanelS with acct50, devkey59, fido61, fprint63,
-    otp60, power31, saver31), the administrator's and two-step prompts exactly where the web ones are; Security's mid5 view.
-- **Left:** Security, System health, Users (PR 8); the switch.
+  - Users (`settings_usr.c`): the account's own row, Sign-in options, the family's controls (each app's kind, the hours,
+    pcSave), two-step sign-in (otp60.js's rows), the security keys (devkey59/fido61: the keys, Add, Remove, Require), the
+    fingerprints (fprint63: the account's own and, for an administrator, every other account's), Files and administrators
+    (acct50.js's acSection, each reset asked for), the developer's publisher key. Views 0.38-0.55 %; Search the same 47 rows.
+  - **The six actions that need a password** run the page's own dialogs (fido61.js's fidoAdd, fidoRemove, fidoRequire;
+    fprint63.js's fpEnroll, fpRemove, fpOther) in a page of one action, `#app=do-storgo&w=fidoadd` and its five siblings
+    (oneapp59.js's A.storgo), as Security's do: the page holds the file key, and those dialogs are the ones the page's tests
+    cover. The app draws the page again once when that window closes (the next focus, not every focus).
+  - **The switch:** `rudolf-settings` is in the shell's native apps (rudolf-native.c's NATIVE_APPS), so every place that opens
+    Settings -- the start menu, the pins, the taskbar's right-click, Ctrl+I, quick settings, the battery's System health, the
+    page's own open -- starts the native app instead of the page, at the page asked for: `tb_settings` passes `&page=NAME` and
+    the shell gives it to the app as its argument (&page=usr is rudolf-settings' own). RUDOLF_NATIVE_APPS=0 keeps the page, for
+    tests and as a fallback. Chromium and Lite keep the web Settings, unchanged.
+  - **Known differences (PR 8):** an already-open Settings window is brought forward rather than changed to the page asked for,
+    as the page's own window is: the app reads its page when it starts. Security's mid5 view is 2.1-2.3 % (the page's fractional
+    layout rounded to whole pixels), the rest under 2 %.
+- **Left for PR 8:** the owner's checklist on the Vivobook (each of the four pages against Chromium mode's, light and dark;
+  Add a security key, a fingerprint, Require a security key), and Security's mid5 view if the owner wants it matched exactly.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in
   plain words, a stick too small for the chosen image refused before anything is written, a bar with the step and the time
