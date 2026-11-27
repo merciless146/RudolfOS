@@ -445,17 +445,19 @@ static void build_status(void)
 	gtk_box_pack_start(GTK_BOX(sb), ZOOMW, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(W->body), sb, FALSE, FALSE, 0);
 }
-static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
+/* the page's keys (Ctrl+B, I, U, Z, Y, F). An accelerator group is used, not a key handler on the window: the writing
+   takes Ctrl+B and Ctrl+I itself (they move the cursor, as every GTK text view does), so a handler there never saw them. */
+static void accel(GtkAccelGroup *g, GObject *o, guint kv, GdkModifierType m, gpointer d)
 {
-	(void)w; (void)d; if (!(e->state & GDK_CONTROL_MASK)) return FALSE;
-	switch (e->keyval) {
-	case GDK_KEY_b: apply_name("b"); return TRUE;
-	case GDK_KEY_i: apply_name("i"); return TRUE;
-	case GDK_KEY_u: apply_name("u"); return TRUE;
-	case GDK_KEY_z: hist_undo(); return TRUE;
-	case GDK_KEY_y: hist_redo(); return TRUE;
-	case GDK_KEY_f: gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); return TRUE;
-	default: return FALSE;
+	(void)g; (void)o; (void)kv; (void)m;
+	switch (GPOINTER_TO_INT(d)) {
+	case 'b': apply_name("b"); break;
+	case 'i': apply_name("i"); break;
+	case 'u': apply_name("u"); break;
+	case 'z': hist_undo(); break;
+	case 'y': hist_redo(); break;
+	case 'f': gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); break;
+	default: break;
 	}
 }
 int main(int argc, char **argv)
@@ -464,7 +466,11 @@ int main(int argc, char **argv)
 	css();
 	W = rui_window("wordpro", "WordPro", 980, 646);
 	build_find(); build_toolbar(); build_editor(); build_status();
-	g_signal_connect(W->win, "key-press-event", G_CALLBACK(key), NULL);
+	{ GtkAccelGroup *ag = gtk_accel_group_new();
+	  static const struct { guint kv; int k; } K[] = { { GDK_KEY_b, 'b' }, { GDK_KEY_i, 'i' }, { GDK_KEY_u, 'u' }, { GDK_KEY_z, 'z' }, { GDK_KEY_y, 'y' }, { GDK_KEY_f, 'f' } };
+	  for (unsigned i = 0; i < G_N_ELEMENTS(K); i++)
+		  gtk_accel_group_connect(ag, K[i].kv, GDK_CONTROL_MASK, GTK_ACCEL_VISIBLE, g_cclosure_new(G_CALLBACK(accel), GINT_TO_POINTER(K[i].k), NULL));
+	  gtk_window_add_accel_group(GTK_WINDOW(W->win), ag); }
 	gtk_widget_show_all(W->win); gtk_widget_hide(FIND);
 	gtk_widget_grab_focus(ED);   /* (the page's window opens with its writing ready: typing goes into it at once) */
 	counts(); state_soon();
