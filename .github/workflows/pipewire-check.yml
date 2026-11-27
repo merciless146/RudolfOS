@@ -68,7 +68,9 @@ jobs:
             exit 1
           fi
           echo "PASS no audio node and no ALSA device: the sound cards stay PulseAudio's"
-          grep -qi wireplumber /tmp/wireplumber.log || { echo "FAIL WirePlumber said nothing about itself"; cat /tmp/wireplumber.log; exit 1; }
+          # (with a session bus it starts quietly: no log line is expected, so ask the process, not the log)
+          sleep 4
+          pgrep -x wireplumber >/dev/null || { echo "FAIL WirePlumber stopped after it had connected"; cat /tmp/wireplumber.log; exit 1; }
           echo "PASS WirePlumber runs beside PulseAudio with its ALSA monitor off"
       - name: the logs, when something failed
         if: failure()
