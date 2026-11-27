@@ -27,7 +27,8 @@
 
 static double tw(const char *t, double px, int wt) { double w = 0; s_lines(t ? t : "", px, wt, 0, &w); return w; }
 static void redraw(void) { set_show_keep("usr"); }
-static void ask(const char *a) { rui_shell(SW, a); set_note("%s", a); }
+static int USR_ASKED;   /* (1.6.3 PR 8: a dialog's window is out; the page draws again once, when it closes) */
+static void ask(const char *a) { USR_ASKED = 1; rui_shell(SW, a); set_note("%s", a); }
 static int jb(RuiJ *o, const char *k) { RuiJ *v = o ? rui_jprop(o, k) : NULL; return v && ((rui_jtype(v) == 1 && rui_jval(v)) || (rui_jtype(v) == 2 && rui_jval(v)) || (rui_jtype(v) == 3 && *rui_jsval(v))); }
 static double jnum(RuiJ *o, const char *k, double d) { RuiJ *v = o ? rui_jprop(o, k) : NULL; return v && rui_jtype(v) == 2 ? rui_jval(v) : d; }
 static RuiJ *X(RuiJ *o) { return o ? rui_jprop(o, "x") : NULL; }   /* (set_ls_get's {"x": value}) */
@@ -398,8 +399,10 @@ static void dev_sec(void)
 	rui_jfree(o); g_free(u);
 }
 
-static gboolean usr_focus(GtkWidget *w, GdkEventFocus *e, gpointer d)   /* (1.6.3 PR 8: a dialog's window closed: the page draws again) */
-{ (void)w; (void)e; (void)d; if (!strcmp(set_page(), "usr")) redraw(); return FALSE; }
+/* (1.6.3 PR 8: the dialog's window closed and this one has the focus again: the page draws again, once. Never on every
+   focus: a redraw inside a window that keeps its focus would go round for ever.) */
+static gboolean usr_focus(GtkWidget *w, GdkEventFocus *e, gpointer d)
+{ (void)w; (void)e; (void)d; if (USR_ASKED && !strcmp(set_page(), "usr")) { USR_ASKED = 0; redraw(); } return FALSE; }
 static void usr_watch_focus(void) { static int on; if (on || !SW) return; on = 1; g_signal_connect(SW->win, "focus-in-event", G_CALLBACK(usr_focus), NULL); }
 
 void page_usr(void)
