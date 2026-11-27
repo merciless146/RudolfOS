@@ -308,7 +308,7 @@ let fs;try{fs=JSON.parse(localStorage.getItem('blockdos95')||'null')}catch(e){}
 if(!fs)fs=JSON.parse(JSON.stringify(defaults));
 const save=()=>{try{localStorage.setItem('blockdos95',JSON.stringify(fs))}catch(e){}};
 const isDir=n=>n&&typeof n=='object';
-function resolve(p,cwd){let a=/^[A-Z]:/i.test(p)?[]:cwd.slice();for(const x of p.split('\\').filter(Boolean)){if(x=='..')a.length>1&&a.pop();else if(x!='.'&&!/^C:$/i.test(x))a.push(x.toUpperCase())}return a[0]=='C:'?a:['C:',...a]}
+function resolve(p,cwd){let a=/^[A-Z]:/i.test(p)||p[0]=='\\'?[]:cwd.slice();for(const x of p.split('\\').filter(Boolean)){if(x=='..')a.length>1&&a.pop();else if(x!='.'&&!/^C:$/i.test(x))a.push(x.toUpperCase())}return a[0]=='C:'?a:['C:',...a]}
 function node(a){let n=fs;for(const x of a){if(!isDir(n)||!(x in n))return;n=n[x]}return n}
 const dirOf=a=>node(a.slice(0,-1));
 /* ---------- window manager ---------- */
@@ -384,7 +384,7 @@ function promptMount(startCmd,host){
  const P={cwd:['C:'],hist:[],hi:0,write(s){o.appendChild(document.createTextNode(s));T.scrollTop=T.scrollHeight},print(s=''){P.write(s+'\n')}};
  const ps=()=>pr.textContent=P.cwd.join('\\')+(P.cwd.length==1?'\\':'')+'>';
  const C={
-  HELP(){P.print('DIR CD MD RD TYPE COPY REN DEL CLS ECHO VER DATE TIME\nEDIT <file>   open Notepad\nLUA <file> | LUA -e <code>   run Lua (or just type NAME.LUA)\nBLOCKLUA      visual block builder\nEXPLORER      file manager\nEXIT')},
+  HELP(a){if(typeof termHelp=='function')return termHelp(P,a);P.print('DIR CD MD RD TYPE COPY REN DEL CLS ECHO VER DATE TIME\nEDIT <file>   open Notepad\nLUA <file> | LUA -e <code>   run Lua (or just type NAME.LUA)\nBLOCKLUA      visual block builder\nEXPLORER      file manager\nEXIT')},
   VER(){P.print('\nRudolf OS [Version '+(typeof RVER=='string'?RVER:'1.1')+']\nRudolf = Runtime Driver Open Linux Framework\n')},CLS(){o.textContent=''},ECHO(a){P.print(a.join(' '))},
   DATE(){P.print(window.__sys?sysDateStr():new Date().toDateString())},TIME(){P.print((window.__sys?sysNow():new Date()).toLocaleTimeString())},
   DIR(a){const p=resolve(a[0]||'.',P.cwd),n=node(p);if(!isDir(n))return P.print('File not found');P.print(' Directory of '+p.join('\\')+'\n');let f=0,d=0,b=0;for(const k of Object.keys(n).sort())if(isDir(n[k])){d++;P.print(k.padEnd(14)+'<DIR>')}else{f++;b+=n[k].length;P.print(k.padEnd(14)+String(n[k].length).padStart(8))}P.print(`\n  ${f} file(s) ${b} bytes\n  ${d} dir(s)`)},
@@ -395,7 +395,10 @@ function promptMount(startCmd,host){
   DEL(a){const p=resolve(a[0]||'',P.cwd),d=dirOf(p);if(typeof d?.[p.at(-1)]!='string')return P.print('File not found');delete d[p.at(-1)];save()},
   COPY(a){const s=resolve(a[0]||'',P.cwd),n=node(s);if(typeof n!='string'||!a[1])return P.print('File not found');let t=resolve(a[1],P.cwd);if(isDir(node(t)))t=[...t,s.at(-1)];const d=dirOf(t);if(!isDir(d))return P.print('Path not found');d[t.at(-1)]=n;save();P.print('        1 file(s) copied')},
   REN(a){const s=resolve(a[0]||'',P.cwd),d=dirOf(s);if(!d||!(s.at(-1) in d)||!a[1])return P.print('File not found');d[a[1].toUpperCase()]=d[s.at(-1)];delete d[s.at(-1)];save()},
-  EDIT(a){a[0]?notepad(resolve(a[0],P.cwd)):P.print('Required parameter missing')},
+  EDIT(a){if(!a[0])return P.print('Required parameter missing');const p=resolve(a[0],P.cwd),d=dirOf(p);
+   /* (1.6.3: a new file, as HELP EDIT says: made empty first, where the account may write, so Notepad opens it by its name) */
+   if(node(p)===undefined&&isDir(d)&&(typeof fsCanWrite!='function'||fsCanWrite(p))&&!(typeof isProt=='function'&&isProt(p.slice(0,-1))&&!isAdmin())){d[p.at(-1)]='';save()}
+   notepad(p)},
   LUA(a){if(a[0]=='-e')return runLua(a.slice(1).join(' '),P,'CMDLINE');const lp=resolve(a[0]||'',P.cwd),n=node(lp);typeof n=='string'?runLua(n,P,lp.at(-1)):P.print('File not found')},
   BLOCKLUA(){blocklua()},EXPLORER(){explorer()},EXIT(){host.__close&&host.__close()}};
  function exec(line){const t=line.trim();if(!t||t[0]=='@')return;const [c,...a]=t.split(/\s+/),U=c.toUpperCase();
@@ -463,6 +466,11 @@ icons.forEach(([i,n,f])=>{const d=document.createElement('div');d.className='ic'
 var SC=null;let S={bg:'#008080',fs:13,tx:'#000000',ic:'#ffffff',tb:'bottom',tz:Intl.DateTimeFormat().resolvedOptions().timeZone};try{Object.assign(S,JSON.parse(localStorage.getItem('bd95set')))}catch(e){}
 const clk=()=>{if(clk2())return;try{$('#tray').textContent=new Date().toLocaleTimeString(window.__a11y?LOC():[], {hour:'numeric',minute:'2-digit',timeZone:S.tz})}catch(e){}};clk();setInterval(clk,1000);
 /* ===== new apps ===== */
+/* (1.6.3, FreeBuff's second round: Paint's Save asked "File name (relative to C:\)" with no folder and no Cancel, and saved
+   to C:\ itself while Pictures stayed empty. Now Notepad's and WordPro's Save dialog, in the account's Pictures; Cancel
+   leaves the picture unsaved, and a close or New that asked about it stays as it was) */
+function paintSaveAs(cb){if(typeof fileDlg!='function')return nameDlg('PICTURE.PNG',n=>cb(resolve(/\.PNG$/.test(n)?n:n+'.PNG',['C:'])));
+ fileDlg({mode:'save',title:'Save picture',name:'PICTURE.PNG',start:typeof homePath=='function'?homePath('PICTURES'):null,types:[['PNG picture',['PNG']]]}).then(np=>{if(!np)return;if(!/\.PNG$/i.test(np.at(-1)))np=[...np.slice(0,-1),np.at(-1)+'.PNG'];cb(np)})}
 function nameDlg(def,cb){const W=win('Save As','💾',320,110);W.body.innerHTML='<div style="padding:8px">File name (relative to C:\\):<div style="display:flex;gap:4px;margin-top:8px"><input class="sunk" style="flex:1"><button>Save</button></div></div>';const i=W.body.querySelector('input');i.value=def;const go=()=>{const v=i.value.trim();if(v){W.close();cb(v.toUpperCase())}};W.body.querySelector('button').onclick=go;i.onkeydown=e=>{e.stopPropagation();if(e.key=='Enter')go()};i.focus()}
 function calc(){const W=win('Calculator','🧮',290,380);let d=1,ex='';
 W.body.innerHTML='<input class="sunk" style="margin:4px;padding:6px;font:20px monospace;text-align:right" readonly><div style="padding:0 4px"><button class="dg">DEG</button></div><div class="g" style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;padding:4px;flex:1"></div>';
@@ -498,7 +506,7 @@ const pos=e=>{const r=cv.getBoundingClientRect();return[(e.clientX-r.left)*cv.wi
 cv.onpointerdown=e=>{dr=1;cv.setPointerCapture(e.pointerId);const[a,b]=pos(e);x.strokeStyle=er?'#fff':col;x.lineWidth=sz;x.beginPath();x.moveTo(a,b);x.lineTo(a+.1,b);x.stroke()};
 cv.onpointermove=e=>{if(!dr)return;const[a,b]=pos(e);x.lineTo(a,b);x.stroke();x.beginPath();x.moveTo(a,b)};cv.onpointerup=()=>dr=0;
 q('.pn').onclick=()=>er=0;q('.er').onclick=()=>er=1;q('.sz').onchange=e=>sz=+e.target.value;q('.cl').onclick=blank;
-const sv=()=>{if(!p)return nameDlg('PICTURE.PNG',n=>{p=resolve(/\.PNG$/.test(n)?n:n+'.PNG',['C:']);sv()});const d=dirOf(p);if(!isDir(d))return st.textContent='Path not found';d[p.at(-1)]=cv.toDataURL();save();st.textContent='Saved '+p.join('\\')};q('.sv').onclick=sv}
+const sv=()=>{if(!p)return paintSaveAs(np=>{p=np;sv()});const d=dirOf(p);if(!isDir(d))return st.textContent='Path not found';d[p.at(-1)]=cv.toDataURL();save();st.textContent='Saved '+p.join('\\')};q('.sv').onclick=sv}
 function checkers(host){const W=host||win('Checkers','🔴',350,430);let B,sel,over;
 W.body.innerHTML='<div class="stat sunk"></div><div class="bd" style="display:grid;grid-template-columns:repeat(8,40px);width:320px;margin:6px auto"></div><div style="text-align:center;padding:3px"><button>New Game</button></div>';
 const bd=W.body.querySelector('.bd'),st=W.body.querySelector('.stat');
@@ -899,7 +907,7 @@ function paint(path){const W=win('Paint','🎨',760,540);let tool='pencil',col='
  q('.un').onclick=doUndo;q('.re').onclick=doRedo;q('.cl').onclick=()=>ask(()=>{snap();blank();p=null;dirty=0;W.setTitle('Paint');info()});
  q('.rz').onclick=()=>{dirty=1;const w=Math.max(16,Math.min(2000,+q('.cw').value||640)),h=Math.max(16,Math.min(2000,+q('.ch').value||400)),old=x.getImageData(0,0,cv.width,cv.height);cv.width=w;cv.height=h;blank();x.putImageData(old,0,0);undo=[];redo=[];info()};
  W.el.addEventListener('keydown',e=>{if(/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))return;if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='z'){e.preventDefault();e.shiftKey?doRedo():doUndo()}else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()=='y'){e.preventDefault();doRedo()}});
- const sv=cb=>{if(!p)return nameDlg('PICTURE.PNG',n=>{p=resolve(/\.PNG$/.test(n)?n:n+'.PNG',['C:']);sv(cb)});const d=dirOf(p);if(!isDir(d)){msg('Path not found');sfx('error');return}d[p.at(-1)]=cv.toDataURL('image/png');if(!fsSave()){msg('Disk full: could not save');sfx('error');return}W.setTitle(p.at(-1)+' - Paint');sfx('notify');msg('Saved '+p.join('\\'));EXPL.forEach(f=>f());dirty=0;if(typeof cb=='function')cb()};
+ const sv=cb=>{if(!p)return paintSaveAs(np=>{p=np;sv(cb)});const d=dirOf(p);if(!isDir(d)){msg('Path not found');sfx('error');return}d[p.at(-1)]=cv.toDataURL('image/png');if(!fsSave()){msg('Disk full: could not save');sfx('error');return}W.setTitle(p.at(-1)+' - Paint');sfx('notify');msg('Saved '+p.join('\\'));EXPL.forEach(f=>f());dirty=0;if(typeof cb=='function')cb()};
  q('.sv').onclick=()=>sv();q('.sa').onclick=()=>{p=null;sv()};
  /* (1.6.3 Part 8, item 1, "Paint app does not prompt user to save after unsaved changes are made to images": a picture changed since it
     was opened or saved is asked about, as WordPro's and Notepad's are, before New or closing its window: the ✕, the taskbar's Close, the
@@ -2176,7 +2184,30 @@ Muted|Silenciado|Silenciado|Muet|Stumm|Звук выключен|已静音|ミ�
 Keyboard|Teclado|Teclado|Clavier|Tastatur|Клавиатура|键盘|キーボード|키보드
 Enter|Intro|Enter|Entrée|Eingabe|Ввод|回车|Enter|Enter
 Space|Espacio|Espaço|Espace|Leertaste|Пробел|空格|スペース|스페이스
-Reading ease|Facilidad de lectura|Facilidade de leitura|Facilité de lecture|Lesbarkeit|Удобочитаемость|易读性|読みやすさ|가독성`;
+Reading ease|Facilidad de lectura|Facilidade de leitura|Facilité de lecture|Lesbarkeit|Удобочитаемость|易读性|読みやすさ|가독성
+Welcome|Bienvenido|Bem-vindo|Bienvenue|Willkommen|Добро пожаловать|欢迎|ようこそ|환영합니다
+Let's set up Rudolf OS. It takes about a minute.|Vamos a configurar Rudolf OS. Tarda alrededor de un minuto.|Vamos configurar o Rudolf OS. Leva cerca de um minuto.|Configurons Rudolf OS. Cela prend environ une minute.|Richten wir Rudolf OS ein. Das dauert etwa eine Minute.|Давайте настроим Rudolf OS. Это займёт около минуты.|我们来设置 Rudolf OS，大约需要一分钟。|Rudolf OS を設定しましょう。1分ほどで終わります。|Rudolf OS를 설정하겠습니다. 1분 정도 걸립니다.
+Make it comfortable|Hazlo cómodo|Deixe do seu jeito|Adaptez l'affichage|Passend einrichten|Сделаем удобнее|调整到舒适|使いやすく調整|편하게 맞추기
+Larger text and buttons|Texto y botones más grandes|Texto e botões maiores|Texte et boutons plus grands|Größerer Text und größere Schaltflächen|Крупный текст и кнопки|更大的文字和按钮|大きい文字とボタン|더 큰 글자와 버튼
+Screen reader (reads the screen aloud)|Lector de pantalla (lee la pantalla en voz alta)|Leitor de tela (lê a tela em voz alta)|Lecteur d'écran (lit l'écran à voix haute)|Screenreader (liest den Bildschirm vor)|Экранный диктор (читает экран вслух)|屏幕阅读器（朗读屏幕）|スクリーンリーダー（画面を読み上げます）|화면 읽기 프로그램(화면을 소리 내어 읽습니다)
+You can change these at any time in Settings → Accessibility.|Puedes cambiar esto en cualquier momento en Configuración → Accesibilidad.|Você pode mudar isto a qualquer momento em Configurações → Acessibilidade.|Vous pouvez modifier cela à tout moment dans Paramètres → Accessibilité.|Sie können das jederzeit unter Einstellungen → Barrierefreiheit ändern.|Это можно изменить в любой момент в «Параметры → Специальные возможности».|你随时可以在「设置 → 辅助功能」中更改这些选项。|これらはいつでも「設定 → アクセシビリティ」で変更できます。|언제든지 설정 → 접근성에서 바꿀 수 있습니다.
+Create your account|Crea tu cuenta|Crie a sua conta|Créez votre compte|Konto erstellen|Создайте учётную запись|创建你的账户|アカウントを作成|계정 만들기
+This account is an administrator. Your files are encrypted with your password, so choose one you will remember.|Esta cuenta es de administrador. Tus archivos se cifran con tu contraseña, así que elige una que puedas recordar.|Esta conta é de administrador. Seus arquivos são criptografados com sua senha, então escolha uma de que você se lembre.|Ce compte est administrateur. Vos fichiers sont chiffrés avec votre mot de passe : choisissez-en un dont vous vous souviendrez.|Dieses Konto ist ein Administrator. Ihre Dateien werden mit Ihrem Passwort verschlüsselt — wählen Sie eines, das Sie sich merken können.|Это учётная запись администратора. Ваши файлы шифруются вашим паролем, поэтому выберите тот, который запомните.|此账户是管理员账户。你的文件用你的密码加密，请选择一个你能记住的密码。|このアカウントは管理者です。ファイルはパスワードで暗号化されるので、覚えられるものを選んでください。|이 계정은 관리자입니다. 파일이 암호로 암호화되므로 기억할 수 있는 암호를 고르세요.
+Your name|Tu nombre|Seu nome|Votre nom|Ihr Name|Ваше имя|你的名字|名前|이름
+Enter a name (letters and numbers).|Escribe un nombre (letras y números).|Digite um nome (letras e números).|Saisissez un nom (lettres et chiffres).|Geben Sie einen Namen ein (Buchstaben und Zahlen).|Введите имя (буквы и цифры).|请输入名字（字母和数字）。|名前を入力してください（英数字）。|이름을 입력하세요(글자와 숫자).
+Use a password of at least 4 characters.|Usa una contraseña de al menos 4 caracteres.|Use uma senha de pelo menos 4 caracteres.|Utilisez un mot de passe d'au moins 4 caractères.|Verwenden Sie ein Passwort mit mindestens 4 Zeichen.|Используйте пароль не короче 4 символов.|请使用至少 4 个字符的密码。|4文字以上のパスワードを使ってください。|4자 이상의 암호를 사용하세요.
+The passwords do not match.|Las contraseñas no coinciden.|As senhas não coincidem.|Les mots de passe ne correspondent pas.|Die Passwörter stimmen nicht überein.|Пароли не совпадают.|两次输入的密码不一致。|パスワードが一致しません。|암호가 일치하지 않습니다.
+Privacy|Privacidad|Privacidade|Confidentialité|Datenschutz|Конфиденциальность|隐私|プライバシー|개인정보
+Rudolf OS keeps your files and settings on this device. It sends nothing anywhere unless you use something online, like web pages or Weather. Apps must ask before using the camera, microphone, location or your files.|Rudolf OS guarda tus archivos y ajustes en este dispositivo. No envía nada a ningún sitio salvo que uses algo en línea, como páginas web o el tiempo. Las aplicaciones deben pedir permiso antes de usar la cámara, el micrófono, la ubicación o tus archivos.|O Rudolf OS guarda seus arquivos e configurações neste dispositivo. Não envia nada a lugar nenhum, a menos que você use algo online, como páginas da web ou o Clima. Os aplicativos precisam pedir permissão antes de usar a câmera, o microfone, a localização ou seus arquivos.|Rudolf OS conserve vos fichiers et réglages sur cet appareil. Il n'envoie rien nulle part, sauf si vous utilisez un service en ligne, comme des pages web ou la météo. Les applications doivent demander l'autorisation avant d'utiliser la caméra, le microphone, la position ou vos fichiers.|Rudolf OS speichert Ihre Dateien und Einstellungen auf diesem Gerät. Es sendet nichts weiter, außer Sie nutzen etwas Online, etwa Webseiten oder das Wetter. Apps müssen fragen, bevor sie Kamera, Mikrofon, Standort oder Ihre Dateien verwenden.|Rudolf OS хранит ваши файлы и настройки на этом устройстве. Он ничего никуда не отправляет, если вы не пользуетесь чем-то сетевым — веб-страницами или погодой. Приложения спрашивают разрешение, прежде чем использовать камеру, микрофон, местоположение или ваши файлы.|Rudolf OS 将你的文件和设置保存在本机上。除非你使用联网功能（例如网页或天气），否则不会向任何地方发送数据。应用在使用摄像头、麦克风、位置或你的文件前必须先征得同意。|Rudolf OS はファイルと設定をこの端末内に保存します。Web ページや天気など、オンラインの機能を使わない限り、どこにも送信しません。アプリはカメラ、マイク、位置情報、ファイルを使う前に許可を求める必要があります。|Rudolf OS는 파일과 설정을 이 기기에 보관합니다. 웹 페이지나 날씨처럼 인터넷을 쓰는 기능을 사용하지 않는 한 아무 곳에도 보내지 않습니다. 앱은 카메라, 마이크, 위치, 파일을 쓰기 전에 먼저 허가를 요청해야 합니다.
+You are running Rudolf OS from a disc or USB drive. To keep your work, install it in Settings → Update & recovery.|Estás ejecutando Rudolf OS desde un disco o una memoria USB. Para conservar tu trabajo, instálalo en Configuración → Actualización y recuperación.|Você está executando o Rudolf OS a partir de um disco ou pendrive. Para manter seu trabalho, instale-o em Configurações → Atualização e recuperação.|Vous utilisez Rudolf OS depuis un disque ou une clé USB. Pour conserver votre travail, installez-le dans Paramètres → Mise à jour et récupération.|Sie führen Rudolf OS von einer Disc oder einem USB-Stick aus. Um Ihre Arbeit zu behalten, installieren Sie es unter Einstellungen → Update & Wiederherstellung.|Вы запускаете Rudolf OS с диска или USB-накопителя. Чтобы сохранить работу, установите систему в «Параметры → Обновление и восстановление».|你正在从光盘或 U 盘运行 Rudolf OS。要保留你的工作，请在「设置 → 更新和恢复」中安装。|Rudolf OS をディスクまたは USB メモリから実行しています。作業内容を残すには「設定 → 更新と回復」からインストールしてください。|디스크나 USB 드라이브에서 Rudolf OS를 실행하고 있습니다. 작업 내용을 유지하려면 설정 → 업데이트 및 복구에서 설치하세요.
+You are running Rudolf OS in a web browser.|Estás ejecutando Rudolf OS en un navegador web.|Você está executando o Rudolf OS em um navegador web.|Vous utilisez Rudolf OS dans un navigateur web.|Sie führen Rudolf OS in einem Webbrowser aus.|Вы запускаете Rudolf OS в веб-браузере.|你正在网页浏览器中运行 Rudolf OS。|Rudolf OS をウェブブラウザーで実行しています。|웹 브라우저에서 Rudolf OS를 실행하고 있습니다.
+All set|Todo listo|Tudo pronto|Tout est prêt|Alles bereit|Всё готово|一切就绪|準備完了|준비 완료
+Sign in with the account you just made.|Inicia sesión con la cuenta que acabas de crear.|Entre com a conta que você acabou de criar.|Connectez-vous avec le compte que vous venez de créer.|Melden Sie sich mit dem gerade erstellten Konto an.|Войдите с учётной записью, которую только что создали.|用你刚刚创建的账户登录。|今作成したアカウントでサインインしてください。|방금 만든 계정으로 로그인하세요.
+Press F1 for help at any time.|Pulsa F1 para ver la ayuda en cualquier momento.|Pressione F1 para ver a ajuda a qualquer momento.|Appuyez sur F1 à tout moment pour obtenir de l'aide.|Drücken Sie jederzeit F1 für Hilfe.|Нажмите F1, чтобы в любой момент открыть справку.|随时按 F1 获取帮助。|いつでも F1 でヘルプを表示します。|언제든지 F1을 눌러 도움말을 보세요.
+Set up Rudolf OS|Configurar Rudolf OS|Configurar o Rudolf OS|Configurer Rudolf OS|Rudolf OS einrichten|Настройка Rudolf OS|设置 Rudolf OS|Rudolf OS を設定|Rudolf OS 설정
+Back|Atrás|Voltar|Retour|Zurück|Назад|返回|戻る|뒤로
+Next|Siguiente|Avançar|Suivant|Weiter|Далее|下一步|次へ|다음
+Finish|Finalizar|Concluir|Terminer|Fertigstellen|Готово|完成|完了|완료`;
 const I18N={};
 (function(){const L=['es','pt','fr','de','ru','zh','ja','ko'];I18N_ROWS.split('\n').forEach(r=>{const c=r.split('|');if(c.length<9)return;L.forEach((l,i)=>{(I18N[l]=I18N[l]||{})[c[0]]=c[i+1]})})})();
 const NON_LATIN_RE=/[^\p{L}\p{N}]/u;

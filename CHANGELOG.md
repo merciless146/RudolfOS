@@ -5,6 +5,39 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
+  out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
+  is how the camera went a release without a capture source; it now names every plug-in it cannot find.
+- Better: addwebkit.sh also copies the interleave plug-in: AudioSourceProviderGStreamer needs its `deinterleave` for a
+  microphone capture, and without it a capture's WebAudio path ends "not-linked" (findings N35).
+- Better: addwebkit.sh also copies the `transcode` plug-in, whose `uritranscodebin` is what MediaRecorder builds its
+  pipeline with: without it `rec.start()` throws and the Recorder's button stays dead, in the Voice Recorder and in the
+  Camera's video too (findings N35). The build now stops instead of warning when it or the interleave plug-in is missing:
+  a host without their packages would ship a silent microphone and a Recorder that never starts.
+- Better: the self-test has a capture line: it fails when the image lacks the interleave or transcode plug-in (the
+  microphone's level meters and the Recorder), and says so when the camera still waits on PipeWire (findings N35).
+- Fixed: Voice Recorder's Record now says what went wrong (the error's name and message, in a notification) instead of
+  playing the click sound and staying silent, with no clock and no recording; on the Native desktop the start block could
+  throw where nothing caught it. It also cleans up the microphone if it fails, so Record can be tried again (checklist V1).
+- Fixed: the Camera's "Video saved" notification opens the video it just saved, as the photo's notification opens the
+  photo (checklist V3).
+- Better: naming a new text document or folder on the desktop says "Name your new file" (or folder) and Create, not
+  Rename; a name typed without .TXT gets it, so the file opens in Notepad (FreeBuff's test). The same on the native desktop.
+- Developers: `cd desktop && python3 build19.py` writes the page where the disc keeps it (iso/www/index.html), with no
+  edit first; iso/BUILD.TXT brought up to date; docs/README.md says what is in docs/ (FreeBuff's developer test).
+- Fixed: shutting down, restarting and signing out ask about unsaved work first (Keep open stops them); before, open
+  windows were closed without asking. ⏻ Power in the ☰ menu gives a choice in the browser edition, and the Shut down
+  dialog has Sign out (FreeBuff's test).
+- Developers: the repository's rules are in AGENTS.md, for any coding agent (CLAUDE.md imports it), and the custom
+  builds guide says what to install first (Python's cryptography package) (FreeBuff's developer test).
+- Fixed: Paint's Save opens the same Save dialog as Notepad, in your Pictures folder, with Cancel; before, it saved
+  to C:\ itself (FreeBuff's test).
+- Better: the Command Prompt's HELP explains the commands in groups with examples; HELP ALL lists every one, HELP DIR
+  (or any name) explains one. CD \ now goes to the top of C:, and EDIT of a new file opens it in Notepad (FreeBuff's test).
+- Fixed: the setup wizard now speaks the language you choose on its first page, every step (from FreeBuff's user test);
+  a red error in it goes away once you correct the mistake.
+- New: Mute in the notification centre (🔔 on the taskbar): while it is on, no notification pops up or makes a sound, errors
+  included; they are still kept in the centre. Do not disturb stays as it was. The same on the native desktop.
 - New (native desktop, not switched on yet): the native Settings has Notifications, Devices (drives, USB devices, Thunderbolt, keyboards,
   printers, the print queue, scanners) and Apps (default apps, links, installed apps, Linux and Wine, Blitzen, developer tools, calls to
   phones), each as the web one shows it and saving what it saves.

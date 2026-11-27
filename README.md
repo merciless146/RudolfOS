@@ -18,7 +18,7 @@ Automatic updates: installed computers check `https://merciless146.github.io/Rud
 accept only releases signed by the key in `iso/trusted-keys.txt`.
 
 Making your own build, with your own keys, update address and Library, and going back to the official Rudolf OS:
-[docs/custom-builds.md](docs/custom-builds.md).
+[docs/custom-builds.md](docs/custom-builds.md). What else is written down: [docs/README.md](docs/README.md).
 
 Rudolf OS is free software under the GNU General Public License, version 2 or (at your option) any later
 version. See `LICENSE`.

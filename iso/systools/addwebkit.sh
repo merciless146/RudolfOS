@@ -30,13 +30,49 @@ $SUDO mkdir -p "$R$WK"; $SUDO cp -a "$WK/." "$R$WK/"; find "$WK" -type f >> "$LI
 # ("Something went wrong") when it played MP4 with AAC or H.264 (and MP3 sounds): "missing a plug-in" (2026-11-12).
 # 1.6.0: and "inter" (gst-plugins-bad), which WebKit's audio mixer needs: the Native desktop mixes each window's sounds in it, as
 # Chromium does, instead of a PulseAudio stream for each media element whose volume PulseAudio kept (the owner's report 2).
+# 1.6.3: and "interleave" (gstreamer1.0-plugins-good), whose `deinterleave` AudioSourceProviderGStreamer splits a capture
+# into WebAudio's channels with: without it every AudioContext that reads the microphone (the check's level meter, Settings'
+# mic test) ends "not-linked" (findings N35; "deinterlace" and "inter" are different plug-ins and were not it). And
+# "transcode" (gstreamer1.0-plugins-bad), whose `uritranscodebin` MediaRecorderPrivateGStreamer builds its recording
+# pipeline with: without it MediaRecorder cannot be created, `rec.start()` throws NotSupportedError and the Recorder's
+# button stays dead (N35 point 3 -- a fault of its own, not the microphone's).
+# 1.6.3: and "pipewire" (gstreamer1.0-pipewire). On the Vivobook's build (2026-11-27; checklist V2 and V3) the Native
+# desktop's WebKit could not capture at all -- Camera said "No camera is available or access is blocked" with the privacy
+# switch on, and the microphone gave only zeros. This WebKitGTK captures through **PipeWire alone**: its library names
+# "pipewiresrc" and "pipewiredeviceprovider" and its classes are PipeWireCaptureDeviceManager and "WebKit PipeWire Capture
+# Device Manager", it has OpenPipeWireRemote, and it carries "PipeWire Device Provider is missing or too old. Please
+# install PipeWire >= 0.3.64." -- while "v4l2src" and "v4l2deviceprovider" appear nowhere in it (devlink 000652, 000653;
+# N33 and N35 in docs/native-findings-2026-11-26.md). "video4linux2" was added here on 2026-11-27 and taken out again the
+# same day: nothing would ever request it. The plug-in alone is still not enough -- the image also needs libpipewire-0.3
+# and a running PipeWire with WirePlumber (docs/plan-1.6.3.md Part 9).
+# The two the desktop cannot do without: an image built without them ships a silent microphone and a Recorder whose button
+# does nothing, and every host that builds an image installs their packages already (above), so a host without them is the
+# wrong host and stops the build -- the warning alone is what let a release go out with no capture path. "pipewire" is not
+# in this list yet: its plug-in would have no sound server to reach until Part 9 gives the image one, so today its absence
+# on the build host is the normal state and stays a warning (it joins this list with the server).
+FATAL=" interleave transcode "; fatal=
 GS=$ML/gstreamer-1.0; $SUDO mkdir -p "$R$GS" "$R$ML/gstreamer1.0/gstreamer-1.0"
 for s in $ML/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner; do [ -x "$s" ] && $SUDO cp -L "$s" "$R$s" && echo "$s" >> "$LIST"; done
+# One loop copies what it finds and says what is lost for what it does not: a plug-in named here and missing on the
+# build host used to disappear without a word, which is how a release shipped with no capture path at all.
 for p in coreelements app audioconvert audioresample audiotestsrc volume playback typefindfunctions videoconvertscale videoscale videoconvert \
-	ogg vorbis opus theora vpx matroska isomp4 wavparse audioparsers autodetect pulseaudio alsa id3demux gio rawparse videorate videofilter \
+	ogg vorbis opus theora vpx matroska isomp4 wavparse audioparsers autodetect pulseaudio alsa pipewire id3demux gio rawparse videorate videofilter \
 	audiomixer compositor opengl gdkpixbuf jpeg png webrtcdsp \
-	opusparse videoparsersbad audiofx debugutilsbad subenc libav deinterlace inter; do
-	f=$GS/libgst$p.so; [ -f "$f" ] || continue; $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; done
+	opusparse videoparsersbad audiofx debugutilsbad subenc libav deinterlace inter interleave transcode; do
+	f=$GS/libgst$p.so
+	if [ -f "$f" ]; then $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; continue; fi
+	case $p in
+	pipewire) why="the Native desktop cannot capture from the camera (apt-get install gstreamer1.0-pipewire)";;
+	interleave) why="the Native desktop's level meters get no microphone audio (apt-get install gstreamer1.0-plugins-good)";;
+	transcode) why="the Native desktop's Recorder cannot start, because MediaRecorder builds uritranscodebin (apt-get install gstreamer1.0-plugins-bad)";;
+	*) why="the desktop's media may lack it";;
+	esac
+	echo "addwebkit: no libgst$p.so: $why"
+	case $FATAL in *" $p "*) fatal=1;; esac
+done
+[ -z "$fatal" ] || { echo "addwebkit: stopping: a plug-in the desktop cannot do without is missing (see above; apt-get install"
+	"gstreamer1.0-plugins-good gstreamer1.0-plugins-bad). A build without it would ship the desktop with a silent microphone or"
+	"a Recorder that never starts, so this build is refused rather than made and posted." >&2; exit 1; }
 # (1.5.9, plan 7.1: no WebRTC plug-ins: Ubuntu's WebKitGTK 2.52 has no WebRTC, so Lite opens call sites in Chromium's
 # window; the Lite engine check's call test says whether a newer WebKitGTK has it)
 # GLib: the TLS module (https), with its loader cache made for ROOT

@@ -31,6 +31,11 @@ Settings › About says where the build comes from. The recovery system and *Ret
 
 A Rudolf OS build needs two keys of its own. **Only their public halves ever go into the repository.**
 
+**What you need:** Python 3 and the `cryptography` package, which the key tool below uses —
+`sudo apt install python3-cryptography`, or `python3 -m pip install cryptography` in a virtualenv. Without it the first
+command stops with `ModuleNotFoundError: No module named 'cryptography'`. `mksbkey.sh` also needs `openssl`, which
+Ubuntu has already. Nothing else on this page needs installing.
+
 **The release key** (Ed25519) signs the release lists that computers check before installing an update. Make it on
 your own computer, outside the repository:
 

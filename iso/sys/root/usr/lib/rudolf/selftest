@@ -208,6 +208,18 @@ fi
 if [ -x "${ST_WEBKIT:-/usr/bin/rudolf-webkit}" ]; then soft=""; for l in libGLX_mesa.so.0 libxcb-glx.so.0; do [ -e "$ML/$l" ] || soft="$soft $l"; done
 	if [ -z "$soft" ]; then pass lite-gpu "Mesa's GLX is there: Lite can draw with the GPU"; else fail lite-gpu "missing:$soft (Lite draws in software, without the GPU)"; fi
 fi
+# 1.6.3 (findings N35): the GStreamer plug-ins the native desktop's capture builds by name -- this is checked in the
+# image, not only on the build host that copied them: WebAudio's microphone path builds `deinterleave` (the interleave
+# plug-in) and MediaRecorder builds `uritranscodebin` (transcode), so an image without either has a level meter stuck at
+# -120 dB and a Recorder whose button does nothing. addwebkit.sh refuses to make such a build, but a copy that failed
+# there, or an image made another way, is only known by asking the image. The camera's plug-in has no server to reach
+# until plan Part 9 installs PipeWire, so it is said, not failed.
+if [ ! -x "${ST_WEBKIT:-/usr/bin/rudolf-webkit}" ]; then skip capture "not in this Rudolf OS"
+else gs=$ML/gstreamer-1.0; bad=""; for p in interleave transcode; do [ -e "$gs/libgst$p.so" ] || bad="$bad $p"; done
+	pw=""; [ -e "$gs/libgstpipewire.so" ] || pw="; the camera waits on PipeWire (plan Part 9)"
+	if [ -n "$bad" ]; then fail capture "missing:$bad (the microphone's level meters and the Recorder need them: findings N35; Chromium is used for the camera and calls)"
+	else pass capture "the microphone's level meters and the Recorder have their plug-ins (interleave, transcode)$pw"; fi
+fi
 
 # ---- 1.6.0: OpenGL for Linux apps and games (GLX): the X server on the graphics card loads Mesa's driver for it. 1.5.9's
 # looked in "/usr/lib/$MA/dri" (a build mistake), found none and offered no OpenGL to any program: Unvanquished showed

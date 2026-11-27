@@ -805,7 +805,93 @@ unless the item is Native's own (then Native is made to match Chromium, never th
      mode's page and Native, **3/12 before, 12/12 after**; tbbeh_t.js and keybeh_t.js unchanged (tbbeh's step 9 fails
      before and after: Command Prompt's key, `terminal` and `prompt`, a test of its own). Found: on Chromium mode's page
      (Playwright, one window) the menu stays open over the page's own Alt+Tab; Native closes it, the owner's words.
+7. **Mute notifications** (the owner, 2026-11-26 05:25 CST): "Add a function to mute/unmute desktop notifications. The
+   mute/unmute checkbox can be in the expanding menu for the notification button on the taskbar." Asked what it should do
+   beside Do not disturb, the owner chose "Mute everything": a **Mute** checkbox in the notification centre's heading, left
+   of Do not disturb. While on: no pop-up and no sound for any notification, an error's included; each is still kept in
+   the centre and counted on the 🔔, which shows 🔕. Kept with the account's settings (`S.nmute`, bd95set) like Do not
+   disturb. Native draws the same box and holds back its own pop-ups too (rudolf-native.c nc_check, toast_addf). Tested
+   by qsbeh_t.js on both engines (on, off, kept; no pop-up while on). Native Settings' Notifications page (Part 3) may
+   add the same switch when it is next changed.
+8. **The setup wizard in the chosen language** (the owner, 2026-11-26, from FreeBuff's user test of a fresh install):
+   choosing Español on the wizard's first page left steps 2-5 in English. Its 23 sentences are now rows of I18N_ROWS
+   (FreeBuff's translations; the Portuguese made Brazilian like the rest, Settings' and Accessibility's names as the
+   desktop's own); "Step n of m", Back/Next/Finish and the dialog's name come from T_; a red error goes once corrected.
+   The password minimum stays 4 (the owner: "Keep 4 for now"). Test: oobe63_t.js. FreeBuff's other findings (the
+   Terminal's HELP, the sign-in date's language, "Guest", Spanish desktop labels running together, windows opening in one
+   place, Emu's first prompt) are not in it yet.
+9. **The Command Prompt's HELP** (the owner, 2026-11-26, FreeBuff's text): HELP = a short list in groups with examples,
+   HELP ALL = every command, HELP <name> = one explained (desktop/termhelp63.js); RPK's extra "packages: rpk help" line
+   gone. Checked against what the commands do: EXPLORER opens the file manager (not "in this folder"); `CD \` did not go
+   to the top (resolve() now treats a leading \ as C:\); EDIT of a missing file showed "cannot be opened" (it now makes
+   the empty file where the account may write, then opens it). Test: termhelp63_t.js.
+10. **FreeBuff's second round** (2026-11-26, the owner's screenshots), **done:** Paint's Save
+   asked "relative to C:" with no folder picker or Cancel and saved to C:\; now the Save dialog Notepad has, in Pictures,
+   with Cancel (paint-savedlg, paintsavedlg63_t.js). The ☰ menu's power button shut down at once with no menu, and closeAll()
+   closed windows whatever they answered, so unsaved work was lost: now Shut down, Restart and Sign out close windows as
+   their ✕ does and stop on Keep open; ⏻ Power gives the choice in the browser edition; the Shut down dialog has Sign out
+   (power-menu, power63.js, power63_t.js). New text document's naming box said "Rename": now "Name your new file"
+   / folder and Create, .TXT given when left out, the same on Native (newfile-name, newfile63_t.js, native59_t.sh 61-62);
+   not opened by itself once named, as on Windows. **Not done yet:** Guest keeps nothing and
+   says so only in Settings (a line at sign-in and a notice on the first save); double-clicking a picture opens Paint, not a viewer; a wrong user name
+   once gave no message at sign-in (unconfirmed); a battery shown on a computer without one (browser edition).
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
+
+### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)
+
+**The fault.** On the Native desktop Camera answers "No camera is available or access is blocked" with the privacy switch
+on, the check's microphone reads −120 dB (all-zero samples) and Voice Recorder records nothing; on the same build and
+machine Chromium does all three (checklist V1–V3; findings N33 and N35 in docs/native-findings-2026-11-26.md).
+
+**What the machine says** (devlink `000652` and `000653`, read-only):
+- `libwebkit2gtk-4.1.so.0` names `pipewiresrc` and `pipewiredeviceprovider` and nothing else: `v4l2src` and
+  `v4l2deviceprovider` appear **zero** times. Its classes are `PipeWireCaptureDeviceManager` and "WebKit PipeWire Capture
+  Device Manager", it has `OpenPipeWireRemote`, and it carries "PipeWire Device Provider is missing or too old. Please
+  install PipeWire >= 0.3.64."
+- The image has no PipeWire in any form: no `libpipewire-0.3` under `/usr/lib`, no `pipewire` or `wireplumber` program,
+  and no `libgstpipewire.so` among the 39 GStreamer plug-ins. Its sound server is PulseAudio 16.1 (`iso/sndbuild.sh`).
+- The hardware is fine: `/dev/video0` and `/dev/video1` are there, `uvcvideo` bound to the UVC camera.
+
+**Therefore.** No camera plug-in can fix this: Ubuntu 24.04's WebKitGTK 2.52 captures only through PipeWire, so the image
+needs all four of (1) `libpipewire-0.3` ≥ 0.3.64, (2) the PipeWire daemon, (3) WirePlumber as its session manager with a
+monitor that publishes the v4l2 camera as a node, and (4) the `pipewire` GStreamer plug-in (`gstreamer1.0-pipewire`),
+which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
+
+**The work.**
+1. Bring PipeWire and WirePlumber into the root file system as PulseAudio is brought (`iso/sndbuild.sh`, and the sound
+   server section of `iso/mkrootfs.sh`): the programs, `libpipewire-0.3`, the SPA plug-ins (at least `v4l2` and
+   `support`), `/usr/share/pipewire` and `/usr/share/wireplumber`, and WirePlumber's D-Bus policy files.
+2. Start them with the session, not at boot, and decide with the owner whether PipeWire runs **beside** PulseAudio or
+   **as** the sound server in its place. Beside is the smaller step and keeps `rudolf-sound`'s PulseAudio commands
+   (`sound`, `hotkey mic`, the volume overlay) working.
+3. If it runs beside PulseAudio, turn WirePlumber's ALSA monitor off in its configuration, leaving the v4l2 (and libcamera)
+   monitors: otherwise it takes the sound cards PulseAudio is using.
+   `addwebkit.sh` already refuses to build when `interleave` or `transcode` is missing (`addwebkit.sh` exits 1, and the
+   release build stops): `pipewire` only warns there until this Part lands, since its plug-in has nothing to reach without
+   the server. When this Part installs PipeWire, add `pipewire` to that script's `FATAL` list in the same change.
+4. **The microphone and the Recorder are not this camera fault** (findings N35 point 3): its source is `pulsesrc`, and what stops its WebAudio
+   path — the one the level meter reads — is a GStreamer element the image does not carry: `deinterleave`, from
+   gst-plugins-good's `interleave` plug-in (`libgstinterleave.so`), so each attempt ends `not-linked`. That plug-in is now
+   in `addwebkit.sh`'s list; moving the sound server from PulseAudio to PipeWire is a part of its own and has nothing to do
+   with it. **The Recorder is a third fault and needs its own plug-in:** WebKitGTK 2.52's `MediaRecorderPrivateGStreamer`
+   builds `uritranscodebin` (GStreamer Bad's `transcode` plug-in, `libgsttranscode.so`), which the image also lacks — so
+   `rec.start()` throws `NotSupportedError` and the button stays dead. `transcode` is in `addwebkit.sh`'s list now, and its
+   library pulls `libgsttranscoder-1.0.so.0` with it through the script's existing `ldd` pass. **This is V3's fault as well
+   as V1's:** the Camera records its video through the same `MediaRecorder` (camera track plus microphone audio in one
+   `MediaStream`, `apps25b.js`), so a working camera would still leave "Record video" dead until `libgsttranscode.so` is
+   in the image — V3 needs both fixes, and needs them for different reasons.
+5. **Test on the Vivobook** (checklist V2 and V3): the camera's preview at 640×480, a photo and a 5 s video saved and
+   opened. Then with PipeWire stopped, to see what the app says. Two checks for two paths: the hardware check's microphone
+   step reads through WebAudio, so it needs `libgstinterleave.so` and should move off −120 dB; V1 and the Camera's
+   "Record video" (V3) are the Recorder, which needs `libgsttranscode.so` and should then save a clip. The self-test's `capture` line says whether the image has both plug-ins before either is tried,
+   and its pass names the camera's remaining wait on PipeWire. (Host test: `iso/qt/host/selftest_t.sh` 12a–12e, which holds the two
+   plug-ins in, takes each away, and checks the wait is said.) If either stays dead, its own log line names the factory that is
+   still missing.
+6. **Cost:** two more daemons and their libraries, and their memory; read the native desktop's idle figure (checklist V42)
+   before and after.
+
+**Not this Part:** Oracle's WebRTC, which Native's WebKit does not have at all (docs/plan-1.5.9.md 7.1), and the camera in
+Linux apps, which use the Debian container's own stack.
 
 ## Steps
 - Part 0: first.

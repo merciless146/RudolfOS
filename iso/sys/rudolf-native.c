@@ -73,6 +73,7 @@ typedef struct {
 	char tbpcol[16];   /* (1.6.1 Part 25: the progress fill's colour on a minimized window's taskbar button, tbprog61.js S.tbpcol) */
 	int tbac, tbbac, h24, wpimg, wallpaper, notes, npins, scale, darkui; double lat, doff, gen; char pins[24][KN];
 	int nl, dnd, sr, mag, hc, vk, touch;   /* (quick settings' switches: item 3) */
+	int nmute;   /* (1.6.3: the notifications' Mute, shell25.js S.nmute: no pop-up or sound at all, an error's included) */
 	int nlv, nlsched; double magz;   /* (1.6.0: Night light's strength and hours, the magnifier's zoom: the shell does them for the whole screen) */
 	int aur, rmotion; char aurm[12], lnm[12];   /* (the dynamic backgrounds' moving parts: test findings N11, N12) */
 	int fs; char tx[16], cb[12];   /* (the title bars: the Font size, the Window text colour, the colour vision filter) */
@@ -1000,7 +1001,7 @@ static void ws_apply(void)
 	if (FOCUS && FOCUS->off) FOCUS = NULL;
 }
 /* ("Workspace N", once the taskbar shows it: the pop-up's window keeps a copy of what is behind it when it comes) */
-static gboolean ws_said(gpointer d) { char t[32]; snprintf(t, sizeof t, "Workspace %d", GPOINTER_TO_INT(d)); if (!S.dnd) toast_text(t, "", 1200); return G_SOURCE_REMOVE; }
+static gboolean ws_said(gpointer d) { char t[32]; snprintf(t, sizeof t, "Workspace %d", GPOINTER_TO_INT(d)); if (!S.dnd && !S.nmute) toast_text(t, "", 1200); return G_SOURCE_REMOVE; }
 static void ws_go(int n)
 {
 	if (NMON > 1) { mon_go(n); return; }   /* (1.6.1 Part 1) */
@@ -2559,7 +2560,7 @@ static void bar_paint(cairo_t *cr, double W, double H, int top)
 		double a2, d2; a2 = css_ascent(cr, UIFAM, 400, 13 * .85, &d2);
 		css_text(cr, CLOCK_D, UIFAM, 400, 13 * .85, tx + t1 + 8, base - a2 - (0), a2 + d2, (RGBA){b.fg.r, b.fg.g, b.fg.b, .78}, 0);
 		rx -= 4; ri++; }
-	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd ? "🔕" : "🔔", "☰"};   /* (do not disturb: 🔕, shell25.js ncBadge) */
+	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd || S.nmute ? "🔕" : "🔔", "☰"};   /* (do not disturb: 🔕, shell25.js ncBadge) */
 	for (int q = 0; q < 2 && !MONK_CUR; q++, ri++) {
 		double qh = S.touch ? 40 : 30;   /* (touch mode: at least 40 px) */
 		Box b = tb_box(TB_QSB, HV(QK[q], ""), PR(QK[q], "")); double tw = css_width(cr, QT[q], UIFAM, 400, 15), w = fmax(30, 12 + tw + 2 * b.bw), y = mid - qh / 2;
@@ -2673,7 +2674,7 @@ static void bar_paint_v(cairo_t *cr, double W, double H)
 	{ Box b = tb_box(TB_TRAY, HV("clock", ""), 0); clock_text(); double h = 2 * b.bw + 32; by -= h;
 		box_paint(cr, x, by, cw, h, &b); hit_add(x, by, cw, h, "clock", NULL); CLKD[0] = CLKD[1] = -1; CLKBB[0] = x; CLKBB[1] = by; CLKBB[2] = cw; CLKBB[3] = h;
 		css_text(cr, CLOCK_T, UIFAM, 400, 13, x + b.bw + 10, by + b.bw + 3, 26, b.fg, cw - 2 * b.bw - 20); by -= 4; }
-	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd ? "🔕" : "🔔", "☰"};
+	static const char *const QK[2] = {"notes", "qs"}; const char *QT[2] = {S.dnd || S.nmute ? "🔕" : "🔔", "☰"};
 	for (int q = 0; q < 2 && !MONK_CUR; q++) {
 		Box b = tb_box(TB_QSB, HV(QK[q], ""), PR(QK[q], "")); double tw = css_width(cr, QT[q], UIFAM, 400, 15); by -= 30;
 		box_paint(cr, x, by, cw, 30, &b); hit_add(x, by, cw, 30, QK[q], NULL); css_text(cr, QT[q], UIFAM, 400, 15, x + (cw - tw) / 2, by + b.bw, 30 - 2 * b.bw, b.fg, 0);
@@ -3772,7 +3773,7 @@ static void settings_load(void)
 	jstr(s, "icons", n.icons, sizeof n.icons); n.scale = (int)jnum(s, "scale", 100); if (n.scale < 75 || n.scale > 250) n.scale = 100;
 	n.lpac = jbool(s, "lpac"); jstr(s, "lpacm", n.lpacm, sizeof n.lpacm); n.lpbr = (int)jnum(s, "lpbr", 100);   /* (DEFS.disp lpac false, lpacm normal, lpbr 100) */
 	n.nlv = (int)jnum(s, "nlv", 40); n.nlsched = jbool(s, "nlsched"); n.magz = jnum(s, "magz", 2);
-	n.nl = jbool(s, "nl"); n.dnd = jbool(s, "dnd"); n.sr = jbool(s, "sr"); n.mag = jbool(s, "mag"); n.vk = jbool(s, "vk"); n.touch = jbool(s, "touch"); { char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
+	n.nl = jbool(s, "nl"); n.dnd = jbool(s, "dnd"); n.nmute = jbool(s, "nmute"); n.sr = jbool(s, "sr"); n.mag = jbool(s, "mag"); n.vk = jbool(s, "vk"); n.touch = jbool(s, "touch"); { char cb[16] = ""; jstr(s, "cb", cb, sizeof cb); n.hc = !strcmp(cb, "contrast"); }
 	{ JV *dk = jprop(s, "darkui"); n.darkui = !(dk && dk->t == 1 && !dk->n); }   /* (S.darkui!==false) */
 	{ JV *au = jprop(s, "aur"); n.aur = !(au && au->t == 1 && !au->n); } n.rmotion = jbool(s, "rmotion"); jstr(s, "aurm", n.aurm, sizeof n.aurm); jstr(s, "lnm", n.lnm, sizeof n.lnm);   /* (DEFS.disp aur:true) */
 	n.tbac = jbool(s, "tbac"); n.tbbac = jbool(s, "tbbac"); n.h24 = jbool(s, "h24"); n.doff = jnum(s, "doff", 0); n.lat = jnum(s, "lat", NAN);
@@ -4059,6 +4060,8 @@ static void cm_open(double px, double py, const char *title, const CMI *items, i
 
 /* the page's dialogs (.rmodal .rmbox): Rename (renameDlg) and Open with (files25.js openWith) */
 enum { DLG_NONE, DLG_RENAME, DLG_OPENWITH };
+/* (1.6.3: a new file or folder from the desktop's menu, isnew "file"/"folder": "Name your new file" and Create, as shell25.js renameDlg's create) */
+static char DGNEW[8];
 static GtkWidget *DGWIN, *DGAREA; static GdkPixbuf *DGBG; static GtkIMContext *DGIM;
 static int DGK, DGHOV = -1, DGFOC, DGSEL, DGCARET, DGALW, DGBUSY; static guint DGCARET_T;
 static char DGFILE[512], DGNAME[128], DGVAL[128], DGMSG[200], DGEXT[16];
@@ -4092,7 +4095,8 @@ static gboolean dg_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 	Box b; memset(&b, 0, sizeof b); b.bg = cx("#ffffff", 1); b.rad = 12; shd_add(&b, 0, 20, 50, cx("#000000", .4), 0); box_paint(cr, DGX, DGY, DGW, DGH, &b);
 	RGBA ink = cx("#111827", 1); double x = DGX + 20, y = DGY + 18;
 	if (DGK == DLG_RENAME) {
-		css_text(cr, "Rename", UIFAM, 700, 15.21, x, y, 18, ink, 0); y += 28;
+		const char *ttl = !strcmp(DGNEW, "file") ? "Name your new file" : !strcmp(DGNEW, "folder") ? "Name your new folder" : "Rename", *okw = DGNEW[0] ? "Create" : "Rename";
+		css_text(cr, ttl, UIFAM, 700, 15.21, x, y, 18, ink, 0); y += 28;
 		/* the field: 100 % wide plus its padding and border (334 px: the page's), focused, its words chosen at first */
 		{ double fx = x - 4, fy = y - 4, fw = 334 + 8, fh = 23 + 8; snap(&fx, &fy, &fw, &fh); rrect(cr, fx, fy, fw, fh, 8); rrect(cr, fx + 2, fy + 2, fw - 4, fh - 4, 6);   /* (outline 2 px at offset 2) */
 			cairo_set_fill_rule(cr, CAIRO_FILL_RULE_EVEN_ODD); srca(cr, cx("#2563eb", 1)); cairo_fill(cr); cairo_set_fill_rule(cr, CAIRO_FILL_RULE_WINDING); }
@@ -4104,9 +4108,9 @@ static gboolean dg_draw(GtkWidget *wd, cairo_t *cr, gpointer d)
 		if (!DGSEL && DGCARET) { double cx0 = round(x + 7 + tw), cy0 = y + 4; cairo_rectangle(cr, cx0, cy0, 1, 15); srca(cr, cx("#111111", 1)); cairo_fill(cr); }
 		cairo_restore(cr); y += 23 + 6;
 		css_text(cr, DGMSG, UIFAM, 400, 13, x, y, 15.6, cx("#b91c1c", 1), 320); y += 15.6 + 14;
-		double cw = css_width(cr, "Cancel", UIFAM, 400, 13) + 22, rw = css_width(cr, "Rename", UIFAM, 400, 13) + 22;
+		double cw = css_width(cr, "Cancel", UIFAM, 400, 13) + 22, rw = css_width(cr, okw, UIFAM, 400, 13) + 22;
 		DGB[0] = (DRect){ x + 320 - rw - 8 - cw, y, cw, 23 }; DGB[1] = (DRect){ x + 320 - rw, y, rw, 23 }; NDGB = 2;
-		dg_button(cr, "Cancel", DGB[0], 0, DGHOV == 0, 0, 0); dg_button(cr, "Rename", DGB[1], 1, DGHOV == 1, 0, 0);
+		dg_button(cr, "Cancel", DGB[0], 0, DGHOV == 0, 0, 0); dg_button(cr, okw, DGB[1], 1, DGHOV == 1, 0, 0);
 	} else {
 		char h[300]; snprintf(h, sizeof h, "Open “%s” with", DGNAME); css_text(cr, h, UIFAM, 700, 15.21, x, y, 18, ink, 320); y += 28;
 		for (int i = 0; i < NDGAPPS; i++) { char t[160]; snprintf(t, sizeof t, "%s %s", DGAPPS[i].icon, DGAPPS[i].name); DGB[i] = (DRect){ x, y, 320, 33 };
@@ -4132,6 +4136,10 @@ static char *qesc(const char *v) { return g_uri_escape_string(v, NULL, FALSE); }
 static void dg_ok(void)
 {
 	if (DGK != DLG_RENAME || DGBUSY) return; DGBUSY = 1; DGMSG[0] = 0;
+	/* (1.6.3: a new text file's name typed without its ending gets .TXT, as shell25.js newName) */
+	if (!strcmp(DGNEW, "file") && g_str_has_suffix(DGNAME, ".TXT")) { const char *dot = strrchr(DGVAL, '.'); int ext = 0;
+		if (dot && dot[1]) { ext = 1; for (const char *c = dot + 1; *c; c++) if (!g_ascii_isalnum(*c)) ext = 0; if (strlen(dot + 1) > 4) ext = 0; }
+		char t[sizeof DGVAL]; snprintf(t, sizeof t, "%s", DGVAL); g_strstrip(t); if (t[0] && !ext && strlen(t) + 4 < sizeof DGVAL) snprintf(DGVAL, sizeof DGVAL, "%s.TXT", t); }
 	/* (the owner's Vivobook, 2026-11-16) by the desktop's service page, signed in already, at once (else a page opened for it) */
 	{ AppWin *sv = svc_page(); if (sv && sv->sready && sv->view && !sv->closing) { GString *js = g_string_new("window.__oaRename&&__oaRename("); json_esc(js, DGFILE); g_string_append_c(js, ','); json_esc(js, DGVAL); g_string_append(js, ")");
 		webkit_web_view_evaluate_javascript(WEBKIT_WEB_VIEW(sv->view), js->str, -1, NULL, NULL, NULL, NULL, NULL); g_string_free(js, TRUE); gtk_widget_queue_draw(DGAREA); return; } }
@@ -4253,7 +4261,7 @@ static void dg_open(int kind)
 	seat_grab(DGWIN, TRUE);
 	gtk_widget_grab_focus(DGAREA); gtk_im_context_focus_in(DGIM); if (DGCARET_T) g_source_remove(DGCARET_T); DGCARET_T = g_timeout_add(500, dg_blink, NULL); state_write();
 }
-static void rename_ask(const char *file, const char *name) { snprintf(DGFILE, sizeof DGFILE, "%s", file); snprintf(DGNAME, sizeof DGNAME, "%s", name); snprintf(DGVAL, sizeof DGVAL, "%s", name); DGSEL = 1; dg_open(DLG_RENAME); }
+static void rename_ask(const char *file, const char *name, const char *isnew) { snprintf(DGNEW, sizeof DGNEW, "%s", isnew ? isnew : ""); snprintf(DGFILE, sizeof DGFILE, "%s", file); snprintf(DGNAME, sizeof DGNAME, "%s", name); snprintf(DGVAL, sizeof DGVAL, "%s", name); DGSEL = 1; dg_open(DLG_RENAME); }
 static void openwith_ask(const char *file, const char *ext, const char *apps_json)
 {
 	snprintf(DGFILE, sizeof DGFILE, "%s", file); const char *b = strrchr(file, '\\'); snprintf(DGNAME, sizeof DGNAME, "%s", b ? b + 1 : file); snprintf(DGEXT, sizeof DGEXT, "%s", ext);
@@ -4267,13 +4275,14 @@ static gboolean apps_reload(gpointer d) { (void)d; apps_load(); return G_SOURCE_
 static void xd_done(JSCValue *v);   /* (1.6.1 Part 13: a drop's page finished, below) */
 static void page_done(JSCValue *v)
 {
-	char err[300] = "", ask[24] = "", file[512] = "", name[128] = "", ext[16] = "", ok[8] = ""; char *apps = NULL;
+	char err[300] = "", ask[24] = "", file[512] = "", name[128] = "", ext[16] = "", ok[8] = "", isnew[8] = ""; char *apps = NULL;
+	jsstr(v, "isnew", isnew, sizeof isnew);
 	jsstr(v, "err", err, sizeof err); jsstr(v, "ask", ask, sizeof ask); jsstr(v, "file", file, sizeof file); jsstr(v, "name", name, sizeof name); jsstr(v, "ext", ext, sizeof ext); jsstr(v, "ok", ok, sizeof ok);
 	JSCValue *ap = jsc_value_object_get_property(v, "apps"); if (ap && jsc_value_is_string(ap)) apps = jsc_value_to_string(ap); if (ap) g_object_unref(ap);
 	apps_load();   /* (the page gave its catalogue again: the desktop's files as they are now) */
 	{ char xd[4] = ""; jsstr(v, "xd", xd, sizeof xd); if (xd[0]) xd_done(v); }
 	if (DGK == DLG_RENAME && DGBUSY) { DGBUSY = 0; if (err[0]) { snprintf(DGMSG, sizeof DGMSG, "%s", err); gtk_widget_queue_draw(DGAREA); } else dg_close(); }
-	if (!strcmp(ask, "rename")) rename_ask(file, name);
+	if (!strcmp(ask, "rename")) rename_ask(file, name, isnew);
 	else if (!strcmp(ask, "openwith")) openwith_ask(file, ext, apps);
 	g_free(apps); g_timeout_add(1500, apps_reload, NULL); state_write();
 }
@@ -4828,7 +4837,7 @@ static void on_di_act(const char *a)
 	else if (!strncmp(a, "app:", 4)) app_open(a + 4, NULL);
 	else if (!strcmp(a, "wgpick")) wg_picker();
 	else if (!strcmp(a, "open") && d) di_open(i);
-	else if (!strcmp(a, "rename") && d && d->fp[0]) rename_ask(d->fp, d->n);
+	else if (!strcmp(a, "rename") && d && d->fp[0]) rename_ask(d->fp, d->n, NULL);
 	else if (!strncmp(a, "page:", 5)) di_page(NULL, a + 5, 0);
 	/* (1.6.1 Part 28: Paste, at the menu's cell; it and Paste into folder by the shell's hidden page, as New folder (its files reach the other
 	   windows at once; a page of its own that closes again did not pass them on); a long one from a drive ends with a
@@ -4926,7 +4935,7 @@ static gboolean desk_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	if (ctl && kv == GDK_KEY_v && USER_ID[0] && !LOCKED) { if (FC_N > 0) di_page_at(NULL, "Paste", 1, "-"); return TRUE; }
 	int i = di_sel(); if (i < 0) return FALSE; DIcon *di = &DI[i];
 	if (ctl && (kv == GDK_KEY_c || kv == GDK_KEY_x) && di->fp[0]) { di_page(di->n, kv == GDK_KEY_x ? "Cut" : "Copy", 1); return TRUE; }
-	if (e->keyval == GDK_KEY_F2 && di->fp[0]) { rename_ask(di->fp, di->n); return TRUE; }
+	if (e->keyval == GDK_KEY_F2 && di->fp[0]) { rename_ask(di->fp, di->n, NULL); return TRUE; }
 	if (e->keyval == GDK_KEY_Delete) { if (di->fp[0]) di_page(di->n, "Move to Trash", 1); else if (strcmp(di->kind, "trash")) di_page(di->n, "Remove from desktop", 1); return TRUE; }
 	return FALSE;
 }
@@ -6036,6 +6045,14 @@ static void qs_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 	for (int i = 0; i < 3; i++) { double bx = x + i * (cw + 6); fl_button(cr, QB[i], bx, y, cw, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], QBK[i]), dark); fl_btn(QBK[i], bx, y, cw, bh); }
 }
 static double FLSCROLL;   /* (the notifications' centre scrolled: the page's flyout is at most 70 % of the screen's height) */
+/* a checkbox and its words in the centre's heading, right-aligned 6 px left of R (#ncp .fh's gap): its left edge back */
+static double nc_check(cairo_t *cr, const char *t, int on, const char *key, double R, double y, double bh, double l13, RGBA fg)
+{
+	double tw = css_width(cr, t, UIFAM, 400, 13), lw = 20 + 4 + tw, lx = R - 6 - lw, cby = y + (bh - 13) / 2;
+	Box c; memset(&c, 0, sizeof c); c.bg = cx(on ? "#0075ff" : "#ffffff", 1); c.bw = 1; c.bc = cx(on ? "#0075ff" : "#767676", 1); c.rad = 2; box_paint(cr, lx + 4, cby, 13, 13, &c);
+	if (on) { cairo_move_to(cr, lx + 7, cby + 6.5); cairo_line_to(cr, lx + 9.5, cby + 9); cairo_line_to(cr, lx + 14, cby + 4); cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 1.8); cairo_stroke(cr); }
+	css_text(cr, t, UIFAM, 400, 13, lx + 24, y + (bh - l13) / 2, l13, fg, 0); fl_btn(key, lx, y + (bh - 19) / 2, lw, 19); return lx;
+}
 static void nc_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int top)
 {
 	RGBA fg = cx(dark ? "#e2e8f0" : "#111827", 1), mut = cx(dark ? "#94a3b8" : "#6b7280", 1), bd = cx(dark ? "#334155" : "#d1d5db", 1); double W = 340;
@@ -6053,10 +6070,7 @@ static void nc_layout(cairo_t *cr, int draw, int dark, double vw, double vh, int
 	/* Notifications · Do not disturb · Clear all */
 	css_text(cr, "Notifications", UIFAM, 700, 13, x, y + (bh - lb) / 2, lb, fg, 0);
 	double cw = css_width(cr, "Clear all", UIFAM, 400, 13) + 22, cx0 = x + W - cw; fl_button(cr, "Clear all", cx0, y, cw, bh, FLHOV >= 0 && !strcmp(FLBK[FLHOV], "clear"), dark); fl_btn("clear", cx0, y, cw, bh);
-	{ double tw = css_width(cr, " Do not disturb", UIFAM, 400, 13), lw = 20 + 4 + tw, lx = cx0 - 6 - lw, cby = y + (bh - 13) / 2;
-		Box c; memset(&c, 0, sizeof c); c.bg = cx(S.dnd ? "#0075ff" : "#ffffff", 1); c.bw = 1; c.bc = cx(S.dnd ? "#0075ff" : "#767676", 1); c.rad = 2; box_paint(cr, lx + 4, cby, 13, 13, &c);
-		if (S.dnd) { cairo_move_to(cr, lx + 7, cby + 6.5); cairo_line_to(cr, lx + 9.5, cby + 9); cairo_line_to(cr, lx + 14, cby + 4); cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 1.8); cairo_stroke(cr); }
-		css_text(cr, " Do not disturb", UIFAM, 400, 13, lx + 24, y + (bh - l13) / 2, l13, fg, 0); fl_btn("dnd", lx, y + (bh - 19) / 2, lw, 19); }
+	{ double lx = nc_check(cr, " Do not disturb", S.dnd, "dnd", cx0, y, bh, l13, fg); nc_check(cr, " Mute", S.nmute, "nmute", lx, y, bh, l13, fg); }   /* (1.6.3: Mute, left of Do not disturb as in #ncp) */
 	y += bh + 8;
 	if (!NNT) { double tw = css_width(cr, "No new notifications", UIFAM, 400, 13); css_text(cr, "No new notifications", UIFAM, 400, 13, x + (W - tw) / 2, y + 14, l13, (RGBA){ fg.r, fg.g, fg.b, .65 }, 0); }
 	for (int i = 0; i < NNT; i++) { Note *n = &NT[i]; int err = !strcmp(n->k, "error"); double h = ih[i];
@@ -6375,10 +6389,12 @@ static void fl_range(double px) { double x = (px + FLWX) / Z; int v = FLVOL;
    saved settings have it too (the page doing it saves it a moment later: settings read in between, another window's save, are older) */
 static struct { int on; gint64 t; } QSP[8];
 static void qs_pending(int i, int on) { if (i >= 0 && i < 8) { QSP[i].on = on; QSP[i].t = g_get_monotonic_time(); } }
+static struct { int on; gint64 t; } NMP;   /* (Mute, shown at once and kept until rudolfd's settings have it: as QSP) */
 static void qs_keep(void)
 {
 	gint64 now = g_get_monotonic_time();
 	for (int i = 0; i < 8; i++) if (QSP[i].t) { if (now - QSP[i].t > 20 * G_USEC_PER_SEC || qs_get(i) == QSP[i].on) QSP[i].t = 0; else qs_set(i, QSP[i].on); }
+	if (NMP.t) { if (now - NMP.t > 20 * G_USEC_PER_SEC || S.nmute == NMP.on) NMP.t = 0; else S.nmute = NMP.on; }
 }
 /* (a JSON value written again as the page's JSON.stringify writes it: numbers as short as they read back the same) */
 static void jv_dump(GString *o, const JV *v)
@@ -6396,13 +6412,20 @@ static void jv_dump(GString *o, const JV *v)
    saved where every window and the shell read it, at once, by the shell: the account's settings in rudolfd's copy of the pages' storage
    (bd95set:ID, as the page's tile saves it: dm, nl, dnd, sr, mag, cb, vk, touch), then the shell and every window told (settings_changed:
    the windows take it from that copy). The page doing the rest (#app=do-qs: the screen reader's words) finds it already so. */
+static void set_save(const char *key, const char *sv, int on);
 static void qs_save(int i, int on)
 {
-	static const char *const K[8] = { "dm", "nl", "dnd", "sr", "mag", "cb", "vk", "touch" }; if (i < 0 || i > 7 || !USER_ID[0] || !id_ok(USER_ID)) return;
+	static const char *const K[8] = { "dm", "nl", "dnd", "sr", "mag", "cb", "vk", "touch" }; if (i < 0 || i > 7) return;
+	set_save(K[i], i == 0 ? (on ? "dark" : "light") : i == 5 ? (on ? "contrast" : "none") : NULL, on);
+}
+/* one of the account's settings (bd95set:ACCT) saved as the page's persistS would: a string (sv) or a true/false (on) */
+static void set_save(const char *key, const char *sv, int on)
+{
+	if (!USER_ID[0] || !id_ok(USER_ID)) return;
 	char p[160]; snprintf(p, sizeof p, "/api/lsync?key=bd95set%%3A%s", USER_ID); JV *r = jget(p); JV *vv = jprop(r, "v"); JV *set = vv && vv->t == 3 && vv->s[0] == '{' ? jparse(vv->s) : NULL;
 	if (!set) { jfree(r); return; }
-	JV *x = jprop(set, K[i]); if (!x) { set->k = g_renew(char *, set->k, set->len + 1); set->v = g_renew(JV *, set->v, set->len + 1); set->k[set->len] = g_strdup(K[i]); x = set->v[set->len++] = g_new0(JV, 1); }
-	g_free(x->s); x->s = NULL; if (i == 0 || i == 5) { x->t = 3; x->s = g_strdup(i == 0 ? (on ? "dark" : "light") : (on ? "contrast" : "none")); } else { x->t = 1; x->n = on; }
+	JV *x = jprop(set, key); if (!x) { set->k = g_renew(char *, set->k, set->len + 1); set->v = g_renew(JV *, set->v, set->len + 1); set->k[set->len] = g_strdup(key); x = set->v[set->len++] = g_new0(JV, 1); }
+	g_free(x->s); x->s = NULL; if (sv) { x->t = 3; x->s = g_strdup(sv); } else { x->t = 1; x->n = on; }
 	GString *js = g_string_new(NULL); jv_dump(js, set); GString *b = g_string_new("{\"gen\":0,\"part\":1,\"set\":{"); char k[100]; snprintf(k, sizeof k, "bd95set:%s", USER_ID); json_esc(b, k); g_string_append_c(b, ':'); json_esc(b, js->str); g_string_append(b, "},\"del\":[]}");
 	int c = http("POST", "/api/lsync", b->str, b->len, NULL); g_string_free(js, TRUE); g_string_free(b, TRUE); jfree(set); jfree(r);
 	if (c == 200) settings_changed(USER_ID, NULL);
@@ -6432,6 +6455,7 @@ static void fl_act(const char *k, int dbl)
 	else if (!strcmp(k, "power")) { fl_close(); power_dialog(); return; }
 	else if (!strcmp(k, "clear")) { NT_CLR = 0; for (int i = 0; i < NNT; i++) NT_CLR = fmax(NT_CLR, NT[i].at); NT_CLRT = g_get_monotonic_time(); NNT = 0; NNTP = 0; app_open_ex("do-nc", NULL, "&op=clear", 1); bar_redraw(); }
 	else if (!strcmp(k, "dnd")) { S.dnd = !S.dnd; qs_pending(2, S.dnd); qs_save(2, S.dnd); char ex[40]; snprintf(ex, sizeof ex, "&op=dnd&on=%d", S.dnd); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
+	else if (!strcmp(k, "nmute")) { S.nmute = !S.nmute; NMP.on = S.nmute; NMP.t = g_get_monotonic_time(); set_save("nmute", NULL, S.nmute); char ex[40]; snprintf(ex, sizeof ex, "&op=mute&on=%d", S.nmute); app_open_ex("do-nc", NULL, ex, 1); bar_redraw(); }
 	else if (!strncmp(k, "nx:", 3)) { int i = atoi(k + 3); if (i < 0 || i >= NNT) return; char ex[40]; snprintf(ex, sizeof ex, "&op=dismiss&i=%d", i);
 		if (NNTX == 16) { memmove(&NTX[0], &NTX[1], 15 * sizeof NTX[0]); NNTX--; } NTX[NNTX].at = NT[i].at; snprintf(NTX[NNTX].t, sizeof NTX[0].t, "%s", NT[i].t); NTX[NNTX++].when = g_get_monotonic_time();
 		for (int j = 0; j < NNTP; j++) if (NTP[j].at == NT[i].at && !strcmp(NTP[j].t, NT[i].t)) { memmove(&NTP[j], &NTP[j + 1], (NNTP - j - 1) * sizeof NTP[0]); memmove(&NTPT[j], &NTPT[j + 1], (NNTP - j - 1) * sizeof NTPT[0]); NNTP--; break; }
@@ -6478,7 +6502,7 @@ static gboolean fl_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 static gboolean fl_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 {
 	(void)w; (void)d; if (FLDRAG) { fl_range(e->x); return TRUE; }
-	int h = fl_at(e->x, e->y); if (h >= 0 && (!strcmp(FLBK[h], "range") || !strncmp(FLBK[h], "qs:", 3) || !strcmp(FLBK[h], "dnd") || !strncmp(FLBK[h], "nx:", 3) || (FLBK[h][0] >= '0' && FLBK[h][0] <= '9'))) h = -1;
+	int h = fl_at(e->x, e->y); if (h >= 0 && (!strcmp(FLBK[h], "range") || !strncmp(FLBK[h], "qs:", 3) || !strcmp(FLBK[h], "dnd") || !strcmp(FLBK[h], "nmute") || !strncmp(FLBK[h], "nx:", 3) || (FLBK[h][0] >= '0' && FLBK[h][0] <= '9'))) h = -1;
 	if (h != FLHOV) { FLHOV = h; gtk_widget_queue_draw(FLAREA); }
 	GdkWindow *g = gtk_widget_get_window(FLWIN); if (g) { static GdkCursor *ptr; if (!ptr) ptr = gdk_cursor_new_from_name(gdk_display_get_default(), "pointer"); int k = fl_at(e->x, e->y); gdk_window_set_cursor(g, k >= 0 && !strcmp(FLBK[k], "sounds") ? ptr : NULL); }
 	return TRUE;
@@ -8072,7 +8096,7 @@ static void toast_addf(AppWin *from, const char *sid, FGet g, void *v)
 	if (STATEF) { TLOG_N++; snprintf(TLOG[TLOG_N % 32], sizeof TLOG[0], "%s|%s", from ? from->k : "-", t->t); }   /* (the tests count them, item 12: only with RUDOLF_NATIVE_STATE) */
 	/* (1.6.0) Do not disturb: no pop-up, from any window or the shell, but an error's (shell25.js __notifCentre.add: !S.dnd||n.k=='error'), as on
 	   Standard where one page decides; a window whose page had not heard of the switch yet no longer shows one */
-	if (S.dnd && strcmp(t->k, "error")) { NTST--; return; }
+	if (S.nmute || (S.dnd && strcmp(t->k, "error"))) { NTST--; return; }   /* (1.6.3: Mute holds back every pop-up, an error's too) */
 	if (gm61_hold(t->k)) { NTST--; return; }   /* (1.6.1 Part 19: game mode) */
 	toast_place(); if (!g_signal_handler_find(TWIN, G_SIGNAL_MATCH_FUNC, 0, 0, NULL, toast_press, NULL)) { g_signal_connect(TWIN, "button-press-event", G_CALLBACK(toast_press), NULL); g_signal_connect(TWIN, "motion-notify-event", G_CALLBACK(toast_motion), NULL); }
 	toast_anim();
@@ -8433,7 +8457,7 @@ static void state_write(void)
 	g_string_append_printf(s, "signtop %d\nbright %d %d\nflgrab %d\n", x_on_top(SIGN), BRI_HAS, BRI, FL_GRAB);
 	if (VKW && gtk_widget_get_visible(VKW)) { char *k = g_strdup(VKKEYS); for (char *t = strtok(k, "|"); t; t = strtok(NULL, "|")) { char ch[32]; int kx, ky; if (sscanf(t, "%31s %d %d", ch, &kx, &ky) == 3) { char *u = g_uri_unescape_string(ch, NULL); g_string_append_printf(s, "vkkey %s %d %d\n", u ? u : ch, VKX + kx, VKY + ky); g_free(u); } } g_free(k); }
 	for (GList *l = CLIENTS; l; l = l->next) { Client *c = l->data; if (c->ontop) g_string_append_printf(s, "ontop %s\n", c->app ? c->app->k : c->ak[0] ? c->ak : "-"); }
-	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
+	g_string_append_printf(s, "notes %d %d %d\nmic %d %d\nnmute %d\n", S.dnd, nt_unread(), NNT, MIC_N, MIC_MUTED, S.nmute);   /* (the bell: do not disturb, its count, the list's length) */   /* (item 3: the call's 🎙️; the notifications' pop-ups) */
 	for (int i = 0; i < NTST; i++) g_string_append_printf(s, "toast %d %d %d %d %d|%s\n", TST[i].why, (int)lround(TSX[i] * Z), (int)lround(TSY[i] * Z), (int)lround(349 * Z), (int)lround(TST[i].h * Z), TST[i].t);
 	for (int i = 0; i < NHITS; i++) g_string_append_printf(s, "hit %s %s %d %d %d %d\n", HITS[i].kind, HITS[i].arg[0] ? HITS[i].arg : "-", HITS[i].x + bx, HITS[i].y + by, HITS[i].w, HITS[i].h);
 	/* the start menu's rows on the screen (mrow ACTION x y w h) */
@@ -8475,7 +8499,7 @@ static void state_write(void)
 	if (CMWIN && gtk_widget_get_visible(CMWIN)) { g_string_append_printf(s, "cmenu %d %d %d %d %s\n", (int)lround(CMX * Z), (int)lround(CMY * Z), (int)lround(CMBW * Z), (int)lround(CMBH * Z), CMTITLE[0] ? CMTITLE : "-");
 		double ry = CMY + 5 + (CMTITLE[0] ? 22 : 0); for (int i = 0, k = 0; i < NCMI; i++) { if (!CMIT[i].sep && CMIT[i].icon[0]) g_string_append_printf(s, "cmicon %d %s\n", k, CMIT[i].icon); if (!CMIT[i].sep) k++; }
 		for (int i = 0; i < NCMI; i++) { if (!CMIT[i].sep) g_string_append_printf(s, "cmitem %d %d %d %s|%s\n", (int)lround((CMX + 5 + 50) * Z), (int)lround((ry + 12) * Z), CMIT[i].dis, CMIT[i].act, CMIT[i].label); ry += cm_row_h(&CMIT[i]); } }
-	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG);
+	g_string_append_printf(s, "dialog %s %s|%s\n", DGK == DLG_RENAME ? "rename" : DGK == DLG_OPENWITH ? "openwith" : "-", DGK ? DGNAME : "-", DGMSG); g_string_append_printf(s, "dialognew %s\ndialogval %s|%d\n", DGK == DLG_RENAME && DGNEW[0] ? DGNEW : "-", DGK == DLG_RENAME ? DGVAL : "-", DGBUSY);
 	for (int i = 0; DGK && i < NDGB; i++) g_string_append_printf(s, "dgbtn %d %d %d\n", i, (int)lround((DGB[i].x + DGB[i].w / 2) * Z), (int)lround((DGB[i].y + DGB[i].h / 2) * Z));
 	if (MENU && gtk_widget_get_visible(MENU)) g_string_append_printf(s, "mbox %d %d %d %d\n", (int)lround(MBX * Z), (int)lround(MBY * Z), (int)lround(MBW * Z), (int)lround(MBH * Z));   /* (the start menu's box, for the tests) */
 	if (FLK) { g_string_append_printf(s, "fly %s %d %d %d %d %d-%02d %d %d\n", FLK == FL_CAL ? "cal" : FLK == FL_VOL ? "vol" : FLK == FL_NET ? "net" : FLK == FL_QS ? "qs" : FLK == FL_BRI ? "bri" : "nc", (int)lround(FLX * Z), (int)lround(FLY * Z), (int)lround(FLW * Z), (int)lround(FLH * Z), FL_Y, FL_M, FLVOL, FLMUTE);

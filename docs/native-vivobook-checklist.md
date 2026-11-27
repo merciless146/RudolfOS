@@ -13,7 +13,7 @@ engine, then restart), and report any difference with a photo of both.
 | V1 | Sound Recorder: record 10 s, stop, play it back | The 🎙️ in the taskbar while recording; the recording plays at the same level | Whether 🎙️ shows, the recording's length, whether it plays and is heard |
 | V2 | Camera: open it the first time | "Allow access?" centred over the dimmed desktop; after Allow, the picture | Where the prompt is, whether the picture moves smoothly (frames per second in Settings › System health › Hardware check) |
 | V3 | Camera: take a photo and a 5 s video | The photo and the video in Pictures and Videos | Whether both are saved and open |
-| V4 | Start a call (the in-desktop call screen) and hang up | The call screen, the microphone indicator, mute | The call screen's place and size, 🎙️ and mute |
+| V4 | Start a call in Oracle's tab (Meet, Teams) or in Zoom's Linux app, mute it from the taskbar's 🎙️, hang up | 🎙️ in the taskbar with the app's name; one click mutes the microphone for everything | Whether 🎙️ shows and what its tip says, whether the click mutes and the sound comes back; on Native, whether the call starts at all (Native's WebKit is built without WebRTC, docs/plan-1.5.9.md 7.1). There is no separate call window in this build: `desktop/call59.js` is the indicator and the mute |
 | V5 | Deny the microphone, then open Sound Recorder again | The "blocked" message and how to allow it | The same message, in the same place |
 | V6 | Media Player: play a video with sound, volume keys up and down | The volume overlay at the top; the sound changes in steps | The overlay, the steps, any delay |
 | V7 | With the video playing, open another app's window | Sound goes on, no click | Gaps or clicks |
