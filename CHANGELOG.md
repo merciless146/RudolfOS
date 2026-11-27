@@ -14,6 +14,8 @@ Summary: In progress.
   pipeline with: without it `rec.start()` throws and the Recorder's button stays dead, in the Voice Recorder and in the
   Camera's video too (findings N35). The build now stops instead of warning when it or the interleave plug-in is missing:
   a host without their packages would ship a silent microphone and a Recorder that never starts.
+- Better: the self-test has a capture line: it fails when the image lacks the interleave or transcode plug-in (the
+  microphone's level meters and the Recorder), and says so when the camera still waits on PipeWire (findings N35).
 - Fixed: Voice Recorder's Record now says what went wrong (the error's name and message, in a notification) instead of
   playing the click sound and staying silent, with no clock and no recording; on the Native desktop the start block could
   throw where nothing caught it. It also cleans up the microphone if it fails, so Record can be tried again (checklist V1).

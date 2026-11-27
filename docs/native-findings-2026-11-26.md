@@ -440,7 +440,10 @@ through PipeWire, and says so in its own error message. Three consequences:
      `iso/systools/addwebkit.sh`'s loop names `deinterlace`, `inter` and `audiofx` and **never `interleave`** — and the loop
      then skipped a plug-in it could not find without a word (since 2026-11-27 it names every one it cannot find, and
      refuses the build when `interleave` or `transcode` is missing: a host without those packages is the wrong host, one
-     apt-get from right, whereas a missing `pipewire` still only warns until Part 9 gives the image a PipeWire to reach).
+     apt-get from right, whereas a missing `pipewire` still only warns until Part 9 gives the image a PipeWire to reach). The image answers for itself too: the self-test's `capture` line
+     (`iso/sys/root/usr/lib/rudolf/selftest`) fails when either plug-in is not in the image, whatever built it, and says
+     with a pass that the camera still waits on PipeWire — so a copy that went wrong on a right build host is caught on
+     the machine the image boots on, not only where it was made.
      So this is the same shape as the `pipewire` omission: a name missing
      from the list, not a build that lost it. `interleave` is now in the list, with the same kind of warning after it.
    - **`error reading data -1` is the companion — by inference, not by record.** The timings are fact: it arrives 6 s after

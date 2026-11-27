@@ -862,7 +862,8 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
 5. **Test on the Vivobook** (checklist V2 and V3): the camera's preview at 640×480, a photo and a 5 s video saved and
    opened. Then with PipeWire stopped, to see what the app says. Two checks for two paths: the hardware check's microphone
    step reads through WebAudio, so it needs `libgstinterleave.so` and should move off −120 dB; V1 and the Camera's
-   "Record video" (V3) are the Recorder, which needs `libgsttranscode.so` and should then save a clip. If either stays dead, its own log line names the factory that is
+   "Record video" (V3) are the Recorder, which needs `libgsttranscode.so` and should then save a clip. The self-test's `capture` line says whether the image has both plug-ins before either is tried,
+   and its pass names the camera's remaining wait on PipeWire. If either stays dead, its own log line names the factory that is
    still missing.
 6. **Cost:** two more daemons and their libraries, and their memory; read the native desktop's idle figure (checklist V42)
    before and after.
