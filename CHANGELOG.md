@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Fixed: the Native desktop's camera. The image now carries GStreamer's video4linux2 plug-in: it copied the sound servers'
+  and ALSA's plug-ins but no camera's, so WebKit had no way to open the laptop's camera and Camera said "No camera is
+  available or access is blocked" with the privacy switch on (found on the Vivobook as N33; checklist V2 and V3). It needs
+  the next build to check: nothing could be verified on 1.6.2.261124.
 - Better: naming a new text document or folder on the desktop says "Name your new file" (or folder) and Create, not
   Rename; a name typed without .TXT gets it, so the file opens in Notepad (FreeBuff's test). The same on the native desktop.
 - Developers: `cd desktop && python3 build19.py` writes the page where the disc keeps it (iso/www/index.html), with no
