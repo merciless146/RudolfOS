@@ -1,0 +1,22 @@
+# 1.6.3 (the libfprint-2 block, 2026-11-25 to 11-27): the release build's own test on pull requests, not only inside the
+# release. It reads mkrootfs.sh's and ci_release.sh's lines; its check 8 compares every pkg-config module and -l library
+# those scripts ask for with rudolf-release.yml's apt line, so a dependency the runner never installs fails here, named,
+# in a second -- instead of at the end of a five-minute build. No release key, nothing published.
+name: Release build check
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['iso/mkrootfs.sh', 'iso/systools/ci_release.sh', 'iso/sys/ui/build.sh', 'iso/systools/hardcheck.py',
+      'iso/systools/hardflags.sh', 'iso/qt/host/rootbuild161_t.py', '.github/workflows/rudolf-release.yml',
+      '.github/workflows/releasepkg-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq zlib1g-dev libfprint-2-dev >/dev/null
+      - name: rootbuild161_t.py (the helpers' owners and modes, their hardening, and the runner's packages)
+        run: python3 iso/qt/host/rootbuild161_t.py
