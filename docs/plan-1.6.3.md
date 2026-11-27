@@ -851,7 +851,7 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
    in `addwebkit.sh`'s list; moving the sound server from PulseAudio to PipeWire is a part of its own and has nothing to do
    with it. **The Recorder is a third fault and needs its own plug-in:** WebKitGTK 2.52's `MediaRecorderPrivateGStreamer`
    builds `uritranscodebin` (GStreamer Bad's `transcode` plug-in, `libgsttranscode.so`), which the image also lacks — so
-   `rec.start()` throws `NotSupportedError` and the button stays dead. `transcode` is not in `addwebkit.sh` yet, and its
+   `rec.start()` throws `NotSupportedError` and the button stays dead. `transcode` is in `addwebkit.sh`'s list now, and its
    library pulls `libgsttranscoder-1.0.so.0` with it through the script's existing `ldd` pass.
 5. **Test on the Vivobook** (checklist V2 and V3): the camera's preview at 640×480, a photo and a 5 s video saved and
    opened. Then with PipeWire stopped, to see what the app says. Two checks for two paths: the hardware check's microphone

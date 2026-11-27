@@ -422,7 +422,8 @@ through PipeWire, and says so in its own error message. Three consequences:
      `deinterleave`; the capture pipeline is `pulsesrc ! audioconvert ! audioresample ! capsfilter ! appsink`
      (`GStreamerAudioCapturer`), which names none either. So the missing `interleave` does **not** stop the Recorder.
      What the Recorder needs is `uritranscodebin`, from GStreamer Bad's `transcode` plug-in (`libgsttranscode.so`), and the
-     image does not have it: the 39 plug-ins include no `libgsttranscode.so`, and `addwebkit.sh` never names `transcode`.
+     image does not have it: the 39 plug-ins include no `libgsttranscode.so`, and `addwebkit.sh` named neither it nor the plug-in until 2026-11-27, when `transcode` joined the list beside
+     `interleave`.
      When that factory returns NULL, `preparePipeline()` returns false, `MediaRecorderPrivateGStreamer::create` returns
      null, and `MediaRecorder::startRecording` turns it into `NotSupportedError: The MediaRecorder is unsupported on this
      platform` out of `rec.start()` — which the Recorder page calls before it sets its clock, in a block with no `catch`,
