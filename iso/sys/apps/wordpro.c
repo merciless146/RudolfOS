@@ -818,8 +818,14 @@ static void choose_open(void)
 static void cursor_end(void) { GtkTextIter e; gtk_text_buffer_get_end_iter(BUF, &e); gtk_text_buffer_place_cursor(BUF, &e); }
 static void put_at_end(const char *t, int n, const char **stk, int sp)
 {
-	GtkTextIter e, s; gtk_text_buffer_get_end_iter(BUF, &e); s = e;
-	gtk_text_buffer_insert(BUF, &e, t, n);
+	/* (the range is kept as an offset: an iterator sitting where the text goes moves past it, and a range of nothing
+	   tags nothing -- which is how an opened document lost its bold until the round trip showed it) */
+	GtkTextIter s, e; gtk_text_buffer_get_end_iter(BUF, &s);
+	int off = gtk_text_iter_get_offset(&s);
+	gtk_text_buffer_insert(BUF, &s, t, n);
+	if (!sp) return;
+	gtk_text_buffer_get_iter_at_offset(BUF, &s, off);
+	gtk_text_buffer_get_end_iter(BUF, &e);
 	for (int k = 0; k < sp; k++) gtk_text_buffer_apply_tag(BUF, tag_new(stk[k]), &s, &e);
 }
 static void put_unescaped(const char *t, int n, const char **stk, int sp, GString *cell)
