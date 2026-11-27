@@ -122,11 +122,27 @@ accent colours), its memory at idle against the web version, built in the releas
   the dialog as its menu opens it and presses Insert through the answer file (3 x 3, `hdr 1`, `nb 0`, nine cells), and
   opens and saves a `.wp-t nb` table with no heading row (`hdr 0`, `nb 1`, the same class and no `<th>` in the file that
   comes back). 25 cases, all green (340640 bytes).
+- **Branch `wordpro-10`: the page's Insert picture dialog and its picture tools** (item 1's next dialogs): the page's
+  `imgDialog` -- *From computer*, *Web address*, *Description*, Cancel / Insert -- and its `imgTools` -- *Width* (Original,
+  25, 50, 75, 100 % of the sheet), *Align* (In line, Left, Right, Centered), *Description*, and Delete picture / Cancel /
+  OK -- which opens as the page's opens, on a click on the picture. `rui_form` gains the two fields those dialogs need: a
+  **choice** (the page's `<select>`: its options' own words kept as ids and shown translated, so no callback compares
+  translated words) and a **file** (the path, with the button that chooses one), plus `rui_form_field` and
+  `rui_form_value`, the way a test reaches into a form: the check's answer file now fills a dialog's fields before it
+  presses its button. A picture keeps `alt`, `wpct` (a share of the sheet's 816 px) and `walign` beside its bytes and its
+  size, so an undo or a redo brings them back, the page says them (`pic alt 'Deer' w 50 align 3`) and its .DOC carries
+  them as `alt="..."` and the style imgTools writes (`max-width:100%`, `width:NN%`, the float with its margin, or
+  `display:block` for centred) -- and the parser reads them back, so the web WordPro's picture opens here as it was and
+  saves as it was. A **web address is not read yet**: the page asks the firewall first and reads the image the browser's
+  way, and both are a step of their own, so that field says so out loud. The check's cases 26-28 are the dialog filled by
+  name (a file and a description), the tools set as one step of the history, and a .DOC whose picture carries
+  `alt="Deer &amp; fir"` with a 75 % left-floated style, read as `w 75 align 1` and written back byte for byte. 28 cases,
+  all green (349800 bytes); the check found the width tool's style read as max-width's 100 %, which is fixed.
 - **Not in this step, by the plan's own split:** the dialogs of those items that are still to come (open, save, import,
-  export, page setup, print, picture, link, special characters, header and footer), the Table menu's other items (insert
-  and delete a row or a column, merge, shade, toggle borders and header row), links, page setup, headers and footers, the
-  table of contents, printing, and the rest of the page's HTML (lists, the paragraph classes' other blocks, a nested
-  table, a picture's alt text) -- steps 1 to 3. The native desktop keeps opening the web WordPro until the
+  export, page setup, print, link, special characters, header and footer), the Table menu's other items (insert and delete
+  a row or a column, merge, shade, toggle borders and header row), the picture's web address and the way a floated picture
+  wraps the writing round it, links, page setup, headers and footers, the table of contents, printing, and the rest of the
+  page's HTML (lists, the paragraph classes' other blocks, a nested table) -- steps 1 to 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
 #### The document model (decided 2026-11-27, step 2 begins: tables and pictures)
