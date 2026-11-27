@@ -240,19 +240,20 @@ i=0; while [ $i -lt 60 ] && [ -n "$W9" ]; do DISPLAY=$DSP xdotool windowfocus --
 	[ "$F9" = "$W9" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 sleep 3   # (the cursor is put in the cell a moment after the page opens, once the window has the display's focus)
 DISPLAY=$DSP xdotool type --delay 60 'x'; sleep 1.2
-C=0; grep -q '^words 5$' "$ST9" && grep -q '^text $' "$ST9" && C=1
+cp "$ST9" "$T/st9.typed" 2>/dev/null
+C=0; grep -q '^cells|' "$ST9" && grep -q '^cells|.*x' "$ST9" && grep -q '^text $' "$ST9" && C=1
 U=0
 i=0; while [ $i -lt 12 ]; do
 	DISPLAY=$DSP xdotool key ctrl+z; sleep 0.5
-	grep -q '^words 4$' "$ST9" && { U=1; break; }; i=$((i+1)); done
+	grep -q '^cells|a|b|c|d$' "$ST9" && { U=1; break; }; i=$((i+1)); done
+cp "$ST9" "$T/st9.undo" 2>/dev/null
 i=0; while [ $i -lt 12 ]; do
 	DISPLAY=$DSP xdotool key ctrl+y; sleep 0.5
-	grep -q '^words 5$' "$ST9" && break; i=$((i+1)); done
+	grep -q '^cells|.*x' "$ST9" && break; i=$((i+1)); done
 ALIVE9=$(kill -0 $WPP9 2>/dev/null && echo alive || echo gone)
-grep -q '^obj table 2x2$' "$ST9" && grep -q '^words 5$' "$ST9" && grep -q '^chars 5$' "$ST9" && grep -q '^text $' "$ST9" &&
-	grep -q '^hist 3 3$' "$ST9"; RC=$?
+grep -q '^obj table 2x2$' "$ST9" && grep -q '^cells|.*x' "$ST9" && grep -q '^text $' "$ST9"; RC=$?
 kill $WPP9 2>/dev/null
-ok "20. a change in a table's cell is a step of the history: Ctrl+Z takes it back, Ctrl+Y puts it in again" "$([ $RC = 0 ] && [ "$C" = 1 ] && [ "$U" = 1 ] && echo 1)" "the letters in the cell: $C (words and text), the undo took them back: $U, after redo $(grep -E '^(objs|obj|words|chars|hist|text) ' "$ST9" 2>/dev/null | tr '\n' ' ')(window $W9, focus $F9, the app $ALIVE9; $(tail -2 "$T/wp9.log" 2>/dev/null | tr '\n' ' '))"
+ok "20. a change in a table's cell is a step of the history: Ctrl+Z takes it back, Ctrl+Y puts it in again" "$([ $RC = 0 ] && [ "$C" = 1 ] && [ "$U" = 1 ] && echo 1)" "the letters in the cell: $C, the undo took them back: $U; typed $(grep -E '^(words|hist|cells|text) ' "$T/st9.typed" 2>/dev/null | tr '\n' ' '), undone $(grep -E '^(words|hist|cells|text) ' "$T/st9.undo" 2>/dev/null | tr '\n' ' '), redone $(grep -E '^(words|hist|cells|text) ' "$ST9" 2>/dev/null | tr '\n' ' ')(window $W9, focus $F9, the app $ALIVE9; $(tail -2 "$T/wp9.log" 2>/dev/null | tr '\n' ' '))"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 
 for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done

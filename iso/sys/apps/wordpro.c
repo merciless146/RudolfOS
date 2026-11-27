@@ -44,6 +44,7 @@ static void upd_sel(void);
 static int menus_n(void);
 static void obj_counts(int *w, int *c);
 static void state_objs(GString *s);
+static const char *cell_text(WpObj *o, int r, int c);
 static void insert_picture_data(guchar *data, gsize len);
 static void open_doc(const char *path);
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
@@ -592,7 +593,11 @@ static void state_objs(GString *s)
 	if (!OBJ) return;
 	for (guint i = 0; i < OBJ->len; i++) { WpObj *o = g_ptr_array_index(OBJ, i);
 		if (o->kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %u\n", o->wpx, o->hpx, (unsigned)(o->im ? o->im->n : 0));
-		else g_string_append_printf(s, "obj table %dx%d\n", o->rows, o->cols);
+		else {   /* (the cells' text, which is what an undo or a redo of a table has to bring back) */
+			g_string_append_printf(s, "obj table %dx%d\ncells", o->rows, o->cols);
+			for (int r = 0; r < o->rows; r++) for (int c = 0; c < o->cols; c++) { g_string_append_c(s, '|'); g_string_append(s, cell_text(o, r, c)); }
+			g_string_append_c(s, '\n');
+		}
 	}
 }
 /* (the object's widget goes into the writing at the anchor it was made for: the menu and the parser create the anchor,
