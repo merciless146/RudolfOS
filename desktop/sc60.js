@@ -45,6 +45,14 @@ async function scDodCheck(bytes,pins){pins=pins||SC_DOD_ROOTS;const all=scP7(byt
  for(const c of all)if(!ok.has(c))left.push({cn:c.cn,why:c.self?'a root that is not one of the DoD\'s':'not signed by the DoD\'s roots'});
  return{roots,cas,left}}
 /* ---- Settings › Security Settings › Smart cards ---- */
+/* installing the DoD's certificates (Settings › Security › Smart cards; the native Settings opens it in a page of one action: secgo dodinstall) */
+async function scDodInstall(sd,after){sd=sd||{set textContent(v){}};const cr=await elevate('Install the DoD\'s certificates for Oracle',{cred:true});if(!cr)return;sd.textContent='Downloading the DoD\'s certificates…';
+  try{const f=await rd('sc/dod/fetch',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});sd.textContent='Checking them…';
+   const k=await scDodCheck(scUnhex(f.hex));if(!k.roots.length)throw new Error('The bundle does not hold the DoD\'s root certificates, so nothing was installed.');
+   const body=k.roots.map(x=>'root '+scHex(x.der)).concat(k.cas.map(x=>'ca '+scHex(x.der))).join('\n');
+   const r=await rd('sc/dod/install',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p,certs:body})});
+   notify('DoD certificates',`${r.installed} installed (${k.roots.map(x=>x.cn).join(', ')} and ${k.cas.length} below them)`+(k.left.length?`; ${k.left.length} left out, not from the DoD's roots.`:'.')+' Restart Oracle to use them.',{app:'Settings'})}
+  catch(e){notify('DoD certificates',e.message||String(e),{kind:'error',app:'Settings'})}after&&after()}
 function scSection(c){if(typeof RD=='undefined'||!RD)return;
  const box=document.createElement('div');box.className='sc60';c.appendChild(box);
  box.innerHTML=`<h4 class='sh4'>Smart cards</h4><div class='msg scr'>Looking for card readers…</div>
@@ -63,13 +71,7 @@ function scSection(c){if(typeof RD=='undefined'||!RD)return;
    d.textContent=`💳 ${r.name}: `+(r.card?`${r.label||'a card'}${r.maker?' ('+r.maker+')':''}. `+(certs.length?certs.map(x=>`${x.cn||'certificate'}, until ${new Date(x.to).toLocaleDateString()}`).join('; '):'No certificates could be read.'):'no card in it.');
    if(soon.length){const w=document.createElement('b');w.style.color='#e8a33d';const dd=Math.ceil((Math.min(...soon.map(x=>x.to))-now)/864e5);w.textContent=dd>0?` Expires in ${dd} day${dd==1?'':'s'}.`:' Expired.';d.appendChild(w)}
    q('.scr').appendChild(d)}};
- q('.scdi').onclick=async()=>{const cr=await elevate('Install the DoD\'s certificates for Oracle',{cred:true});if(!cr)return;q('.scd').textContent='Downloading the DoD\'s certificates…';
-  try{const f=await rd('sc/dod/fetch',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});q('.scd').textContent='Checking them…';
-   const k=await scDodCheck(scUnhex(f.hex));if(!k.roots.length)throw new Error('The bundle does not hold the DoD\'s root certificates, so nothing was installed.');
-   const body=k.roots.map(x=>'root '+scHex(x.der)).concat(k.cas.map(x=>'ca '+scHex(x.der))).join('\n');
-   const r=await rd('sc/dod/install',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p,certs:body})});
-   notify('DoD certificates',`${r.installed} installed (${k.roots.map(x=>x.cn).join(', ')} and ${k.cas.length} below them)`+(k.left.length?`; ${k.left.length} left out, not from the DoD's roots.`:'.')+' Restart Oracle to use them.',{app:'Settings'})}
-  catch(e){notify('DoD certificates',e.message||String(e),{kind:'error',app:'Settings'})}dodDraw()};
+ q('.scdi').onclick=()=>scDodInstall(q('.scd'),dodDraw);
  q('.scdr').onclick=async()=>{const cr=await elevate('Remove the DoD\'s certificates from Oracle',{cred:true});if(!cr)return;
   try{await rd('sc/dod/remove',{method:'POST',body:JSON.stringify({n:cr.n,p:cr.p})});notify('DoD certificates','Removed.',{app:'Settings'})}catch(e){notify('DoD certificates',e.message,{kind:'error',app:'Settings'})}dodDraw()};
  draw();dodDraw();const iv=setInterval(()=>{if(!box.isConnected){clearInterval(iv);return}draw()},4000)}

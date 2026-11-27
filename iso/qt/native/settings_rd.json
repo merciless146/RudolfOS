@@ -814,7 +814,25 @@
   "bd95blzspeed": {
    "tps": 7.4
   },
-  "bd95devtools": false
+  "bd95devtools": false,
+  "bd95perm:uAnnA1b2": {
+   "Tide Tables|location": "allow",
+   "Beat Box|microphone": "deny"
+  },
+  "bd95permlog:uAnnA1b2": [
+   {
+    "at": 1794646800000,
+    "app": "Tide Tables",
+    "perm": "location",
+    "ok": true
+   },
+   {
+    "at": 1794643200000,
+    "app": "Beat Box",
+    "perm": "microphone",
+    "ok": false
+   }
+  ]
  },
  "debian/check": {
   "ok": true,
@@ -867,5 +885,235 @@
   "possible": false,
   "pending": false,
   "reason": "this computer already keeps your files on its disk"
+ },
+ "camera": {
+  "ok": true,
+  "on": true,
+  "devices": 1
+ },
+ "keyring/list": {
+  "ok": true,
+  "signedIn": true,
+  "keyring": true,
+  "items": [
+   {
+    "id": "k1",
+    "app": "Visual Studio Code",
+    "label": "vscode github.auth",
+    "kind": "secret"
+   },
+   {
+    "id": "k2",
+    "kind": "flatpak",
+    "app": "org.signal.Signal",
+    "label": "Signal database key"
+   },
+   {
+    "id": "k3",
+    "schema": "chrome_libsecret_os_crypt_password_v2",
+    "label": "Chromium Safe Storage"
+   }
+  ]
+ },
+ "firewall": {
+  "ok": true,
+  "on": true,
+  "blocked": 12,
+  "remote": false
+ },
+ "vault": {
+  "ok": true,
+  "state": "on",
+  "moved": {
+   "debian": true,
+   "flatpak": true,
+   "downloads": true
+  },
+  "data": {
+   "accts": {
+    "uAnnA1b2": 1
+   }
+  }
+ },
+ "secureboot/status": {
+  "ok": true,
+  "efi": true,
+  "on": true,
+  "enrolled": true,
+  "pending": false,
+  "lockdown": "none [integrity] confidentiality",
+  "unverified": ""
+ },
+ "devlink": {
+  "ok": true,
+  "available": true,
+  "on": false,
+  "persistent": true,
+  "hasToken": false,
+  "allowed": true,
+  "home": false,
+  "repo": ""
+ },
+ "sc/status": {
+  "ok": true,
+  "pcscd": true,
+  "readers": [
+   {
+    "name": "Identiv uTrust 2700 R",
+    "card": false
+   }
+  ]
+ },
+ "sc/dod/list": {
+  "ok": true,
+  "certs": []
+ },
+ "health": {
+  "ok": true,
+  "now": 1794649260,
+  "uptime": 3400,
+  "events": [
+   {
+    "t": 1794645960,
+    "k": "ready",
+    "m": "the desktop was ready 21.4 s after start-up"
+   },
+   {
+    "t": 1794645930,
+    "k": "start",
+    "m": "started (slot a, release 1.6.2)"
+   },
+   {
+    "t": 1794559260,
+    "k": "memory",
+    "m": "memory ran out: Oracle tab closed (1.2 GB)"
+   },
+   {
+    "t": 1794559200,
+    "k": "signin",
+    "m": "a wrong password for Ann"
+   },
+   {
+    "t": 1794476460,
+    "k": "update",
+    "m": "1.6.2 installed in slot a"
+   },
+   {
+    "t": 1794472860,
+    "k": "start",
+    "m": "started (slot b, release 1.6.1)"
+   },
+   {
+    "t": 1794469260,
+    "k": "firewall",
+    "m": "the firewall is on"
+   }
+  ]
+ },
+ "memory/settings": {
+  "ok": true,
+  "total": 16473538560,
+  "available": 9663676416,
+  "compressed": {
+   "on": true,
+   "size": 8589934592,
+   "stored": 1288490188,
+   "used": 402653184
+  },
+  "zram": "auto",
+  "persistent": true,
+  "closeApps": false,
+  "videoLog": false
+ },
+ "accounts/users": {
+  "ok": true,
+  "on": true,
+  "users": [
+   {
+    "id": "uAnnA1b2"
+   },
+   {
+    "id": "uBobB2c3"
+   }
+  ]
+ },
+ "game/status": {
+  "ok": true,
+  "enabled": true,
+  "on": false,
+  "throttled": false,
+  "games": []
+ },
+ "power/status": {
+  "ok": true,
+  "ac": false,
+  "battery": {
+   "name": "BAT0",
+   "capacity": 81,
+   "status": "Discharging",
+   "energy_now": 40500000,
+   "energy_full": 50000000,
+   "energy_full_design": 57000000,
+   "power_now": 9000000,
+   "cycle_count": 212
+  },
+  "set": {
+   "mode_bat": "balanced",
+   "mode_ac": "performance",
+   "cpu": "std",
+   "saver_now": false,
+   "saver_at": 20,
+   "screen_bat": 5,
+   "screen_ac": 10,
+   "sleep_bat": 15,
+   "sleep_ac": 0,
+   "lid_bat": "sleep",
+   "lid_ac": "sleep",
+   "button": "ask",
+   "care": 80
+  },
+  "can": {
+   "profile": true,
+   "epp": true,
+   "cpu": {
+    "tunable": false,
+    "driver": "intel_pstate"
+   },
+   "lid": true,
+   "care": true,
+   "wifiSave": true
+  },
+  "now": {
+   "saver": false,
+   "profile": "balanced",
+   "epp": "balance_performance",
+   "care": 80
+  }
+ },
+ "desktop/keys": {
+  "ok": true,
+  "lib": true,
+  "bad": false,
+  "req": false,
+  "keys": []
+ },
+ "fp/status": {
+  "ok": true,
+  "helper": true,
+  "readers": [
+   {
+    "name": "Goodix fingerprint reader (27c6:538d)",
+    "usb": "27c6:538d"
+   }
+  ],
+  "unsupported": [],
+  "disk": true,
+  "open": true,
+  "ready": true,
+  "why": "",
+  "fingers": [
+   "right-index",
+   "left-index"
+  ]
  }
 }

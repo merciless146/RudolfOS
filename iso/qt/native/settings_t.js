@@ -20,7 +20,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 900) : '')) };
 fs.mkdirSync(OUT, {recursive: true});
 const only = k => !ONLY || ONLY.split(',').includes(k);
-const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web,notif,devs,apps,stor').split(',');
+const PAGES = (process.env.SET_PAGES || 'sys,kbd,mouse,upd,about,vol,mm,acc,disp,bt,remote,mob,net,web,notif,devs,apps,stor,priv,sec,health,usr').split(',');
 const calls = () => { try { return fs.readFileSync(path.join(D, 'calls'), 'utf8') } catch (e) { return '' } };
 const env0 = () => { const e = Object.assign({}, process.env, {DISPLAY: DSP, RUI_BASE: BASE, LC_ALL: 'C.UTF-8', NO_AT_BRIDGE: '1', TZ: 'UTC'}); for (const k of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) delete e[k]; return e };
 const sh = c => cp.execSync(c, {env: env0()}).toString();
@@ -41,8 +41,10 @@ async function signin(mode) {
   for (let i = 0; i < 12; i++) { await p.clock.runFor(500); await wait(100) }
   return {ctx, p};
 }
+let SECLOG = null;
 async function pageShots(mode, pages) {
   const {ctx, p} = await signin(mode); const out = {};
+  try { const l = await p.evaluate(() => localStorage.getItem('bd95seclog')); SECLOG = l ? JSON.parse(l) : null } catch (e) {}
   for (const k of pages) {
     await p.evaluate(k => { document.querySelectorAll('.ntoast,#ntoasts>*').forEach(e => e.remove()); if (window.SW) { SW._ok = 1; SW.close() } settings(k); SW.el.style.left = '120px'; SW.el.style.top = '60px' }, k);
     for (let i = 0; i < 6; i++) { await p.clock.runFor(500); await wait(200) }
@@ -70,7 +72,7 @@ function natStop() { if (NP) { NP.kill(); NP = null } }
 const xdo = a => sh('xdotool ' + a);
 const click = (r, btn) => { xdo(`mousemove ${Math.round(r[0] + r[2] / 2)} ${Math.round(r[1] + r[3] / 2)} click ${btn || 1}`) };
 async function natShots(mode, pages) {
-  ST.state(D, Object.assign({restore: false}, MODES[mode]), MORE); const out = {};
+  ST.state(D, Object.assign({restore: false}, MODES[mode]), Object.assign({}, MORE, SECLOG ? {bd95seclog: SECLOG} : {})); const out = {};   // (the security log as the page's own sign-in left it)
   for (const k of pages) {
     natStart(k); await until(() => rect('body') && line('page') == k, 20000); await wait(1500); xdo('mousemove 5 5'); await wait(400);
     for (const at of ['top', 'end']) {
@@ -90,7 +92,7 @@ async function natShots(mode, pages) {
   return out;
 }
 // ---- Search in Settings: the same results for the same words (the page's ssMatch over its pages, with System and About harvested as shown)
-const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5'], web: ['mid2', 'mid3'], devs: ['mid2'], apps: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], stor: ['mid2', 'mid3', 'mid4', 'mid5']};
+const MIDS = {disp: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], mob: ['mid2', 'mid3'], net: ['mid2', 'mid3', 'mid4', 'mid5'], web: ['mid2', 'mid3'], devs: ['mid2'], apps: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6', 'mid7'], stor: ['mid2', 'mid3', 'mid4', 'mid5'], priv: ['mid2'], sec: ['mid2', 'mid3', 'mid4', 'mid5', 'mid6'], health: ['mid2', 'mid3', 'mid4'], usr: ['mid2']};
 const QUERIES = ['time zone', 'sound', 'date', 'wifi', 'dark', 'idle', 'about', 'desktop page', 'lang', 'xyzzy'];
 async function pageSearch() {
   const {ctx, p} = await signin('light');
@@ -614,12 +616,85 @@ async function checkStor() {
     xdo('key Escape'); await wait(400) }
   natStop();
 }
+// (1.6.3 Part 3, PR 8) Privacy: what each part asks or saves, as the page does
+async function checkPriv() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, J = k => { try { return JSON.parse(LS()[k]) } catch (e) { return undefined } }, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 60; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 520) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 520 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('priv'); await until(() => rect('body') && line('page') == 'priv', 20000); await wait(1500);
+  { const r = rect('pl'); xdo(`mousemove ${Math.round(r[0] + r[2] * .65)} ${r[1] + r[3] - 7} click 1`); await until(() => /open help privacy/.test(acts()), 3000);
+    ok('P1. Read the privacy statement: Help\'s privacy page asked of the shell', /open help privacy/.test(acts()), lines('act').slice(-2)) }
+  { click(rect('pcs')); await until(() => /elevate Switch the camera off/.test(acts()), 3000);
+    ok('P2. Camera off: the administrator\'s prompt first, nothing asked of rudolfd yet', /elevate Switch the camera off/.test(acts()) && !/camera\?on/.test(calls()), lines('act').slice(-2)); xdo('key Escape'); await wait(500) }
+  { await scrollTo('pkr1'); click(rect('pkr1')); await until(() => /ask Remove "Signal database key"/.test(acts()), 3000); await wait(400); xdo('key Return'); await wait(300);
+    const d = rect('dialog'); if (d) { xdo('key Escape') } await wait(400);
+    ok('P3. A saved password\'s Remove: asked first (Remove "Signal database key"? …)', /ask Remove "Signal database key"\? org\.signal\.Signal \(Flatpak app\) will be signed out/.test(acts()), lines('act').slice(-3)) }
+  { await scrollTo('ppm1'); await pick('ppm1', 0, 3); await until(() => (J('bd95perm:uAnnA1b2') || {})['Beat Box|microphone'] == 'allow', 3000);
+    ok('P4. Beat Box › use the microphone: Allow (bd95perm:ACCT)', (J('bd95perm:uAnnA1b2') || {})['Beat Box|microphone'] == 'allow', J('bd95perm:uAnnA1b2')) }
+  { await scrollTo('cc'); click(rect('cc')); await until(() => /stor clipclear/.test(acts()), 3000);
+    ok('P5. Clear clipboard history: the hidden page\'s cleared (stor clipclear)', /stor clipclear/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('obin'); click(rect('obin')); xdo('type --delay 20 https://Ads.Example.com/x'); click(rect('obadd')); await until(() => ((SET().oblock || {}).mine || []).includes('ads.example.com'), 3000);
+    ok('P6. Sites you block too: ads.example.com kept in S.oblock.mine (bd95set:ACCT), blocking still on', ((SET().oblock || {}).mine || []).includes('ads.example.com') && SET().oblock.on === true, SET().oblock) }
+  natStop();
+}
+// (1.6.3 Part 3, PR 8) Security Settings: the administrator's prompts and password where the page has them, what is saved and asked
+async function checkSec() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, J = k => { try { return JSON.parse(LS()[k]) } catch (e) { return undefined } };
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 80; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 500) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 500 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('sec'); await until(() => rect('body') && line('page') == 'sec', 20000); await wait(1500);
+  { click(rect('fwn')); await until(() => /elevate Turn off the firewall/.test(acts()), 3000);
+    ok('S1. Firewall off: the administrator\'s prompt first, nothing asked of rudolfd yet', /elevate Turn off the firewall/.test(acts()) && !/firewall\?on/.test(calls()), lines('act').slice(-2)); xdo('key Escape'); await wait(500) }
+  { await scrollTo('fwbi'); click(rect('fwbi')); xdo('type --delay 20 https://www.Bad-Site.example/x'); click(rect('fwba')); await wait(600); await scrollTo('ps'); click(rect('ps')); await wait(300);
+    await scrollTo('sp'); click(rect('sp')); xdo('type --delay 20 wrong-password'); await wait(200); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /say Enter your admin password/.test(acts()), 4000);
+    const s0 = J('bd95sec'); ok('S2. Apply with a wrong password: refused ("Enter your admin password…"), nothing saved', /say Enter your admin password to apply/.test(acts()) && (!s0 || !((s0.fw || {}).block || []).length), [s0, lines('act').slice(-3)]) }
+  { await scrollTo('sp'); click(rect('sp')); xdo('key ctrl+a'); xdo(`type --delay 30 '${PW.replace(/'/g, "'\\''")}'`); await wait(200); click(rect('apply')); await until(() => rect('dialog'), 3000); xdo('key Return'); await until(() => /Security settings applied/.test(acts()), 4000); const s = J('bd95sec') || {};
+    ok('S3. Apply with the password: bd95sec saved (bad-site.example blocked, scripts on), "Security settings applied.", logged', ((s.fw || {}).block || []).includes('bad-site.example') && (s.pol || {}).scripts === true && /Security settings applied/.test(acts()) && /changed security settings/.test(LS().bd95seclog || ''), [s, lines('act').slice(-5)]) }
+  { await scrollTo('scn'); click(rect('scn')); await until(() => /stor avscan/.test(acts()), 3000);
+    ok('S4. Scan now: the hidden page scans the files (stor avscan)', /stor avscan/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('dvb'); click(rect('dvb')); await until(() => /storgo devmon/.test(acts()), 3000);
+    ok('S5. Turn on Developer mode…: the page\'s own dialog (storgo devmon)', /storgo devmon/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('dlon'); click(rect('dlon')); await until(() => /dlerr Write the repository/.test(acts()), 3000);
+    ok('S6. Development link\'s Switch on… with no repository: "Write the repository as owner/name." and nothing asked', /dlerr Write the repository as owner\/name\./.test(acts()) && !/devlink\/on/.test(calls()), lines('act').slice(-2)) }
+  { await scrollTo('dlr'); click(rect('dlr')); xdo('type --delay 20 ann/devlink-test'); click(rect('dlk')); xdo('type --delay 20 test-not-a-token'); await wait(200); await scrollTo('dlon'); click(rect('dlon')); await until(() => /elevate cred Switch the development link on/.test(acts()), 3000);
+    ok('S7. Switch on… with a repository and a token: the administrator\'s name and password asked first (sent with the request)', /elevate cred Switch the development link on: commands from the GitHub repository ann\/devlink-test can look at this computer for 2 hour\(s\)\./.test(acts()) && !/devlink\/on/.test(calls()), lines('act').slice(-2)); xdo('key Escape'); await wait(400) }
+  { await scrollTo('otpq'); await pick('otpq', 1, 3); await until(() => /elevate Change who must use two-step sign-in/.test(acts()), 3000);
+    ok('S8. Two-step sign-in required for administrators: the administrator\'s prompt first', /elevate Change who must use two-step sign-in/.test(acts()) && (J('bd95sys') || {}).mfa === undefined, lines('act').slice(-2)); xdo('key Escape'); await wait(400) }
+  natStop();
+}
+// (1.6.3 Part 3, PR 8) System health: power/set at once, memory's settings after the administrator's prompt, game mode, the page's windows
+async function checkHealth() {
+  ST.state(D, MODES.light, MORE); const c0 = () => calls().length; let mark = c0(); const since = () => calls().slice(mark); const acts = () => lines('act').join('\n');
+  const LS = () => JSON.parse(fs.readFileSync(path.join(D, 'ls.json'))).data, SET = () => JSON.parse(LS()['bd95set:uAnnA1b2'] || '{}');
+  const scrollTo = async n => { const bd = rect('body'); for (let i = 0; i < 80; i++) { const r = rect(n); if (r && r[1] >= bd[1] + 60 && r[1] + r[3] <= bd[1] + 500) break;
+    xdo(`mousemove ${bd[0] + 500} ${bd[1] + 300} click ${!r || r[1] + r[3] > bd[1] + 500 ? 5 : 4}`); await wait(150) } await wait(400) };
+  const pick = async (n, i, of) => { click(rect(n)); await until(() => line('menu'), 3000); await wait(300); const m = line('menu').split(' ').map(Number), rh = (m[3] - 10) / of;
+    xdo(`mousemove ${m[0] + 40} ${Math.round(m[1] + 5 + (i + .5) * rh)}`); await wait(200); xdo('click 1'); await until(() => !line('menu'), 3000); await wait(300) };
+  natStart('health'); await until(() => rect('body') && line('page') == 'health', 20000); await wait(1500);
+  { mark = c0(); await scrollTo('pw_sleep_bat'); await pick('pw_sleep_bat', 4, 6); await until(() => /POST power\/set/.test(since()), 3000);
+    ok('H1. Sleep after, on battery: 30 minutes: power/set?sleep_bat=30 at once', /POST power\/set\?sleep_bat=30(\s|$)/m.test(since()), since()) }
+  { mark = c0(); await scrollTo('mca'); click(rect('mca')); await until(() => /elevate Change the memory settings/.test(acts()), 3000);
+    ok('H2. Close apps with no window open: the administrator\'s prompt first, nothing asked of rudolfd yet', /elevate Change the memory settings/.test(acts()) && !/memory\/settings\?/.test(since()), lines('act').slice(-2)); xdo('key Escape'); await wait(500) }
+  { mark = c0(); await scrollTo('gm61ck'); click(rect('gm61ck')); await until(() => SET().gamemode === false && /POST game\/set\?enabled=0/.test(since()), 3000);
+    ok('H3. Game mode off: S.gamemode false (bd95set:ACCT) and game/set?enabled=0', SET().gamemode === false && /POST game\/set\?enabled=0/.test(since()), [SET().gamemode, since()]) }
+  { await scrollTo('hst'); click(rect('hst')); await until(() => /storgo selftest/.test(acts()), 3000);
+    ok('H4. Run the self-test: the page\'s own window (storgo selftest)', /storgo selftest/.test(acts()), lines('act').slice(-2)) }
+  { await scrollTo('why2'); click(rect('why2')); await until(() => /storgo hlwhy 2/.test(acts()), 3000);
+    ok('H5. The memory event\'s "⚡ Why?": Blitzen asked about that event (storgo hlwhy 2)', /storgo hlwhy 2/.test(acts()), lines('act').slice(-2)) }
+  natStop();
+}
 const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')));
 (async () => {
   fs.writeFileSync(path.join(D, 'tm'), JSON.stringify(SETD));
   BR = await chromium.launch({ignoreDefaultArgs: ['--hide-scrollbars'], args: ['--font-render-hinting=none']});
   // (Storage and backup: the page's own figures, as the native desktop's hidden page works them out (storSnap) and keeps them in bd95stor:ACCT)
-  if (PAGES.includes('stor') && (!ONLY || ONLY.split(',').some(x => x == 'stor' || x.startsWith('stor-') || MODES[x] || x == 'checklist'))) { const {ctx, p} = await signin('light'); MORE['bd95stor:' + ST.ACCT] = await p.evaluate(() => storSnap()); await ctx.close() }
+  if ((PAGES.includes('stor') || PAGES.includes('sec')) && (!ONLY || ONLY.split(',').some(x => ['stor', 'sec'].includes(x.split('-')[0]) || MODES[x] || x == 'checklist'))) { const {ctx, p} = await signin('light'); MORE['bd95stor:' + ST.ACCT] = await p.evaluate(() => storSnap()); await ctx.close() }
   const rows = [];
   for (const mode of Object.keys(MODES)) {
     if (!only(mode) && !(ONLY || '').split(',').some(x => PAGES.includes(x))) continue;
@@ -654,6 +729,9 @@ const SETD = JSON.parse(fs.readFileSync(path.join(__dirname, 'settings_rd.json')
   if (only('checklist') || only('devs-checklist')) await checkDevs();
   if (only('checklist') || only('apps-checklist')) await checkApps();
   if (only('checklist') || only('stor-checklist')) await checkStor();
+  if (only('checklist') || only('priv-checklist')) await checkPriv();
+  if (only('checklist') || only('sec-checklist')) await checkSec();
+  if (only('checklist') || only('health-checklist')) await checkHealth();
   if (only('memory')) await memory();
   await BR.close();
   fs.writeFileSync(path.join(OUT, 'summary.tsv'), rows.map(r => r.join('\t')).join('\n') + '\n');
