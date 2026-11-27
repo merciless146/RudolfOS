@@ -442,8 +442,74 @@ grep -q "^pic alt 'Deer & fir' w 75 align 1$" "$ST17" && grep -q '^obj picture 4
 	grep -q 'alt="Deer &amp; fir"' "$T/pic-out.DOC" && grep -q 'style="max-width:100%;width:75%;float:left;margin:0 10px 6px 0"' "$T/pic-out.DOC"; RC=$?
 kill $WPP17 2>/dev/null
 ok "28. a picture's alt text, width and alignment are read from the page's .DOC and written back as they were" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(objs|obj|pic|words) ' "$ST17" 2>/dev/null | tr '\n' ' '); $(grep -o '<img[^>]*>' "$T/pic-out.DOC" 2>/dev/null | sed 's/base64,[A-Za-z0-9+/=]*/base64,.../' | cut -c1-160); $(tail -2 "$T/wp17.log" 2>/dev/null | tr '\n' ' ')"
+# (the page's Hyperlink dialog (linkDialog): the words, the address, and Cancel / OK. The test fills the words (0=) and the
+#  address (1=) and presses OK: the page's own rule makes an address without its scheme a web one -- example.com is
+#  https://example.com -- and the words carry it as the run's own tag, which the state says as link <address>. Then Ctrl+K
+#  opens the dialog again on the link the cursor stands in, and Escape is its Cancel: the link is as it was)
+ST18=$T/state18.txt; A18=$T/ans18; rm -f "$ST18"; : > "$A18"
+RUDOLF_WP_STATE=$ST18 RUDOLF_WP_ANSWER=$A18 RUDOLF_WP_DIALOG=link DISPLAY=$DSP $RUN "$BIN" >"$T/wp18.log" 2>&1 & WPP18=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^dialog 1$' "$ST18" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+D18=$(grep -c '^dialog 1$' "$ST18" 2>/dev/null)
+printf '0=Rudolf site\n1=example.com\nOK\n' > "$A18"
+i=0; while [ $i -lt 40 ] && ! grep -q '^link https://example.com$' "$ST18" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+L18=$(grep -c '^link https://example.com$' "$ST18" 2>/dev/null); T18=$(grep -c '^text Rudolf site$' "$ST18" 2>/dev/null)
+H18=$(grep -c '^hist 2 2$' "$ST18" 2>/dev/null); G18=$(grep '^tags' "$ST18" 2>/dev/null | grep -c 'a:https://example.com')
+W18=""; i=0; while [ $i -lt 40 ] && [ -z "$W18" ]; do
+	W18=$(DISPLAY=$DSP xdotool search --onlyvisible --pid "$WPP18" 2>/dev/null | tail -1)
+	[ -n "$W18" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W18" ] && DISPLAY=$DSP xdotool windowraise "$W18" 2>/dev/null
+i=0; while [ $i -lt 60 ] && [ -n "$W18" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W18" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W18" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W18" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W18" 480 300 click 1; sleep 0.8; }
+[ -n "$W18" ] && { DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.3; DISPLAY=$DSP xdotool key Right Right; sleep 0.4; }   # (the cursor in the link's own words)
+K18=0; i=0; while [ $i -lt 12 ]; do   # (the page's Ctrl+K: the dialog again, on the link it stands in)
+	DISPLAY=$DSP xdotool key ctrl+k; sleep 0.5
+	grep -q '^dialog 1$' "$ST18" && { K18=1; break; }; i=$((i+1)); done
+DISPLAY=$DSP xdotool key Escape; sleep 0.8
+E18=0; grep -q '^dialog 0$' "$ST18" && grep -q '^link https://example.com$' "$ST18" && grep -q '^text Rudolf site$' "$ST18" && E18=1
+kill $WPP18 2>/dev/null
+ok "29. the page's Hyperlink dialog puts the words in with their address (its own https:// rule), and Ctrl+K opens it again on the link, whose Cancel keeps it" \
+	"$([ "$D18$L18$T18$H18$G18$K18$E18" = 1111111 ] && echo 1)" \
+	"dialog up $D18; the link $L18 with its words $T18 ($H18 as a step, the run's tag $G18); Ctrl+K $K18, and Escape kept it $E18 ($(grep -E '^(link|text|tags|hist|dialog) ' "$ST18" 2>/dev/null | tr '\n' ' '); window $W18 of $WPP18; $(tail -2 "$T/wp18.log" 2>/dev/null | tr '\n' ' '))"
+# (a link in the page's .DOC: its <a href> -- the address with its &amp; as the page escapes it -- is read as the run's own
+#  tag and written back as it came, and the document saved here opens and saves again as the very same bytes)
+python3 - "$T/link.DOC" <<'PY'
+import sys
+doc = ('<!--wp:%7B%7D--><style data-wp>.wp-t{border-collapse:collapse}</style>'
+       '<p>See <a href="https://rudolf.example/?q=1&amp;x=2">Rudolf</a> here</p>')
+open(sys.argv[1], 'w').write(doc)
+PY
+ST19=$T/state19.txt; rm -f "$ST19" "$T/link-out.DOC" "$T/link-out2.DOC"
+RUDOLF_WP_STATE=$ST19 RUDOLF_WP_OPEN="$T/link.DOC" RUDOLF_WP_SAVE="$T/link-out.DOC" DISPLAY=$DSP "$BIN" >"$T/wp19.log" 2>&1 & WPP19=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^words 3$' "$ST19" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 60 ] && [ ! -s "$T/link-out.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+kill $WPP19 2>/dev/null
+ST19B=$T/state19b.txt; rm -f "$ST19B"
+RUDOLF_WP_STATE=$ST19B RUDOLF_WP_OPEN="$T/link-out.DOC" RUDOLF_WP_SAVE="$T/link-out2.DOC" DISPLAY=$DSP "$BIN" >"$T/wp19b.log" 2>&1 & WPP19B=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^words 3$' "$ST19B" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 60 ] && [ ! -s "$T/link-out2.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+cmp -s "$T/link-out.DOC" "$T/link-out2.DOC"; SAME19=$?
+grep -q '<a href="https://rudolf.example/?q=1&amp;x=2">Rudolf</a>' "$T/link-out.DOC" && grep -q '^text See Rudolf here$' "$ST19B" && [ $SAME19 = 0 ]; RC=$?
+kill $WPP19B 2>/dev/null
+ok "30. ...and a link in the page's .DOC is read and written back with its address, its document saving as the very same bytes" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|text|tags|link) ' "$ST19B" 2>/dev/null | tr '\n' ' '); $(grep -o '<a [^>]*>[^<]*</a>' "$T/link-out.DOC" 2>/dev/null | head -2 | tr '\n' ' '); the second save is $( [ $SAME19 = 0 ] && echo 'the same bytes' || echo 'different' ) ($(stat -c %s "$T/link-out.DOC" 2>/dev/null) and $(stat -c %s "$T/link-out2.DOC" 2>/dev/null) bytes)"
+# (the page's Special characters dialog (specialDlg): its own WP_CHARS, in its own order, as a grid of buttons. A press puts
+#  the character in at the cursor and leaves the dialog standing, as a click on the page's dialog body does; Close ends it.
+#  The test names the cell by its own character (c=), so © is put in, the dialog is still up, then — and Close)
+ST20=$T/state20.txt; A20=$T/ans20; rm -f "$ST20"; : > "$A20"
+RUDOLF_WP_STATE=$ST20 RUDOLF_WP_ANSWER=$A20 RUDOLF_WP_DIALOG=chars DISPLAY=$DSP $RUN "$BIN" >"$T/wp20.log" 2>&1 & WPP20=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^dialog 1$' "$ST20" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+D20=$(grep -c '^dialog 1$' "$ST20" 2>/dev/null)
+printf 'c=©\n' > "$A20"
+i=0; while [ $i -lt 40 ] && ! grep -q '^text ©$' "$ST20" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+C20=$(grep -c '^text ©$' "$ST20" 2>/dev/null); S20=$(grep -c '^dialog 1$' "$ST20" 2>/dev/null)
+printf 'c=—\nClose\n' > "$A20"
+i=0; while [ $i -lt 40 ] && ! grep -q '^dialog 0$' "$ST20" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^text ©—$' "$ST20" && grep -q '^words 1$' "$ST20" && grep -q '^chars 2$' "$ST20" && grep -q '^hist 3 3$' "$ST20" &&
+	grep -q '^dialog 0$' "$ST20" && [ "$D20" = 1 ] && [ "$C20" = 1 ] && [ "$S20" = 1 ]; RC=$?
+kill $WPP20 2>/dev/null
+ok "31. the page's Special characters dialog puts the character pressed in and stays, and its Close ends it" "$([ $RC = 0 ] && echo 1)" "dialog up $D20; © in $C20 with the dialog still up $S20; $(grep -E '^(text|words|chars|hist|dialog) ' "$ST20" 2>/dev/null | tr '\n' ' '); $(tail -2 "$T/wp20.log" 2>/dev/null | tr '\n' ' ')"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 
-for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt" "$T/state10.txt" "$T/state11.txt" "$T/state12.txt" "$T/state13.txt" "$T/state14.txt" "$T/state15.txt" "$T/state16.txt" "$T/state17.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
+for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt" "$T/state10.txt" "$T/state11.txt" "$T/state12.txt" "$T/state13.txt" "$T/state14.txt" "$T/state15.txt" "$T/state16.txt" "$T/state17.txt" "$T/state18.txt" "$T/state19b.txt" "$T/state20.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
 echo "$NP passed, $NF failed"; [ $NF = 0 ]

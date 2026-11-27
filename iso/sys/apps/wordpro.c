@@ -55,6 +55,9 @@ static void insert_picture_data(guchar *data, gsize len, const char *alt, int wp
 static void open_doc(const char *path);
 static void hist_push(void);
 static int save_now(void);
+/* (a link: the stretch of the writing carrying an address -- the page's <a href>, kept as the run's own tag "a:<address>") */
+static GtkTextTag *link_at(GtkTextIter *a, GtkTextIter *b);
+static char *link_line(void);
 /* (the page's title: the file's name, or Untitled, and a * while the writing is not in its file) */
 static void set_title(void)
 {
@@ -94,7 +97,11 @@ static void css(void)
 static GtkTextTag *tag_new(const char *name)
 {
 	GtkTextTagTable *tt = gtk_text_buffer_get_tag_table(BUF); GtkTextTag *t = gtk_text_tag_table_lookup(tt, name);
-	return t ? t : gtk_text_buffer_create_tag(BUF, name, NULL);
+	if (t) return t;
+	/* (a link looks like one: the page's .wp-ed a, underlined and in its own blue) */
+	if (!strncmp(name, "a:", 2))
+		return gtk_text_buffer_create_tag(BUF, name, "underline", PANGO_UNDERLINE_SINGLE, "foreground", "#1d4ed8", NULL);
+	return gtk_text_buffer_create_tag(BUF, name, NULL);
 }
 static int has_tag_at(GtkTextIter *i, const char *name)
 {
@@ -360,6 +367,7 @@ static void state_write(void)
 		gtk_entry_get_text(GTK_ENTRY(FI)), gtk_entry_get_text(GTK_ENTRY(REPL)));
 	g_string_append_printf(s, "dirty %d\nask %d\nanswer %d\ndialog %d\n", DIRTY, ASK, ASK_LAST, rui_dialog_box() ? 1 : 0);   /* (the tests read the guard: what is not saved, its question, how it was answered, and a dialog standing open) */
 	g_string_append_printf(s, "on %s\n", ON);
+	{ char *lk = link_line(); g_string_append_printf(s, "link %s\n", lk); g_free(lk); }   /* (the address the cursor stands in, if any) */
 	gtk_text_buffer_get_start_iter(BUF, &a); gtk_text_buffer_get_end_iter(BUF, &b);
 	g_string_append(s, "tags");
 	char last[200] = "";
@@ -497,7 +505,8 @@ static void build_toolbar(void)
    dropdowns are rui_menu, the desktop's menus in the page's own look. An item names one operation: the tables say what an
    item does, and one dispatch does it, so no item needs a function of its own for a single call. */
 enum { OP_NONE, OP_NEW, OP_CLOSE, OP_UNDO, OP_REDO, OP_CUT, OP_COPY, OP_PASTE, OP_SELALL, OP_FIND, OP_REPLACE, OP_ZOOM,
-	OP_TAG, OP_LIST, OP_QUOTE, OP_CLEAR, OP_CASE, OP_WHEN, OP_STATS, OP_KEYS, OP_ABOUT, OP_PICTURE, OP_TABLE, OP_OPEN, OP_SAVE };
+	OP_TAG, OP_LIST, OP_QUOTE, OP_CLEAR, OP_CASE, OP_WHEN, OP_STATS, OP_KEYS, OP_ABOUT, OP_PICTURE, OP_TABLE, OP_LINK,
+	OP_CHARS, OP_OPEN, OP_SAVE };
 typedef struct { const char *label, *key; int off; const char *tag; int z; int op; const char *arg; } Mi;
 #define WPS { NULL, NULL, 0, NULL, 0, OP_NONE, NULL }
 static void noop(int i, void *d) { (void)i; (void)d; }
@@ -872,6 +881,133 @@ static void pic_tools(WpObj *o)
 	rui_form(W, rui_tr("Picture"), NULL, f, 3, B, 3, 1, pic_tools_done, NULL);
 	state_soon();
 }
+/* ------------------------------------------------------------------ the page's Hyperlink dialog (linkDialog) and links
+   A link is a stretch of the writing carrying an address: the page's <a href> is kept as the run's own tag, "a:<address>",
+   which is what the history carries with the words (a run's tags go back with its text), what the save writes as
+   <a href="..."> and what the state says (link <address>). */
+static GtkTextTag *link_at(GtkTextIter *a, GtkTextIter *b)
+{
+	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
+	GSList *l = gtk_text_iter_get_tags(&it); GtkTextTag *t = NULL;
+	for (GSList *k = l; k && !t; k = k->next) {
+		char *nm = NULL; g_object_get(G_OBJECT(k->data), "name", &nm, NULL);
+		if (nm && !strncmp(nm, "a:", 2)) t = k->data;
+		g_free(nm);
+	}
+	g_slist_free(l);
+	if (!t) return NULL;
+	*a = it; *b = it;
+	if (!gtk_text_iter_starts_tag(&it, t)) gtk_text_iter_backward_to_tag_toggle(a, t);
+	if (!gtk_text_iter_ends_tag(&it, t)) gtk_text_iter_forward_to_tag_toggle(b, t);
+	if (gtk_text_iter_compare(&it, b) >= 0) return NULL;   /* (just after it is not in it, as the page's anchorNode is not) */
+	return t;
+}
+static char *link_line(void)
+{
+	GtkTextIter a, b; GtkTextTag *t = link_at(&a, &b); char *nm = NULL;
+	if (!t) return g_strdup("");
+	g_object_get(G_OBJECT(t), "name", &nm, NULL);
+	char *r = g_strdup(nm ? nm + 2 : "");
+	g_free(nm);
+	return r;
+}
+/* (the page's own rule for an address: an http, https, mailto, file or #-address as it is typed, anything else a web one) */
+static int link_absolute(const char *u)
+{
+	return !g_ascii_strncasecmp(u, "http:", 5) || !g_ascii_strncasecmp(u, "https:", 6) ||
+		!g_ascii_strncasecmp(u, "mailto:", 7) || !g_ascii_strncasecmp(u, "file:", 5) || u[0] == '#';
+}
+static void link_remove(void)
+{
+	GtkTextIter a, b; GtkTextTag *t = link_at(&a, &b);
+	if (!t) return;
+	gtk_text_buffer_remove_tag(BUF, t, &a, &b);   /* (the words stay; only the address goes, as the page's unlink does) */
+	counts(); upd_sel(); hist_push(); state_soon();
+}
+/* (the dialog's OK: the words carry the address. The words replace what is chosen, as the page's insertHTML does, and when
+   a link stands at the cursor they are that link's own words replaced) */
+static void link_apply(const char *addr, const char *words)
+{
+	/* (the places are kept as offsets: a change in the buffer moves or ends an iterator, and the range is read back from
+	   the offsets after it -- the same way put_at_end reads an opened document's range) */
+	char *tn = g_strconcat("a:", addr, NULL); GtkTextTag *nt = tag_new(tn); g_free(tn);
+	GtkTextIter la, lb; GtkTextTag *old = link_at(&la, &lb);
+	int oa = old ? gtk_text_iter_get_offset(&la) : 0, ob = old ? gtk_text_iter_get_offset(&lb) : 0;
+	GtkTextIter s, e; int has = sel(&s, &e), off, eo = 0;
+	if (has) { off = gtk_text_iter_get_offset(&s); eo = gtk_text_iter_get_offset(&e); }
+	else { GtkTextIter c; gtk_text_buffer_get_iter_at_mark(BUF, &c, gtk_text_buffer_get_insert(BUF)); off = gtk_text_iter_get_offset(&c); }
+	SILENT = 1;   /* (one step of the history: the link is put in, and its words are not a step of their own) */
+	if (old) {
+		GtkTextIter a2, b2; gtk_text_buffer_get_iter_at_offset(BUF, &a2, oa); gtk_text_buffer_get_iter_at_offset(BUF, &b2, ob);
+		gtk_text_buffer_remove_tag(BUF, old, &a2, &b2);
+	}
+	if (has) {
+		GtkTextIter a2, b2; gtk_text_buffer_get_iter_at_offset(BUF, &a2, off); gtk_text_buffer_get_iter_at_offset(BUF, &b2, eo);
+		gtk_text_buffer_delete(BUF, &a2, &b2);
+	}
+	{ int n = (int)g_utf8_strlen(words, -1); GtkTextIter i, a2, b2;
+	  gtk_text_buffer_get_iter_at_offset(BUF, &i, off); gtk_text_buffer_insert(BUF, &i, words, -1);
+	  gtk_text_buffer_get_iter_at_offset(BUF, &a2, off); gtk_text_buffer_get_iter_at_offset(BUF, &b2, off + n);
+	  gtk_text_buffer_apply_tag(BUF, nt, &a2, &b2); }
+	SILENT = 0;
+	counts(); upd_sel(); hist_push(); state_soon();
+}
+static int LINK_NB;   /* (the buttons the dialog opened with: OK is its last, Remove link its middle when one stands there) */
+static void link_dlg_done(int i, const RuiField *f, void *d);
+static void link_dlg_open(const char *words, const char *addr)
+{
+	static const char *B2[] = { "Cancel", "OK" };
+	static const char *B3[] = { "Cancel", "Remove link", "OK" };
+	GtkTextIter la, lb; int in = link_at(&la, &lb) != NULL;
+	RuiField f[2] = { { "Text", RUI_F_TEXT, words ? words : "" }, { "Address", RUI_F_TEXT, addr ? addr : "https://" } };
+	LINK_NB = in ? 3 : 2;
+	rui_form(W, rui_tr("Hyperlink"), NULL, f, 2, in ? B3 : B2, LINK_NB, 1, link_dlg_done, NULL);
+	state_soon();
+}
+static void link_dlg_done(int i, const RuiField *f, void *d)
+{
+	(void)d; state_soon();
+	if (i < 0) return;   /* (Escape is Cancel: nothing written) */
+	if (i == LINK_NB - 1) {   /* (OK: the page's own rule, and its own words when none is typed) */
+		char *a = g_strstrip(g_strdup(f[1].value ? f[1].value : ""));
+		char *t = g_strstrip(g_strdup(f[0].value ? f[0].value : ""));
+		if (!*a || !strcmp(a, "https://")) {   /* (the page keeps its dialog standing: this one says so, and opens again) */
+			say(rui_tr("Enter an address.")); link_dlg_open(t, a); g_free(a); g_free(t); return; }
+		GString *n = g_string_new(NULL);
+		if (!link_absolute(a)) g_string_append(n, "https://");
+		g_string_append(n, a);
+		link_apply(n->str, *t ? t : n->str);
+		g_string_free(n, TRUE); g_free(a); g_free(t);
+		return;
+	}
+	if (LINK_NB == 3 && i == 1) link_remove();   /* (Remove link) */
+}
+static void link_dlg(void)
+{
+	GtkTextIter la, lb; GtkTextTag *t = link_at(&la, &lb); GtkTextIter s, e;
+	char *w = NULL, *a = NULL;
+	if (t) {   /* (the page's own: the link's words and its address) */
+		char *nm = NULL; g_object_get(G_OBJECT(t), "name", &nm, NULL);
+		w = gtk_text_buffer_get_text(BUF, &la, &lb, FALSE); a = g_strdup(nm ? nm + 2 : ""); g_free(nm);
+	} else if (sel(&s, &e)) w = gtk_text_buffer_get_text(BUF, &s, &e, FALSE);   /* (or what is chosen) */
+	link_dlg_open(w ? w : "", a ? a : "https://");
+	g_free(w); g_free(a);
+}
+/* ------------------------------------------------------------------ the page's Special characters dialog (specialDlg)
+   The page's own WP_CHARS in its own order, a grid of buttons: a press puts the character in at the cursor and leaves the
+   dialog standing, and Close ends it -- which is what its dialog() with a click on its body does */
+static void chars_pick(int i, const char *cell, void *d)
+{
+	(void)i; (void)d;
+	if (!cell) { state_soon(); return; }   /* (a button of its own: Close) */
+	insert_here(cell);   /* (a character, put in as typing puts it in -- the page's insertText -- and a step of the history) */
+}
+static void chars_dlg(void)
+{
+	static const char *B[] = { "Close" };
+	rui_pick(W, rui_tr("Special characters"), WP_CHARS, NWPCHARS, 12, B, 1, 1, chars_pick, NULL);
+	state_soon();
+}
 /* the page's Paste as plain text: the clipboard's text, and none of what came with it */
 static void paste_plain(void)
 {
@@ -918,6 +1054,7 @@ static gboolean dialog_hook(gpointer d)
 {
 	const char *v = d;   /* (the tests: the page's dialog opened as its menu opens it) */
 	if (!strcmp(v, "table")) table_dlg(); else if (!strcmp(v, "picture")) pic_dlg();
+	else if (!strcmp(v, "link")) link_dlg(); else if (!strcmp(v, "chars")) chars_dlg();
 	return G_SOURCE_REMOVE;
 }
 static gboolean pic_tools_hook(gpointer d)
@@ -959,7 +1096,7 @@ static const char *block_el(GtkTextIter *i)
 	g_free(last); return el;
 }
 /* (a run of the writing: the same six inline tags, and the font, size and colour the page writes as spans) */
-typedef struct { int b, i, u, s, sub, sup; char ff[80], col[16]; double sz; } Run;
+typedef struct { int b, i, u, s, sub, sup; char ff[80], col[16], href[400]; double sz; } Run;   /* (href: a link's address) */
 static void run_at(GtkTextIter *it, Run *r)
 {
 	memset(r, 0, sizeof *r);
@@ -971,12 +1108,14 @@ static void run_at(GtkTextIter *it, Run *r)
 		if (!strncmp(nm, "ff:", 3)) snprintf(r->ff, sizeof r->ff, "%s", nm + 3);
 		else if (!strncmp(nm, "fg:", 3)) snprintf(r->col, sizeof r->col, "%s", nm + 3);
 		else if (!strncmp(nm, "sz:", 3)) r->sz = atof(nm + 3);
+		else if (!strncmp(nm, "a:", 2)) g_strlcpy(r->href, nm + 2, sizeof r->href);
 		g_free(nm); }
 	g_slist_free(l);
 }
 static int run_same(Run *a, Run *b) { return memcmp(a, b, sizeof *a) == 0; }
 static void run_open(GString *o, Run *r)
 {
+	if (*r->href) { g_string_append(o, "<a href=\""); esc_into(o, r->href, (int)strlen(r->href)); g_string_append(o, "\">"); }
 	if (r->b) g_string_append(o, "<b>");
 	if (r->i) g_string_append(o, "<i>");
 	if (r->u) g_string_append(o, "<u>");
@@ -1001,6 +1140,7 @@ static void run_close(GString *o, Run *r)
 	if (r->u) g_string_append(o, "</u>");
 	if (r->i) g_string_append(o, "</i>");
 	if (r->b) g_string_append(o, "</b>");
+	if (*r->href) g_string_append(o, "</a>");
 }
 static const char *cell_text(WpObj *o, int r, int c)
 {
@@ -1080,7 +1220,9 @@ static char *tags_at(GtkTextIter *i)
 	g_slist_free(l);
 	g_ptr_array_sort(v, hst_cmp);
 	GString *o = g_string_new(NULL);
-	for (guint n = 0; n < v->len; n++) { if (n) g_string_append_c(o, ','); g_string_append(o, g_ptr_array_index(v, n)); }
+	/* (a run's tags are held apart by the ASCII unit separator, which no address holds, so a link's own address -- one of
+	   them -- comes back whole) */
+	for (guint n = 0; n < v->len; n++) { if (n) g_string_append_c(o, '\x1f'); g_string_append(o, g_ptr_array_index(v, n)); }
 	g_ptr_array_free(v, TRUE);
 	return g_string_free(o, FALSE);
 }
@@ -1107,7 +1249,7 @@ static void hist_runs_apply(GPtrArray *runs)
 		HstRun *r = g_ptr_array_index(runs, k);
 		if (!*r->t || r->b <= r->a) continue;
 		GtkTextIter a, b; gtk_text_buffer_get_iter_at_offset(BUF, &a, r->a); gtk_text_buffer_get_iter_at_offset(BUF, &b, r->b);
-		char **names = g_strsplit(r->t, ",", -1);
+		char **names = g_strsplit(r->t, "\x1f", -1);
 		for (int i = 0; names[i]; i++) if (*names[i]) gtk_text_buffer_apply_tag(BUF, tag_new(names[i]), &a, &b);
 		g_strfreev(names);
 	}
@@ -1475,6 +1617,17 @@ static void open_doc(const char *path)
 			snprintf(pend, sizeof pend, "p");
 			continue;
 		}
+		if (!strncmp(tag, "<a ", 3)) {   /* (a link: its address is the run's own tag, as the model keeps it) */
+			char *h = strstr(tag, "href=\"");
+			if (h && sp < 31) {
+				h += 6; char v[512]; int k = 0; while (*h && *h != '"' && k < 511) v[k++] = *h++; v[k] = 0;
+				char *u = unesc_dup(v, k);
+				stk[sp++] = g_strdup_printf("a:%s", u);
+				g_free(u);
+			}
+			continue;
+		}
+		if (!strncmp(tag, "</a", 3)) { if (sp > 0 && !strncmp(stk[sp - 1], "a:", 2)) g_free((gpointer)stk[--sp]); continue; }
 		if (!strncmp(tag, "<span", 5)) {
 			char *st = strstr(tag, "style=\"");
 			if (st) {
@@ -1540,6 +1693,8 @@ static void menu_do(const Mi *s)
 	case OP_SAVE: save_now(); break;
 	case OP_PICTURE: pic_dlg(); break;   /* (the page's own dialog: a file, a web address, a description) */
 	case OP_TABLE: table_dlg(); break;   /* (the page's own dialog: its counts, its heading row and its borders) */
+	case OP_LINK: link_dlg(); break;   /* (the page's own dialog: the words and the address) */
+	case OP_CHARS: chars_dlg(); break;   /* (the page's own dialog: its symbols, and a press puts one in) */
 	case OP_STATS: show_stats(); break;
 	case OP_KEYS: show_keys(); break;
 	case OP_ABOUT:
@@ -1572,11 +1727,11 @@ static const Mi VIEW_I[] = {
 	{ "Show Notey, the assistant", "", 1, NULL, 0, OP_NONE, NULL } };
 static const Mi INSERT_I[] = {
 	{ "Table...", "", 0, NULL, 0, OP_TABLE, NULL }, { "Picture...", "", 0, NULL, 0, OP_PICTURE, NULL },
-	{ "Hyperlink...", "Ctrl+K", 1, NULL, 0, OP_NONE, NULL }, { "Bookmark...", "", 1, NULL, 0, OP_NONE, NULL },
+	{ "Hyperlink...", "Ctrl+K", 0, NULL, 0, OP_LINK, NULL }, { "Bookmark...", "", 1, NULL, 0, OP_NONE, NULL },
 	{ "Links in this document...", "", 1, NULL, 0, OP_NONE, NULL }, { "Horizontal line", "", 1, NULL, 0, OP_NONE, NULL },
 	{ "Page break", "Ctrl+Enter", 1, NULL, 0, OP_NONE, NULL }, WPS,
 	{ "Date (long)", "", 0, NULL, 0, OP_WHEN, "long" }, { "Date (short)", "", 0, NULL, 0, OP_WHEN, "short" },
-	{ "Time", "", 0, NULL, 0, OP_WHEN, "time" }, { "Special characters...", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
+	{ "Time", "", 0, NULL, 0, OP_WHEN, "time" }, { "Special characters...", "", 0, NULL, 0, OP_CHARS, NULL }, WPS,
 	{ "Footnote...", "", 1, NULL, 0, OP_NONE, NULL }, { "Table of contents / update", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
 	{ "Header and footer...", "", 1, NULL, 0, OP_NONE, NULL }, { "Page numbers", "", 1, NULL, 0, OP_NONE, NULL } };
 static const Mi FORMAT_I[] = {
@@ -1754,6 +1909,7 @@ static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	case GDK_KEY_y: hist_redo(); return TRUE;
 	case GDK_KEY_f: gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); return TRUE;
 	case GDK_KEY_h: gtk_widget_show_all(FIND); gtk_widget_grab_focus(REPL); state_soon(); return TRUE;
+	case GDK_KEY_k: link_dlg(); return TRUE;   /* (the page's Ctrl+K) */
 	case GDK_KEY_n: new_page(); return TRUE;
 	case GDK_KEY_s: save_now(); return TRUE;
 	case GDK_KEY_o: choose_open(); return TRUE;
@@ -1790,7 +1946,12 @@ static gboolean answer_hook(gpointer d)
 {
 	const char *f = d;
 	if (!rui_dialog_box()) return G_SOURCE_CONTINUE;   /* (a form's buttons are pressed as a question's are) */
+	static char *LAST;   /* (what it has already done: a dialog of small buttons stands after a press on one of them, and a press
+							 pressed again on every turn of this hook would put the character in as many times) */
 	char *lab = NULL; if (!g_file_get_contents(f, &lab, NULL, NULL)) return G_SOURCE_CONTINUE;
+	{ char *raw = g_strdup(lab);   /* (as it was read: the scan below ends the lines where they were) */
+	  if (LAST && !strcmp(LAST, raw)) { g_free(raw); g_free(lab); return G_SOURCE_CONTINUE; }
+	  g_free(LAST); LAST = raw; }
 	/* (its lines: "N=value" fills the dialog's field N as its own kind fills it -- a text, a path, a choice's own words, a
 	   check's 1 or 0 -- and the last line that is not one names the button the test would press) */
 	GtkWidget *box = rui_dialog_box(); char *btn = NULL;
@@ -1798,13 +1959,14 @@ static gboolean answer_hook(gpointer d)
 		char *nl = strchr(line, '\n'); if (nl) *nl = 0;
 		g_strstrip(line);
 		char *eq = strchr(line, '=');
-		if (*line && eq && strspn(line, "0123456789") == (size_t)(eq - line)) {
+		if (!strncmp(line, "c=", 2)) rui_pick_click(box, line + 2);   /* (a dialog of small buttons: the one this character says) */
+		else if (*line && eq && strspn(line, "0123456789") == (size_t)(eq - line)) {
 			*eq = 0; GtkWidget *w = rui_form_field(box, atoi(line)); if (w) rui_form_value(w, eq + 1);
 		} else if (*line) { g_free(btn); btn = g_strdup(line); }
 		line = nl ? nl + 1 : NULL;
 	}
 	if (btn) { GtkWidget *b = find_btn(box, rui_tr(btn)); if (b) gtk_button_clicked(GTK_BUTTON(b)); }
-	g_free(btn); g_free(lab);
+	g_free(btn); g_free(lab);   /* (LAST keeps its own copy of what it read) */
 	return G_SOURCE_CONTINUE;
 }
 int main(int argc, char **argv)
