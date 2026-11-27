@@ -339,9 +339,10 @@ Not the hardware: `/dev/video0` is claimed by `uvcvideo`, the ALSA cards expose 
 list carried no capture plug-in at all (1.6.3 added `video4linux2` on 2026-11-27 and took it out the same day, N35), and
 `desktop/apps25b.js` matches `main` byte for byte at the recorder's start block.
 
-Open here, and **answered by N35**: whether Native's silent audio and its missing camera share one cause. They do — the
-capture path is PipeWire-only and the image has no PipeWire — so a build with `video4linux` added would have proved
-nothing. Whether audio would then work without moving the sound server is still untested. Also open: does `new MediaRecorder` on
+Open here, and **answered by N35**: whether Native's silent audio and its missing camera share one cause. **They do not.**
+The camera is refused because the PipeWire device provider is missing — its log says `0 devices` — while the microphone
+reaches a real audio source whose reads fail, with no device-manager warning at all. So a build with `video4linux` added
+would have proved nothing, and putting PipeWire in the image will not by itself bring the microphone back. Also open: does `new MediaRecorder` on
 Native throw, or construct and produce nothing? `MediaRecorderPrivateGStreamer` is present (`000651`), so both are
 possible, and the answer needs the console or the `try`/`catch` above.
 
@@ -355,7 +356,7 @@ Also worth recording: the report's `Hardware check:` line names no engine, which
 2026-11-17 `camera pass (640×480)` and `microphone fail (no microphone)` look like Native results when they match
 Chromium exactly. The line should say which engine produced it.
 
-### N35 — The capture path is PipeWire-only, and the image has no PipeWire (2026-11-27, devlink 000652 and 000653)
+### N35 — The capture path is PipeWire-only, and the image has no PipeWire (2026-11-27, devlink 000652–000657)
 
 Asked after #716 had merged: *before a build proves it, find which capture source this WebKit actually asks for.* Two
 read-only devlink commands say it plainly.
@@ -378,18 +379,33 @@ So Ubuntu 24.04's WebKitGTK 2.52, as this image carries it, has **no v4l2 captur
 through PipeWire, and says so in its own error message. Three consequences:
 
 1. **`video4linux2` (PR #716) is inert.** `libgstvideo4linux2.so` is now in the image and nothing will ever request
-   `v4l2src`. The copy is harmless; the claim that it fixed the camera is not, and is withdrawn (CHANGELOG, 1.6.3).
+   `v4l2src`. The copy is harmless; the claim that it fixed the camera was not, and the line went out of the CHANGELOG
+   (1.6.3 is unreleased, so there was nothing to withdraw in public).
 2. **A plug-in alone would not be enough either.** The capture path needs the `pipewire` GStreamer plug-in **and**
    `libpipewire-0.3` (≥ 0.3.64) **and** a running PipeWire with WirePlumber, which is what publishes the v4l2 camera as a
    node. The image has none of the three. docs/plan-1.6.3.md Part 9 is that work.
-3. **The silent microphone probably has the same cause.** The same device manager serves audio capture; with no provider,
-   `getUserMedia` can resolve to a source that delivers only silence, which is exactly the −120 dB floor. That also
-   explains why Chromium, with its own capture stack, reads −4 dB on the same machine.
+3. **The silent microphone is a different fault — it does not share this one**, and the first version of this finding
+guessed that it did. The desktop's own logs (`000656`, `000657`, read-only) show each failure separately:
+   - `/persist/var/log/starts/1/native-desktop.log`: `WARN webkitpipewirecapturedevicemanager
+     PipeWireCaptureDeviceManager.cpp:62:computeCaptureDevices: PipeWire Device Provider is missing or too old. Please
+     install PipeWire >= 0.3.64.` followed by `Video capture was requested but no device was found amongst 0 devices`.
+     That is the camera, named by WebKit itself.
+   - `/persist/var/log/starts/3/native-desktop.log`: the same warning at the camera's request, and minutes later the audio
+     track's own pipeline — `WebAudioProvider_MediaStreamTrack_…` →
+     `WebKitMediaStreamSrc:webkitmediastreamsrc3/GstAppSrc:capture-audiosrc3` — with `basesrc … streaming stopped, reason
+     not-linked (-1)`, while an audio source's ring buffer reports `audiosrc
+     gstaudiosrc.c:227:audioringbuffer_thread_func:<Audio…> error reading data -1 (reason: Success), skipping segment`. No
+     `audio capture … no device was found` line, and no device-manager warning at that moment: WebKit reaches a real audio
+     source and that source cannot read from it.
+   - Which element it is (`pulsesrc` or `alsasrc`; both plug-ins are in the image) and why the read fails are still open.
+     `pactl` is not in the image, so the sound server has to be asked another way; Chromium, with its own capture stack,
+     reads −4 dB on the same machine.
 
-Nothing here was changed on the laptop: both commands were read-only and ran with `approved: not asked (Ask first was
-off)`. The v4l2 entry was withdrawn from `addwebkit.sh` and `pipewire` put in its place, with a warning when the build host
-has no `libgstpipewire.so` — the loop skips a missing plug-in without a word, which is how a release shipped with no
-capture source at all.
+Nothing here was changed on the laptop: all four commands were read-only and ran with `approved: not asked (Ask first was
+off)`. The v4l2 entry came out of `addwebkit.sh` and `pipewire` went in its place, with a warning when the build host has
+no `libgstpipewire.so` — the loop skips a missing plug-in without a word, which is how a release shipped with no capture
+source at all. Seen in the same logs, and not this session's business: `Could not open log file
+'+/run/rudolf/webkit-video.log'` — a stray `+` in the path the desktop hands to WebKit.
 
 ## V58: the restart without the stick
 
