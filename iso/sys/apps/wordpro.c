@@ -603,6 +603,8 @@ static void obj_place(GtkTextChildAnchor *a, WpObj *o)
 	o->at = a;
 	g_signal_connect(o->w, "destroy", G_CALLBACK(obj_gone), NULL);
 	g_ptr_array_add(OBJ, o);
+	gtk_widget_show_all(o->w);   /* (an object made after the window is shown is not shown with it, and an unrealized table is
+									  not on the page: its grid and cells were never drawn, and a cell never took a key) */
 	gtk_text_view_add_child_at_anchor(GTK_TEXT_VIEW(ED), o->w, a);
 }
 /* (the objects go before the text that holds their places is replaced: a buffer change takes the place of a picture away,
