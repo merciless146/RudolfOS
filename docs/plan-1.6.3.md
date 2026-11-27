@@ -816,6 +816,46 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    once gave no message at sign-in (unconfirmed); a battery shown on a computer without one (browser edition).
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
+### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)
+
+**The fault.** On the Native desktop Camera answers "No camera is available or access is blocked" with the privacy switch
+on, the check's microphone reads −120 dB (all-zero samples) and Voice Recorder records nothing; on the same build and
+machine Chromium does all three (checklist V1–V3; findings N33 and N35 in docs/native-findings-2026-11-26.md).
+
+**What the machine says** (devlink `000652` and `000653`, read-only):
+- `libwebkit2gtk-4.1.so.0` names `pipewiresrc` and `pipewiredeviceprovider` and nothing else: `v4l2src` and
+  `v4l2deviceprovider` appear **zero** times. Its classes are `PipeWireCaptureDeviceManager` and "WebKit PipeWire Capture
+  Device Manager", it has `OpenPipeWireRemote`, and it carries "PipeWire Device Provider is missing or too old. Please
+  install PipeWire >= 0.3.64."
+- The image has no PipeWire in any form: no `libpipewire-0.3` under `/usr/lib`, no `pipewire` or `wireplumber` program,
+  and no `libgstpipewire.so` among the 39 GStreamer plug-ins. Its sound server is PulseAudio 16.1 (`iso/sndbuild.sh`).
+- The hardware is fine: `/dev/video0` and `/dev/video1` are there, `uvcvideo` bound to the UVC camera.
+
+**Therefore.** No camera plug-in can fix this: Ubuntu 24.04's WebKitGTK 2.52 captures only through PipeWire, so the image
+needs all four of (1) `libpipewire-0.3` ≥ 0.3.64, (2) the PipeWire daemon, (3) WirePlumber as its session manager with a
+monitor that publishes the v4l2 camera as a node, and (4) the `pipewire` GStreamer plug-in (`gstreamer1.0-pipewire`),
+which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
+
+**The work.**
+1. Bring PipeWire and WirePlumber into the root file system as PulseAudio is brought (`iso/sndbuild.sh`, and the sound
+   server section of `iso/mkrootfs.sh`): the programs, `libpipewire-0.3`, the SPA plug-ins (at least `v4l2` and
+   `support`), `/usr/share/pipewire` and `/usr/share/wireplumber`, and WirePlumber's D-Bus policy files.
+2. Start them with the session, not at boot, and decide with the owner whether PipeWire runs **beside** PulseAudio or
+   **as** the sound server in its place. Beside is the smaller step and keeps `rudolf-sound`'s PulseAudio commands
+   (`sound`, `hotkey mic`, the volume overlay) working.
+3. If it runs beside PulseAudio, turn WirePlumber's ALSA monitor off in its configuration, leaving the v4l2 (and libcamera)
+   monitors: otherwise it takes the sound cards PulseAudio is using.
+4. Leave the microphone on PulseAudio unless the owner chooses the full move: `pulsesrc` is what Native's audio capture
+   uses today, and replacing the sound server is a part of its own.
+5. **Test on the Vivobook** (checklist V2, V3, V1): the camera's preview at 640×480, a photo and a 5 s video saved and
+   opened, the microphone's level no longer at −120 dB, and Voice Recorder producing a clip. Then with PipeWire stopped, to
+   see what the app says — the Recorder's `try`/`catch` (1.6.3) names it.
+6. **Cost:** two more daemons and their libraries, and their memory; read the native desktop's idle figure (checklist V42)
+   before and after.
+
+**Not this Part:** Oracle's WebRTC, which Native's WebKit does not have at all (docs/plan-1.5.9.md 7.1), and the camera in
+Linux apps, which use the Debian container's own stack.
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
