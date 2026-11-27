@@ -151,4 +151,6 @@ grep -q '^words 6$' "$ST6" && grep -q '^chars 15$' "$ST6" && grep -q '^tags b' "
 kill $WPP6 2>/dev/null
 ok "17. ...and what was saved here opens again as it was (the round trip)" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST6" 2>/dev/null); $(tail -2 "$T/wp6.log" 2>/dev/null)"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
+for f in "$T/state5.txt" "$T/state6.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
+[ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
 echo "$NP passed, $NF failed"; [ $NF = 0 ]

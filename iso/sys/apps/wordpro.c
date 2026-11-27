@@ -889,20 +889,23 @@ static void open_doc(const char *path)
 			put_unescaped(p, (int)len, stk, sp, cell);
 			p += len; continue;
 		}
-		char *e = strchr(p, '>'); if (!e) break;
-		size_t tl = (size_t)(e - p + 1); char tag[512];
-		if (tl >= sizeof tag) { p = e + 1; continue; }
-		memcpy(tag, p, tl); tag[tl] = 0; p = e + 1;
-		if (!strncmp(tag, "<img", 4)) {
-			char *s = strstr(tag, "src=\"data:"), *cm = s ? strchr(s, ',') : NULL, *q = cm ? strchr(cm + 1, '"') : NULL;
-			if (cm && q) {
+		/* (a picture's tag is as long as its picture, so it is never copied: it is read where it stands) */
+		if (!strncmp(p, "<img", 4)) {
+			char *gt = strstr(p, ">");
+			if (!gt) break;
+			char *s = strstr(p, "src=\"data:"), *cm = s && s < gt ? strchr(s, ',') : NULL, *q = cm ? strchr(cm + 1, '"') : NULL;
+			if (cm && q && q < gt) {
 				char *b64 = g_strndup(cm + 1, (gsize)(q - cm - 1));
 				gsize dl = 0; guchar *d = g_base64_decode(b64, &dl);
 				g_free(b64);
 				if (d) { cursor_end(); insert_picture_data(d, dl); }
 			}
-			continue;
+			p = gt + 1; continue;
 		}
+		char *e = strchr(p, '>'); if (!e) break;
+		size_t tl = (size_t)(e - p + 1); char tag[512];
+		if (tl >= sizeof tag) { p = e + 1; continue; }
+		memcpy(tag, p, tl); tag[tl] = 0; p = e + 1;
 		if (!strncmp(tag, "<table", 6)) { in_table = 1; rows = g_ptr_array_new(); cells = NULL; cell = NULL; continue; }
 		if (!strncmp(tag, "</table", 7)) {
 			if (rows && rows->len) { cursor_end(); insert_table_text(rows); }
