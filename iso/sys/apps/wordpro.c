@@ -56,19 +56,20 @@ static GtkTextTag *tag_new(const char *name)
 static void say(const char *m) { snprintf(SAY, sizeof SAY, "%s", m ? m : ""); if (STAT_MSG) gtk_label_set_text(GTK_LABEL(STAT_MSG), SAY); }
 static int sel(GtkTextIter *s, GtkTextIter *e) { return gtk_text_buffer_get_selection_bounds(BUF, s, e); }
 static int need_sel(void) { GtkTextIter s, e; if (sel(&s, &e)) return 1; say("Select some text first."); state_soon(); return 0; }
+/* (the selection itself, not only whether there is one: the tag is applied to these iterators) */
 static void apply_name(const char *name)
 {
-	GtkTextIter s, e; if (!need_sel()) return;
+	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
 	gtk_text_buffer_apply_tag(BUF, tag_new(name), &s, &e); counts(); state_soon();
 }
 static void apply_str(const char *name, const char *prop, const char *v)
 {
-	GtkTextIter s, e; if (!need_sel()) return;
+	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
 	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
 }
 static void apply_dbl(const char *name, const char *prop, double v)
 {
-	GtkTextIter s, e; if (!need_sel()) return;
+	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
 	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
 }
 static void toggle(GtkWidget *b, gpointer d) { (void)b; apply_name((const char *)d); }
