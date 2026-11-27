@@ -36,11 +36,14 @@ ok "1. the window opens, called WordPro" "$([ -n "$WIN" ] && echo 1)" "no window
 grep -q '^styles 9$' "$ST" && grep -q '^fonts 12$' "$ST"
 ok "2. the toolbar's lists are the page's: 9 styles, 12 fonts (mkwordpro.py)" "$([ $? = 0 ] && echo 1)" "$(head -20 "$ST")"
 # (the window takes the keys, as a person's first press gives them to it; there is no window manager on this display, so
-#  the focus is set with X's own request and the keys and the press go in as the X server's own events)
-DISPLAY=$DSP xdotool windowfocus --sync "$WIN" 2>/dev/null; sleep 0.8
-DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.6
-DISPLAY=$DSP xdotool type --delay 12 'Hello world'
-sleep 1
+#  the focus is set with X's own request, waited for, and the keys and the press go in as the X server's own events)
+i=0; while [ $i -lt 60 ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+sleep 1; DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 1
+i=0; while [ $i -lt 3 ]; do   # (a first press into a window that has just appeared can be lost: tried again, as a person would)
+	DISPLAY=$DSP xdotool type --delay 12 'Hello world'; sleep 1
+	grep -q '^words 2$' "$ST" && break
+	DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
 grep -q '^words 2$' "$ST" && grep -q '^chars 10$' "$ST"
 ok "3. typing counts the words and the characters" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(words|chars) ' "$ST")"
 DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key ctrl+b; sleep 1
