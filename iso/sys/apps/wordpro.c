@@ -273,6 +273,19 @@ static void on_find_close(GtkWidget *b, gpointer d) { (void)b; (void)d; gtk_widg
 
 /* ------------------------------------------------------------------ the counts, and the state the tests read */
 static char *doc_text(void) { GtkTextIter s, e; gtk_text_buffer_get_start_iter(BUF, &s); gtk_text_buffer_get_end_iter(BUF, &e); return gtk_text_buffer_get_text(BUF, &s, &e, FALSE); }
+/* (what the writing is for the history: the same text, but with the place of every picture and table in it. get_text
+   leaves the placeholders out, which is right for the page's words and for a save -- and would lose where an object
+   stands in an entry, so an entry keeps them itself) */
+static char *hist_text(void)
+{
+	GString *o = g_string_new(NULL);
+	GtkTextIter i, e; gtk_text_buffer_get_start_iter(BUF, &i); gtk_text_buffer_get_end_iter(BUF, &e);
+	for (; gtk_text_iter_compare(&i, &e) < 0; gtk_text_iter_forward_char(&i)) {
+		gunichar c = gtk_text_iter_get_char(&i);
+		if (c == 0xFFFC) g_string_append(o, "\xef\xbf\xbc"); else g_string_append_unichar(o, c);
+	}
+	return g_string_free(o, FALSE);
+}
 /* (a picture or a table's place is the page's placeholder character, not a word and not a character of the writing) */
 static int words_of(const char *t) { int n = 0, in = 0; for (const char *p = t; *p; p++) {
 	if (!strncmp(p, "\xef\xbf\xbc", 3)) { p += 2; in = 0; continue; }
@@ -809,7 +822,7 @@ static Snap *snap_of(WpObj *o)
 static Hist *hist_now(void)
 {
 	Hist *h = g_new0(Hist, 1);
-	h->t = doc_text();
+	h->t = hist_text();
 	h->objs = g_ptr_array_new_with_free_func(snap_free);
 	GtkTextIter i, e; gtk_text_buffer_get_start_iter(BUF, &i); gtk_text_buffer_get_end_iter(BUF, &e);
 	for (; gtk_text_iter_compare(&i, &e) < 0; gtk_text_iter_forward_char(&i))
