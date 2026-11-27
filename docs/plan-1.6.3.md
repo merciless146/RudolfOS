@@ -138,11 +138,32 @@ accent colours), its memory at idle against the web version, built in the releas
   name (a file and a description), the tools set as one step of the history, and a .DOC whose picture carries
   `alt="Deer &amp; fir"` with a 75 % left-floated style, read as `w 75 align 1` and written back byte for byte. 28 cases,
   all green (349800 bytes); the check found the width tool's style read as max-width's 100 %, which is fixed.
+- **Branch `wordpro-11`: the page's Hyperlink and Special characters dialogs, and a link in the model** (item 1's next
+  dialogs): `linkDialog` -- *Text* and *Address*, Cancel / OK, and *Remove link* when a link stands at the cursor, on
+  Ctrl+K as on its Insert item -- with the page's own rules: an address that starts with a scheme (`http:`, `https:`,
+  `mailto:`, `file:` or `#`) is used as typed and anything else gets `https://`, the words are the typed ones or the
+  address itself, an empty one or a bare `https://` is refused, and the words replace what was chosen, as its
+  `insertHTML` does. A link is now part of the model: a run of the writing carrying its address in its own tag
+  (`a:<address>`), which is what the history carries with the words, what the state says (`link <address>`), and what the
+  .DOC writes as `<a href="...">` and reads back -- so the web WordPro's link opens here as it was and saves as it was. A
+  run's tags are held apart by the ASCII unit separator instead of a comma, so an address holding a comma comes back
+  whole. The **Special characters** dialog (`specialDlg`) is the page's own `WP_CHARS`, now read at build time by
+  `mkwordpro.py` like its styles and fonts, in its 12-column grid: a press puts the character in and leaves the dialog
+  standing (as a click on the page's dialog body does) and *Close* ends it -- `librudolf-ui` gains `rui_pick` for a dialog
+  of small buttons, and `rui_pick_click` for a check to press one by its own character. The check's cases 29-31 are the
+  dialog filled by name (an address without its scheme becomes `https://example.com`), the same dialog opened on that
+  link by Ctrl+K with its Cancel keeping it, a .DOC's `<a href>` read and written back byte for byte, and `©` and `—` put
+  in by the character dialog with it still standing until Close. 31 cases, all green (363256 bytes). The check found
+  three things, all fixed: a tag that ends at a place is not one of the tags at that place (so the caret just after a
+  link's words was said to be outside it, and is inside it now, as a browser's caret at an anchor's end is), the
+  characters count was counting bytes (an em dash was 3), and the case's window search by pid finds nothing under the
+  debugger, so it looks for the window by its name.
 - **Not in this step, by the plan's own split:** the dialogs of those items that are still to come (open, save, import,
-  export, page setup, print, link, special characters, header and footer), the Table menu's other items (insert and delete
-  a row or a column, merge, shade, toggle borders and header row), the picture's web address and the way a floated picture
-  wraps the writing round it, links, page setup, headers and footers, the table of contents, printing, and the rest of the
-  page's HTML (lists, the paragraph classes' other blocks, a nested table) -- steps 1 to 3. The native desktop keeps opening the web WordPro until the
+  export, page setup, print, header and footer), the Table menu's other items (insert and delete a row or a column, merge,
+  shade, toggle borders and header row), the picture's web address and the way a floated picture wraps the writing round
+  it, following a link (the page's Ctrl+click and Oracle's browser), its *Bookmark* and *Links in this document* items,
+  page setup, headers and footers, the table of contents, printing, and the rest of the page's HTML (lists, the paragraph
+  classes' other blocks, a nested table) -- steps 1 to 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
 #### The document model (decided 2026-11-27, step 2 begins: tables and pictures)
