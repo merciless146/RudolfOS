@@ -25,11 +25,17 @@
 
 static RuiWin *W; static GtkWidget *ED, *TB, *FIND, *FI, *REPL, *STAT_PG, *STAT_W, *STAT_C, *STAT_MSG, *ZOOMW;
 static GtkTextBuffer *BUF;
+/* the toolbar's choices, kept so the toolbar can show what the writing is (the page's updSel): the toggles, the four
+   alignments, the style and font boxes and the size */
+static GtkWidget *BTN_B, *BTN_I, *BTN_U, *BTN_S, *BTN_SUB, *BTN_SUP, *ALN[4], *STYLEW, *FONTW, *SIZEW;
+static int UPDATING;
 static int ZOOM = 100; static char SAY[200]; static const char *FAMILY = "Times New Roman"; static double PT = 12;
+static char ON[40];   /* (the toggles the cursor's place has, as the page's updSel writes them) */
 
 /* ------------------------------------------------------------------ tags, and the page's "select some text first" */
 static void state_soon(void);
 static void counts(void);
+static void upd_sel(void);
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
 static void css(void)
 {
@@ -37,6 +43,7 @@ static void css(void)
 		".wp-tb{background:#f9fafb;border-bottom:1px solid #d1d5db}"
 		"button.wp-tb{min-width:26px;padding:0 5px;border:1px solid transparent;background:transparent;border-radius:4px;font-size:13px;color:#111}"
 		"button.wp-tb:hover{background:#e0e7ff;border-color:#c7d2fe}"
+		"button.wp-on{background:#c7d2fe;border-color:#818cf8}"   /* (the page's .wp-tb button.on) */
 		"combobox.wp-tb,combobox.wp-tb button{border:1px solid #d1d5db;border-radius:4px;background:#fff;font-size:12px;color:#111}"
 		"entry.wp-tb,spinbutton.wp-tb{border:1px solid #d1d5db;border-radius:4px;background:#fff;font-size:12px;color:#111}"
 		".wp-sep{background:#d1d5db}"
@@ -53,6 +60,19 @@ static GtkTextTag *tag_new(const char *name)
 	GtkTextTagTable *tt = gtk_text_buffer_get_tag_table(BUF); GtkTextTag *t = gtk_text_tag_table_lookup(tt, name);
 	return t ? t : gtk_text_buffer_create_tag(BUF, name, NULL);
 }
+static int has_tag_at(GtkTextIter *i, const char *name)
+{
+	GSList *l = gtk_text_iter_get_tags(i); int has = 0;
+	for (GSList *k = l; k && !has; k = k->next) { char *nm = NULL; g_object_get(G_OBJECT(k->data), "name", &nm, NULL); if (nm && !strcmp(nm, name)) has = 1; g_free(nm); }
+	g_slist_free(l); return has;
+}
+/* (the page's textDecide: every character of the choice has it, or with no choice the cursor's place) */
+static int all_have(GtkTextIter *s, GtkTextIter *e, const char *name)
+{
+	if (gtk_text_iter_equal(s, e)) return has_tag_at(s, name);
+	for (GtkTextIter i = *s; gtk_text_iter_compare(&i, e) < 0; gtk_text_iter_forward_char(&i)) if (!has_tag_at(&i, name)) return 0;
+	return 1;
+}
 static void say(const char *m) { snprintf(SAY, sizeof SAY, "%s", m ? m : ""); if (STAT_MSG) gtk_label_set_text(GTK_LABEL(STAT_MSG), SAY); }
 static int sel(GtkTextIter *s, GtkTextIter *e) { return gtk_text_buffer_get_selection_bounds(BUF, s, e); }
 static int need_sel(void) { GtkTextIter s, e; if (sel(&s, &e)) return 1; say("Select some text first."); state_soon(); return 0; }
@@ -60,7 +80,10 @@ static int need_sel(void) { GtkTextIter s, e; if (sel(&s, &e)) return 1; say("Se
 static void apply_name(const char *name)
 {
 	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
-	gtk_text_buffer_apply_tag(BUF, tag_new(name), &s, &e); counts(); state_soon();
+	GtkTextTag *t = tag_new(name);
+	if (all_have(&s, &e, name)) gtk_text_buffer_remove_tag(BUF, t, &s, &e);   /* (a second press takes it off, as the page's) */
+	else gtk_text_buffer_apply_tag(BUF, t, &s, &e);
+	counts(); upd_sel(); state_soon();
 }
 static void apply_str(const char *name, const char *prop, const char *v)
 {
@@ -90,7 +113,7 @@ static void on_colour(GtkColorButton *b, gpointer d)
 }
 static void on_family(GtkComboBox *c, gpointer d)
 {
-	(void)d; int i = gtk_combo_box_get_active(c); if (i < 0 || i >= NWPFONTS) return;
+	(void)d; if (UPDATING) return; int i = gtk_combo_box_get_active(c); if (i < 0 || i >= NWPFONTS) return;
 	char n[96]; snprintf(n, sizeof n, "ff:%s", WP_FONTS[i]); apply_str(n, "family", WP_FONTS[i]);
 }
 static void on_size(GtkWidget *w, gpointer d)
@@ -109,7 +132,7 @@ static void inc_size(GtkWidget *b, gpointer d)
 }
 static void on_style(GtkComboBox *c, gpointer d)
 {
-	(void)d; int i = gtk_combo_box_get_active(c); if (i < 0 || i >= NWPSTYLES) return;
+	(void)d; if (UPDATING) return; int i = gtk_combo_box_get_active(c); if (i < 0 || i >= NWPSTYLES) return;
 	GtkTextIter s, e; if (!need_sel()) return;
 	static const struct { double pt; int bold, italic; int just; } ST[] = {
 		{ 12, 0, 0, GTK_JUSTIFY_LEFT }, { 20, 1, 0, GTK_JUSTIFY_LEFT }, { 16, 1, 0, GTK_JUSTIFY_LEFT }, { 14, 1, 0, GTK_JUSTIFY_LEFT },
@@ -232,6 +255,42 @@ static void on_find_close(GtkWidget *b, gpointer d) { (void)b; (void)d; gtk_widg
 static char *doc_text(void) { GtkTextIter s, e; gtk_text_buffer_get_start_iter(BUF, &s); gtk_text_buffer_get_end_iter(BUF, &e); return gtk_text_buffer_get_text(BUF, &s, &e, FALSE); }
 static int words_of(const char *t) { int n = 0, in = 0; for (const char *p = t; *p; p++) { if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') in = 0; else if (!in) { in = 1; n++; } } return n; }
 static int chars_of(const char *t) { int n = 0; for (const char *p = t; *p; p++) if (*p != '\n' && *p != '\r') n++; return n; }
+/* ------------------------------------------------------------------ what the writing is, shown in the toolbar (updSel) */
+static void on_class(GtkWidget *b, int on)
+{
+	GtkStyleContext *c = gtk_widget_get_style_context(b);
+	if (on) gtk_style_context_add_class(c, "wp-on"); else gtk_style_context_remove_class(c, "wp-on");
+}
+static void upd_sel(void)
+{
+	if (!BUF || !BTN_B) return;
+	GtkTextIter s, e, at; int sel_ = gtk_text_buffer_get_selection_bounds(BUF, &s, &e);
+	gtk_text_buffer_get_iter_at_mark(BUF, &at, gtk_text_buffer_get_insert(BUF));
+	/* (a choice is on when every character of the choice has it, as the page asks textDecide: no choice, the cursor's) */
+	struct { GtkWidget *b; const char *t; } T[] = { { BTN_B, "b" }, { BTN_I, "i" }, { BTN_U, "u" }, { BTN_S, "s" }, { BTN_SUB, "sub" }, { BTN_SUP, "sup" } };
+	char on[40] = "";
+	for (unsigned i = 0; i < G_N_ELEMENTS(T); i++) {
+		int v = has_tag_at(&at, T[i].t); on_class(T[i].b, v);
+		if (v) { size_t n = strlen(on); snprintf(on + n, sizeof on - n, "%s%s", n ? "," : "", T[i].t); }
+	}
+	for (int i = 0; i < 4; i++) if (ALN[i]) { char n[16]; snprintf(n, sizeof n, "al:%s", i == 0 ? "left" : i == 1 ? "center" : i == 2 ? "right" : "fill"); on_class(ALN[i], has_tag_at(&at, n)); }
+	/* the size and the style the cursor is in, as the page writes them back into its boxes */
+	double pt = PT; char sty[32] = "p";
+	{ GSList *l = gtk_text_iter_get_tags(&at);
+	  for (GSList *k = l; k; k = k->next) { char *nm = NULL; g_object_get(G_OBJECT(k->data), "name", &nm, NULL);
+		if (nm && !strncmp(nm, "sz:", 3)) pt = atof(nm + 3);
+		if (nm && !strncmp(nm, "st:", 3)) snprintf(sty, sizeof sty, "%s", nm + 3);
+		if (nm && !strncmp(nm, "ff:", 3) && FONTW) for (int i = 0; i < NWPFONTS; i++) if (!strcmp(WP_FONTS[i], nm + 3) && !gtk_widget_has_focus(FONTW)) { UPDATING = 1; gtk_combo_box_set_active(GTK_COMBO_BOX(FONTW), i); UPDATING = 0; }
+		g_free(nm); }
+	  g_slist_free(l); }
+	if (SIZEW && !gtk_widget_has_focus(SIZEW)) { char t[16]; snprintf(t, sizeof t, "%.0f", pt); if (strcmp(gtk_entry_get_text(GTK_ENTRY(SIZEW)), t)) gtk_entry_set_text(GTK_ENTRY(SIZEW), t); }
+	if (STYLEW && !UPDATING && !gtk_widget_has_focus(STYLEW)) for (int i = 0; i < NWPSTYLES; i++)
+		if (!strcmp(WP_STYLES[i].k, sty) && gtk_combo_box_get_active(GTK_COMBO_BOX(STYLEW)) != i) { UPDATING = 1; gtk_combo_box_set_active(GTK_COMBO_BOX(STYLEW), i); UPDATING = 0; }
+	(void)sel_;   /* (the cursor's place decides what the boxes show, as the page's updSel) */
+	snprintf(ON, sizeof ON, "%s", on);
+	state_soon();
+}
+static void on_cursor(GtkTextBuffer *b, GParamSpec *p, gpointer d) { (void)b; (void)p; (void)d; upd_sel(); }
 static void counts(void)
 {
 	char *t = doc_text(); char b[96];
@@ -246,6 +305,7 @@ static void state_write(void)
 	GtkTextIter a, b; int has = sel(&a, &b);
 	g_string_append_printf(s, "font %s\nsize %.1f\nzoom %d\nwords %d\nchars %d\nsel %d\nsay %s\nstyles %d\nfonts %d\n",
 		FAMILY, PT, ZOOM, words_of(t), chars_of(t), has, SAY, NWPSTYLES, NWPFONTS);
+	g_string_append_printf(s, "on %s\n", ON);
 	gtk_text_buffer_get_start_iter(BUF, &a); gtk_text_buffer_get_end_iter(BUF, &b);
 	g_string_append(s, "tags");
 	char last[200] = "";
@@ -280,7 +340,7 @@ static void hist_push(void)
 	HIST_T[HIST_N++] = t; HIST_I = HIST_N;
 }
 static void on_text(GtkTextBuffer *b, gpointer d) { (void)b; (void)d; hist_push(); counts(); state_soon(); }
-static void on_mark(GtkTextBuffer *b, GtkTextIter *i, GtkTextMark *m, gpointer d) { (void)b; (void)i; (void)m; (void)d; counts(); state_soon(); }
+static void on_mark(GtkTextBuffer *b, GtkTextIter *i, GtkTextMark *m, gpointer d) { (void)b; (void)i; (void)m; (void)d; counts(); upd_sel(); state_soon(); }
 
 /* ------------------------------------------------------------------ the toolbar, drawn as the page's .wp-tb */
 static GtkWidget *tb_button(const char *label, const char *tip, GCallback cb, const char *d)
@@ -317,14 +377,14 @@ static void build_toolbar(void)
 	GtkWidget *st = gtk_combo_box_text_new();
 	for (int i = 0; i < NWPSTYLES; i++) gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(st), rui_tr(WP_STYLES[i].name));
 	gtk_widget_set_tooltip_text(st, rui_tr("Paragraph style"));
-	gtk_widget_set_size_request(st, (int)lround(rui_px(104)), (int)lround(rui_px(26)));
+	gtk_widget_set_size_request(st, (int)lround(rui_px(104)), (int)lround(rui_px(26))); STYLEW = st;
 	gtk_combo_box_set_active(GTK_COMBO_BOX(st), 0); g_signal_connect(st, "changed", G_CALLBACK(on_style), NULL);
 	gtk_style_context_add_class(gtk_widget_get_style_context(st), "wp-tb"); tb_add(TB, st);
 
 	GtkWidget *ff = gtk_combo_box_text_new();
 	for (int i = 0; i < NWPFONTS; i++) gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(ff), WP_FONTS[i]);
 	gtk_widget_set_tooltip_text(ff, rui_tr("Font"));
-	gtk_widget_set_size_request(ff, (int)lround(rui_px(128)), (int)lround(rui_px(26)));
+	gtk_widget_set_size_request(ff, (int)lround(rui_px(128)), (int)lround(rui_px(26))); FONTW = ff;
 	gtk_combo_box_set_active(GTK_COMBO_BOX(ff), 0); g_signal_connect(ff, "changed", G_CALLBACK(on_family), NULL);
 	gtk_style_context_add_class(gtk_widget_get_style_context(ff), "wp-tb"); tb_add(TB, ff);
 
@@ -332,15 +392,15 @@ static void build_toolbar(void)
 	{ GtkWidget *sz = gtk_entry_new(); gtk_entry_set_text(GTK_ENTRY(sz), "12"); gtk_entry_set_width_chars(GTK_ENTRY(sz), 3);
 	  gtk_entry_set_max_length(GTK_ENTRY(sz), 3); gtk_entry_set_alignment(GTK_ENTRY(sz), 0.5);
 	  gtk_widget_set_tooltip_text(sz, rui_tr("Font size (pt)")); gtk_widget_set_size_request(sz, (int)lround(rui_px(34)), (int)lround(rui_px(26)));
-	  g_signal_connect(sz, "activate", G_CALLBACK(on_size), NULL); tb_add(TB, sz); g_object_set_data(G_OBJECT(TB), "size", sz); }
+	  g_signal_connect(sz, "activate", G_CALLBACK(on_size), NULL); tb_add(TB, sz); SIZEW = sz; g_object_set_data(G_OBJECT(TB), "size", sz); }
 	tb_add(TB, tb_button("+", "Larger", G_CALLBACK(inc_size), NULL));
 	tb_sep(TB);
-	tb_add(TB, tb_button("<b>B</b>", "Bold (Ctrl+B)", G_CALLBACK(toggle), "b"));
-	tb_add(TB, tb_button("<i>I</i>", "Italic (Ctrl+I)", G_CALLBACK(toggle), "i"));
-	tb_add(TB, tb_button("<u>U</u>", "Underline (Ctrl+U)", G_CALLBACK(toggle), "u"));
-	tb_add(TB, tb_button("<s>S</s>", "Strikethrough", G_CALLBACK(toggle), "s"));
-	tb_add(TB, tb_button("x₂", "Subscript", G_CALLBACK(toggle), "sub"));
-	tb_add(TB, tb_button("x²", "Superscript", G_CALLBACK(toggle), "sup"));
+	BTN_B = tb_button("<b>B</b>", "Bold (Ctrl+B)", G_CALLBACK(toggle), "b"); tb_add(TB, BTN_B);
+	BTN_I = tb_button("<i>I</i>", "Italic (Ctrl+I)", G_CALLBACK(toggle), "i"); tb_add(TB, BTN_I);
+	BTN_U = tb_button("<u>U</u>", "Underline (Ctrl+U)", G_CALLBACK(toggle), "u"); tb_add(TB, BTN_U);
+	BTN_S = tb_button("<s>S</s>", "Strikethrough", G_CALLBACK(toggle), "s"); tb_add(TB, BTN_S);
+	BTN_SUB = tb_button("x₂", "Subscript", G_CALLBACK(toggle), "sub"); tb_add(TB, BTN_SUB);
+	BTN_SUP = tb_button("x²", "Superscript", G_CALLBACK(toggle), "sup"); tb_add(TB, BTN_SUP);
 	tb_sep(TB);
 	{ GtkWidget *cb = gtk_color_button_new_with_rgba(&(GdkRGBA){ 0.752941, 0, 0, 1 });
 	  gtk_widget_set_tooltip_text(cb, rui_tr("Text color")); gtk_color_button_set_title(GTK_COLOR_BUTTON(cb), rui_tr("Text color"));
@@ -351,10 +411,10 @@ static void build_toolbar(void)
 	  gtk_widget_set_size_request(cb, (int)lround(rui_px(26)), (int)lround(rui_px(26)));
 	  g_signal_connect(cb, "color-set", G_CALLBACK(on_colour), (gpointer)"bg"); tb_add(TB, cb); }
 	tb_sep(TB);
-	tb_add(TB, tb_button("⬅", "Align left", G_CALLBACK(on_align), "left"));
-	tb_add(TB, tb_button("↔", "Center", G_CALLBACK(on_align), "center"));
-	tb_add(TB, tb_button("➡", "Align right", G_CALLBACK(on_align), "right"));
-	tb_add(TB, tb_button("☰", "Justify", G_CALLBACK(on_align), "fill"));
+	ALN[0] = tb_button("⬅", "Align left", G_CALLBACK(on_align), "left"); tb_add(TB, ALN[0]);
+	ALN[1] = tb_button("↔", "Center", G_CALLBACK(on_align), "center"); tb_add(TB, ALN[1]);
+	ALN[2] = tb_button("➡", "Align right", G_CALLBACK(on_align), "right"); tb_add(TB, ALN[2]);
+	ALN[3] = tb_button("☰", "Justify", G_CALLBACK(on_align), "fill"); tb_add(TB, ALN[3]);
 	tb_sep(TB);
 	tb_add(TB, tb_button("• ≡", "Bullets", G_CALLBACK(on_list), "bul"));
 	tb_add(TB, tb_button("1. ≡", "Numbering", G_CALLBACK(on_list), "num"));
@@ -401,6 +461,7 @@ static void build_editor(void)
 	gtk_widget_set_margin_top(paper, (int)lround(rui_px(16))); gtk_widget_set_margin_bottom(paper, (int)lround(rui_px(24)));
 	gtk_widget_set_margin_start(paper, (int)lround(rui_px(24))); gtk_widget_set_margin_end(paper, (int)lround(rui_px(24)));
 	ED = gtk_text_view_new(); BUF = gtk_text_view_get_buffer(GTK_TEXT_VIEW(ED));
+	g_signal_connect(BUF, "notify::cursor-position", G_CALLBACK(on_cursor), NULL);   /* (the toolbar follows the writing) */
 	gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(ED), GTK_WRAP_WORD_CHAR);
 	gtk_text_view_set_left_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
 	gtk_text_view_set_right_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
