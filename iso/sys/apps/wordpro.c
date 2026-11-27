@@ -691,6 +691,21 @@ static void paste_plain(void)
 	insert_here(t);
 	g_free(t);
 }
+/* (the tests: the cursor in a table's first cell, where a click on it puts it -- the display a check runs on has no
+   window manager, so where a page's cell is on the screen is not something the check can know) */
+static gboolean focus_cell_hook(gpointer d)
+{
+	(void)d; if (!OBJ) return G_SOURCE_REMOVE;
+	for (guint i = 0; i < OBJ->len; i++) {
+		WpObj *o = g_ptr_array_index(OBJ, i);
+		if (o->kind != OBJ_TABLE || !o->w) continue;
+		GList *ch = gtk_container_get_children(GTK_CONTAINER(o->w));
+		for (GList *k = ch; k; k = k->next) if (GTK_IS_ENTRY(k->data)) { gtk_widget_grab_focus(k->data); break; }
+		g_list_free(ch);
+		break;
+	}
+	return G_SOURCE_REMOVE;
+}
 static gboolean insert_hook(gpointer d)
 {
 	const char *v = d;
@@ -1409,6 +1424,8 @@ int main(int argc, char **argv)
 	if (getenv("RUDOLF_WP_OPEN") || getenv("RUDOLF_WP_SAVE")) g_timeout_add(400, io_hook, NULL);
 	{ const char *ins = getenv("RUDOLF_WP_INSERT");   /* (the tests: a picture or a table put in as the menu puts it) */
 	  if (ins && *ins) g_timeout_add(400, insert_hook, (gpointer)ins); }
+	if (getenv("RUDOLF_WP_FOCUS")) g_timeout_add(2500, focus_cell_hook, NULL);   /* (the tests: the cursor in a table's first cell,
+															   after the window has the display's focus) */
 	gtk_widget_grab_focus(ED);   /* (the page's window opens with its writing ready: typing goes into it at once) */
 	counts(); state_soon();
 	gtk_main(); return 0;
