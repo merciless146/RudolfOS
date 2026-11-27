@@ -45,18 +45,24 @@ $SUDO mkdir -p "$R$WK"; $SUDO cp -a "$WK/." "$R$WK/"; find "$WK" -type f >> "$LI
 # N33 and N35 in docs/native-findings-2026-11-26.md). "video4linux2" was added here on 2026-11-27 and taken out again the
 # same day: nothing would ever request it. The plug-in alone is still not enough -- the image also needs libpipewire-0.3
 # and a running PipeWire with WirePlumber (docs/plan-1.6.3.md Part 9).
-# The loop skips a plug-in that is not installed without a word, which is how this went unseen for a release: the check
-# after it says so out loud.
 GS=$ML/gstreamer-1.0; $SUDO mkdir -p "$R$GS" "$R$ML/gstreamer1.0/gstreamer-1.0"
 for s in $ML/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner; do [ -x "$s" ] && $SUDO cp -L "$s" "$R$s" && echo "$s" >> "$LIST"; done
+# One loop copies what it finds and says what is lost for what it does not: a plug-in named here and missing on the
+# build host used to disappear without a word, which is how a release shipped with no capture path at all.
 for p in coreelements app audioconvert audioresample audiotestsrc volume playback typefindfunctions videoconvertscale videoscale videoconvert \
 	ogg vorbis opus theora vpx matroska isomp4 wavparse audioparsers autodetect pulseaudio alsa pipewire id3demux gio rawparse videorate videofilter \
 	audiomixer compositor opengl gdkpixbuf jpeg png webrtcdsp \
 	opusparse videoparsersbad audiofx debugutilsbad subenc libav deinterlace inter interleave transcode; do
-	f=$GS/libgst$p.so; [ -f "$f" ] || continue; $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; done
-[ -f "$GS/libgstpipewire.so" ] || echo "addwebkit: no libgstpipewire.so (apt-get install gstreamer1.0-pipewire): the Native desktop cannot capture from the camera"
-[ -f "$GS/libgstinterleave.so" ] || echo "addwebkit: no libgstinterleave.so (apt-get install gstreamer1.0-plugins-good): the Native desktop's microphone gives the level meter and the Recorder nothing (findings N35)"
-[ -f "$GS/libgsttranscode.so" ] || echo "addwebkit: no libgsttranscode.so (apt-get install gstreamer1.0-plugins-bad): the Native desktop's Recorder cannot start (MediaRecorder builds uritranscodebin; findings N35)"
+	f=$GS/libgst$p.so
+	if [ -f "$f" ]; then $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; continue; fi
+	case $p in
+	pipewire) why="the Native desktop cannot capture from the camera (apt-get install gstreamer1.0-pipewire)";;
+	interleave) why="the Native desktop's level meters get no microphone audio (apt-get install gstreamer1.0-plugins-good)";;
+	transcode) why="the Native desktop's Recorder cannot start, because MediaRecorder builds uritranscodebin (apt-get install gstreamer1.0-plugins-bad)";;
+	*) why="the desktop's media may lack it";;
+	esac
+	echo "addwebkit: no libgst$p.so: $why"
+done
 # (1.5.9, plan 7.1: no WebRTC plug-ins: Ubuntu's WebKitGTK 2.52 has no WebRTC, so Lite opens call sites in Chromium's
 # window; the Lite engine check's call test says whether a newer WebKitGTK has it)
 # GLib: the TLS module (https), with its loader cache made for ROOT

@@ -845,7 +845,7 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
    (`sound`, `hotkey mic`, the volume overlay) working.
 3. If it runs beside PulseAudio, turn WirePlumber's ALSA monitor off in its configuration, leaving the v4l2 (and libcamera)
    monitors: otherwise it takes the sound cards PulseAudio is using.
-4. **The microphone is not this camera fault** (findings N35 point 3): its source is `pulsesrc`, and what stops its WebAudio
+4. **The microphone and the Recorder are not this camera fault** (findings N35 point 3): its source is `pulsesrc`, and what stops its WebAudio
    path — the one the level meter reads — is a GStreamer element the image does not carry: `deinterleave`, from
    gst-plugins-good's `interleave` plug-in (`libgstinterleave.so`), so each attempt ends `not-linked`. That plug-in is now
    in `addwebkit.sh`'s list; moving the sound server from PulseAudio to PipeWire is a part of its own and has nothing to do

@@ -239,7 +239,7 @@ V58 `passes`; V1, V2 and V3 were run on 2026-11-27 and **fail on Native** while 
 build and machine** (next section). No other item is marked `matches`, `minor`, `looks wrong` or `breaks`, because this
 session has no evidence for any of them.
 
-## 2026-11-27: V1, V2 and V3 — Native's WebKit has no camera source and no MediaRecorder
+## 2026-11-27: V1, V2 and V3 — no camera source in Native's WebKit, and a missing plug-in behind the microphone and the Recorder
 
 Same build (1.6.2.261124, serial 2026112422, Official), **native engine** (`rudolf-native`: one GTK 3 process, the apps
 in WebKitGTK 4.1 windows). The owner ran the items and photographed the screen, because the session could not reach the
@@ -347,9 +347,9 @@ The camera is refused because the PipeWire device provider is missing — its lo
 WebAudio path is stopped by a missing GStreamer element of its own (`deinterleave`, N35 point 3): PulseAudio and the DMIC
 itself are fine.
 So a build with `video4linux` added would have proved nothing, and putting PipeWire in the image will not bring the
-microphone back. Also open: does `new MediaRecorder` on
-Native throw, or construct and produce nothing? `MediaRecorderPrivateGStreamer` is present (`000651`), so both are
-possible, and the answer needs the console or the `try`/`catch` above.
+microphone back. **Answered from the source (2.52, N35 point 3):** `new MediaRecorder` does not throw — its constructor
+checks only the mime type, and an empty one is supported — but `rec.start()` does: the image has no `uritranscodebin` and
+`MediaRecorder::startRecording` returns `NotSupportedError` without it. Whether V1 died exactly there still needs a build.
 
 ### N34 — Check this computer ends itself at step 3 of 11 on Native
 
@@ -361,7 +361,7 @@ Also worth recording: the report's `Hardware check:` line names no engine, which
 2026-11-17 `camera pass (640×480)` and `microphone fail (no microphone)` look like Native results when they match
 Chromium exactly. The line should say which engine produced it.
 
-### N35 — The capture path is PipeWire-only, and the image has no PipeWire (2026-11-27, devlink 000652–000664)
+### N35 — Capture in Native: PipeWire for the camera, and one missing plug-in each for the microphone and the Recorder (2026-11-27, devlink 000652–000664)
 
 Asked after #716 had merged: *before a build proves it, find which capture source this WebKit actually asks for.* Two
 read-only devlink commands say it plainly.
