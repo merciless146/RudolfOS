@@ -128,5 +128,70 @@ i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST4" 2>/dev/null; do timeout 
 grep -q '^obj table 3x3$' "$ST4"; RC=$?
 kill $WPP4 2>/dev/null
 ok "15. a table is its own place too: the page's default 3 x 3" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(objs|obj) ' "$ST4" 2>/dev/null)"
+# (the page's .DOC: what the web WordPro writes opens here, and what is saved here opens again as it was)
+python3 - "$T/pic.png" "$T/in.DOC" <<'PY'
+import sys, base64
+pic = base64.b64encode(open(sys.argv[1], 'rb').read()).decode()
+doc = ('<!--wp:%7B%7D--><style data-wp>.wp-t{border-collapse:collapse}</style>'
+       '<p>Hello <b>world</b></p>'
+       '<img src="data:image/png;base64,' + pic + '" width="40" height="30">'
+       '<table class="wp-t"><tr><th>a</th><th>b</th></tr><tr><td>c</td><td>d</td></tr></table>')
+open(sys.argv[2], 'w').write(doc)
+PY
+ST5=$T/state5.txt; rm -f "$ST5" "$T/out.DOC"
+RUDOLF_WP_STATE=$ST5 RUDOLF_WP_OPEN="$T/in.DOC" RUDOLF_WP_SAVE="$T/out.DOC" DISPLAY=$DSP "$BIN" >"$T/wp5.log" 2>&1 & WPP5=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 2$' "$ST5" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 60 ] && [ ! -s "$T/out.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^words 2$' "$ST5" && grep -q '^chars 11$' "$ST5" && grep -q '^tags b' "$ST5" &&
+	grep -q '^obj picture 40x30' "$ST5" && grep -q '^obj table 2x2$' "$ST5" &&
+	grep -q '<th>a</th><th>b</th>' "$T/out.DOC" && grep -q '<td>c</td><td>d</td>' "$T/out.DOC" &&
+	grep -q 'data:image/png;base64,' "$T/out.DOC" && grep -q '<p>Hello <b>world</b>' "$T/out.DOC"; RC=$?
+kill $WPP5 2>/dev/null
+ok "16. the page's .DOC opens here (its paragraph, its bold, its picture, its table) and is written back" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST5" 2>/dev/null); $(sed 's/.*<\/style>//' "$T/out.DOC" 2>/dev/null | cut -c1-100)"
+ST6=$T/state6.txt; rm -f "$ST6" "$T/out2.DOC"
+RUDOLF_WP_STATE=$ST6 RUDOLF_WP_OPEN="$T/out.DOC" RUDOLF_WP_SAVE="$T/out2.DOC" DISPLAY=$DSP "$BIN" >"$T/wp6.log" 2>&1 & WPP6=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 2$' "$ST6" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 60 ] && [ ! -s "$T/out2.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+cmp -s "$T/out.DOC" "$T/out2.DOC"; SAME=$?
+grep -q '^words 2$' "$ST6" && grep -q '^chars 11$' "$ST6" && grep -q '^tags b' "$ST6" &&
+	grep -q '^obj picture 40x30' "$ST6" && grep -q '^obj table 2x2$' "$ST6" && [ $SAME = 0 ]; RC=$?
+kill $WPP6 2>/dev/null
+ok "17. ...and what was saved here opens and saves again as the very same document (the round trip)" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST6" 2>/dev/null); the second save is $( [ $SAME = 0 ] && echo 'the same bytes' || echo 'different' ) ($(stat -c %s "$T/out.DOC" 2>/dev/null) and $(stat -c %s "$T/out2.DOC" 2>/dev/null) bytes)"
+# (the picture is a step of the history: undo takes it away, redo brings the picture itself back -- not a place with
+#  nothing behind it. The first window is taken down first, by the pid its window gives (the shell around gdb is not the
+#  app, and the app is what holds the window), and the display is waited on until no WordPro is left: this copy has to be
+#  the only one on the display for its keys to be its own. It runs as itself, so its pid is its window's.)
+kill $WPP 2>/dev/null
+P1=$(DISPLAY=$DSP xdotool getwindowpid "$WIN" 2>/dev/null); [ -n "$P1" ] && kill $P1 2>/dev/null
+i=0; while [ $i -lt 40 ] && [ -n "$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null)" ]; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+ST7=$T/state7.txt; rm -f "$ST7"
+RUDOLF_WP_STATE=$ST7 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP "$BIN" >"$T/wp7.log" 2>&1 & WPP7=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+# (its window is looked for as it appears, a bounded number of tries: a search that never matches would hang the check)
+W7=""; i=0; while [ $i -lt 40 ] && [ -z "$W7" ]; do
+	W7=$(DISPLAY=$DSP xdotool search --onlyvisible --pid "$WPP7" 2>/dev/null | tail -1)
+	[ -n "$W7" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+FOCUS=""
+[ -n "$W7" ] && DISPLAY=$DSP xdotool windowraise "$W7" 2>/dev/null
+i=0; while [ $i -lt 60 ] && [ -n "$W7" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W7" 2>/dev/null
+	FOCUS=$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)
+	[ "$FOCUS" = "$W7" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W7" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W7" 480 300 click 1; sleep 0.8; }
+# (the state file is written again whenever the page changes, a moment after it: the undo is read here, before the redo
+#  takes its place, and a key is pressed again while the state has not caught up -- at the page's own two ends, pressing
+#  undo again or redo again is no step, so asking more than once cannot take more than the one change the case is about)
+A=0
+i=0; while [ $i -lt 12 ]; do
+	DISPLAY=$DSP xdotool key ctrl+z; sleep 0.5
+	grep -q '^objs 0$' "$ST7" && { A=1; break; }; i=$((i+1)); done
+i=0; while [ $i -lt 12 ]; do
+	DISPLAY=$DSP xdotool key ctrl+y; sleep 0.5
+	grep -q '^objs 1$' "$ST7" && break; i=$((i+1)); done
+ALIVE=$(kill -0 $WPP7 2>/dev/null && echo alive || echo gone)
+grep -q '^objs 1$' "$ST7" && grep -q '^obj picture 40x30 [0-9][0-9]*$' "$ST7" && grep -q '^words 0$' "$ST7" && grep -q '^chars 0$' "$ST7"; RC=$?
+kill $WPP7 2>/dev/null
+ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(grep -E '^(objs|obj|words|chars|hist) ' "$ST7" 2>/dev/null | tr '\n' ' ')(window $W7 of $WPP7, focus $FOCUS, the app $ALIVE; $(tail -3 "$T/wp7.log" 2>/dev/null | tr '\n' ' '))"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
+for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
+[ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
 echo "$NP passed, $NF failed"; [ $NF = 0 ]

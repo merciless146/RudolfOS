@@ -96,10 +96,17 @@ accent colours), its memory at idle against the web version, built in the releas
   replace box and Shift+Ctrl+V pastes the clipboard's text alone, as the bar advertises; the document model is decided
   below; pictures and tables are places in the writing with their own data (a picture's bytes and size, a table's cells),
   the page's default 3 x 3 table, and a picture chosen through GTK's own file chooser until the page's dialog comes.
+- **Branch `wordpro-5`: saving and opening the page's .DOC** (step 2's file half): the document is written as the page
+  writes it -- `<!--wp:{meta}-->`, `<style data-wp>` with the page's stylesheet (read from `base_v24.html` at build time,
+  so it cannot drift), the blocks as its HTML (paragraphs, the inline tags, the colour and font spans, `<table>` with
+  `<th>`/`<td>`, `<img src="data:...">`) -- and opened by parsing that same subset back into the model, refusing nothing
+  silently. `File > Open...`, `Save` and `Save As...` are live in the bar (GTK's own choosers until the page's dialogs
+  come), with Ctrl+O and Ctrl+S; a document remembers its file. The check opens a document in the page's exact shape,
+  saves it, and opens and saves that again: the same bytes, which is the round trip the model promises.
 - **Not in this step, by the plan's own split:** the dialogs of those items (open, save, import, export, page setup,
-  print, table, picture, link, special characters, header and footer), tables, pictures, links, page setup, headers and
-  footers, the table of contents, printing, and opening and saving the page's .DOC (its HTML with the page's
-  stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
+  print, table, picture, link, special characters, header and footer), links, page setup, headers and footers, the table
+  of contents, printing, and the rest of the page's HTML (lists, the paragraph classes' other blocks, a nested table,
+  a picture's alt text) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
 #### The document model (decided 2026-11-27, step 2 begins: tables and pictures)
@@ -121,10 +128,15 @@ The native document is the page's document, not a text buffer that happens to lo
   subset back into blocks, and refuses out loud a file it cannot read rather than dropping silently what it does not
   understand (the page's own rule). The test the save must pass: a document the web WordPro saved opens here unchanged,
   and one saved here opens there unchanged.
-- **What it costs, and what the first cut leaves out:** undo keeps the text and not the objects, so an undo across a
-  picture or a table drops it from the page (and this line says so); a cell holds one paragraph, with no inline spans
-  inside it yet; the page's insert dialogs (rows, columns, header row, borders; a picture's size and text) come with the
-  dialogs step, so the menu inserts the page's default table and asks for a picture's file through GTK's own chooser.
+- **What it costs, and what the first cut leaves out:** an entry of the history is the text with its places and, at each
+  place, the object itself -- a picture's bytes (one copy shared by the writing and every entry that has it, so an
+  unchanged picture costs nothing per step) and a table's cells -- so undo and redo take an object away and put the object
+  back, never a place with nothing behind it. Two things that follow, and that the first cut had to learn: an entry keeps
+  its own text, the places included (what a save reads leaves them out, which is right for the page's words and would lose
+  where an object stands), and the page's objects are taken away before the text that holds their places is written again
+  -- a widget destroyed in the middle of the buffer's own change stops the window (undo, New and an opened document). a cell holds one paragraph, with no inline spans inside it yet; the page's
+  insert dialogs (rows, columns, header row, borders; a picture's size and text) come with the dialogs step, so the menu
+  inserts the page's default table and asks for a picture's file through GTK's own chooser.
 
 ### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
 A dedicated fingerprint sensor is needed (in the power button, a corner of the touchpad, a pad beside the keyboard, or

@@ -53,6 +53,11 @@ def main(out):
         o.append('\t%s,' % cstr(f))
     o.append('};')
     o.append('#define NWPFONTS %d' % len(fonts))
+    m = re.search(r"const WP_CSS_DOC=`([^`]*)`;", page)
+    if not m:
+        die("base_v24.html's WP_CSS_DOC (the document's stylesheet) was not found")
+    o.append('/* the stylesheet a saved .DOC carries, as the page writes it in <style data-wp> */')
+    o.append('#define WP_CSS_DOC ' + cstr(m.group(1).replace('\n', ' ')))
     open(out, 'w', encoding='utf-8').write('\n'.join(o) + '\n')
 
 
