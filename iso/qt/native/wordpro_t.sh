@@ -128,5 +128,27 @@ i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST4" 2>/dev/null; do timeout 
 grep -q '^obj table 3x3$' "$ST4"; RC=$?
 kill $WPP4 2>/dev/null
 ok "15. a table is its own place too: the page's default 3 x 3" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(objs|obj) ' "$ST4" 2>/dev/null)"
+# (the page's .DOC: what the web WordPro writes opens here, and what is saved here opens again as it was)
+python3 - "$T/pic.png" "$T/in.DOC" <<'PY'
+import sys, base64
+pic = base64.b64encode(open(sys.argv[1], 'rb').read()).decode()
+doc = ('<!--wp:%7B%7D--><style data-wp>.wp-t{border-collapse:collapse}</style>'
+       '<p>Hello <b>world</b></p>'
+       '<img src="data:image/png;base64,' + pic + '" width="40" height="30">'
+       '<table class="wp-t"><tr><th>a</th><th>b</th></tr><tr><td>c</td><td>d</td></tr></table>')
+open(sys.argv[2], 'w').write(doc)
+PY
+ST5=$T/state5.txt; rm -f "$ST5" "$T/out.DOC"
+RUDOLF_WP_STATE=$ST5 RUDOLF_WP_OPEN="$T/in.DOC" RUDOLF_WP_SAVE="$T/out.DOC" DISPLAY=$DSP "$BIN" >"$T/wp5.log" 2>&1 & WPP5=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 2$' "$ST5" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^words 6$' "$ST5" && grep -q '^chars 15$' "$ST5" && grep -q '^tags b' "$ST5" && grep -q '^obj table 2x2$' "$ST5" && [ -s "$T/out.DOC" ]; RC=$?
+kill $WPP5 2>/dev/null
+ok "16. the page's .DOC opens here: its paragraphs, its bold, its picture, its table" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST5" 2>/dev/null); $(tail -2 "$T/wp5.log" 2>/dev/null)"
+ST6=$T/state6.txt; rm -f "$ST6"
+RUDOLF_WP_STATE=$ST6 RUDOLF_WP_OPEN="$T/out.DOC" DISPLAY=$DSP "$BIN" >"$T/wp6.log" 2>&1 & WPP6=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 2$' "$ST6" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^words 6$' "$ST6" && grep -q '^chars 15$' "$ST6" && grep -q '^tags b' "$ST6" && grep -q '^obj picture 40x30' "$ST6" && grep -q '^obj table 2x2$' "$ST6"; RC=$?
+kill $WPP6 2>/dev/null
+ok "17. ...and what was saved here opens again as it was (the round trip)" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST6" 2>/dev/null); $(tail -2 "$T/wp6.log" 2>/dev/null)"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 echo "$NP passed, $NF failed"; [ $NF = 0 ]
