@@ -85,9 +85,17 @@ accent colours), its memory at idle against the web version, built in the releas
   second line counted the page's way (its newline is not a character). The screenshot comparison against the web WordPro
   is **not** in it yet: it comes with the step that makes every view of the window, so that no view can pass by being
   unfinished.
-- **Not in this step, by the plan's own split:** the menu bar and its dialogs, tables, pictures, links, the special
-  characters, page setup, headers and footers, the table of contents, printing, and opening and saving the page's .DOC
-  (its HTML with the page's stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
+- **Branch `wordpro-3`: the page's menu bar** (`.wp-mb`): File, Edit, View, Insert, Format, Table, Tools and Help, each
+  menu the page's own items in the page's order and with its shortcuts. What the editor can already do acts -- New,
+  undo, redo, cut, copy, paste, select all, find and find-and-replace, the page's six zooms, the six toggles, the four
+  case changes, clear formatting, bullets, numbering, the indent, block quote, the date and time insertions, document
+  statistics, the keyboard shortcuts and About -- and what needs a later step is drawn unavailable, as the page draws an
+  item that cannot be chosen. A toggle that is on, and the zoom in use, carry the page's check mark. The dropdowns are
+  `rui_menu`, the desktop's menus in the page's look.
+- **Not in this step, by the plan's own split:** the dialogs of those items (open, save, import, export, page setup,
+  print, table, picture, link, special characters, header and footer), tables, pictures, links, page setup, headers and
+  footers, the table of contents, printing, and opening and saving the page's .DOC (its HTML with the page's
+  stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
 ### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
