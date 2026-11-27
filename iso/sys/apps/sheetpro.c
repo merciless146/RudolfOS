@@ -29,7 +29,7 @@
 typedef struct { char *t; unsigned b, i, u, s; int ha; char *fc, *bg, *font; int sz; } Cell;   /* (a cell: what was typed, and its style) */
 
 static RuiWin *W;
-static GtkWidget *TB, *MBAR, *MBTNS[8], *AREA, *ENTRY, *NB, *FXE, *STATUS, *AGG, *ZTXT, *ZOOMSL, *GRID, *AREAOV;
+static GtkWidget *TB, *MBAR, *MBTNS[8], *AREA, *ENTRY, *NB, *FXE, *STATUS, *AGG, *ZTXT, *ZOOMSL, *AREAOV;
 static GtkAdjustment *ADJV, *ADJH;
 static GtkWidget *BTN_B, *BTN_I, *BTN_U, *BTN_S, *ALN[3], *FONTW, *SIZEW;
 static char SAY[200] = "Ready";
@@ -44,7 +44,7 @@ static void upd_tb(void); static void hist_push(const char *label); static void 
 static void place_entry(void); static void on_style_btn(GtkWidget *b, gpointer d); static void fx_update(void);
 static void zoom_to(int z); static void new_book(void); static void show_keys(void); static void show_stats(void);
 static void check_errors(void); static int menus_n(void);
-static void on_style_btn_t(GtkWidget *b, gpointer d); static void on_clear_btn(GtkWidget *b, gpointer d);
+static void on_clear_btn(GtkWidget *b, gpointer d);
 static void redraw(void) { if (AREA) gtk_widget_queue_draw(AREA); }
 
 /* ------------------------------------------------------------------ the model: a sheet's cells (sprof45.js's map)
@@ -119,7 +119,7 @@ static int as_num(const char *t, double *out)
 	return ok;
 }
 static Val eval_cell(int r, int c);
-typedef struct { const char *s; int i, r, c, bad; } P;
+typedef struct { const char *s; int i, bad; } P;
 static void skip(P *p) { while (p->s[p->i] == ' ' || p->s[p->i] == '\t' || p->s[p->i] == '\n') p->i++; }
 static Val p_cmp(P *p);
 static int peek(P *p) { skip(p); return (unsigned char)p->s[p->i]; }
@@ -308,7 +308,7 @@ static Val eval_formula(const char *src, int r, int c)
 	gpointer k = GUINT_TO_POINTER(ckey(r, c));
 	if (g_hash_table_contains(VISIT, k)) return verr(E_CIRC);
 	g_hash_table_add(VISIT, k);
-	P p; p.s = src; p.i = 0; p.r = r; p.c = c; p.bad = 0;
+	P p; p.s = src; p.i = 0; p.bad = 0;
 	Val v = p_cmp(&p);
 	skip(&p);
 	if (!p.bad && p.s[p.i]) v = verr(E_NAME);
@@ -417,12 +417,11 @@ static void cell_box(int r, int c, double *x, double *y, double *w, double *h)
 	*x = HW + c * DW * z - SCX; *y = HH + r * DH * z - SCY; *w = DW * z; *h = DH * z;
 }
 /* (a text in the head: its column letter or its row number, centred) */
-static void head_text(cairo_t *cr, PangoLayout *lay, const char *t, double cx, double cy, double px, int bold, const char *hex)
+static void head_text(cairo_t *cr, PangoLayout *lay, const char *t, double cx, double cy, double px, const char *hex)
 {
 	PangoFontDescription *fd = pango_font_description_new();
 	pango_font_description_set_family(fd, "Segoe UI, Arial, sans-serif");
 	pango_font_description_set_absolute_size(fd, px * PANGO_SCALE);
-	pango_font_description_set_weight(fd, bold ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL);
 	pango_layout_set_font_description(lay, fd); pango_layout_set_text(lay, t, -1);
 	int tw = 0, th = 0; pango_layout_get_pixel_size(lay, &tw, &th);
 	GdkRGBA rgb; if (gdk_rgba_parse(&rgb, hex)) cairo_set_source_rgb(cr, rgb.red, rgb.green, rgb.blue);
@@ -509,7 +508,7 @@ static void draw(GtkWidget *widget, cairo_t *cr, gpointer d)
 		if (x + cw < HW || x > Wd) continue;
 		int on = c >= SEL_C0 && c <= SEL_C1;
 		if (on) { cairo_set_source_rgb(cr, 0.827, 0.890, 0.992); cairo_rectangle(cr, MAX(x, HW), 0, cw, HH); cairo_fill(cr); }
-		head_text(cr, lay, col_name(c), x + cw / 2, HH / 2, 11 * z < 9 ? 9 : 11 * z, 0, on ? "#0b57d0" : "#444444");
+		head_text(cr, lay, col_name(c), x + cw / 2, HH / 2, 11 * z < 9 ? 9 : 11 * z, on ? "#0b57d0" : "#444444");
 		cairo_set_source_rgb(cr, 0.820, 0.835, 0.859); cairo_rectangle(cr, x + cw - 1, 0, 1, HH); cairo_fill(cr);
 	}
 	for (int r = r0; r <= r1; r++) {
@@ -518,7 +517,7 @@ static void draw(GtkWidget *widget, cairo_t *cr, gpointer d)
 		int on = r >= SEL_R0 && r <= SEL_R1;
 		if (on) { cairo_set_source_rgb(cr, 0.827, 0.890, 0.992); cairo_rectangle(cr, 0, y, HW, rh); cairo_fill(cr); }
 		char n[16]; snprintf(n, sizeof n, "%d", r + 1);
-		head_text(cr, lay, n, HW / 2, y + rh / 2, 11 * z < 9 ? 9 : 11 * z, 0, on ? "#0b57d0" : "#444444");
+		head_text(cr, lay, n, HW / 2, y + rh / 2, 11 * z < 9 ? 9 : 11 * z, on ? "#0b57d0" : "#444444");
 		cairo_set_source_rgb(cr, 0.820, 0.835, 0.859); cairo_rectangle(cr, 0, y + rh - 1, HW, 1); cairo_fill(cr);
 	}
 	cairo_set_source_rgb(cr, 0.820, 0.835, 0.859);
@@ -849,10 +848,6 @@ static void on_align_btn(GtkWidget *b, gpointer d)
 	StArg a = { 4, cur_is(4) == ha ? 0 : ha, NULL };
 	style_sel(st_apply, &a);
 }
-static void do_bold(void) { on_style_btn(NULL, GINT_TO_POINTER(0)); }
-static void do_ital(void) { on_style_btn(NULL, GINT_TO_POINTER(1)); }
-static void do_under(void) { on_style_btn(NULL, GINT_TO_POINTER(2)); }
-static void do_strike(void) { on_style_btn(NULL, GINT_TO_POINTER(3)); }
 static void on_font(GtkComboBox *c, gpointer d)
 {
 	(void)d; if (UPDATING || !READY) return;
@@ -903,32 +898,24 @@ static void status_update(void)
 {
 	char agg[240] = "";
 	long area = (long)(SEL_R1 - SEL_R0 + 1) * (long)(SEL_C1 - SEL_C0 + 1);
-	if (area > 1 && area <= 20000) {
-		int nums = 0, cnt = 0; double sum = 0, mn = 0, mx = 0;
+	int nums = 0, cnt = 0; double sum = 0, mn = 0, mx = 0;
+	if (area > 1 && area <= 20000)
 		for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
 			Val v = eval_cell(r, c);
 			if (v.k == V_NUM) { if (!nums) { mn = mx = v.n; } else { if (v.n < mn) mn = v.n; if (v.n > mx) mx = v.n; } nums++; sum += v.n; cnt++; }
 			else if (v.k == V_TEXT || v.k == V_BOOL || v.k == V_ERR) cnt++;
 		}
-		if (nums) {
-			char a[40], b[40], m1[40], m2[40];
-			num_text(a, sizeof a, sum); num_text(b, sizeof b, sum / nums);
-			num_text(m1, sizeof m1, mn); num_text(m2, sizeof m2, mx);
-			snprintf(agg, sizeof agg, "%s: %s   %s: %s   %s: %s   %s: %s   %s: %d", rui_tr("Sum"), a, rui_tr("Average"), b,
-				rui_tr("Min"), m1, rui_tr("Max"), m2, rui_tr("Count"), cnt);
-		} else if (cnt) snprintf(agg, sizeof agg, "%s: %d", rui_tr("Count"), cnt);
-	}
-	{
-		/* (the same figures as plain numbers, for the state the tests read) */
-		int nums = 0, cnt = 0; double sum = 0, mn = 0, mx = 0;
-		if (area > 1 && area <= 20000)
-			for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
-				Val v = eval_cell(r, c);
-				if (v.k == V_NUM) { if (!nums) { mn = mx = v.n; } else { if (v.n < mn) mn = v.n; if (v.n > mx) mx = v.n; } nums++; sum += v.n; cnt++; }
-				else if (v.k == V_TEXT || v.k == V_BOOL || v.k == V_ERR) cnt++;
-			}
-		if (nums) snprintf(AGGS, sizeof AGGS, "%.10g|%.10g|%.10g|%.10g|%d", sum, sum / nums, mn, mx, cnt);
-		else snprintf(AGGS, sizeof AGGS, "-|-|-|-|%d", cnt);
+	/* (the figures once: as the page's status line writes them, and as plain numbers for the state the tests read) */
+	if (nums) {
+		char a[40], b[40], m1[40], m2[40];
+		num_text(a, sizeof a, sum); num_text(b, sizeof b, sum / nums);
+		num_text(m1, sizeof m1, mn); num_text(m2, sizeof m2, mx);
+		snprintf(agg, sizeof agg, "%s: %s   %s: %s   %s: %s   %s: %s   %s: %d", rui_tr("Sum"), a, rui_tr("Average"), b,
+			rui_tr("Min"), m1, rui_tr("Max"), m2, rui_tr("Count"), cnt);
+		snprintf(AGGS, sizeof AGGS, "%.10g|%.10g|%.10g|%.10g|%d", sum, sum / nums, mn, mx, cnt);
+	} else {
+		if (cnt) snprintf(agg, sizeof agg, "%s: %d", rui_tr("Count"), cnt);
+		snprintf(AGGS, sizeof AGGS, "-|-|-|-|%d", cnt);
 	}
 	if (STATUS) gtk_label_set_text(GTK_LABEL(STATUS), rui_tr(SAY));
 	if (AGG) gtk_label_set_text(GTK_LABEL(AGG), agg);
@@ -949,7 +936,7 @@ static void state_write(void)
 	GString *s = g_string_new(NULL);
 	char title[96] = "";
 	if (W && W->win) { const char *t = gtk_window_get_title(GTK_WINDOW(W->win)); if (t) snprintf(title, sizeof title, "%s", t); }
-	g_string_append_printf(s, "app sheets\ntitle %s\nmenus %d\n", title, menus_n());
+	g_string_append_printf(s, "title %s\nmenus %d\n", title, menus_n());
 	if (MENU_OPEN) g_string_append_printf(s, "menu %s %d\n", MENU_OPEN, MENU_OPEN_N);
 	g_string_append_printf(s, "sel %d %d %d %d %d %d\n", CUR_R, CUR_C, SEL_R0, SEL_C0, SEL_R1, SEL_C1);
 	{ char t[48];
@@ -973,8 +960,7 @@ static void state_write(void)
 				cl->ha, cl->fc ? cl->fc : "-", cl->bg ? cl->bg : "-");
 	}
 	g_array_free(ks, TRUE);
-	g_string_append_printf(s, "zoom %d\nhist %d %d\nshowf %d\ngrid %d\nagg %s\nsay %s\ndialog %d\n",
-		ZOOM, UNDO_I, UNDO_N, SHOWF, GRIDON, AGGS, SAY, rui_dialog_box() ? 1 : 0);
+	g_string_append_printf(s, "zoom %d\nhist %d %d\nagg %s\nsay %s\n", ZOOM, UNDO_I, UNDO_N, AGGS, SAY);
 	char *tmp = g_strdup_printf("%s.t", f); g_file_set_contents(tmp, s->str, -1, NULL); rename(tmp, f); g_free(tmp);
 	g_string_free(s, TRUE);
 }
@@ -1173,10 +1159,10 @@ static void menu_do(const Mi *s)
 		break;
 	case OP_GRID: GRIDON = !GRIDON; redraw(); status_update(); break;
 	case OP_SHOWF: SHOWF = !SHOWF; redraw(); status_update(); break;
-	case OP_BOLD: do_bold(); break;
-	case OP_ITAL: do_ital(); break;
-	case OP_UNDER: do_under(); break;
-	case OP_STRIKE: do_strike(); break;
+	case OP_BOLD: on_style_btn(NULL, GINT_TO_POINTER(0)); break;
+	case OP_ITAL: on_style_btn(NULL, GINT_TO_POINTER(1)); break;
+	case OP_UNDER: on_style_btn(NULL, GINT_TO_POINTER(2)); break;
+	case OP_STRIKE: on_style_btn(NULL, GINT_TO_POINTER(3)); break;
 	case OP_AL: on_align_btn(NULL, GINT_TO_POINTER(!strcmp(s->arg, "l") ? 1 : !strcmp(s->arg, "c") ? 2 : 3)); break;
 	case OP_WHEN: {
 		time_t now = time(NULL); struct tm tmv; struct tm *tm = localtime_r(&now, &tmv);
@@ -1290,10 +1276,10 @@ static void build_toolbar(void)
 	SIZEW = sz; tb_add(TB, sz);
 	g_signal_connect(sz, "changed", G_CALLBACK(on_fsize), NULL);
 	tb_sep(TB);
-	BTN_B = tb_button("<b>B</b>", "Bold (Ctrl+B)", G_CALLBACK(on_style_btn_t), GINT_TO_POINTER(0)); tb_add(TB, BTN_B);
-	BTN_I = tb_button("<i>I</i>", "Italic (Ctrl+I)", G_CALLBACK(on_style_btn_t), GINT_TO_POINTER(1)); tb_add(TB, BTN_I);
-	BTN_U = tb_button("<u>U</u>", "Underline (Ctrl+U)", G_CALLBACK(on_style_btn_t), GINT_TO_POINTER(2)); tb_add(TB, BTN_U);
-	BTN_S = tb_button("<s>S</s>", "Strikethrough (Ctrl+5)", G_CALLBACK(on_style_btn_t), GINT_TO_POINTER(3)); tb_add(TB, BTN_S);
+	BTN_B = tb_button("<b>B</b>", "Bold (Ctrl+B)", G_CALLBACK(on_style_btn), GINT_TO_POINTER(0)); tb_add(TB, BTN_B);
+	BTN_I = tb_button("<i>I</i>", "Italic (Ctrl+I)", G_CALLBACK(on_style_btn), GINT_TO_POINTER(1)); tb_add(TB, BTN_I);
+	BTN_U = tb_button("<u>U</u>", "Underline (Ctrl+U)", G_CALLBACK(on_style_btn), GINT_TO_POINTER(2)); tb_add(TB, BTN_U);
+	BTN_S = tb_button("<s>S</s>", "Strikethrough (Ctrl+5)", G_CALLBACK(on_style_btn), GINT_TO_POINTER(3)); tb_add(TB, BTN_S);
 	tb_sep(TB);
 	{ GdkRGBA c0 = { 0.06, 0.06, 0.06, 1.0 };
 	  GtkWidget *fc = gtk_color_button_new_with_rgba(&c0);
@@ -1429,7 +1415,6 @@ static void build_grid(void)
 	gtk_box_pack_start(GTK_BOX(col), row, TRUE, TRUE, 0);
 	gtk_box_pack_start(GTK_BOX(col), hb, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(W->body), col, TRUE, TRUE, 0);
-	GRID = col;
 }
 /* (the sheet's tabs, as the page's .sp-tabs: one sheet, and the button that would add another) */
 static void build_tabs(void)
@@ -1478,7 +1463,6 @@ static void build_status(void)
 	gtk_box_pack_end(GTK_BOX(sb), ZOOMSL, FALSE, FALSE, 0);
 	gtk_box_pack_start(GTK_BOX(W->body), sb, FALSE, FALSE, 0);
 }
-static void on_style_btn_t(GtkWidget *b, gpointer d) { on_style_btn(b, d); }
 static void on_clear_btn(GtkWidget *b, gpointer d) { (void)b; (void)d; clear_cells(); }
 static gboolean goto_hook(gpointer d)
 {

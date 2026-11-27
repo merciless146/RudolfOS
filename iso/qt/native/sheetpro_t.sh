@@ -91,7 +91,7 @@ A=$(grep -c '^show A3 =A1+A2$' "$ST")
 DISPLAY=$DSP xdotool key ctrl+grave; sleep 0.9
 B=$(grep -c '^show A3 12$' "$ST")
 [ "$A" = 1 ] && [ "$B" = 1 ]
-ok "11. Ctrl+\` shows the formulas in the grid, and takes them back to their values" "$([ $? = 0 ] && echo 1)" "formulas $A, values $B ($(grep -E '^(showf|show A3) ' "$ST" | tr '\n' ' '))"
+ok "11. Ctrl+\` shows the formulas in the grid, and takes them back to their values" "$([ $? = 0 ] && echo 1)" "formulas $A, values $B ($(grep -E '^(hist|show A3) ' "$ST" | tr '\n' ' '))"
 # (the name box: Ctrl+G puts the cursor in it, a cell's name chooses that cell and a range's its cells)
 DISPLAY=$DSP xdotool key ctrl+g; sleep 0.5; DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool type --delay 20 'C3'; DISPLAY=$DSP xdotool key Return; sleep 0.9
 A=$(grep -c '^sel 2 2 2 2 2 2$' "$ST")
