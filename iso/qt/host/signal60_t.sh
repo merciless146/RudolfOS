@@ -52,7 +52,7 @@ ok "5. ...no network for a minute (ten of the watch's looks)" "$(H | grep -q 'no
 mmstub_cmd "set 0 reg=home"; mmstub_cmd "remove 0"; w8 "H | grep -q 'went away'" 40; timeout 1 tail -f /dev/null
 mmstub_cmd "add 0 iccid=8901260123456789012 iface=wwan0 ip4=10.64.12.34/30 gw4=10.64.12.33 enabled=1"; w8 "H | grep -q 'restarted'" 40
 ok "6. ...the module gone, and back within minutes: it restarted" "$(H | grep -q 'the cellular modem went away' && H | grep -q 'the cellular module (Quectel EG25-G) restarted: it was gone for [0-9]* s' && echo 1)" "$(H)"
-ok "...(System health knows the kind: rudolfd --health modem is accepted)" "$(grep -q '"security", "tor", "extension", "modem", NULL' $HERE/../../sys/rudolfd.c && echo 1)"
+ok "...(System health knows the kind: rudolfd --health modem is accepted)" "$(k=$(grep -o 'static const char \*K\[\] = {[^}]*}' $HERE/../../sys/rudolfd.c); echo "$k" | grep -q '"modem"' && echo 1)"
 # the self-test's modem line
 w8 "[ \"\$(sh $M status | grep -o '\"iface\":\"wwan0\"')\" ]" 60
 S=$T/st; mkdir -p $S/dev $S/proc/400 $S/run $S/sys $S/persist; touch $S/dev/cdc-wdm0; echo ModemManager > $S/proc/400/comm; : > $S/run/modem.log
