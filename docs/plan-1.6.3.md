@@ -72,6 +72,23 @@ accent colours), its memory at idle against the web version, built in the releas
   three open together free roughly 200-350 MB.
 - **The owner's checklist:** each app on the Vivobook against Chromium mode's (every menu and toolbar button, a real
   document, spreadsheet and presentation of the owner's, printing), light and dark; the memory in Task Manager.
+#### Status (2026-11-27, scheduled task): WordPro begun, step 1 (the editor and its toolbar)
+- **Branch `wordpro-1`:** `iso/sys/apps/wordpro.c` (`/usr/bin/rudolf-wordpro`, with librudolf-ui) has the page's window
+  (980 x 646), the toolbar of `.wp-tb` -- the paragraph styles, the fonts, the size with its - and +, bold, italic,
+  underline, strikethrough, sub- and superscript, the text colour and the highlight, the four alignments, bullets,
+  numbering, the indent, the line spacing, clear formatting, undo, redo and Find -- the page's white sheet on its grey
+  area with the 96 px margins and the 816 px width of Letter, and the status line's page, words, characters and zoom.
+  Find and replace is the page's bar (next, previous, replace all, close). `iso/sys/apps/mkwordpro.py` reads WP_STYLES
+  and WP_FONTS from `base_v24.html` at build time, so the toolbar's lists are the page's (9 styles, 12 fonts).
+- **Its test:** `iso/qt/native/wordpro_t.sh` (`wordpro-check.yml`): built with `RUI_WERROR=1`, then used under Xvfb with a
+  stand-in rudolfd -- the window, the lists, typing counted, Ctrl+B tagging the choice, Ctrl+F choosing what it finds, a
+  second line counted the page's way (its newline is not a character). The screenshot comparison against the web WordPro
+  is **not** in it yet: it comes with the step that makes every view of the window, so that no view can pass by being
+  unfinished.
+- **Not in this step, by the plan's own split:** the menu bar and its dialogs, tables, pictures, links, the special
+  characters, page setup, headers and footers, the table of contents, printing, and opening and saving the page's .DOC
+  (its HTML with the page's stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
+  whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
 ### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
 A dedicated fingerprint sensor is needed (in the power button, a corner of the touchpad, a pad beside the keyboard, or
