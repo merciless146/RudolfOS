@@ -239,7 +239,7 @@ V58 `passes`; V1, V2 and V3 were run on 2026-11-27 and **fail on Native** while 
 build and machine** (next section). No other item is marked `matches`, `minor`, `looks wrong` or `breaks`, because this
 session has no evidence for any of them.
 
-## 2026-11-27: V1, V2 and V3 — Native's WebKit has no camera source and no MediaRecorder
+## 2026-11-27: V1, V2 and V3 — no camera source in Native's WebKit, and a missing plug-in behind the microphone and the Recorder
 
 Same build (1.6.2.261124, serial 2026112422, Official), **native engine** (`rudolf-native`: one GTK 3 process, the apps
 in WebKitGTK 4.1 windows). The owner ran the items and photographed the screen, because the session could not reach the
@@ -262,8 +262,10 @@ device") and some loose files; "voice" finds the app.
   carries `JSMediaRecorder`, `MediaRecorderPrivateGStreamer`, `MediaRecorderPrivateBackend` and `MediaRecorderEnabled`,
   so it is compiled in with a GStreamer backend. This session first read it as absent from a count of
   `WebKitMediaRecorder`, which is the Cocoa-era name; the `JS…` and `Private…` names are the ones that matter. So the
-  throw is **not** a missing constructor, and where it happens is not established: everything from `new AudioContext()`
-  to `rec.start()` is uncaught, so any of it would look exactly like this from outside. What the machine does say is that
+  throw is **not** a missing constructor and is not the `AudioContext` (that failure is asynchronous — it yields silence, not
+  an exception), so the one candidate the source puts in the way is `rec.start()`: `uritranscodebin` is missing from the
+  image and `startRecording` throws `NotSupportedError` without it (N35 point 3). Everything from `new AudioContext()` to
+  `rec.start()` is still uncaught, so nothing here proves the page reached it. What the machine does say is that
   the meter reads −120 dB, the check's floor, which its formula gives for all-zero samples. That a recorder which started
   would then save silence is **inference**, not record: `MediaRecorder` builds a pipeline of its own, and N35 point 3 marks
   that as unproven. A `try`/`catch` around that block, showing the error in the window, is the smallest change that would
@@ -345,9 +347,9 @@ The camera is refused because the PipeWire device provider is missing — its lo
 WebAudio path is stopped by a missing GStreamer element of its own (`deinterleave`, N35 point 3): PulseAudio and the DMIC
 itself are fine.
 So a build with `video4linux` added would have proved nothing, and putting PipeWire in the image will not bring the
-microphone back. Also open: does `new MediaRecorder` on
-Native throw, or construct and produce nothing? `MediaRecorderPrivateGStreamer` is present (`000651`), so both are
-possible, and the answer needs the console or the `try`/`catch` above.
+microphone back. **Answered from the source (2.52, N35 point 3):** `new MediaRecorder` does not throw — its constructor
+checks only the mime type, and an empty one is supported — but `rec.start()` does: the image has no `uritranscodebin` and
+`MediaRecorder::startRecording` returns `NotSupportedError` without it. Whether V1 died exactly there still needs a build.
 
 ### N34 — Check this computer ends itself at step 3 of 11 on Native
 
@@ -359,7 +361,7 @@ Also worth recording: the report's `Hardware check:` line names no engine, which
 2026-11-17 `camera pass (640×480)` and `microphone fail (no microphone)` look like Native results when they match
 Chromium exactly. The line should say which engine produced it.
 
-### N35 — The capture path is PipeWire-only, and the image has no PipeWire (2026-11-27, devlink 000652–000664)
+### N35 — Capture in Native: PipeWire for the camera, and one missing plug-in each for the microphone and the Recorder (2026-11-27, devlink 000652–000664)
 
 Asked after #716 had merged: *before a build proves it, find which capture source this WebKit actually asks for.* Two
 read-only devlink commands say it plainly.
@@ -411,13 +413,38 @@ through PipeWire, and says so in its own error message. Three consequences:
      `WebAudioProvider_MediaStreamTrack_*` pipeline reports `<capture-audiosrcN> … streaming stopped, reason not-linked
      (-1)`. **What was seen failing is the WebAudio path**, and only it: the check's level meter reads the microphone
      through an `AudioContext` (`hwcheck30.js`'s `hwcMicPeak`) and sat at −120 dB through all four attempts
-     (0:01:54–0:03:00). That the **Recorder** fails for the same reason is **inference**: `MediaRecorder` builds its own
-     pipeline, that pipeline is nowhere in this log, and only a build with the plug-in in it can show what the Recorder
-     does.
+     (0:01:54–0:03:00). The same `AudioContext` is what Settings › Sound › Microphones › Test and the Recorder's own level
+   display use (`desktop/mictest59.js`, `apps25b.js`), so both lose their meter for this reason too.
+   - **The Recorder is a third fault, and not this one.** Read from WebKitGTK 2.52's source (`webkitgtk-2.52.6`):
+     `MediaRecorderPrivateGStreamer` builds its pipeline as `gst_element_factory_make("uritranscodebin")` with
+     `source-uri=mediastream://`, `dest-uri=appsink://`, and takes its source from `webkitMediaStreamSrcAddTrack()`. The
+     audio it records arrives as one `appsrc capture-audiosrcN` per track from `WebKitMediaStreamSrc`, whose file names no
+     `deinterleave`; the capture pipeline is `pulsesrc ! audioconvert ! audioresample ! capsfilter ! appsink`
+     (`GStreamerAudioCapturer`), which names none either. So the missing `interleave` does **not** stop the Recorder.
+     What the Recorder needs is `uritranscodebin`, from GStreamer Bad's `transcode` plug-in (`libgsttranscode.so`), and the
+     image does not have it: the 39 plug-ins include no `libgsttranscode.so`, and `addwebkit.sh` named neither it nor the plug-in until 2026-11-27, when `transcode` joined the list beside
+     `interleave`.
+     **V3 needs this plug-in too, and not only V1:** the Camera's Record button builds the same `MediaRecorder` —
+     `apps25b.js` puts the camera's video track and, if the microphone prompt is allowed, its audio track into one
+     `MediaStream` and records that — so a clip cannot start without `uritranscodebin` even once the camera captures. The
+     camera fault (PipeWire) and the Recorder fault (`transcode`) are two separate things V3 needs, and fixing the camera
+     alone would leave its Record button as dead as V1's.
+     When that factory returns NULL, `preparePipeline()` returns false, `MediaRecorderPrivateGStreamer::create` returns
+     null, and `MediaRecorder::startRecording` turns it into `NotSupportedError: The MediaRecorder is unsupported on this
+     platform` out of `rec.start()` — which the Recorder page calls before it sets its clock, in a block with no `catch`,
+     so the button would stay dead with no message, exactly as V1 saw it. **What only a build can settle:** that
+     `rec.start()` is where V1 dies. The V1 attempt's own log is not among the saved starts (`starts/0` and `starts/2` are
+     empty), so no run has yet printed the `uritranscodebin` factory line.
    - **`deinterleave` ships in `libgstinterleave.so`** (gst-plugins-good's `interleave` plug-in), and the image has
      `libgstinterleave.so: absent` while `libgstinter.so` (the video interleaver) and `libgstaudiofx.so` are there.
      `iso/systools/addwebkit.sh`'s loop names `deinterlace`, `inter` and `audiofx` and **never `interleave`** — and the loop
-     skips a plug-in it cannot find without a word. So this is the same shape as the `pipewire` omission: a name missing
+     then skipped a plug-in it could not find without a word (since 2026-11-27 it names every one it cannot find, and
+     refuses the build when `interleave` or `transcode` is missing: a host without those packages is the wrong host, one
+     apt-get from right, whereas a missing `pipewire` still only warns until Part 9 gives the image a PipeWire to reach). The image answers for itself too: the self-test's `capture` line
+     (`iso/sys/root/usr/lib/rudolf/selftest`) fails when either plug-in is not in the image, whatever built it, and says
+     with a pass that the camera still waits on PipeWire — so a copy that went wrong on a right build host is caught on
+     the machine the image boots on, not only where it was made.
+     So this is the same shape as the `pipewire` omission: a name missing
      from the list, not a build that lost it. `interleave` is now in the list, with the same kind of warning after it.
    - **`error reading data -1` is the companion — by inference, not by record.** The timings are fact: it arrives 6 s after
      each `not-linked` (0:02:00, 0:02:08, 0:02:32, 0:03:00) and at no other moment, and PulseAudio's own log
