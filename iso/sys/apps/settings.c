@@ -896,6 +896,7 @@ static void show_now(const char *k)
 void set_show(const char *k) { show_now(k); }
 /* (1.6.3 Part 3) the page built again where it is (the page's draw(): its parts replaced, the page not scrolled) */
 void set_show_keep(const char *k) { double v = gtk_adjustment_get_value(fx_adj()); show_now(k); gtk_adjustment_set_value(fx_adj(), v); }
+const char *set_page(void) { return CUR; }   /* (1.6.3 Part 3, PR 8: the page showing, for the Users page's redraw after a dialog's window closes) */
 /* (the page's W.guard: unapplied changes asked about first) */
 static char NEXT[16];
 static void guard_do(int i, void *d)

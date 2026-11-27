@@ -5646,7 +5646,8 @@ static void win_op(const char *id, const char *what)
    property _RUDOLF_ASK (one line): "wins" (Task Manager's Apps: the windows as the page's Task Manager is given them, written back
    into the window's property _RUDOLF_WINS), "winop FRAME focus|end" (Switch to, End task), "open APP" (an app opened as the start
    menu opens it); nothing else, and only from a native app's window. */
-static const char *const NATIVE_APPS[] = { "taskmgr", NULL };
+static const char *const NATIVE_APPS[] = { "taskmgr", "settings", NULL };   /* (1.6.3 Part 3: the switch: the native desktop opens
+   rudolf-settings, at the page asked for, from every place that opens Settings) */
 static Atom A_RASK, A_RWINS;
 static void native_atoms(void) { if (!A_RASK) { A_RASK = XInternAtom(DPY, "_RUDOLF_ASK", False); A_RWINS = XInternAtom(DPY, "_RUDOLF_WINS", False); } }
 static int native_has(const char *k, char *bin, size_t n)
@@ -5671,7 +5672,9 @@ static int native_app_open(const char *k, const char *extra)
 	if (c) { if (c->min) { c->min = 0; XMapWindow(DPY, c->frame); set_wm_state(c, NormalState); } wm_focus(c); wm_restack(); return 1; }   /* (one window, as the page's) */
 	char base[96]; snprintf(base, sizeof base, "RUI_BASE=http://%s:%d", HOST, PORT);
 	gchar **env = g_environ_setenv(g_get_environ(), "RUI_BASE", base + 9, TRUE);
-	const char *av[3] = { bin, extra && strstr(extra, "urgent=1") ? "--urgent" : NULL, NULL };
+	char page[20] = "";   /* (1.6.3 Part 3: the page asked for (&page=usr, &page=disp...): rudolf-settings' own argument) */
+	if (!strcmp(k, "settings") && extra) { const char *q = strstr(extra, "page="), *v = q ? q + 5 : NULL; size_t n = v ? strspn(v, "abcdefghijklmnopqrstuvwxyz0123456789") : 0; if (n > 0 && n < sizeof page) { memcpy(page, v, n); page[n] = 0; } }
+	const char *av[3] = { bin, page[0] ? page : (extra && strstr(extra, "urgent=1") ? "--urgent" : NULL), NULL };
 	GError *er = NULL; int ok = g_spawn_async(NULL, (gchar **)av, env, G_SPAWN_DEFAULT, NULL, NULL, NULL, &er); g_strfreev(env);
 	if (!ok) { fprintf(stderr, "rudolf-native: %s did not start (%s): its page instead\n", bin, er ? er->message : "?"); g_clear_error(&er); return 0; }
 	fprintf(stderr, "rudolf-native: %s started (the native %s)\n", bin, k); return 1;
@@ -5702,7 +5705,7 @@ static int native_open_page(const char *q)
 	   escaped into the address, at most 150 bytes, no control characters */
 	{ int st = !strncmp(q, "stor ", 5), go = !strncmp(q, "storgo ", 7);
 	  if (st || go) { char w[16] = ""; const char *a = q + (go ? 7 : 5); size_t n = strcspn(a, " "); if (n == 0 || n >= sizeof w) return 1; memcpy(w, a, n); a += n; if (*a == ' ') a++;
-		static const char *const OPS[] = { "measure", "emptytrash", "trauto", "dldel", "clipclear", "avscan", "avquar", "qrestore", NULL }, *const WS[] = { "home", "dl", "dups", "trash", "backup", "restore", "applinux", "steam", "emu", "dlopen", "stkbak", "keep", "vsetup", "vrecover", "vmove", "restart", "sbprepare", "bootfiles", "devmon", "devmoff", "devmreturn", "devllog", "dodinstall", "report", "bzall", "selftest", "starts", "hlwhy", NULL };
+		static const char *const OPS[] = { "measure", "emptytrash", "trauto", "dldel", "clipclear", "avscan", "avquar", "qrestore", NULL }, *const WS[] = { "home", "dl", "dups", "trash", "backup", "restore", "applinux", "steam", "emu", "dlopen", "stkbak", "keep", "vsetup", "vrecover", "vmove", "restart", "sbprepare", "bootfiles", "devmon", "devmoff", "devmreturn", "devllog", "dodinstall", "report", "bzall", "selftest", "starts", "hlwhy", "fidoadd", "fidorm", "fidoreq", "fpadd", "fprm", "fpother", NULL };   /* (the last six: 1.6.3 Part 3, PR 8, User Settings) */
 		int ok = 0; for (const char *const *o = go ? WS : OPS; *o; o++) if (!strcmp(*o, w)) ok = 1; if (!ok || strlen(a) > 150) return 1;
 		for (const char *p = a; *p; p++) if ((unsigned char)*p < ' ' || *p == 127) return 1;
 		char *e = g_uri_escape_string(a, NULL, FALSE), *ex = g_strdup_printf(go ? "&w=%s&p=%s" : "&op=%s&p=%s", w, e); app_open_ex(go ? "do-storgo" : "do-stor", NULL, ex, go ? 0 : 1); g_free(e); g_free(ex); return 1; } }

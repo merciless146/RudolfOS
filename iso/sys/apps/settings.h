@@ -59,6 +59,7 @@ void p_space(double mt);
 void p_last_margins(double mt, double mb);            /* (1.6.3) the block just added: its own margins */
 typedef void (*SetFoot)(int what /* 0 apply 1 revert 2 reset */);
 void p_footer(int (*dirty)(void), SetFoot act);      /* .sfoot: Apply, Revert, Reset to defaults, at the page's bottom */
+const char *set_page(void);                           /* (1.6.3) the page showing ("usr", "disp"...) */
 void p_footer_noreset(void);                          /* (1.6.3) no Reset to defaults (secFooter's noReset) */
 void p_custom_more(const char *t);                    /* (1.6.3) another row of the last custom block found by Search in Settings */
 void p_footer_box(void);                              /* (1.6.3) the top of the box a sticky footer stays in */

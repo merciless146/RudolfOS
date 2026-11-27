@@ -398,19 +398,25 @@ static void dev_sec(void)
 	rui_jfree(o); g_free(u);
 }
 
+static gboolean usr_focus(GtkWidget *w, GdkEventFocus *e, gpointer d)   /* (1.6.3 PR 8: a dialog's window closed: the page draws again) */
+{ (void)w; (void)e; (void)d; if (!strcmp(set_page(), "usr")) redraw(); return FALSE; }
+static void usr_watch_focus(void) { static int on; if (on || !SW) return; on = 1; g_signal_connect(SW->win, "focus-in-event", G_CALLBACK(usr_focus), NULL); }
+
 void page_usr(void)
 {
-	accts_load(); p_h3("User Settings");
+	accts_load(); usr_watch_focus(); p_h3("User Settings");
 	if (!strcmp(ROLE, "guest")) { p_msg_m("\x03You are using a <b>guest session</b>. Nothing you do is kept after you sign out. Ask an administrator for an account to keep your files.", 5, 0, 0); return; }
 	int adm = set_admin(); Who *w = g_new0(Who, 1); w->a = gtk_drawing_area_new(); g_signal_connect(w->a, "draw", G_CALLBACK(who_draw), w); p_put(w->a); p_custom(who_lay, w, 0, 6);
 	account_secs(adm); signin_sec(adm); if (adm) family_sec(); otp_row(); fido_row(); fp_row(adm); files_sec(adm); dev_sec();
 	p_footer(usr_dirty, foot); p_footer_noreset();
 }
 
-/* (the actions that ask rudolfd with the account's password: next) */
-void usr_fido_add(void) { set_note("todo fido add"); }
-void usr_fido_remove(int i) { set_note("todo fido remove %d", i); }
-void usr_fido_require(int on) { set_note("todo fido require %d", on); }
-void usr_fp_add(int who) { set_note("todo fp add %d", who); }
-void usr_fp_remove(int who, const char *f) { set_note("todo fp remove %d %s", who, f ? f : "all"); }
-void usr_fp_other(int who) { set_note("todo fp other %d", who); }
+/* (the actions that ask rudolfd with a password: the page's own dialogs (fido61.js's fidoAsk, fprint63.js's fpEnroll and
+   fpOther), run in a page of one action, #app=do-storgo&w=..., as Security's are: the page holds the file key, and its
+   dialogs are the ones tested there. The page draws again when that window closes.) */
+void usr_fido_add(void) { ask("storgo fidoadd"); }
+void usr_fido_remove(int i) { char a[40]; snprintf(a, sizeof a, "storgo fidorm %d", i); ask(a); }
+void usr_fido_require(int on) { ask(on ? "storgo fidoreq 1" : "storgo fidoreq 0"); }
+void usr_fp_add(int who) { char a[160]; snprintf(a, sizeof a, "storgo fpadd %s", set_jstr(ac_at(who), "id", "")); ask(a); }
+void usr_fp_remove(int who, const char *f) { (void)who; char a[64]; if (f && *f) snprintf(a, sizeof a, "storgo fprm %s", f); else snprintf(a, sizeof a, "storgo fprm"); ask(a); }
+void usr_fp_other(int who) { char a[160]; snprintf(a, sizeof a, "storgo fpother %s", set_jstr(ac_at(who), "id", "")); ask(a); }
