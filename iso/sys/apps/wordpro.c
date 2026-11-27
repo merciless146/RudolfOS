@@ -1402,7 +1402,10 @@ static void open_doc(const char *path)
 			char *alt = attr_dup(p, gt, "alt"), *sty = attr_dup(p, gt, "style");
 			int wpct = 0, walign = WAL_INLINE;
 			if (sty) {
-				char *w = strstr(sty, "width:"); if (w) wpct = atoi(w + 6);
+				/* (not max-width, which stands before it: the width tool's own is the one after a ; or at the start) */
+				char *w = strstr(sty, "width:");
+				while (w && w > sty && !strncmp(w - 4, "max-", 4)) w = strstr(w + 6, "width:");
+				if (w) wpct = atoi(w + 6);
 				if (strstr(sty, "float:left")) walign = WAL_LEFT;
 				else if (strstr(sty, "float:right")) walign = WAL_RIGHT;
 				else if (strstr(sty, "display:block")) walign = WAL_CENTER;
