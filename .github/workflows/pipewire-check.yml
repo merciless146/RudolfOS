@@ -11,6 +11,8 @@ on:
       - iso/systools/mkpipewire.sh
       - iso/systools/pwconf/**
       - iso/sys/root/usr/lib/rudolf/sound
+      - iso/sys/root/usr/lib/rudolf/camera
+      - iso/qt/host/camwp_t.sh
       - .github/workflows/pipewire-check.yml
 permissions:
   contents: read
@@ -72,6 +74,12 @@ jobs:
           sleep 4
           pgrep -x wireplumber >/dev/null || { echo "FAIL WirePlumber stopped after it had connected"; cat /tmp/wireplumber.log; exit 1; }
           echo "PASS WirePlumber runs beside PulseAudio with its ALSA monitor off"
+      - name: the camera switch lets go of the camera (Settings › Privacy › Camera, host test)
+        run: |
+          set -o pipefail
+          # WirePlumber's v4l2 monitor holds the camera open, so the switch's off must stop it before unloading the
+          # driver and its on must start it again; a session without WirePlumber is unchanged
+          sh iso/qt/host/camwp_t.sh | tee camwp.txt
       - name: the logs, when something failed
         if: failure()
-        run: tail -40 /tmp/pipewire.log /tmp/wireplumber.log 2>/dev/null || true
+        run: tail -40 /tmp/pipewire.log /tmp/wireplumber.log camwp.txt 2>/dev/null || true
