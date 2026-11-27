@@ -1,0 +1,61 @@
+name: SpreadsheetPro (1.6.3)
+# 1.6.3 (docs/plan-1.6.3.md Part 1): rudolf-sheets's first step -- the page's window, its toolbar, its eight menus, its
+# formula bar and its grid -- built hardened as the release builds it (RUI_WERROR=1: a single warning fails it) and then
+# used under Xvfb: typing and Enter, a formula, Tab and Enter along a row, Ctrl+`, Ctrl+B, undo and redo, the name box, the
+# status line's figures, Ctrl+Down, the page's menus, and the toolbar's lists read from the page (mksheetpro.py). No
+# screenshots yet: the comparison against the web SpreadsheetPro comes with the step that makes every one of its views.
+on:
+  pull_request:
+    paths:
+      - 'iso/sys/apps/sheetpro.c'
+      - 'iso/sys/apps/mksheetpro.py'
+      - 'iso/sys/ui/**'
+      - 'iso/qt/native/sheetpro_t.sh'
+      - 'iso/qt/host/fixtures/deskls.js'
+      - 'desktop/spro45.js'
+      - 'desktop/sprof45.js'
+      - 'desktop/spreng45.js'
+      - 'desktop/office45.js'
+      - '.github/workflows/sheetpro-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'iso/sys/apps/sheetpro.c'
+      - 'iso/sys/apps/mksheetpro.py'
+      - 'iso/sys/ui/**'
+      - 'iso/qt/native/sheetpro_t.sh'
+      - 'desktop/spro45.js'
+      - 'desktop/office45.js'
+      - '.github/workflows/sheetpro-check.yml'
+  workflow_dispatch:
+jobs:
+  sheetpro:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: the build machine's packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libgtk-3-dev pkg-config fontconfig \
+            libfontconfig1-dev xvfb xdotool nodejs imagemagick x11-utils gdb
+      - name: rudolf-sheets built as a release builds it (hardened, no warning, its size)
+        run: |
+          cd iso && . systools/hardflags.sh
+          RUI_WERROR=1 sh sys/ui/build.sh "$RUNNER_TEMP/ui" "$RUNNER_TEMP/rudolf-sheets" sheetpro $HARD
+          python3 systools/hardcheck.py "$RUNNER_TEMP/rudolf-sheets"
+          echo "::notice title=rudolf-sheets::$(stat -c %s "$RUNNER_TEMP/rudolf-sheets") bytes, hardened (a native app's budget is 1 MB)"
+      - name: build and use it (the grid, the formulas and the page's keys)
+        run: sh iso/qt/native/sheetpro_t.sh out
+      - name: the state and the log, when something failed
+        if: failure()
+        run: |
+          cat out/state.txt 2>/dev/null || true
+          cat out/app.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sheetpro
+          path: out
+          retention-days: 7
+          if-no-files-found: warn
