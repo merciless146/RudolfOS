@@ -287,7 +287,7 @@ static GtkWidget *tb_button(const char *label, const char *tip, GCallback cb, co
 	GtkWidget *b = gtk_button_new(); GtkWidget *l = gtk_label_new(NULL);
 	gtk_label_set_markup(GTK_LABEL(l), label); gtk_container_add(GTK_CONTAINER(b), l);
 	gtk_style_context_add_class(gtk_widget_get_style_context(b), "rui");
-	gtk_widget_set_tooltip_text(b, rui_tr(tip));
+	gtk_widget_set_tooltip_text(b, rui_tr(tip)); gtk_widget_set_can_focus(b, FALSE);
 	if (cb) g_signal_connect(b, "clicked", cb, (gpointer)d);
 	gtk_style_context_add_class(gtk_widget_get_style_context(b), "wp-tb");
 	gtk_widget_set_size_request(b, (int)lround(rui_px(26)), (int)lround(rui_px(26)));
@@ -447,34 +447,28 @@ static void build_status(void)
 }
 /* the page's keys (Ctrl+B, I, U, Z, Y, F). An accelerator group is used, not a key handler on the window: the writing
    takes Ctrl+B and Ctrl+I itself (they move the cursor, as every GTK text view does), so a handler there never saw them. */
-static gboolean accel_do(gpointer d)
+/* the page's keys. The handler is on the writing itself, not on the window: a handler on the window runs after the text
+   view has already taken Ctrl+B and Ctrl+I (it moves the cursor with them), and returning TRUE here stops that. */
+static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
 {
-	switch (GPOINTER_TO_INT(d)) {
-	case 'b': apply_name("b"); break;
-	case 'i': apply_name("i"); break;
-	case 'u': apply_name("u"); break;
-	case 'z': hist_undo(); break;
-	case 'y': hist_redo(); break;
-	case 'f': gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); break;
-	default: break;
+	(void)w; (void)d; if (!(e->state & GDK_CONTROL_MASK)) return FALSE;
+	switch (e->keyval) {
+	case GDK_KEY_b: apply_name("b"); return TRUE;
+	case GDK_KEY_i: apply_name("i"); return TRUE;
+	case GDK_KEY_u: apply_name("u"); return TRUE;
+	case GDK_KEY_z: hist_undo(); return TRUE;
+	case GDK_KEY_y: hist_redo(); return TRUE;
+	case GDK_KEY_f: gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); return TRUE;
+	default: return FALSE;
 	}
-	return G_SOURCE_REMOVE;
 }
-/* (done once the key event is over: GTK is still inside its own handling of it when an accelerator fires, and a tag
-   applied there is applied to iterators GTK is about to make stale) */
-static void accel(GtkAccelGroup *g, GObject *o, guint kv, GdkModifierType m, gpointer d)
-{(void)g; (void)o; (void)kv; (void)m; g_idle_add(accel_do, d);}
 int main(int argc, char **argv)
 {
 	rui_init(&argc, &argv, "wordpro");
 	css();
 	W = rui_window("wordpro", "WordPro", 980, 646);
 	build_find(); build_toolbar(); build_editor(); build_status();
-	{ GtkAccelGroup *ag = gtk_accel_group_new();
-	  static const struct { guint kv; int k; } K[] = { { GDK_KEY_b, 'b' }, { GDK_KEY_i, 'i' }, { GDK_KEY_u, 'u' }, { GDK_KEY_z, 'z' }, { GDK_KEY_y, 'y' }, { GDK_KEY_f, 'f' } };
-	  for (unsigned i = 0; i < G_N_ELEMENTS(K); i++)
-		  gtk_accel_group_connect(ag, K[i].kv, GDK_CONTROL_MASK, GTK_ACCEL_VISIBLE, g_cclosure_new(G_CALLBACK(accel), GINT_TO_POINTER(K[i].k), NULL));
-	  gtk_window_add_accel_group(GTK_WINDOW(W->win), ag); }
+	g_signal_connect(ED, "key-press-event", G_CALLBACK(key), NULL);
 	gtk_widget_show_all(W->win); gtk_widget_hide(FIND);
 	gtk_widget_grab_focus(ED);   /* (the page's window opens with its writing ready: typing goes into it at once) */
 	counts(); state_soon();
