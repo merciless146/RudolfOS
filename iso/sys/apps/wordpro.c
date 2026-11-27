@@ -44,6 +44,7 @@ static void upd_sel(void);
 static int menus_n(void);
 static void obj_counts(int *w, int *c);
 static void state_objs(GString *s);
+static void state_steps(GString *s);
 static void insert_picture_data(guchar *data, gsize len);
 static void open_doc(const char *path);
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
@@ -334,6 +335,7 @@ static void state_write(void)
 	if (MENU_OPEN) g_string_append_printf(s, "menu %s %d\n", MENU_OPEN, MENU_OPEN_N);
 	state_objs(s);
 	g_string_append_printf(s, "hist %d %d\n", HIST_I, HIST_N);   /* (where the undo stands: the tests read it) */
+	state_steps(s);
 	if (FIND && FI && REPL) g_string_append_printf(s, "findbar %d\nfind %s\nrepl %s\n", gtk_widget_get_visible(FIND) ? 1 : 0,
 		gtk_entry_get_text(GTK_ENTRY(FI)), gtk_entry_get_text(GTK_ENTRY(REPL)));
 	g_string_append_printf(s, "on %s\n", ON);
@@ -586,13 +588,18 @@ static void obj_counts(int *w, int *c)
 		g_list_free(ch);
 	}
 }
+static const char *cell_text(WpObj *o, int r, int c);   /* (the cell's own text: what a table's entry carries) */
 static void state_objs(GString *s)
 {
 	g_string_append_printf(s, "objs %d\n", OBJ ? (int)OBJ->len : 0);
 	if (!OBJ) return;
 	for (guint i = 0; i < OBJ->len; i++) { WpObj *o = g_ptr_array_index(OBJ, i);
 		if (o->kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %u\n", o->wpx, o->hpx, (unsigned)(o->im ? o->im->n : 0));
-		else g_string_append_printf(s, "obj table %dx%d\n", o->rows, o->cols);
+		else {   /* (the cells' text, which is what an undo or a redo of a table has to bring back) */
+			g_string_append_printf(s, "obj table %dx%d\ncells", o->rows, o->cols);
+			for (int r = 0; r < o->rows; r++) for (int c = 0; c < o->cols; c++) { g_string_append_c(s, '|'); g_string_append(s, cell_text(o, r, c)); }
+			g_string_append_c(s, '\n');
+		}
 	}
 }
 /* (the object's widget goes into the writing at the anchor it was made for: the menu and the parser create the anchor,
@@ -702,7 +709,12 @@ static gboolean focus_cell_hook(gpointer d)
 		WpObj *o = g_ptr_array_index(OBJ, i);
 		if (o->kind != OBJ_TABLE || !o->w) continue;
 		GList *ch = gtk_container_get_children(GTK_CONTAINER(o->w));
-		for (GList *k = ch; k; k = k->next) if (GTK_IS_ENTRY(k->data)) { gtk_widget_grab_focus(k->data); break; }
+		for (GList *k = ch; k; k = k->next) if (GTK_IS_ENTRY(k->data) && GPOINTER_TO_INT(g_object_get_data(G_OBJECT(k->data), "wp-cell")) == 1) {
+			gtk_widget_grab_focus(k->data);
+			/* (a click in a cell puts the cursor where it stands -- the focus alone chooses all of the cell's text, and the
+			   first letter typed would then be two changes: the choice taken away, and the letter in) */
+			gtk_editable_set_position(GTK_EDITABLE(k->data), -1);
+			break; }
 		g_list_free(ch);
 		break;
 	}
@@ -878,6 +890,17 @@ static int hist_same(Hist *a, Hist *b)
 	return 1;
 }
 static void hist_free(Hist *h) { if (!h) return; g_free(h->t); g_ptr_array_free(h->objs, TRUE); g_free(h); }
+static void state_steps(GString *s)
+{
+	for (int k = 0; k < HIST_N; k++) {   /* (each step: its text's length, its places, and a table's cells -- what a check reads) */
+		Hist *e = HIST_T[k];
+		g_string_append_printf(s, "step %d %d %d", k + 1, (int)strlen(e->t), (int)e->objs->len);
+		for (guint i = 0; i < e->objs->len; i++) { Snap *o = g_ptr_array_index(e->objs, i);
+			if (!o->cells) continue;
+			for (guint j = 0; j < o->cells->len; j++) g_string_append_printf(s, " %s", (char *)g_ptr_array_index(o->cells, j)); }
+		g_string_append_c(s, '\n');
+	}
+}
 /* (the page as the window opens: the empty step undo walks back to, and the first thing put on the page can be undone) */
 static void hist_empty(void) { HIST_T[0] = hist_now(); HIST_N = HIST_I = 1; }
 static void snap_place(GtkTextChildAnchor *a, Snap *s)
