@@ -159,12 +159,15 @@ kill $WPP6 2>/dev/null
 ok "17. ...and what was saved here opens and saves again as the very same document (the round trip)" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST6" 2>/dev/null); the second save is $( [ $SAME = 0 ] && echo 'the same bytes' || echo 'different' ) ($(stat -c %s "$T/out.DOC" 2>/dev/null) and $(stat -c %s "$T/out2.DOC" 2>/dev/null) bytes)"
 # (the picture is a step of the history: undo takes it away, redo brings the picture itself back -- not a place with
 #  nothing behind it. A copy of the app takes the keys: the same window, focused on this display as the first one was)
+# (the first window is taken down first: this copy has to be the only one on the display for its keys to be its own)
+kill $WPP 2>/dev/null; sleep 0.5
 ST7=$T/state7.txt; rm -f "$ST7"
 RUDOLF_WP_STATE=$ST7 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP "$BIN" >"$T/wp7.log" 2>&1 & WPP7=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 W7=$(DISPLAY=$DSP xdotool search --sync --onlyvisible --pid "$WPP7" 2>/dev/null | tail -1)
 [ -n "$W7" ] || W7=$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null | tail -1)
 FOCUS=""
+[ -n "$W7" ] && DISPLAY=$DSP xdotool windowraise "$W7" 2>/dev/null
 i=0; while [ $i -lt 60 ] && [ -n "$W7" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W7" 2>/dev/null
 	FOCUS=$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)
 	[ "$FOCUS" = "$W7" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
