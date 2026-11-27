@@ -342,22 +342,25 @@ static gboolean check_draw(GtkWidget *w, cairo_t *cr, gpointer d)
 	cairo_restore(cr);
 	/* the words: 8 px after the box (gap 8 px, the box's own 3 px margins) */
 	GtkStyleContext *sc = gtk_widget_get_style_context(w); GdkRGBA fg; gtk_style_context_get_color(sc, gtk_style_context_get_state(sc), &fg); gdk_cairo_set_source_rgba(cr, &fg);
+	int wt0 = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(w), "rui-ck-wt")); double tx0 = g_object_get_data(G_OBJECT(w), "rui-ck-inl") ? bx + s + 3 + RUI.fs * .2769 : bx + s + 3 + 8;
 	if (c->ww > 0) {   /* (its words wrapped, each line in the label's line box: Settings' long check boxes) */
-		PangoLayout *l = rui_layout(cr, c->label, RUI.fs, 400); pango_layout_set_width(l, (int)((c->ww - (bx + s + 3 + 8)) * RUI.z * PANGO_SCALE)); pango_layout_set_wrap(l, PANGO_WRAP_WORD_CHAR);
+		PangoLayout *l = rui_layout(cr, c->label, RUI.fs, wt0 ? wt0 : 400); pango_layout_set_width(l, (int)((c->ww - tx0) * RUI.z * PANGO_SCALE)); pango_layout_set_wrap(l, PANGO_WRAP_WORD_CHAR);
 		PangoFontMetrics *m = pango_context_get_metrics(pango_layout_get_context(l), pango_layout_get_font_description(l), NULL);
 		double a = round(pango_font_metrics_get_ascent(m) / (double)PANGO_SCALE), de = round(pango_font_metrics_get_descent(m) / (double)PANGO_SCALE); pango_font_metrics_unref(m);
 		PangoLayoutIter *it = pango_layout_get_iter(l); int i = 0;
-		do { cairo_move_to(cr, round((bx + s + 3 + 8) * RUI.z), round(i * lh * RUI.z + (lh * RUI.z - a - de) / 2 + a)); pango_cairo_show_layout_line(cr, pango_layout_iter_get_line_readonly(it)); i++; } while (pango_layout_iter_next_line(it));
+		do { cairo_move_to(cr, round(tx0 * RUI.z), round(i * lh * RUI.z + (lh * RUI.z - a - de) / 2 + a)); pango_cairo_show_layout_line(cr, pango_layout_iter_get_line_readonly(it)); i++; } while (pango_layout_iter_next_line(it));
 		pango_layout_iter_free(it); g_object_unref(l); return TRUE; }
-	text_in(cr, c->label, bx + s + 3 + 8, 0, 2000, lh, RUI.fs, 400, 0);   /* (the gap: 8 px after the box's own margin) */
+	{ int wt = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(w), "rui-ck-wt")); double tx = g_object_get_data(G_OBJECT(w), "rui-ck-inl") ? bx + s + 3 + RUI.fs * .2769 : bx + s + 3 + 8;   /* (1.6.3: a bold one; one in a plain <label>: its words a space after the box) */
+	  text_in(cr, c->label, tx, 0, 2000, lh, RUI.fs, wt ? wt : 400, 0); }   /* (the gap: 8 px after the box's own margin) */
 	return TRUE;
 }
 static gboolean check_press(GtkWidget *w, GdkEventButton *e, gpointer d) { Check *c = d; if (e->button != 1 || e->type != GDK_BUTTON_RELEASE) return e->button == 1;   /* (on release, as a button is clicked) */ c->on = !c->on; gtk_widget_queue_draw(w); if (c->cb) c->cb(c->on, c->d); return TRUE; }
 static void check_free(gpointer d) { Check *c = d; g_free(c->label); g_free(c); }
 static void check_size(GtkWidget *w) { Check *c = g_object_get_data(G_OBJECT(w), "rui-ck"); cairo_surface_t *s = cairo_image_surface_create(CAIRO_FORMAT_A8, 1, 1); cairo_t *cr = cairo_create(s);
-	int tw = (int)lround(rui_px(4 + 13 + 3 + 8 + text_w(cr, c->label, RUI.fs, 400) + 1)); cairo_destroy(cr); cairo_surface_destroy(s);
+	int wt = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(w), "rui-ck-wt")); int tw = (int)lround(rui_px(4 + 13 + 3 + 8 + text_w(cr, c->label, RUI.fs, wt ? wt : 400) + 1)); cairo_destroy(cr); cairo_surface_destroy(s);
 	if (c->ww > 0) { gtk_widget_set_size_request(w, (int)lround(rui_px(c->ww)), (int)lround(rui_px(c->wh))); return; }
 	gtk_widget_set_size_request(w, tw, (int)lround(rui_px(fmax(19, RUI.fs * 1.35)))); }
+void rui_check_style(GtkWidget *w, int weight, int inl) { g_object_set_data(G_OBJECT(w), "rui-ck-wt", GINT_TO_POINTER(weight)); g_object_set_data(G_OBJECT(w), "rui-ck-inl", GINT_TO_POINTER(inl)); check_size(w); gtk_widget_queue_draw(w); }
 void rui_check_wrap(GtkWidget *w, double css_w, double css_h) { Check *c = g_object_get_data(G_OBJECT(w), "rui-ck"); if (!c) return; c->ww = css_w; c->wh = css_h; check_size(w); gtk_widget_queue_draw(w); }
 static void check_re(void *d) { check_size(d); }
 GtkWidget *rui_check(const char *label, int on, void (*cb)(int, void *), void *d)

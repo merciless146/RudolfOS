@@ -8,6 +8,7 @@ The owner's rule for the native desktop holds for every part: "Rudolf OS on the 
 function exactly as it does in Chromium mode." Chromium and Lite keep the web versions of every app unchanged.
 
 ## Parts
+A part's numbered bullet points are its **items**: a reference reads "Part 3, item 4" (AGENTS.md, Terms).
 
 ### Part 0. The signing keys: only main can use them (the first step of 1.6.3; the owner, 2026-11-24 08:55 CST)
 The owner asked how secure Rudolf's keys are, then: "Make it the first step of 1.6.3."
@@ -337,7 +338,43 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   Trash's line and the home folder's table change within a few seconds. 3. Open File Explorer, Find duplicates…, Back up everything…
   (the Save dialog), Restore a backup… (the file picker opens). 4. Back up here with a stick plugged in: "Backup saved". 5. Make the
   stick… on a spare stick: the size asked, the bar, "It is safe to remove the stick now". 6. On a live stick: Keep my files on this drive….
-- **Left:** Privacy, Security, System health, Users (PR 8); the switch.
+- **PR 8, done (2026-11-27; branches native-settings-10 and native-settings-pr8): Privacy, Security Settings, System health,
+  Users, and the switch.**
+  - Done: Privacy (`settings_priv.c`): the camera's switch (camera?on=, the administrator's prompt), Saved passwords for apps
+    (keyring/list, keyring/forget, each Remove asked first), App permissions (bd95perm:ACCT), Recent activity (bd95permlog:ACCT),
+    Other data (Clear clipboard history: the hidden page's, "stor clipclear"), Ads and trackers in Oracle (S.oblock; the list's size
+    read from desktop/orablock61.json at build time). Views 0.38-0.55 % light and dark; Search the same 8 rows; checklist P1-P6.
+  - Security Settings (`settings_sec.c`), in progress: every section drawn (status cards, Firewall, Data encryption, Website blocking,
+    Antivirus, System protection, Confirm, Quarantine, Activity log, Secure Boot, Developer mode, Development link, Smart cards,
+    Two-step sign-in); Apply needs the administrator's own password, checked by rudolfd (desktop/admin) as the page checks it; the
+    firewall, Secure Boot's request, two-step sign-in: the administrator's prompt; the development link's Allow and Switch on… and the
+    DoD certificates' Remove: the administrator's name and password with the request (rui_elevate_cred); what the page does in its own
+    dialogs (encrypting, the recovery key, Secure Boot's preparation, Developer mode, the link's log, installing the DoD's certificates)
+    and Scan now, Quarantine all, Restore: "storgo W" and "stor OP" (sc60.js's install moved into scDodInstall for it). Views 0.42-1.75 %
+    but one place (mid5, a 1 px rounding of the page's fractional layout: 2.1-2.3 %), Search the same 37 rows, checklist S1-S8.
+  - System health (`settings_health.c`): the summary of the last 7 days, Power and battery (power/status, power/set at once,
+    administrators only), the development link's and the accounts' Linux users' rows, Memory (memory/settings after the administrator's
+    prompt), Game mode (S.gamemode with game/set, S.gmsleep), the events by kind with each one's "⚡ Why?"; Report a problem…, the
+    self-test, Last starts and Blitzen's answers in a page of one action. Views 0.44-0.87 % light and dark; Search the same 33 rows;
+    checklist H1-H5.
+  - Users (`settings_usr.c`): the account's own row, Sign-in options, the family's controls (each app's kind, the hours,
+    pcSave), two-step sign-in (otp60.js's rows), the security keys (devkey59/fido61: the keys, Add, Remove, Require), the
+    fingerprints (fprint63: the account's own and, for an administrator, every other account's), Files and administrators
+    (acct50.js's acSection, each reset asked for), the developer's publisher key. Views 0.38-0.55 %; Search the same 47 rows.
+  - **The six actions that need a password** run the page's own dialogs (fido61.js's fidoAdd, fidoRemove, fidoRequire;
+    fprint63.js's fpEnroll, fpRemove, fpOther) in a page of one action, `#app=do-storgo&w=fidoadd` and its five siblings
+    (oneapp59.js's A.storgo), as Security's do: the page holds the file key, and those dialogs are the ones the page's tests
+    cover. The app draws the page again once when that window closes (the next focus, not every focus).
+  - **The switch:** `rudolf-settings` is in the shell's native apps (rudolf-native.c's NATIVE_APPS), so every place that opens
+    Settings -- the start menu, the pins, the taskbar's right-click, Ctrl+I, quick settings, the battery's System health, the
+    page's own open -- starts the native app instead of the page, at the page asked for: `tb_settings` passes `&page=NAME` and
+    the shell gives it to the app as its argument (&page=usr is rudolf-settings' own). RUDOLF_NATIVE_APPS=0 keeps the page, for
+    tests and as a fallback. Chromium and Lite keep the web Settings, unchanged.
+  - **Known differences (PR 8):** an already-open Settings window is brought forward rather than changed to the page asked for,
+    as the page's own window is: the app reads its page when it starts. Security's mid5 view is 2.1-2.3 % (the page's fractional
+    layout rounded to whole pixels), the rest under 2 %.
+- **Left for PR 8:** the owner's checklist on the Vivobook (each of the four pages against Chromium mode's, light and dark;
+  Add a security key, a fingerprint, Require a security key), and Security's mid5 view if the owner wants it matched exactly.
 - **A note from Part 8, item 5 (2026-11-25, scheduled task, PR "Make a stick in Backup"):** Make a Rudolf OS USB stick moved
   within the page's Storage and backup into its Backup part (after "Back up to a USB stick"), with what each choice puts on it in
   plain words, a stick too small for the chosen image refused before anything is written, a bar with the step and the time
@@ -835,6 +872,37 @@ unless the item is Native's own (then Native is made to match Chromium, never th
 
 ### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)
 
+**Status (2026-11-27): begun, on `pw-beside-pulse`.** The owner chose PipeWire *beside* PulseAudio: PulseAudio stays the
+sound server and keeps every card; WirePlumber's ALSA monitor is off, so nothing opens a card twice, and what runs is the
+daemon, its session manager and the camera's monitors (no `pipewire-pulse`). In: `systools/mkpipewire.sh` (the daemon,
+WirePlumber, libpipewire, the SPA plug-ins and both packages' share trees: dpkg/ldd discovery, named failures, a 12 MB
+budget), `systools/pwconf/51-no-alsa.lua` for WirePlumber 0.4 and `51-no-alsa.conf` for 0.5, the start in
+`usr/lib/rudolf/sound` (after PulseAudio's socket; `restart` stops both), the wiring in `mkrootfs.sh` and
+`ci_release.sh` (with its `BSRC` list), the packages in `rudolf-release.yml`, `pipewire` moved into `addwebkit.sh`'s
+`FATAL` list (a capture build without the plug-in lists a camera it cannot open), and
+`.github/workflows/pipewire-check.yml`, which installs the real packages, packages the layer, starts it under the
+layer's own configuration and fails on any audio node or ALSA device.
+**The capture rebuild, and the two switches it meets.** `addwebkit.sh` now names `gstreamer1.0-pipewire` when it stops a
+build (its comment still said the plug-in was a warning), the Lite engine check installs the daemon's packages and holds
+the layer to its three capture plug-ins (pipewire, interleave, transcode, the first reaching libpipewire), and the
+self-test's `capture` line fails when the pipewire plug-in or the daemon is missing instead of saying the camera waits.
+Settings › Privacy › Camera's switch stops WirePlumber before unloading the camera's driver -- WirePlumber's v4l2 monitor
+keeps the device open, so every "camera off" would have answered "the camera is in use" -- and starts it again when the
+camera comes back, which `iso/qt/host/camwp_t.sh` checks in the PipeWire check.
+**Where the daemon comes from.** Both build paths carry it: `mkrootfs.sh` runs `systools/mkpipewire.sh` for the layer it
+makes -- so the ARM64 build, which builds through `mkrootfs.sh`, gets it too (its base layer's log reads
+`pipewire: 9019 KB`) -- and `ci_release.sh` runs the same script against the release's base layer. `mklayers.sh` keeps
+every file of it in `base.sfs`: it takes out only `opt/chromium`, `usr/share/rudolf/www` and `usr/lib/modules`. WendigOS
+builds the same layers from `main` and has no build switch around this, so it gets them when this part merges; the
+`kryptonite` branch (last at `ec2edfa9`, 2026-11-23) has neither `mkpipewire.sh` nor the call in its `mkrootfs.sh`, so it
+must merge `main` before a layer built from it has the daemon -- until then the self-test's `capture` line fails there.
+**The layer itself, not the tree.** `systools/layercheck.sh` unpacks nothing: it reads a packed layer's file list and wants
+the daemon and WirePlumber (executable files), the camera's `spa-0.2/v4l2/libspa-v4l2.so`, the `51-no-alsa` drop-in and
+no `pipewire-pulse`; it names whatever is missing and fails. It runs on the base layer the ARM64 build makes
+(`arm64-check.yml`), on the one `ci_release.sh` packs for a release, and on the one the PipeWire check makes with
+`mklayers.sh` from `mkpipewire.sh`'s own tree; its nine cases are a host test needing no squashfs-tools
+(`iso/qt/host/layercheck163_t.sh`, its own job in the PipeWire check).
+
 **The fault.** On the Native desktop Camera answers "No camera is available or access is blocked" with the privacy switch
 on, the check's microphone reads −120 dB (all-zero samples) and Voice Recorder records nothing; on the same build and
 machine Chromium does all three (checklist V1–V3; findings N33 and N35 in docs/native-findings-2026-11-26.md).
@@ -879,10 +947,11 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
 5. **Test on the Vivobook** (checklist V2 and V3): the camera's preview at 640×480, a photo and a 5 s video saved and
    opened. Then with PipeWire stopped, to see what the app says. Two checks for two paths: the hardware check's microphone
    step reads through WebAudio, so it needs `libgstinterleave.so` and should move off −120 dB; V1 and the Camera's
-   "Record video" (V3) are the Recorder, which needs `libgsttranscode.so` and should then save a clip. The self-test's `capture` line says whether the image has both plug-ins before either is tried,
-   and its pass names the camera's remaining wait on PipeWire. (Host test: `iso/qt/host/selftest_t.sh` 12a–12e, which holds the two
-   plug-ins in, takes each away, and checks the wait is said.) If either stays dead, its own log line names the factory that is
-   still missing.
+   "Record video" (V3) are the Recorder, which needs `libgsttranscode.so` and should then save a clip. The self-test's
+   `capture` line now asks for the camera's side too: with PipeWire in the image it fails when the pipewire plug-in or the
+   daemon is missing (the camera cannot capture), names which, and passes only with all three. (Host test:
+   `iso/qt/host/selftest_t.sh` 12a–12f, which holds the two microphone plug-ins in, then takes the camera's plug-in and
+   the daemon away, each named.) If either stays dead, its own log line names the factory that is still missing.
 6. **Cost:** two more daemons and their libraries, and their memory; read the native desktop's idle figure (checklist V42)
    before and after.
 

@@ -78,5 +78,13 @@ async function storSnap(){const si=await storageInfo();let pers=false;try{pers=a
 async function storDo(op,p){if(!USER)return;let n=null;
  if(op=='emptytrash'){TR.length=0;trSave();notify('Trash emptied','',{snd:'trash'})}
  else if(op=='trauto')n=trAutoEmpty();
+ else if(op=='clipclear'){if(typeof CLIPH!='undefined')CLIPH=[];return}   /* (Settings › Privacy › Clear clipboard history: the hidden page's) */
+ /* (Settings › Security: Scan now (its result in bd95avscan:<id>), Quarantine all, a quarantined file's Restore, as secPanelS does them) */
+ else if(op=='avscan'){const found=[];let cnt=0;const walk=(n,pp)=>{for(const k in n){const v=n[k];if(isDir(v))walk(v,[...pp,k]);else if(typeof v=='string'){cnt++;const th=avScan(k,v);if(th.length)found.push({p:[...pp,k],th})}}};walk(fs,[]);
+  SLOG.scan={t:Date.now(),files:cnt,threats:found.length};logEvt('av',`Scan finished: ${cnt} files, ${found.length} threat${found.length==1?'':'s'}`);
+  svj('bd95avscan:'+uid(),{t:Date.now(),files:cnt,found:found.map(f=>({p:f.p.join('\\'),th:f.th.join(', '),path:f.p,ths:f.th}))});return}
+ else if(op=='avquar'){const r=ld('bd95avscan:'+uid(),null);if(r&&Array.isArray(r.found)){r.found.forEach(f=>{if(Array.isArray(f.path))quarantineFile(f.path,f.ths||[])});r.found=[];svj('bd95avscan:'+uid(),r)}return}
+ else if(op=='qrestore'){const it=QUAR[+p];if(!it)return;const d=node(it.from)||fs['C:'];let n2=it.n;if(n2 in d){for(let i=2;;i++){n2=it.n.replace(/(\.[^.]*)?$/,' ('+i+')$1');if(!(n2 in d))break}}
+  d[n2]=it.data;fsSave();QUAR.splice(+p,1);saveQ();logEvt('av','Restored '+n2+' from quarantine');return}
  else if(op=='dldel'&&p){const path=downloadsPath().concat(String(p).split('\\'));if(path.slice(downloadsPath().length).some(x=>!x||x=='..'))return;trashPut([path])}
  const s=await storSnap();if(n!=null)s.trDel=n;svj('bd95stor:'+uid(),s)}

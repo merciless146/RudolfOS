@@ -5,21 +5,45 @@
 # load it again, a camera plugged in later included, until it is switched on. busybox's modprobe does not take a
 # blacklist for module aliases, so the file itself is what is kept from it. Kept on RUDOLFDATA (/persist/etc/camera-off);
 # "start" (rudolf-init, before drivers are loaded) puts it back in place after a restart.
-export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-KO=$(find /lib/modules/$(uname -r)/ -name 'uvcvideo.ko*' 2>/dev/null | head -1); [ -n "$KO" ] && KO=$(readlink -f "$KO")   # as /proc/mounts names it (/lib is /usr/lib)
-cover() { [ -n "$KO" ] && ! grep -q " $KO " /proc/mounts && mount --bind /dev/null "$KO"; : > /run/rudolf/camera-off; }
+# 1.6.3 (docs/plan-1.6.3.md Part 9): PipeWire runs beside PulseAudio for WebKitGTK's camera, and WirePlumber's v4l2
+# monitor keeps the camera's device open while it runs -- so the driver could not be unloaded, and the switch would have
+# answered "the camera is in use" on every computer. Off stops WirePlumber first (PipeWire itself stays up) and on starts
+# it again from the mark it left, so the camera is back in the desktop's camera list at once; a session that runs no
+# WirePlumber is left exactly as it was.
+# test hooks (iso/qt/host/camwp_t.sh): RUDOLF_TEST_PATH, RUDOLF_TEST_RUN, RUDOLF_TEST_PERSIST, RUDOLF_TEST_KO,
+# RUDOLF_TEST_MODULES, RUDOLF_TEST_MOUNTS, RUDOLF_TEST_PWSOCK
+export PATH=${RUDOLF_TEST_PATH:+$RUDOLF_TEST_PATH:}/usr/sbin:/usr/bin:/sbin:/bin
+RUN=${RUDOLF_TEST_RUN:-/run/rudolf}; PERSIST=${RUDOLF_TEST_PERSIST:-/persist}
+WPMARK=$RUN/camera-wp-stopped; PWSOCK=${RUDOLF_TEST_PWSOCK:-/run/user/1000/pipewire-0}
+MODULES=${RUDOLF_TEST_MODULES:-/proc/modules}; MOUNTS=${RUDOLF_TEST_MOUNTS:-/proc/mounts}
+KO=${RUDOLF_TEST_KO:-$(find /lib/modules/$(uname -r)/ -name 'uvcvideo.ko*' 2>/dev/null | head -1)}; [ -n "$KO" ] && KO=$(readlink -f "$KO")   # as /proc/mounts names it (/lib is /usr/lib)
+cover() { [ -n "$KO" ] && ! grep -q " $KO " $MOUNTS && mount --bind /dev/null "$KO"; : > $RUN/camera-off; }
+# WirePlumber's v4l2 monitor is what holds the camera; PipeWire keeps running so the camera comes back without the
+# rest of the session's capture waiting for a restart. The mark says we stopped it, so on knows to start it again and a
+# session that never ran it is not given one.
+wp_run() { pgrep -x wireplumber >/dev/null 2>&1; }
+wp_stop() { wp_run || return 0; : > "$WPMARK"; pkill -x wireplumber 2>/dev/null
+	for i in $(seq 20); do wp_run || return 0; sleep 0.1; done
+	pkill -KILL -x wireplumber 2>/dev/null; sleep 0.1; wp_run && echo "wireplumber did not stop: the camera may stay in use"; }
+wp_start() { [ -f "$WPMARK" ] || return 0; rm -f "$WPMARK"
+	command -v wireplumber >/dev/null 2>&1 || return 0; wp_run && return 0
+	[ -e "$PWSOCK" ] || return 0
+	# as the desktop user, as the session started it (usr/lib/rudolf/sound)
+	su -s /bin/sh rudolf -c "XDG_RUNTIME_DIR=/run/user/1000 nohup wireplumber >>$RUN/pipewire.log 2>&1 &" >/dev/null 2>&1 || true; }
 case "$1" in
 off)
+	wp_stop
 	cover
-	[ -d /persist/etc ] && mountpoint -q /persist && echo 1 > /persist/etc/camera-off
-	rmmod uvcvideo 2>/dev/null; grep -q '^uvcvideo ' /proc/modules && { echo "the camera is in use: close the app using it, then try again"; exit 1; }
+	[ -d "$PERSIST/etc" ] && mountpoint -q "$PERSIST" && echo 1 > "$PERSIST/etc/camera-off"
+	rmmod uvcvideo 2>/dev/null; grep -q '^uvcvideo ' $MODULES && { wp_start; echo "the camera is in use: close the app using it, then try again"; exit 1; }
 	echo "the camera is off";;
 on)
-	[ -n "$KO" ] && grep -q " $KO " /proc/mounts && umount "$KO"
-	rm -f /run/rudolf/camera-off /persist/etc/camera-off
+	[ -n "$KO" ] && grep -q " $KO " $MOUNTS && umount "$KO"
+	rm -f "$RUN/camera-off" "$PERSIST/etc/camera-off"
 	# cameras plugged in now: their driver loads
 	for m in $(cat /sys/bus/usb/devices/*/modalias 2>/dev/null | grep 'ic0Eisc01' | sort -u); do modprobe -q "$m"; done
+	wp_start
 	echo "the camera is on";;
-start) [ -f /persist/etc/camera-off ] && cover;;
+start) [ -f "$PERSIST/etc/camera-off" ] && cover;;
 *) echo "usage: camera off|on|start"; exit 2;;
 esac

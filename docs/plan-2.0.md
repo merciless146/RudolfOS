@@ -617,5 +617,13 @@ reaches it by itself; this section is where each trimming part is checked for wh
 - **Already in 1.6.x and carried by main:** the native shell's memory work (1.5.9-1.6.1: lean61.js, the apps moved to files
   loaded when opened), zstd for the images (1.6.2 Part 31: measured per engine; its kernel side, SQUASHFS_ZSTD, is on the
   `kryptonite` branch since #617), game mode (1.6.1 Part 19).
+- **1.6.3 Part 9, PipeWire and WirePlumber beside PulseAudio** (docs/plan-1.6.3.md; branch `pw-beside-pulse`): the
+  Native desktop's camera and microphone capture, which WebKitGTK 2.52 does only through PipeWire. It reaches WendigOS by
+  itself: the layers are built from main, `mkrootfs.sh` and `ci_release.sh` both run `systools/mkpipewire.sh`
+  unconditionally (9 MB in the base layer; the ARM64 build, which goes through `mkrootfs.sh`, logs `pipewire: 9019 KB`),
+  and no build switch holds it back. On top: measured again on Wayland (W3), where the camera and screen capture also pass
+  through the portal (this plan's W0 notes). **The `kryptonite` branch has neither `mkpipewire.sh` nor the call** (last at
+  `ec2edfa9`, 2026-11-23), so it must merge main before a layer built from it has the daemon -- the self-test's `capture`
+  line fails there until it does, by design.
 - **Waiting to carry to the `kryptonite` branch:** 1.6.2 Part 35's SMB client (CIFS as a signed module, the legacy dialects
   and SMB server off), in main's kconfig.sh since #636.
