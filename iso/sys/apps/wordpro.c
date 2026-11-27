@@ -352,7 +352,7 @@ static void state_write(void)
 	state_steps(s);
 	if (FIND && FI && REPL) g_string_append_printf(s, "findbar %d\nfind %s\nrepl %s\n", gtk_widget_get_visible(FIND) ? 1 : 0,
 		gtk_entry_get_text(GTK_ENTRY(FI)), gtk_entry_get_text(GTK_ENTRY(REPL)));
-	g_string_append_printf(s, "dirty %d\nask %d\n", DIRTY, ASK);   /* (the tests read the guard: what is not saved, and its question) */
+	g_string_append_printf(s, "dirty %d\nask %d\nanswer %d\n", DIRTY, ASK, ASK_LAST);   /* (the tests read the guard: what is not saved, its question, and how it was answered) */
 	g_string_append_printf(s, "on %s\n", ON);
 	gtk_text_buffer_get_start_iter(BUF, &a); gtk_text_buffer_get_end_iter(BUF, &b);
 	g_string_append(s, "tags");
@@ -499,10 +499,10 @@ static void noop(int i, void *d) { (void)i; (void)d; }
    It stands before New, Open and Close, as on the page, and nothing is thrown away until it is answered. */
 enum { ASK_NEW = 1, ASK_OPEN, ASK_CLOSE };
 static void do_what(int what, const char *path);
-static int ASK_WHAT; static char *ASK_PATH;
+static int ASK_WHAT; static char *ASK_PATH; static int ASK_LAST = -1;
 static void ask_done(int i, void *d)
 {
-	(void)d; ASK = 0;
+	(void)d; ASK = 0; ASK_LAST = i;   /* (what was answered, for the state the tests read) */
 	if (i < 0) { state_soon(); return; }   /* (Cancel, or Escape's own answer: the page stays as it is) */
 	if (i == 2 && !save_now()) { state_soon(); return; }   /* (a save that was cancelled: nothing is thrown away) */
 	do_what(ASK_WHAT, ASK_PATH);
@@ -1548,6 +1548,28 @@ static gboolean close_hook(gpointer d)   /* (the tests: the window's close, as F
 	(void)d; if (!ASK && DIRTY) confirm_discard(ASK_CLOSE, NULL);
 	return G_SOURCE_CONTINUE;
 }
+/* (the tests: the question answered as a press on one of its buttons answers it. Nothing outside the app knows where a
+   dialog's buttons stand on a display with no window manager, so the test names the one it would press, in a file the
+   app reads while the question is up -- written when the test wants the answer, and empty while it does not) */
+static GtkWidget *find_btn(GtkWidget *w, const char *label)
+{
+	if (GTK_IS_BUTTON(w)) { const char *l = gtk_button_get_label(GTK_BUTTON(w)); return l && !strcmp(l, label) ? w : NULL; }
+	if (!GTK_IS_CONTAINER(w)) return NULL;
+	GList *ch = gtk_container_get_children(GTK_CONTAINER(w)); GtkWidget *hit = NULL;
+	for (GList *k = ch; k && !hit; k = k->next) hit = find_btn(k->data, label);
+	g_list_free(ch);
+	return hit;
+}
+static gboolean answer_hook(gpointer d)
+{
+	const char *f = d;
+	if (!ASK) return G_SOURCE_CONTINUE;
+	char *lab = NULL; if (!g_file_get_contents(f, &lab, NULL, NULL)) return G_SOURCE_CONTINUE;
+	g_strstrip(lab);
+	if (*lab) { GtkWidget *b = find_btn(rui_dialog_box(), rui_tr(lab)); if (b) gtk_button_clicked(GTK_BUTTON(b)); }
+	g_free(lab);
+	return G_SOURCE_CONTINUE;
+}
 int main(int argc, char **argv)
 {
 	rui_init(&argc, &argv, "wordpro");
@@ -1567,6 +1589,7 @@ int main(int argc, char **argv)
 	gtk_widget_grab_focus(ED);   /* (the page's window opens with its writing ready: typing goes into it at once) */
 	set_title();   /* (Untitled - WordPro, as the page opens its window) */
 	if (getenv("RUDOLF_WP_CLOSE")) g_timeout_add(2000, close_hook, NULL);   /* (the tests: the window's close, while anything is unsaved) */
+	if (getenv("RUDOLF_WP_ANSWER")) g_timeout_add(150, answer_hook, (gpointer)getenv("RUDOLF_WP_ANSWER"));   /* (the tests: the question's own buttons) */
 	counts(); state_soon();
 	gtk_main(); return 0;
 }
