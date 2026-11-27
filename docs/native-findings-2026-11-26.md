@@ -6,7 +6,7 @@ Native's GPU path shows the picture, not a black screen. **N2 matches** on the c
 page's own file dialog, centred over a dimmed desktop, every control present. Two earlier clicks raised a blank "Rudolf
 OS" window instead; that is recorded as an unexplained intermittent symptom, not as what Open does. **N3 matches**:
 Task Manager's Apps list showed a row for each open window, with Switch to and End task. Every V item except V58 is
-deferred. Nothing below claims that something works on the machine unless the machine said so itself — and where this
+deferred, apart from **V1–V3**, run on 2026-11-27 (section below). Nothing below claims that something works on the machine unless the machine said so itself — and where this
 session read the screen wrong, it says so.
 
 ## Header
@@ -155,16 +155,16 @@ Also still open on `main`, and untouched by this session:
   drawn as Chromium's"), which is **after** the machine's build: the machine will not show it, so V47 and V66 on
   1.6.2.261124 are not a test of today's `main`.
 
-## The checklist: V58 passed, every other item deferred
+## The checklist: V58 passed, V1–V3 fail on Native, the rest deferred
 
 Every number in `docs/native-vivobook-checklist.md` (V1–V63 and V66–V74; there is no V64 or V65) is deferred. "Needs"
 is what the machine alone can show; none of it was done.
 
 | # | Area | Needs | Status |
 |---|---|---|---|
-| V1 | Sound Recorder | record 10 s, play back; 🎙️ in the taskbar | deferred |
-| V2 | Camera | first open, the "Allow access?" prompt, frame rate | deferred |
-| V3 | Camera | a photo and a 5 s video saved and opened | deferred |
+| V1 | Sound Recorder (this build: Voice Recorder) | record 10 s, play back; 🎙️ in the taskbar | **fail (native)** — Record gives the click sound only; Chromium records; see 2026-11-27 below |
+| V2 | Camera | first open, the "Allow access?" prompt, frame rate | **fail (native), pass in Chromium** — native shows "No camera is available or access is blocked"; no prompt on either engine; see below |
+| V3 | Camera | a photo and a 5 s video saved and opened | **fail (native), pass in Chromium** — photo and video saved and opened in Chromium; native cannot start the camera |
 | V4 | Calls | the call screen, 🎙️, mute, hang up | deferred |
 | V5 | Microphone denied | the blocked message and how to allow it again | deferred |
 | V6 | Media Player | video with sound, volume keys, the overlay | deferred |
@@ -235,8 +235,122 @@ is what the machine alone can show; none of it was done.
 | V73 | Backgrounds | each background at once, then Revert; again, then Discard | deferred |
 | V74 | Display Properties | accent colour, dark mode, title-bar style, the screen saver's Preview | deferred |
 
-Only V58 is marked: it `passes`. No other item is marked `matches`, `minor`, `looks wrong` or `breaks`, because this
+V58 `passes`; V1, V2 and V3 were run on 2026-11-27 and **fail on Native** while **passing in Chromium on the same
+build and machine** (next section). No other item is marked `matches`, `minor`, `looks wrong` or `breaks`, because this
 session has no evidence for any of them.
+
+## 2026-11-27: V1, V2 and V3 — Native's WebKit has no camera source and no MediaRecorder
+
+Same build (1.6.2.261124, serial 2026112422, Official), **native engine** (`rudolf-native`: one GTK 3 process, the apps
+in WebKitGTK 4.1 windows). The owner ran the items and photographed the screen, because the session could not reach the
+machine for most of the run; the session's own probes are the devlink commands **`000649`** and **`000650`** (read-only)
+and the code in this repository. **Chromium on the same machine, minutes apart, is the reference**: every item below
+works there.
+
+### V1 — Voice Recorder: fail
+
+- The checklist calls it **Sound Recorder**; this build registers **Voice Recorder** (`regApp('recorder',…)`,
+  `desktop/apps25b.js`). A Start search for "sound" returns only Settings › Sound ("system volume, desktop sounds, output
+device") and some loose files; "voice" finds the app.
+- **Record does nothing.** The only feedback is the desktop's UI click sound: no 0:00 clock, no clip, no notification.
+  Mouse click and SPACE with the button focused (the focus style applies) behave the same.
+- Why, from the code: `recorderApp()` awaits `getUserMedia({audio:true})` inside a `try`, then runs
+  `new AudioContext()` → `createMediaStreamSource` → `createAnalyser` → **`new MediaRecorder(st)`** → `rec.start()`, and
+  only then `t0=Date.now()`, the button's text and the `setInterval` that draws the clock. Everything after the `try` is
+  outside any `catch`, so one throw there leaves exactly what was seen: no clock, no button change, no error message.
+- **Corrected by `000651`, and the correction is part of the finding:** MediaRecorder *is* in this WebKit — the library
+  carries `JSMediaRecorder`, `MediaRecorderPrivateGStreamer`, `MediaRecorderPrivateBackend` and `MediaRecorderEnabled`,
+  so it is compiled in with a GStreamer backend. This session first read it as absent from a count of
+  `WebKitMediaRecorder`, which is the Cocoa-era name; the `JS…` and `Private…` names are the ones that matter. So the
+  throw is **not** a missing constructor, and where it happens is not established: everything from `new AudioContext()`
+  to `rec.start()` is uncaught, so any of it would look exactly like this from outside. What the machine does say is that
+  the audio track handed to the app carries only zeros (the check's −120 dB), so even a recorder that started would
+  record silence. A `try`/`catch` around that block, showing the error in the window, is the smallest change that would
+  name the cause instead of leaving a dead button.
+
+### V2 — Camera: fail (native), and the "Allow access?" prompt never appears on Native
+
+- Native: Camera opens, then its body is replaced by **"No camera is available or access is blocked."** — the `catch`
+  of `getUserMedia({video:true})` in `cameraApp()`. The Settings › Privacy camera switch is **on**, so this is the "no
+  camera" half of that sentence.
+- Why: the image carries no GStreamer video-capture plug-in. `000650` lists the 39 plug-ins in
+  `/usr/lib/x86_64-linux-gnu/gstreamer-1.0/` — `pulseaudio`, `autodetect`, `audioconvert` among them — and **no
+  `libgstvideo4linux`**. `addwebkit.sh`'s copy list names `alsa` and `pulseaudio` and never `video4linux`, so WebKit's
+  camera source is simply not on the disc.
+- The camera itself is there: `/dev/video0` and `/dev/video1`, `uvcvideo` bound to "USB2.0 HD UVC WebCam (3277:0034)"
+  (`000649`).
+- **No prompt is possible on Native**: the engine grants every permission request silently — `on_perm` calls
+  `webkit_permission_request_allow` (`iso/sys/rudolf-native.c:576`), with `enable-media-stream` TRUE. In Chromium the
+  prompt belongs to the privacy checkbox being **off**: with it on, the preview starts at once (V2's observed run).
+- Chromium, same build and setting: `camera pass (640×480)` in Check this computer, step 8 of 11, and the app's first
+  open shows a live preview.
+
+### V3 — a photo and a 5 s video: fail (native), pass in Chromium
+
+- Native: cannot start the camera (V2), so neither a photo nor a video.
+- Chromium: both are saved and open — `C:\USERS\JOHN\PICTURES\PHOTO-2026-11-27_01.27.30.JPG` (23.6 KB) and
+  `C:\USERS\JOHN\VIDEOS\VIDEO-2026-11-27_01.30.24.WEBM` (447.7 KB), in Pictures and Videos as the checklist expects.
+  Evidence: `V3-pictures.jpg`, `V3-videos.jpg`.
+- Two differences on their own: the **video's** "Video saved" notification does not open the file (the photo's does;
+  both open from File Explorer), and the names and the Modified column read 11/27/2026 01:27 while the clock read
+  2026/11/26 19:32 — files are named and dated in UTC, the clock shows local time.
+
+### Reference run: the same check under Chromium, 2026-11-27
+
+All eleven steps pass: Sound works · **Microphone works (−4 dB)** · Network works (wifi 27 networks, 12 Mb/s down) ·
+USB works (57.3 GB) · Graphics works (59 fps) · Keyboard works (76 keys) · Touchpad or mouse works · **Camera works
+(640×480)** · Battery works (health 93 %) · Screen works · Sleep works (woke after 9 s, s2idle).
+
+The −4 dB is on the **default** source, and that retires an earlier reading of this session: Native's −120 dB is not a
+wrong default source, it is Native. Compared with the saved report's check of 2026-11-17 (which names no engine): camera
+identical (640×480), battery 93 %, sleep 9 s s2idle, keyboard 76 keys; graphics 61→59 fps and wifi 43→27 networks,
+22→12 Mb/s (environment); microphone `fail (no microphone)` → `works (−4 dB)`; USB `skip` → `57.3 GB`.
+
+### N33 — On Native, WebKit has no media capture to give: the microphone reads −120 dB and the camera is not there
+
+| client | engine | result |
+|---|---|---|
+| Voice Recorder | native | inert: Record gives the click sound, no clock, no clip (V1) |
+| Voice Recorder | Chromium | records and plays back |
+| Camera | native | "No camera is available or access is blocked" (V2) |
+| Camera | Chromium | live preview, photo and video saved |
+| Check this computer › Microphone | native | "Hardly anything was heard (loudest −120 dB)" |
+| Check this computer › Microphone | Chromium | works, −4 dB |
+| Check this computer › Camera | native | never reached (N34) |
+| Check this computer › Camera | Chromium | works, 640×480 |
+| Settings › Sound › Microphones › Test | native | no level |
+
+−120 dB is the check's own floor (`peak > 0 ? 20*Math.log10(peak) : -120`, `desktop/hwcheck30.js`), so Native hands
+back all-zero samples: the audio stream resolves and never carries sound, while the video request is refused outright.
+Chromium on the same machine does both. Two faults in Native's media path:
+
+1. **No video capture source**: `libgstvideo4linux` is not in the image — the complete plug-in list from `000651` has
+   `pulseaudio` as its only capture source, and `addwebkit.sh`'s copy list names `alsa` and `pulseaudio` but never
+   `video4linux`. Fix direction: add `video4linux` to that list and re-test.
+2. **Audio that reads all zeros, and an app that stops without a word**: Native captures through `pulsesrc` (the only
+   capture plug-in there) while Chromium on the same machine reads −4 dB; why the two differ is open. And Voice
+   Recorder's start block is uncaught, so its failure is invisible (V1) — wrapping it would name the cause in the window.
+
+Not the hardware: `/dev/video0` is claimed by `uvcvideo`, the ALSA cards expose `ALC897 Analog` (capture 1) and
+`DMIC capture dmic-hifi-0`, and both work in Chromium. Not the privacy switch: it is on, and Chromium uses it.
+
+**Both faults are in `main` too** (`745fcf18`), so this is not a 1.6.2-only matter: `iso/systools/addwebkit.sh`'s copy
+list still names no `video4linux`, and `desktop/apps25b.js` matches `main` byte for byte at the recorder's start block.
+
+Open: whether Native's silent audio and its missing camera share one cause (no capture at all) or are two — a build with
+`video4linux` added would say, since audio already resolves through `pulsesrc`. Also open: does `new MediaRecorder` on
+Native throw, or construct and produce nothing? `MediaRecorderPrivateGStreamer` is present (`000651`), so both are
+possible, and the answer needs the console or the `try`/`catch` above.
+
+### N34 — Check this computer ends itself at step 3 of 11 on Native
+
+On Native the check runs steps 1 (Sound) and 2 (Microphone, −120 dB), then **closes itself a few seconds into step 3
+(Network)** — so steps 4–11, Camera at 8 included, never run and no `Hardware check:` line is produced. Under Chromium the
+same check completes all eleven steps minutes later, so this is the engine, not the Wi-Fi or the update server.
+
+Also worth recording: the report's `Hardware check:` line names no engine, which is what made the saved report's
+2026-11-17 `camera pass (640×480)` and `microphone fail (no microphone)` look like Native results when they match
+Chromium exactly. The line should say which engine produced it.
 
 ## V58: the restart without the stick
 
@@ -338,6 +452,8 @@ enough to judge them.
 
 1. **The rest of the N items on this build.** N1, N2 and N3 all now match, so nothing found today stops a person working
    and the checklist's own order applies again: V58-V63 are done or waiting on you, and the V items are next.
+   V1–V3 are now done (2026-11-27, below), so **V4 — the in-desktop call screen — is next**, then V5 (deny the
+   microphone) once Native has a capture path to deny.
 2. **Watch for the blank "Rudolf OS" windows.** They appeared twice after Open clicks and not on a clean attempt. If they
    recur, note what came before: a page still loading, memory pressure, a second window, or Open pressed in a window that
    did not have the focus. That is the thread worth pulling — and until they recur, nothing should be changed for them.
