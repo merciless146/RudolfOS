@@ -30,10 +30,14 @@ $SUDO mkdir -p "$R$WK"; $SUDO cp -a "$WK/." "$R$WK/"; find "$WK" -type f >> "$LI
 # ("Something went wrong") when it played MP4 with AAC or H.264 (and MP3 sounds): "missing a plug-in" (2026-11-12).
 # 1.6.0: and "inter" (gst-plugins-bad), which WebKit's audio mixer needs: the Native desktop mixes each window's sounds in it, as
 # Chromium does, instead of a PulseAudio stream for each media element whose volume PulseAudio kept (the owner's report 2).
+# 1.6.3: and "video4linux2" (gst-plugins-good): the image carried the sound servers' and ALSA's plug-ins but no camera's, so
+# the Native desktop's WebKit had no video capture source at all -- Camera said "No camera is available or access is blocked"
+# with the privacy switch on, and only "pulseaudio" was there of all the 39 plug-ins to read a device (the Vivobook,
+# checklist V2 and V3; N33 in docs/native-findings-2026-11-26.md). Checked on the machine next, in a build with this line.
 GS=$ML/gstreamer-1.0; $SUDO mkdir -p "$R$GS" "$R$ML/gstreamer1.0/gstreamer-1.0"
 for s in $ML/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner; do [ -x "$s" ] && $SUDO cp -L "$s" "$R$s" && echo "$s" >> "$LIST"; done
 for p in coreelements app audioconvert audioresample audiotestsrc volume playback typefindfunctions videoconvertscale videoscale videoconvert \
-	ogg vorbis opus theora vpx matroska isomp4 wavparse audioparsers autodetect pulseaudio alsa id3demux gio rawparse videorate videofilter \
+	ogg vorbis opus theora vpx matroska isomp4 wavparse audioparsers autodetect pulseaudio alsa video4linux2 id3demux gio rawparse videorate videofilter \
 	audiomixer compositor opengl gdkpixbuf jpeg png webrtcdsp \
 	opusparse videoparsersbad audiofx debugutilsbad subenc libav deinterlace inter; do
 	f=$GS/libgst$p.so; [ -f "$f" ] || continue; $SUDO cp -L "$f" "$R$f"; echo "$f" >> "$LIST"; done

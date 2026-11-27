@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- Fixed: the Native desktop's camera. The image now carries GStreamer's video4linux2 plug-in: it copied the sound servers'
+  and ALSA's plug-ins but no camera's, so WebKit had no way to open the laptop's camera and Camera said "No camera is
+  available or access is blocked" with the privacy switch on (found on the Vivobook as N33; checklist V2 and V3). It needs
+  the next build to check: nothing could be verified on 1.6.2.261124.
 - Fixed: Voice Recorder's Record now says what went wrong (the error's name and message, in a notification) instead of
   playing the click sound and staying silent, with no clock and no recording; on the Native desktop the start block could
   throw where nothing caught it. It also cleans up the microphone if it fails, so Record can be tried again (checklist V1).
