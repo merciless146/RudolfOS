@@ -90,6 +90,36 @@ accent colours), its memory at idle against the web version, built in the releas
   (its HTML with the page's stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
+#### Status (2026-11-27, scheduled task): PresentPro begun, step 1 (the window, its slides and their places)
+- **Branch `presentpro-1`:** `iso/sys/apps/presentpro.c` (`/usr/bin/rudolf-present`, with librudolf-ui) has the page's
+  window with its eight menus and the page's own rows (File 18, Home 20, Insert 16, Design 4, Arrange 21, Slide Show 7,
+  View 7, Help 3), the toolbar of `.pp-tb` (a new slide, the layout, the font and its size, bold, italic, underline,
+  strikethrough, the text colour, the three alignments, bullets, numbering, undo, redo, a duplicate and a delete), the
+  184 px list of slides with the current one in the app's blue and a hidden one dimmed and struck, the stage on the
+  page's `#e5e7eb` with the slide's shadow and its 960 x 540 deck, the notes bar and the status line ("Slide n of m",
+  the zoom and Fit). The page's eight layouts are `pprof45.js`'s `ppLayout` boxes. A slide holds its layout and, for
+  each of its text places (title, sub, body, body2, h1, h2), the words and what the toolbar set on them -- bold, italic,
+  underline, strikethrough, the alignment, bullets or numbering, the size, the font and the colour -- with the layout's
+  own kept as the default and taken away with a layout that has not the place. Text is typed where it sits (Enter, F2 or
+  a double-click opens the editor over the place, Escape or a click away puts it on the slide, Enter is a line, Tab the
+  next place), and the page's keys are its own: Ctrl+M with the page's rule that a title slide is followed by a content
+  one, Ctrl+D, Ctrl+Z and Ctrl+Y, Ctrl+B/I/U, PageUp and PageDown, and Delete on the list, with the page's 60 undo steps
+  taken after each change, as WordPro's and SpreadsheetPro's are.
+  `iso/sys/apps/mkpresentpro.py` reads the page's themes (12), layouts (8), shapes (19), fonts (12) and sizes (17) at
+  build time, so the window's lists are the page's and never drift from it.
+- **Its test:** `iso/qt/native/presentpro_t.sh` (`presentpro-check.yml`): built with `RUI_WERROR=1` and `hardcheck.py`
+  (304 160 bytes, hardened), then used under Xvfb with a stand-in rudolfd -- fifteen cases: the window and its eight
+  menus, the lists against the page through `mkpresentpro.py`, a title typed into its place, the new slide's rule and its
+  two lines, bold, the bullets and the numbering, undo, PageUp and PageDown, the two-content layout keeping the body it
+  still has, a slide duplicated and another deleted, a hidden slide with the notes, the menus' own rows, and Tab and
+  Enter opening the next place. The screenshot comparison against the web PresentPro is **not** in it yet: it comes with
+  the step that makes every view of the window, so that no view can pass by being unfinished.
+- **Not in this step, by the plan's own split:** the files (.RDECK, .PPTX, the PDFs), the text boxes, shapes, pictures,
+  tables, charts and icons, the transitions and animations, the presenter view, the slide sorter, the themes, the
+  background and the master, grouping and the arrangement, the clipboard, the assistant and printing -- later steps, each
+  drawn as the page draws an item it cannot choose. The native desktop keeps opening the web PresentPro until the whole
+  app passes, and `presentpro` is **not** in `NATIVE_APPS[]` yet.
+
 ### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
 A dedicated fingerprint sensor is needed (in the power button, a corner of the touchpad, a pad beside the keyboard, or
 a USB reader): a touchscreen or touchpad senses at a few millimetres, far too coarse for a fingerprint's ridges.
