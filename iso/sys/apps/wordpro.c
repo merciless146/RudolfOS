@@ -40,7 +40,6 @@ static void state_soon(void);
 static void counts(void);
 static void upd_sel(void);
 static int menus_n(void);
-static void obj_clear(void);
 static void obj_counts(int *w, int *c);
 static void state_objs(GString *s);
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
@@ -210,7 +209,7 @@ static void on_clear(GtkWidget *b, gpointer d)
    redo, bounded to the last 120 changes) */
 #define HIST 120
 static char *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
-static void hist_apply(const char *t) { SILENT = 1; gtk_text_buffer_set_text(BUF, t, -1); SILENT = 0; obj_clear(); counts(); state_soon(); }
+static void hist_apply(const char *t) { SILENT = 1; gtk_text_buffer_set_text(BUF, t, -1); SILENT = 0; counts(); state_soon(); }
 static void hist_undo(void) { if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
 static void hist_redo(void) { if (HIST_I < HIST_N) { HIST_I++; hist_apply(HIST_T[HIST_I - 1]); } }
 static void on_undo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_undo(); }
@@ -353,10 +352,18 @@ static void state_write(void)
 }
 static gboolean state_tick(gpointer d) { (void)d; state_write(); return G_SOURCE_REMOVE; }
 static void state_soon(void) { if (getenv("RUDOLF_WP_STATE")) g_timeout_add(120, state_tick, NULL); }
+/* (a place has no place in the history: an entry that kept it would put back a character with no picture or table to show)
+ */
+static char *no_places(const char *t)
+{
+	GString *o = g_string_new(NULL);
+	for (const char *p = t; *p; p++) { if (!strncmp(p, "\xef\xbf\xbc", 3)) { p += 2; continue; } g_string_append_c(o, *p); }
+	return g_string_free(o, FALSE);
+}
 static void hist_push(void)
 {
 	if (SILENT) return;
-	char *t = doc_text();
+	char *raw = doc_text(), *t = no_places(raw); g_free(raw);
 	if (HIST_N && HIST_T[HIST_N - 1] && !strcmp(HIST_T[HIST_N - 1], t)) { g_free(t); return; }
 	if (HIST_I < HIST_N) { for (int i = HIST_I; i < HIST_N; i++) { g_free(HIST_T[i]); HIST_T[i] = NULL; } HIST_N = HIST_I; }
 	if (HIST_N == HIST) { g_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
@@ -475,7 +482,7 @@ static void new_do(int i, void *d)
 {
 	(void)d; if (i != 1) return;
 	SILENT = 1; gtk_text_buffer_set_text(BUF, "", -1); SILENT = 0;
-	obj_clear(); hist_push(); counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
+	hist_push(); counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
 }
 static void new_page(void)
 {
@@ -545,23 +552,27 @@ static void show_keys(void)
 }
 /* ------------------------------------------------------------------ the document's objects: a picture and a table
    The model, decided before either was written (docs/plan-1.6.3.md, "The document model"): a picture or a table is a
-   place in the writing -- a child anchor, which the page itself holds as its placeholder character -- and its own data
-   lives beside it here, so the cursor, the counts and the undo still see one writing in order, and a save can write what
-   the page writes: an <img> or a <table>. A picture's bytes and size are kept; a table's cells are entries of their own,
-   whose words are part of the page's word count. */
+   place in the writing -- a child anchor, which the page itself keeps as its placeholder character -- and its own data
+   lives beside it here, so the cursor, the counts and the undo still see one writing in order, and a save writes what the
+   page writes: an <img> or a <table>. A picture keeps its bytes (not a path: the page's document carries the picture);
+   a table's cells are entries of their own, whose words are part of the page's word count. There is no cap on how many a
+   page holds, and an object leaves the list when its widget goes -- which is what undo, New and a Backspace do to it. */
 enum { OBJ_PIC = 1, OBJ_TABLE };
-typedef struct { int kind, wpx, hpx, rows, cols; GtkWidget *w; char *path; } WpObj;
-#define MAXOBJ 32
-static WpObj OBJ[MAXOBJ]; static int NOBJ;
-static void obj_clear(void)
+typedef struct { int kind, wpx, hpx, rows, cols; GtkWidget *w; GtkTextChildAnchor *at; guchar *img; gsize img_len; } WpObj;
+static GPtrArray *OBJ;
+static void obj_free(gpointer p) { WpObj *o = p; g_free(o->img); g_free(o); }
+static void obj_gone(GtkWidget *w, gpointer d)
 {
-	for (int i = 0; i < NOBJ; i++) g_free(OBJ[i].path);
-	NOBJ = 0;
+	(void)d; if (!OBJ) return;
+	for (guint i = 0; i < OBJ->len; i++) if (((WpObj *)g_ptr_array_index(OBJ, i))->w == w) { g_ptr_array_remove_index(OBJ, i); break; }
+	counts(); state_soon();
 }
 static void obj_counts(int *w, int *c)
 {
-	for (int i = 0; i < NOBJ; i++) if (OBJ[i].kind == OBJ_TABLE && OBJ[i].w) {
-		GList *ch = gtk_container_get_children(GTK_CONTAINER(OBJ[i].w));
+	if (!OBJ) return;
+	for (guint i = 0; i < OBJ->len; i++) { WpObj *o = g_ptr_array_index(OBJ, i);
+		if (o->kind != OBJ_TABLE || !o->w) continue;
+		GList *ch = gtk_container_get_children(GTK_CONTAINER(o->w));
 		for (GList *k = ch; k; k = k->next) if (GTK_IS_ENTRY(k->data)) {
 			const char *t = gtk_entry_get_text(GTK_ENTRY(k->data)); *w += words_of(t); *c += chars_of(t);
 		}
@@ -570,27 +581,33 @@ static void obj_counts(int *w, int *c)
 }
 static void state_objs(GString *s)
 {
-	g_string_append_printf(s, "objs %d\n", NOBJ);
-	for (int i = 0; i < NOBJ; i++) {
-		if (OBJ[i].kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %s\n", OBJ[i].wpx, OBJ[i].hpx, OBJ[i].path ? OBJ[i].path : "");
-		else g_string_append_printf(s, "obj table %dx%d\n", OBJ[i].rows, OBJ[i].cols);
+	g_string_append_printf(s, "objs %d\n", OBJ ? (int)OBJ->len : 0);
+	if (!OBJ) return;
+	for (guint i = 0; i < OBJ->len; i++) { WpObj *o = g_ptr_array_index(OBJ, i);
+		if (o->kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %u\n", o->wpx, o->hpx, (unsigned)o->img_len);
+		else g_string_append_printf(s, "obj table %dx%d\n", o->rows, o->cols);
 	}
 }
-static void obj_add(GtkWidget *w, int kind, const char *path, int wpx, int hpx, int rows, int cols)
+static void obj_add(GtkWidget *w, int kind, guchar *img, gsize img_len, int wpx, int hpx, int rows, int cols)
 {
-	if (NOBJ >= MAXOBJ) { say(rui_tr("This page holds as many pictures and tables as it can.")); return; }
+	if (!OBJ) OBJ = g_ptr_array_new_with_free_func(obj_free);
 	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
 	GtkTextChildAnchor *a = gtk_text_buffer_create_child_anchor(BUF, &it);
+	WpObj *o = g_new0(WpObj, 1);
+	o->kind = kind; o->wpx = wpx; o->hpx = hpx; o->rows = rows; o->cols = cols; o->w = w; o->at = a; o->img = img; o->img_len = img_len;
+	g_signal_connect(w, "destroy", G_CALLBACK(obj_gone), NULL);
+	g_ptr_array_add(OBJ, o);
 	gtk_text_view_add_child_at_anchor(GTK_TEXT_VIEW(ED), w, a);
-	OBJ[NOBJ++] = (WpObj){ kind, wpx, hpx, rows, cols, w, g_strdup(path) };
 	counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
 }
 static void insert_picture(const char *path)
 {
+	gchar *data = NULL; gsize len = 0;
+	if (!g_file_get_contents(path, &data, &len, NULL)) { say(rui_tr("That picture could not be read.")); return; }
 	GdkPixbuf *pb = gdk_pixbuf_new_from_file(path, NULL);
-	if (!pb) { say(rui_tr("That picture could not be read.")); return; }
+	if (!pb) { g_free(data); say(rui_tr("That picture could not be read.")); return; }
 	GtkWidget *img = gtk_image_new_from_pixbuf(pb);
-	obj_add(img, OBJ_PIC, path, gdk_pixbuf_get_width(pb), gdk_pixbuf_get_height(pb), 0, 0);
+	obj_add(img, OBJ_PIC, (guchar *)data, len, gdk_pixbuf_get_width(pb), gdk_pixbuf_get_height(pb), 0, 0);
 	g_object_unref(pb);
 }
 static void insert_table(int rows, int cols)
@@ -602,7 +619,7 @@ static void insert_table(int rows, int cols)
 		gtk_style_context_add_class(gtk_widget_get_style_context(e), "wp-cell");
 		gtk_grid_attach(GTK_GRID(g), e, c, r, 1, 1);
 	}
-	obj_add(g, OBJ_TABLE, NULL, 0, 0, rows, cols);
+	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, rows, cols);
 }
 static void choose_picture(void)
 {
