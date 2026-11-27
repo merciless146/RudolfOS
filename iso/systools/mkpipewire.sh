@@ -36,21 +36,30 @@ V=$(pipewire --version 2>/dev/null | sed -n 's/^.*[Pp]ipe[Ww]ire \([0-9][0-9.]*\
 [ -n "$V" ] || { echo "mkpipewire: pipewire --version said nothing"; exit 1; }
 awk -v v="$V" 'BEGIN{n=split(v,a,"."); if (a[1]+0 < 0 || (a[1]+0 == 0 && (a[2]+0 < 3 || (a[2]+0 == 3 && a[3]+0 < 64)))) exit 1}' || { echo "mkpipewire: PipeWire $V is older than 0.3.64, which WebKitGTK 2.52's camera needs"; exit 1; }
 B=0
-copy() {  # (a file, then what it links that the layer lacks: as mkfprint.sh does)
-	x=$1
-	if [ ! -e "$x" ]; then return 0; fi
-	n=$(basename "$x")
-	if [ -e "$ROOT$x" ]; then return 0; fi
-	case "$x" in /usr/*) d=$ROOT$x;; *) d=$ROOT/usr/bin/$n;; esac
-	mkdir -p "$(dirname "$d")" || { echo "mkpipewire: could not make $(dirname "$d")"; exit 1; }
-	cp -L "$x" "$d" || { echo "mkpipewire: could not copy $x"; exit 1; }
+copy() {  # (one file: where the package had it; a library outside /usr goes to usr/lib/MA, as any program's would)
+	c_src=$1
+	if [ ! -e "$c_src" ]; then return 0; fi
+	case "$c_src" in
+		/usr/*) c_dst=$ROOT$c_src;;
+		*/lib*/lib*.so*) c_dst=$ROOT/usr/lib/$MA/$(basename "$c_src");;
+		*) c_dst=$ROOT/usr/bin/$(basename "$c_src");;
+	esac
+	if [ -e "$c_dst" ]; then return 0; fi
+	mkdir -p "$(dirname "$c_dst")" || { echo "mkpipewire: could not make $(dirname "$c_dst")"; exit 1; }
+	cp -L "$c_src" "$c_dst" || { echo "mkpipewire: could not copy $c_src"; exit 1; }
 }
-for x in $PW $WP "$L"; do copy "$x"; for d in $(ldd "$x" 2>/dev/null | awk '/=>/{print $3}'); do
-	if [ -e "$ROOT$d" ] || [ -e "$ROOT/usr/lib/$MA/$(basename "$d")" ]; then continue; fi
-	copy "$d"; done; done
-for d in /usr/lib/$MA/pipewire-0.3 /usr/lib/$MA/spa-0.2 /usr/share/pipewire /usr/share/wireplumber; do
-	[ -d "$d" ] || continue
-	(cd "$d" && find . -type f) | while read -r f; do copy "$d/$f"; done
+# (the loop variable is d, which copy used to overwrite: hence its own c_ names)
+for src in $PW $WP "$L"; do
+	copy "$src"
+	for lib in $(ldd "$src" 2>/dev/null | awk '/=>/{print $3}'); do copy "$lib"; done
+done
+for dir in /usr/lib/$MA/pipewire-0.3 /usr/lib/$MA/spa-0.2 /usr/share/pipewire /usr/share/wireplumber; do
+	if [ ! -d "$dir" ]; then continue; fi
+	for f in $(cd "$dir" && find . -type f); do copy "$dir/$f"; done
+done
+for dir in /usr/lib/$MA/wireplumber-*; do
+	if [ ! -d "$dir" ]; then continue; fi
+	for f in $(cd "$dir" && find . -type f); do copy "$dir/$f"; done
 done
 for d in /usr/lib/$MA/wireplumber-* ; do
 	[ -d "$d" ] || continue
