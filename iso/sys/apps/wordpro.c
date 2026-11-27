@@ -215,7 +215,7 @@ static void on_clear(GtkWidget *b, gpointer d)
 #define HIST 120
 typedef struct Hist Hist;   /* (the text, and what stands at each of its places: made below, after the objects are) */
 static Hist *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
-static void hist_push(void); static void hist_apply(Hist *h);
+static void hist_push(void); static void hist_apply(Hist *h); static void obj_clear(void);
 static Hist *hist_now(void); static int hist_same(Hist *a, Hist *b); static void hist_free(Hist *h);
 static void hist_undo(void) { fprintf(stderr, "wp: undo at %d of %d\n", HIST_I, HIST_N);
 	if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
@@ -483,7 +483,7 @@ static void noop(int i, void *d) { (void)i; (void)d; }
 static void new_do(int i, void *d)
 {
 	(void)d; if (i != 1) return;
-	SILENT = 1; gtk_text_buffer_set_text(BUF, "", -1); SILENT = 0;
+	SILENT = 1; obj_clear(); gtk_text_buffer_set_text(BUF, "", -1); SILENT = 0;
 	hist_push(); counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
 }
 static void new_page(void)
@@ -605,6 +605,19 @@ static void obj_place(GtkTextChildAnchor *a, WpObj *o)
 	g_signal_connect(o->w, "destroy", G_CALLBACK(obj_gone), NULL);
 	g_ptr_array_add(OBJ, o);
 	gtk_text_view_add_child_at_anchor(GTK_TEXT_VIEW(ED), o->w, a);
+}
+/* (the objects go before the text that holds their places is replaced: a buffer change takes the place of a picture away,
+   and the widget it destroys while GTK is in the middle of that change is what used to stop the window -- an undo, a New
+   or an opened document all rewrote the writing under its own objects) */
+static void obj_clear(void)
+{
+	if (!OBJ) return;
+	for (guint i = 0; i < OBJ->len; i++) {
+		WpObj *o = g_ptr_array_index(OBJ, i); GtkWidget *w = o->w;
+		o->w = NULL;   /* (the list is emptied below in one step, so the destroy cannot take an entry of its own) */
+		if (w) gtk_widget_destroy(w);
+	}
+	g_ptr_array_set_size(OBJ, 0);
 }
 static void obj_add(GtkWidget *w, int kind, guchar *img, gsize img_len, int wpx, int hpx, int rows, int cols)
 {
@@ -852,6 +865,7 @@ static void hist_apply(Hist *h)
 	if (!h) return;
 	fprintf(stderr, "wp: apply %d places, %d bytes, %d objects before\n", (int)h->objs->len, (int)strlen(h->t), OBJ ? (int)OBJ->len : 0);
 	SILENT = 1;
+	obj_clear();
 	gtk_text_buffer_set_text(BUF, h->t, -1);
 	int n = (int)h->objs->len, have = 0; int *off = g_new0(int, n > 0 ? (gsize)n : 1);
 	GtkTextIter i, e; gtk_text_buffer_get_start_iter(BUF, &i); gtk_text_buffer_get_end_iter(BUF, &e);
@@ -1004,7 +1018,7 @@ static void open_doc(const char *path)
 {
 	char *h = NULL; gsize n = 0;
 	if (!g_file_get_contents(path, &h, &n, NULL)) { say(rui_tr("That document could not be opened.")); return; }
-	SILENT = 1; gtk_text_buffer_set_text(BUF, "", -1); SILENT = 0;
+	SILENT = 1; obj_clear(); gtk_text_buffer_set_text(BUF, "", -1); SILENT = 0;
 	char *p = h;
 	if (!strncmp(p, "<!--wp:", 7)) { char *e = strstr(p, "-->"); if (e) p = e + 3; }
 	{ char *s = strstr(p, "<style data-wp"); if (s) { char *e = strstr(s, "</style>"); if (e) p = e + 8; } }
