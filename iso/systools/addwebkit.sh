@@ -71,10 +71,10 @@ for p in coreelements app audioconvert audioresample audiotestsrc volume playbac
 	echo "addwebkit: no libgst$p.so: $why"
 	case $FATAL in *" $p "*) fatal=1;; esac
 done
-[ -z "$fatal" ] || { echo "addwebkit: stopping: a plug-in the desktop cannot do without is missing (see above; apt-get install"
-	"gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-pipewire). A build without it would ship the desktop"
-	"with a silent microphone, a Recorder that never starts or a Camera that finds nothing, so this build is refused rather"
-	"than made and posted." >&2; exit 1; }
+[ -z "$fatal" ] || { echo "addwebkit: stopping: a plug-in the desktop cannot do without is missing (see above; apt-get install" \
+	"gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-pipewire). A build without it would ship the desktop" \
+	"with a silent microphone, a Recorder that never starts or a Camera that finds nothing, so this build is refused" \
+	"rather than made and posted." >&2; exit 1; }
 # (1.5.9, plan 7.1: no WebRTC plug-ins: Ubuntu's WebKitGTK 2.52 has no WebRTC, so Lite opens call sites in Chromium's
 # window; the Lite engine check's call test says whether a newer WebKitGTK has it)
 # GLib: the TLS module (https), with its loader cache made for ROOT
