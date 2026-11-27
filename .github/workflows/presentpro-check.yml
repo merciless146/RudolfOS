@@ -49,6 +49,21 @@ jobs:
           echo "::notice title=rudolf-presentpro::$(stat -c %s "$RUNNER_TEMP/rudolf-presentpro") bytes, hardened (a native app's budget is 1 MB)"
       - name: build and use it (the slides, the places, the layouts and the page's keys)
         run: sh iso/qt/native/presentpro_t.sh out
+      - name: (one-off) the three slide_new forms' machine code, to read the 8 KB
+        run: |
+          git fetch -q --depth=50 origin "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}" || true
+          cd iso && . systools/hardflags.sh
+          B="$RUNNER_TEMP/forms"; mkdir -p "$B"; cp "$RUNNER_TEMP/rudolf-presentpro" "$B/inplace"
+          git show 1a5ee8ca:iso/sys/apps/presentpro.c > sys/apps/presentpro.c
+          RUI_WERROR=1 sh sys/ui/build.sh "$RUNNER_TEMP/u2" "$B/pointer" presentpro $HARD
+          git show 9329cbfb:iso/sys/apps/presentpro.c > sys/apps/presentpro.c
+          RUI_WERROR=1 sh sys/ui/build.sh "$RUNNER_TEMP/u3" "$B/value" presentpro $HARD
+          git checkout -- sys/apps/presentpro.c
+          for f in inplace value pointer; do
+            echo "== $f: $(stat -c %s "$B/$f") bytes"
+            readelf -SW "$B/$f" | awk '$2==".text"||$2==".rodata"||$2==".eh_frame"{print "     ", $2, $6}'
+            readelf -lW "$B/$f" | grep '^  LOAD' | sed 's/^/      /'
+          done
       - name: the state and the log, when something failed
         if: failure()
         run: |
