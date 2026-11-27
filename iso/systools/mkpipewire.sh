@@ -32,7 +32,7 @@ PW=$(command -v pipewire || true); WP=$(command -v wireplumber || true)
 [ -n "$L" ] || { echo "mkpipewire: libpipewire-0.3.so.0 is missing (apt-get install libpipewire-0.3-0t64)"; exit 1; }
 [ -d /usr/lib/$MA/spa-0.2 ] || { echo "mkpipewire: the SPA plug-ins are missing (apt-get install libspa-0.2-modules)"; exit 1; }
 # WebKitGTK 2.52 needs PipeWire 0.3.64 or newer; the camera cannot be captured under an older one
-V=$(pipewire --version 2>/dev/null | sed -n 's/^.*PipeWire *//p' | head -1)
+V=$(pipewire --version 2>/dev/null | sed -n 's/^.*[Pp]ipe[Ww]ire \([0-9][0-9.]*\)$/\1/p' | head -1)   # ('Compiled with libpipewire 1.0.5')
 [ -n "$V" ] || { echo "mkpipewire: pipewire --version said nothing"; exit 1; }
 awk -v v="$V" 'BEGIN{n=split(v,a,"."); if (a[1]+0 < 0 || (a[1]+0 == 0 && (a[2]+0 < 3 || (a[2]+0 == 3 && a[3]+0 < 64)))) exit 1}' || { echo "mkpipewire: PipeWire $V is older than 0.3.64, which WebKitGTK 2.52's camera needs"; exit 1; }
 B=0
