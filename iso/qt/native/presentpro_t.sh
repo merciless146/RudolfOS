@@ -85,8 +85,9 @@ ok "2. the toolbar's and the menus' lists are the page's ($WANT)" "$([ $? = 0 ] 
 stop
 
 # ---- 3. a title is typed into the place, as the page's editing object takes it
-start RUDOLF_PP_EDIT=title
+start
 focus "$WIN"
+DISPLAY=$DSP xdotool key Return; sleep 0.8
 DISPLAY=$DSP xdotool type --delay 25 "Quarterly review"; sleep 0.5
 DISPLAY=$DSP xdotool key Escape; sleep 0.8
 grep -q '^text title Quarterly review$' "$ST"
@@ -183,11 +184,12 @@ ok "14. the page's menus open with its own rows (File 18, Home 20, Slide Show 7)
 # ---- 15. Enter opens the place the stage has, and what is typed is the slide's
 start
 focus "$WIN"
-DISPLAY=$DSP xdotool key Return; sleep 1
-DISPLAY=$DSP xdotool type --delay 25 "Hello"; sleep 0.5
+DISPLAY=$DSP xdotool key Tab; sleep 0.5
+DISPLAY=$DSP xdotool key Return; sleep 0.8
+DISPLAY=$DSP xdotool type --delay 25 "A subtitle"; sleep 0.5
 DISPLAY=$DSP xdotool key Escape; sleep 0.8
-grep -q '^text title Hello$' "$ST"
-ok "15. Enter opens the title's place, and what is typed goes on the slide" "$([ $? = 0 ] && echo 1)" \
+grep -q '^text sub A subtitle$' "$ST"
+ok "15. Tab goes to the next place, Enter opens it, and what is typed goes on the slide" "$([ $? = 0 ] && echo 1)" \
 	"$(grep -E '^(text|say) ' "$ST" | tr '\n' ' '); $(cat "$T/app.log")"
 stop
 

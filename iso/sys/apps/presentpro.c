@@ -1359,9 +1359,9 @@ static void do_one(const char *c)
 			for (int i = 0; i < PH_N; i++) if (!strcmp(a, PH_KEY[i])) { set_text(i, eq + 1); break; }
 		}
 		g_free(a);
-	} else if (!strncmp(c, "notes:", 6)) {
+	} else if (!strncmp(c, "notes:", 6) || !strncmp(c, "notes=", 6)) {
 		g_free(SL[CUR].notes);
-		SL[CUR].notes = *c + 6 ? g_strdup(c + 6) : NULL;
+		SL[CUR].notes = c[6] ? g_strdup(c + 6) : NULL;
 		notes_sync();
 		DIRTY = 1;
 		state_soon();
@@ -1375,13 +1375,6 @@ static gboolean do_hook(gpointer d)
 	for (char *c = strtok_r(a, ";", &save); c; c = strtok_r(NULL, ";", &save)) do_one(c);
 	g_free(a);
 	goto_slide(CUR);
-	return G_SOURCE_REMOVE;
-}
-static gboolean edit_hook(gpointer d)
-{
-	for (int i = 0; i < PH_N; i++)
-		if (!strcmp((const char *)d, PH_KEY[i])) { edit_begin(i); break; }
-	if (getenv("RUDOLF_PP_EDIT_SAY")) snprintf(SAY, sizeof SAY, "%s", rui_tr("Editing"));
 	return G_SOURCE_REMOVE;
 }
 
@@ -1409,7 +1402,6 @@ int main(int argc, char **argv)
 	}
 	{ const char *go = getenv("RUDOLF_PP_GOTO"); if (go && *go) g_timeout_add(600, goto_hook, (gpointer)go); }
 	{ const char *tx = getenv("RUDOLF_PP_TEXT"); if (tx && *tx) g_timeout_add(900, text_hook, (gpointer)tx); }
-	{ const char *ed = getenv("RUDOLF_PP_EDIT"); if (ed && *ed) g_timeout_add(900, edit_hook, (gpointer)ed); }
 	{ const char *dd = getenv("RUDOLF_PP_DO"); if (dd && *dd) g_timeout_add(1200, do_hook, (gpointer)dd); }
 	state_soon();
 	gtk_main();
