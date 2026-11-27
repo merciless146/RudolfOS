@@ -43,6 +43,9 @@ jobs:
         run: |
           set -e
           export XDG_RUNTIME_DIR=/tmp/rt; rm -rf "$XDG_RUNTIME_DIR"; mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+          # the desktop session has a session bus; the runner has none, and WirePlumber exits without one
+          export DBUS_SESSION_BUS_ADDRESS=$(dbus-daemon --session --fork --print-address)
+          echo "session bus: $DBUS_SESSION_BUS_ADDRESS"
           sudo mkdir -p /etc/wireplumber/main.lua.d /etc/wireplumber/wireplumber.conf.d
           sudo cp /tmp/root/etc/wireplumber/main.lua.d/51-no-alsa.lua /etc/wireplumber/main.lua.d/
           sudo cp /tmp/root/etc/wireplumber/wireplumber.conf.d/51-no-alsa.conf /etc/wireplumber/wireplumber.conf.d/
