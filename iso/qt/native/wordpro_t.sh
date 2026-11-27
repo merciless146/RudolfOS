@@ -340,8 +340,41 @@ kill $WPP12 2>/dev/null
 ok "23. a format change is a step of the history: Ctrl+Z takes the bold away, Ctrl+Y puts it back, and the writing stays" \
 	"$([ "$F1$F2$W2$F3$C3$U1$U2" = 1111111 ] && [ "$H2" = "$((NU-1)) $NU" ] && [ "$H3" = "$NU $NU" ] && echo 1)" \
 	"bold $F1 ($H1); undone $F2 ($H2) with the writing kept $W2; redone $F3 ($H3) with the writing $C3; an underline over it $U1, and its undo $U2 ($(grep -E '^(wordshist|words|hist|tags) ' "$ST12" 2>/dev/null | tr '\n' ' '); $(tail -2 "$T/wp12.log" 2>/dev/null | tr '\n' ' '))"
+# (the question's Save: the page's own order is the save first and New after it, so the writing goes to the file it came
+#  from -- the document was opened, so Save writes it without asking where -- and the page that follows is a new one,
+#  Untitled, with nothing unsaved and no * in its title)
+python3 - "$T/save.DOC" <<'PY'
+import sys
+open(sys.argv[1], 'w').write('<!--wp:%7B%7D--><style data-wp>.wp-t{border-collapse:collapse}</style><p>Hi</p>')
+PY
+ST13=$T/state13.txt; rm -f "$ST13"; A13=$T/ans13; : > "$A13"
+RUDOLF_WP_STATE=$ST13 RUDOLF_WP_ANSWER=$A13 RUDOLF_WP_OPEN="$T/save.DOC" DISPLAY=$DSP "$BIN" >"$T/wp13.log" 2>&1 & WPP13=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^text Hi$' "$ST13" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+W13=""; i=0; while [ $i -lt 40 ] && [ -z "$W13" ]; do
+	W13=$(DISPLAY=$DSP xdotool search --onlyvisible --pid "$WPP13" 2>/dev/null | tail -1)
+	[ -n "$W13" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 60 ] && [ -n "$W13" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W13" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W13" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W13" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W13" 480 300 click 1; sleep 0.8; }
+T0=$(DISPLAY=$DSP xdotool getwindowname "$W13" 2>/dev/null)   # (save.DOC - WordPro: the page has a file)
+DISPLAY=$DSP xdotool key ctrl+End; sleep 0.4
+DISPLAY=$DSP xdotool type --delay 12 ' there'; sleep 1.2
+T1=$(DISPLAY=$DSP xdotool getwindowname "$W13" 2>/dev/null)
+D1=$(grep -c '^dirty 1$' "$ST13")
+DISPLAY=$DSP xdotool key ctrl+n; sleep 1
+i=0; while [ $i -lt 20 ] && ! grep -q '^ask 1$' "$ST13" 2>/dev/null; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+Q1=$(grep -c '^ask 1$' "$ST13"); K1=$(grep -c '^words 2$' "$ST13")   # (the question is up, and the writing is still there)
+echo "Save" > "$A13"; sleep 1.5   # (the answer the test would press: the question's Save)
+AN=$(sed -n 's/^answer //p' "$ST13")
+W1=$(grep -c 'there' "$T/save.DOC" 2>/dev/null)   # (the change is in the file it came from)
+N1=$(grep -c '^dirty 0$' "$ST13"); N2=$(grep -c '^text $' "$ST13")
+T2=$(DISPLAY=$DSP xdotool getwindowname "$W13" 2>/dev/null)
+kill $WPP13 2>/dev/null
+ok "24. the question's Save writes the page to its file, and the page that follows is a clean Untitled one" \
+	"$([ "$T0" = 'save.DOC - WordPro' ] && [ "$T1" = 'save.DOC * - WordPro' ] && [ "$D1$Q1$K1$W1" = 1111 ] && [ "$AN" = 2 ] && [ "$N1$N2" = 11 ] && [ "$T2" = 'Untitled - WordPro' ] && echo 1)" \
+	"titles '$T0', '$T1', '$T2'; dirty $D1; asked $Q1 with the writing kept $K1; the file has the change $W1 (answer $AN); after it dirty $N1 and empty $N2 ($(grep -E '^(dirty|ask|answer|text|words|hist) ' "$ST13" 2>/dev/null | tr '\n' ' '); $(grep -o '<p>[^<]*</p>' "$T/save.DOC" 2>/dev/null | head -2 | tr '\n' ' '); $(tail -2 "$T/wp13.log" 2>/dev/null | tr '\n' ' '))"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 
-for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt" "$T/state10.txt" "$T/state11.txt" "$T/state12.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
+for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt" "$T/state10.txt" "$T/state11.txt" "$T/state12.txt" "$T/state13.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
 echo "$NP passed, $NF failed"; [ $NF = 0 ]
