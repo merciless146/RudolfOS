@@ -740,7 +740,7 @@ static void obj_html(GString *o, WpObj *ob)
 		for (int c = 0; c < ob->cols; c++) {
 			const char *tag = r == 0 ? "th" : "td"; const char *txt = "";
 			for (GList *k = ch; k; k = k->next) { gpointer x = g_object_get_data(G_OBJECT(k->data), "wp-cell");
-				if (x && GPOINTER_TO_INT(x) == r * 100 + c) { txt = gtk_entry_get_text(GTK_ENTRY(k->data)); break; } }
+				if (x && GPOINTER_TO_INT(x) == r * 100 + c + 1) { txt = gtk_entry_get_text(GTK_ENTRY(k->data)); break; } }
 			g_string_append_printf(o, "<%s>", tag); esc_into(o, txt, (int)strlen(txt)); g_string_append_printf(o, "</%s>", tag);
 		}
 		g_string_append(o, "</tr>");
@@ -860,7 +860,7 @@ static void insert_table_text(GPtrArray *rows)
 			gtk_widget_set_size_request(e, (int)lround(rui_px(96)), (int)lround(rui_px(26)));
 			gtk_style_context_add_class(gtk_widget_get_style_context(e), "wp-cell");
 			if (c < (int)row->len) gtk_entry_set_text(GTK_ENTRY(e), g_ptr_array_index(row, c));
-			g_object_set_data(G_OBJECT(e), "wp-cell", GINT_TO_POINTER(r * 100 + c));
+			g_object_set_data(G_OBJECT(e), "wp-cell", GINT_TO_POINTER(r * 100 + c + 1));   /* (+1: a cell at 0 would be a NULL pointer) */
 			gtk_grid_attach(GTK_GRID(g), e, c, r, 1, 1);
 		} }
 	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, nr, nc);
@@ -923,7 +923,7 @@ static void open_doc(const char *path)
 			cells = NULL; continue;
 		}
 		if (!strncmp(tag, "<td", 3) || !strncmp(tag, "<th", 3)) { if (!cells) cells = g_ptr_array_new(); if (cell) g_string_free(cell, TRUE); cell = g_string_new(NULL); continue; }
-		if (!strncmp(tag, "</td", 5) || !strncmp(tag, "</th", 5)) {
+		if (!strncmp(tag, "</td", 4) || !strncmp(tag, "</th", 4)) {
 			if (cells) g_ptr_array_add(cells, g_strdup(cell ? cell->str : ""));
 			if (cell) { g_string_free(cell, TRUE); cell = NULL; }
 			continue;
