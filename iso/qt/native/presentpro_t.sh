@@ -12,10 +12,10 @@
 HERE=$(cd "$(dirname "$0")" && pwd); R=$(cd "$HERE/../../.." && pwd); T=$(mktemp -d /tmp/pp_t.XXXXXX)
 PORT=${PP_PORT:-8686}; DSP=${PP_DSP:-:90}; OUT=${1:-$T/out}; mkdir -p "$OUT"
 command -v Xvfb >/dev/null && command -v xdotool >/dev/null || { echo "SKIP: needs Xvfb and xdotool"; exit 0; }
-BIN=$T/rudolf-present
+BIN=$T/rudolf-presentpro
 sh "$R/iso/sys/ui/build.sh" "$T/ui" "$BIN" presentpro 2>"$T/cc" || { cat "$T/cc"; echo "FAIL build"; exit 1; }
-[ -s "$T/cc" ] && { echo "FAIL rudolf-present builds with warnings:"; cat "$T/cc"; exit 1; }
-echo "PASS 0. rudolf-present builds without a warning ($(stat -c %s "$BIN") bytes)"
+[ -s "$T/cc" ] && { echo "FAIL rudolf-presentpro builds with warnings:"; cat "$T/cc"; exit 1; }
+echo "PASS 0. rudolf-presentpro builds without a warning ($(stat -c %s "$BIN") bytes)"
 export FONTCONFIG_FILE=$HERE/fonts-test.conf
 D=$T/d; mkdir -p "$D"
 node "$R/iso/qt/host/fixtures/deskls.js" "$D/ls.json" "$D/keys.json" || { echo "FAIL node"; exit 1; }
@@ -31,7 +31,7 @@ i=0; while [ $i -lt 40 ] && ! DISPLAY=$DSP xdotool getmouselocation >/dev/null 2
 # ---- 0b. it opens its window and writes the state the checks read (a debug build says where it falls over)
 if command -v gdb >/dev/null 2>&1; then
 	rm -f "$T/smoke"
-	BING=$T/rudolf-present-debug
+	BING=$T/rudolf-presentpro-debug
 	if sh "$R/iso/sys/ui/build.sh" "$T/uig" "$BING" presentpro -g -O1 -fsanitize=address >"$T/gdbb" 2>&1; then
 		RUDOLF_PP_STATE=$T/smoke DISPLAY=$DSP timeout 12 "$BING" >"$T/gdb.txt" 2>&1
 	fi

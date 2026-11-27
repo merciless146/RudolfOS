@@ -1,5 +1,5 @@
 name: PresentPro (1.6.3)
-# 1.6.3 (docs/plan-1.6.3.md Part 1): rudolf-present's first step -- the page's window, its toolbar, its eight menus, its list
+# 1.6.3 (docs/plan-1.6.3.md Part 1): rudolf-presentpro's first step -- the page's window, its toolbar, its eight menus, its list
 # of slides, its stage and its notes -- built hardened as the release builds it (RUI_WERROR=1: a single warning fails it)
 # and then used under Xvfb: a title typed into the place, a second slide made the page's way, a body's two lines, bold, the
 # bullets and the numbering, undo, PageUp and PageDown, a layout that keeps what it still has, a duplicated and a deleted
@@ -44,9 +44,9 @@ jobs:
       - name: rudolf-present built as a release builds it (hardened, no warning, its size)
         run: |
           cd iso && . systools/hardflags.sh
-          RUI_WERROR=1 sh sys/ui/build.sh "$RUNNER_TEMP/ui" "$RUNNER_TEMP/rudolf-present" presentpro $HARD
-          python3 systools/hardcheck.py "$RUNNER_TEMP/rudolf-present"
-          echo "::notice title=rudolf-present::$(stat -c %s "$RUNNER_TEMP/rudolf-present") bytes, hardened (a native app's budget is 1 MB)"
+          RUI_WERROR=1 sh sys/ui/build.sh "$RUNNER_TEMP/ui" "$RUNNER_TEMP/rudolf-presentpro" presentpro $HARD
+          python3 systools/hardcheck.py "$RUNNER_TEMP/rudolf-presentpro"
+          echo "::notice title=rudolf-presentpro::$(stat -c %s "$RUNNER_TEMP/rudolf-presentpro") bytes, hardened (a native app's budget is 1 MB)"
       - name: build and use it (the slides, the places, the layouts and the page's keys)
         run: sh iso/qt/native/presentpro_t.sh out
       - name: the state and the log, when something failed

@@ -91,7 +91,7 @@ accent colours), its memory at idle against the web version, built in the releas
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
 #### Status (2026-11-27, scheduled task): PresentPro begun, step 1 (the window, its slides and their places)
-- **Branch `presentpro-1`:** `iso/sys/apps/presentpro.c` (`/usr/bin/rudolf-present`, with librudolf-ui) has the page's
+- **Branch `presentpro-1`:** `iso/sys/apps/presentpro.c` (`/usr/bin/rudolf-presentpro`, with librudolf-ui) has the page's
   window with its eight menus and the page's own rows (File 18, Home 20, Insert 16, Design 4, Arrange 21, Slide Show 7,
   View 7, Help 3), the toolbar of `.pp-tb` (a new slide, the layout, the font and its size, bold, italic, underline,
   strikethrough, the text colour, the three alignments, bullets, numbering, undo, redo, a duplicate and a delete), the

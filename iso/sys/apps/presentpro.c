@@ -1,4 +1,4 @@
-/* ===== 1.6.3 (presentpro): PresentPro as a native program (/usr/bin/rudolf-present) -- docs/plan-1.6.3.md Part 1,
+/* ===== 1.6.3 (presentpro): PresentPro as a native program (/usr/bin/rudolf-presentpro) -- docs/plan-1.6.3.md Part 1,
    step 1: the page's window, its toolbar, its eight menus, its list of slides, its stage and its notes, with the page's
    eight layouts, the text typed into a placeholder, bold, italic, underline, strikethrough, the three alignments, bullets
    and numbering, undo and redo, and the page's keys. The page is desktop/ppro45.js (the window and its commands),
@@ -1380,9 +1380,9 @@ static gboolean do_hook(gpointer d)
 
 int main(int argc, char **argv)
 {
-	rui_init(&argc, &argv, "present");
+	rui_init(&argc, &argv, "presentpro");
 	css();
-	W = rui_window("present", "PresentPro", 1060, 700);
+	W = rui_window("presentpro", "PresentPro", 1060, 700);
 	deck_ensure(1);
 	{ Slide *z = slide_new(); SL[0] = *z; g_free(z); }
 	SLN = 1; CUR = 0; PHCUR = PH_TITLE;
