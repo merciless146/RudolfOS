@@ -26,7 +26,7 @@ jobs:
         run: |
           set -e
           rm -rf /tmp/root; mkdir -p /tmp/root
-          KB=$(sh iso/systools/mkpipewire.sh /tmp/root)
+          KB=$(sh -x iso/systools/mkpipewire.sh /tmp/root 2>/tmp/trace.log) || { echo "FAIL mkpipewire.sh exited 1:"; tail -30 /tmp/trace.log; exit 1; }
           echo "mkpipewire.sh added $KB"
           for f in usr/bin/pipewire usr/bin/wireplumber etc/wireplumber/main.lua.d/51-no-alsa.lua \
                    etc/wireplumber/wireplumber.conf.d/51-no-alsa.conf; do
