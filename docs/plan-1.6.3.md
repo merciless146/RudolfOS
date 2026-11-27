@@ -103,6 +103,12 @@ accent colours), its memory at idle against the web version, built in the releas
   silently. `File > Open...`, `Save` and `Save As...` are live in the bar (GTK's own choosers until the page's dialogs
   come), with Ctrl+O and Ctrl+S; a document remembers its file. The check opens a document in the page's exact shape,
   saves it, and opens and saves that again: the same bytes, which is the round trip the model promises.
+- **Branch `wordpro-8`: the unsaved changes, and format changes as steps of the history**: the title is the page's --
+  the file's name, or Untitled, and `*` while the writing is not in its file -- and New, Open and Close ask the page's own
+  question first (`Save changes to NAME?`, Cancel / Don't save / Save), the window's own close included, so nothing is
+  thrown away unanswered; saving or opening puts the `*` away. Format changes (bold, italic, underline, strikethrough,
+  size, colour, font, style, alignment, spacing, clear) are steps of the history as typed text is: an entry keeps the
+  writing's runs of tags beside its text, so Ctrl+Z takes a bold away and leaves the writing, and Ctrl+Y puts it back.
 - **Not in this step, by the plan's own split:** the dialogs of those items (open, save, import, export, page setup,
   print, table, picture, link, special characters, header and footer), links, page setup, headers and footers, the table
   of contents, printing, and the rest of the page's HTML (lists, the paragraph classes' other blocks, a nested table,

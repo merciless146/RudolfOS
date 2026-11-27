@@ -34,6 +34,7 @@ static GtkWidget *BTN_B, *BTN_I, *BTN_U, *BTN_S, *BTN_SUB, *BTN_SUP, *ALN[4], *S
 static int UPDATING;
 static int ZOOM = 100; static char SAY[200]; static const char *FAMILY = "Times New Roman"; static double PT = 12;
 static char *DOCPATH;   /* (the document's file, once it has been opened or saved: Save writes it, Save As asks) */
+static int DIRTY, ASK;   /* (the page's unsaved changes: 1 while the writing is not in its file, and whether its question is up) */
 static char ON[40];   /* (the toggles the cursor's place has, as the page's updSel writes them) */
 static const char *MENU_OPEN; static int MENU_OPEN_N;   /* (the menu open now, for the state the tests read) */
 
@@ -47,6 +48,19 @@ static void state_objs(GString *s);
 static void state_steps(GString *s);
 static void insert_picture_data(guchar *data, gsize len);
 static void open_doc(const char *path);
+static void hist_push(void);
+static int save_now(void);
+/* (the page's title: the file's name, or Untitled, and a * while the writing is not in its file) */
+static void set_title(void)
+{
+	if (!W || !W->win) return;
+	char *base = DOCPATH ? g_path_get_basename(DOCPATH) : NULL;
+	char t[220];
+	snprintf(t, sizeof t, "%s%s - WordPro", base ? base : rui_tr("Untitled"), DIRTY ? " *" : "");
+	gtk_window_set_title(GTK_WINDOW(W->win), t);
+	g_free(base); state_soon();
+}
+static void touch(void) { if (!DIRTY) { DIRTY = 1; set_title(); } }
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
 static void css(void)
 {
@@ -99,17 +113,17 @@ static void apply_name(const char *name)
 	GtkTextTag *t = tag_new(name);
 	if (all_have(&s, &e, name)) gtk_text_buffer_remove_tag(BUF, t, &s, &e);   /* (a second press takes it off, as the page's) */
 	else gtk_text_buffer_apply_tag(BUF, t, &s, &e);
-	counts(); upd_sel(); state_soon();
+	counts(); upd_sel(); hist_push(); state_soon();   /* (a format change is a step of the history, as typing is) */
 }
 static void apply_str(const char *name, const char *prop, const char *v)
 {
 	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
-	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); hist_push(); state_soon();
 }
 static void apply_dbl(const char *name, const char *prop, double v)
 {
 	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
-	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); hist_push(); state_soon();
 }
 static void toggle(GtkWidget *b, gpointer d) { (void)b; apply_name((const char *)d); }
 
@@ -159,7 +173,7 @@ static void on_style(GtkComboBox *c, gpointer d)
 	g_object_set(G_OBJECT(t), "size-points", ST[i].pt, "weight", ST[i].bold ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL,
 		"style", ST[i].italic ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL, "justification", ST[i].just, NULL);
 	if (!strcmp(WP_STYLES[i].k, "code")) g_object_set(G_OBJECT(t), "family", "monospace", NULL);
-	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); hist_push(); state_soon();
 }
 static void on_align(GtkWidget *b, gpointer d)
 {
@@ -169,7 +183,7 @@ static void on_align(GtkWidget *b, gpointer d)
 	GtkTextTag *t = tag_new(n);
 	g_object_set(G_OBJECT(t), "justification", !strcmp(k, "center") ? GTK_JUSTIFY_CENTER : !strcmp(k, "right") ? GTK_JUSTIFY_RIGHT :
 		!strcmp(k, "fill") ? GTK_JUSTIFY_FILL : GTK_JUSTIFY_LEFT, NULL);
-	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); hist_push(); state_soon();
 }
 /* bullets, numbering and the indent: the page's block commands, on each line of the choice */
 static void line_prefix(const char *kind)
@@ -203,12 +217,12 @@ static void on_spacing(GtkComboBox *c, gpointer d)
 	char n[32]; snprintf(n, sizeof n, "ls:%.2f", V[i]); GtkTextTag *t = tag_new(n);
 	int pad = (int)lround((V[i] - 1) * PT * 0.66);
 	g_object_set(G_OBJECT(t), "pixels-above-lines", pad, "pixels-below-lines", pad, NULL);
-	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); hist_push(); state_soon();
 }
 static void on_clear(GtkWidget *b, gpointer d)
 {
 	(void)b; (void)d; GtkTextIter s, e; if (!need_sel()) return;
-	gtk_text_buffer_remove_all_tags(BUF, &s, &e); counts(); state_soon();
+	gtk_text_buffer_remove_all_tags(BUF, &s, &e); counts(); hist_push(); state_soon();
 }
 /* undo and redo: GTK 3's text buffer keeps no history of its own, so the writing is kept step by step -- and what stands at
    each of its places with it (the page's undo and redo, bounded to the last 120 changes). What an entry is, and how it is
@@ -338,6 +352,7 @@ static void state_write(void)
 	state_steps(s);
 	if (FIND && FI && REPL) g_string_append_printf(s, "findbar %d\nfind %s\nrepl %s\n", gtk_widget_get_visible(FIND) ? 1 : 0,
 		gtk_entry_get_text(GTK_ENTRY(FI)), gtk_entry_get_text(GTK_ENTRY(REPL)));
+	g_string_append_printf(s, "dirty %d\nask %d\n", DIRTY, ASK);   /* (the tests read the guard: what is not saved, and its question) */
 	g_string_append_printf(s, "on %s\n", ON);
 	gtk_text_buffer_get_start_iter(BUF, &a); gtk_text_buffer_get_end_iter(BUF, &b);
 	g_string_append(s, "tags");
@@ -479,21 +494,43 @@ enum { OP_NONE, OP_NEW, OP_CLOSE, OP_UNDO, OP_REDO, OP_CUT, OP_COPY, OP_PASTE, O
 typedef struct { const char *label, *key; int off; const char *tag; int z; int op; const char *arg; } Mi;
 #define WPS { NULL, NULL, 0, NULL, 0, OP_NONE, NULL }
 static void noop(int i, void *d) { (void)i; (void)d; }
+/* the page's question before the writing is thrown away (base_v24.html's confirmDiscard): Save, Don't save, or Cancel.
+   It stands before New, Open and Close, as on the page, and nothing is thrown away until it is answered. */
+enum { ASK_NEW = 1, ASK_OPEN, ASK_CLOSE };
+static void do_what(int what, const char *path);
+static int ASK_WHAT; static char *ASK_PATH;
+static void ask_done(int i, void *d)
+{
+	(void)d; ASK = 0;
+	if (i < 0) { state_soon(); return; }   /* (Cancel, or Escape's own answer: the page stays as it is) */
+	if (i == 2 && !save_now()) { state_soon(); return; }   /* (a save that was cancelled: nothing is thrown away) */
+	do_what(ASK_WHAT, ASK_PATH);
+}
 /* New is a step of the writing's own history, as every other change is: undo brings the page back, redo empties it again
    (a New that only emptied the buffer would leave undo and redo looking at a page that is no longer there) */
-static void new_do(int i, void *d)
+static void do_what(int what, const char *path)
 {
-	(void)d; if (i != 1) return;
-	SILENT = 1; obj_clear(); gtk_text_buffer_set_text(BUF, "", -1); SILENT = 0;
-	hist_push(); counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
+	if (what == ASK_NEW) {
+		g_free(DOCPATH); DOCPATH = NULL;
+		SILENT = 1; obj_clear(); gtk_text_buffer_set_text(BUF, "", -1); SILENT = 0;
+		hist_push(); DIRTY = 0;
+		counts(); upd_sel(); set_title(); state_soon(); gtk_widget_grab_focus(ED);
+	} else if (what == ASK_OPEN) { if (path) open_doc(path); }
+	else if (what == ASK_CLOSE) gtk_widget_destroy(W->win);
 }
-static void new_page(void)
+static void confirm_discard(int what, const char *path)
 {
-	char *t = doc_text(); int has = t && strspn(t, " \t\r\n") != strlen(t); g_free(t);
-	if (!has) { gtk_widget_grab_focus(ED); return; }   /* (an empty page has nothing to discard, and nothing to undo) */
-	static const char *B[] = { "Cancel", "Discard" };
-	rui_confirm(W, "WordPro", rui_tr("Discard what is written on this page?"), B, 2, 0, new_do, NULL);
+	if (!DIRTY) { do_what(what, path); return; }   /* (nothing written since the file: no question, as the page's) */
+	ASK_WHAT = what; g_free(ASK_PATH); ASK_PATH = path ? g_strdup(path) : NULL;
+	char *base = DOCPATH ? g_path_get_basename(DOCPATH) : NULL;
+	char t[220]; snprintf(t, sizeof t, "Save changes to %s?", base ? base : rui_tr("Untitled"));
+	g_free(base);
+	static const char *B[] = { "Cancel", "Don't save", "Save" };
+	rui_confirm(W, rui_tr("WordPro"), rui_tr(t), B, 3, 1, ask_done, NULL);
+	ASK = 1;
+	state_soon();
 }
+static void new_page(void) { confirm_discard(ASK_NEW, NULL); }
 static void quote_style(void)
 {
 	for (int i = 0; i < NWPSTYLES; i++) if (!strcmp(WP_STYLES[i].k, "quote")) { if (STYLEW) gtk_combo_box_set_active(GTK_COMBO_BOX(STYLEW), i); return; }
@@ -839,7 +876,9 @@ static void obj_html(GString *o, WpObj *ob)
    stood at it -- so undo and redo move the picture or the table itself, and a place with nothing behind it cannot be left
    (an entry whose place has lost its object drops the place). */
 typedef struct { int kind, wpx, hpx, rows, cols; Img *im; GPtrArray *cells; } Snap;
-struct Hist { char *t; GPtrArray *objs; };
+struct Hist { char *t; GPtrArray *objs; GPtrArray *runs; };
+typedef struct { int a, b; char *t; } HstRun;   /* (a stretch of the writing with the same tags: an entry keeps them, so undo brings a page's formatting back with its text) */
+static void hst_run_free(gpointer p) { HstRun *r = p; g_free(r->t); g_free(r); }
 static void snap_free(gpointer p)
 {
 	Snap *s = p; img_unref(s->im); if (s->cells) g_ptr_array_free(s->cells, TRUE); g_free(s);
@@ -854,6 +893,51 @@ static Snap *snap_of(WpObj *o)
 		for (int r = 0; r < o->rows; r++) for (int c = 0; c < o->cols; c++) g_ptr_array_add(s->cells, g_strdup(cell_text(o, r, c)));
 	}
 	return s;
+}
+static gint hst_cmp(gconstpointer a, gconstpointer b) { return strcmp(*(const char *const *)a, *(const char *const *)b); }
+/* (the tags on one character, as one name: the page's run, in the order that makes two of them the same one) */
+static char *tags_at(GtkTextIter *i)
+{
+	GPtrArray *v = g_ptr_array_new_with_free_func(g_free);
+	GSList *l = gtk_text_iter_get_tags(i);
+	for (GSList *k = l; k; k = k->next) {
+		char *nm = NULL; g_object_get(G_OBJECT(k->data), "name", &nm, NULL);
+		if (nm && strcmp(nm, "find")) g_ptr_array_add(v, nm); else g_free(nm);   /* (the find bar's highlight is not the writing) */
+	}
+	g_slist_free(l);
+	g_ptr_array_sort(v, hst_cmp);
+	GString *o = g_string_new(NULL);
+	for (guint n = 0; n < v->len; n++) { if (n) g_string_append_c(o, ','); g_string_append(o, g_ptr_array_index(v, n)); }
+	g_ptr_array_free(v, TRUE);
+	return g_string_free(o, FALSE);
+}
+/* (the writing's runs of tags, in text offsets: every place where the tags change starts one) */
+static void hist_runs(GPtrArray *runs)
+{
+	GtkTextIter t; gtk_text_buffer_get_start_iter(BUF, &t);
+	char *cur = tags_at(&t); int start = 0;
+	while (gtk_text_iter_forward_to_tag_toggle(&t, NULL)) {
+		int off = gtk_text_iter_get_offset(&t);
+		char *n = tags_at(&t);
+		if (off <= start) { if (strcmp(n, cur)) { g_free(cur); cur = n; } else g_free(n); continue; }   /* (two toggles at one place) */
+		if (!strcmp(n, cur)) { g_free(n); continue; }
+		HstRun *r = g_new(HstRun, 1); r->a = start; r->b = off; r->t = cur; g_ptr_array_add(runs, r);
+		cur = n; start = off;
+	}
+	int end = gtk_text_buffer_get_char_count(BUF);
+	if (end > start) { HstRun *r = g_new(HstRun, 1); r->a = start; r->b = end; r->t = cur; g_ptr_array_add(runs, r); }
+	else g_free(cur);
+}
+static void hist_runs_apply(GPtrArray *runs)
+{
+	for (guint k = 0; runs && k < runs->len; k++) {
+		HstRun *r = g_ptr_array_index(runs, k);
+		if (!*r->t || r->b <= r->a) continue;
+		GtkTextIter a, b; gtk_text_buffer_get_iter_at_offset(BUF, &a, r->a); gtk_text_buffer_get_iter_at_offset(BUF, &b, r->b);
+		char **names = g_strsplit(r->t, ",", -1);
+		for (int i = 0; names[i]; i++) if (*names[i]) gtk_text_buffer_apply_tag(BUF, tag_new(names[i]), &a, &b);
+		g_strfreev(names);
+	}
 }
 /* (what the writing is for the history: the same text, but with the place of every picture and table in it. get_text
    leaves the placeholders out, which is right for the page's words and for a save -- and would lose where an object
@@ -876,6 +960,8 @@ static Hist *hist_now(void)
 	GtkTextIter i, e; gtk_text_buffer_get_start_iter(BUF, &i); gtk_text_buffer_get_end_iter(BUF, &e);
 	for (; gtk_text_iter_compare(&i, &e) < 0; gtk_text_iter_forward_char(&i))
 		if (gtk_text_iter_get_char(&i) == 0xFFFC) g_ptr_array_add(h->objs, snap_of(obj_at(gtk_text_iter_get_child_anchor(&i))));
+	h->runs = g_ptr_array_new_with_free_func(hst_run_free);
+	hist_runs(h->runs);
 	return h;
 }
 static int hist_same(Hist *a, Hist *b)
@@ -887,9 +973,14 @@ static int hist_same(Hist *a, Hist *b)
 		if (x->kind != OBJ_TABLE) continue;
 		for (guint k = 0; k < x->cells->len; k++) if (strcmp(g_ptr_array_index(x->cells, k), g_ptr_array_index(y->cells, k))) return 0;
 	}
+	if (a->runs->len != b->runs->len) return 0;
+	for (guint i = 0; i < a->runs->len; i++) {
+		HstRun *x = g_ptr_array_index(a->runs, i), *y = g_ptr_array_index(b->runs, i);
+		if (x->a != y->a || x->b != y->b || strcmp(x->t, y->t)) return 0;
+	}
 	return 1;
 }
-static void hist_free(Hist *h) { if (!h) return; g_free(h->t); g_ptr_array_free(h->objs, TRUE); g_free(h); }
+static void hist_free(Hist *h) { if (!h) return; g_free(h->t); g_ptr_array_free(h->objs, TRUE); if (h->runs) g_ptr_array_free(h->runs, TRUE); g_free(h); }
 static void state_steps(GString *s)
 {
 	for (int k = 0; k < HIST_N; k++) {   /* (each step: its text's length, its places, and a table's cells -- what a check reads) */
@@ -946,7 +1037,9 @@ static void hist_apply(Hist *h)
 		snap_place(gtk_text_buffer_create_child_anchor(BUF, &at), s);
 	}
 	g_free(off);
+	hist_runs_apply(h->runs);   /* (the tags the entry had, put back where they were) */
 	SILENT = 0;
+	DIRTY = 1; set_title();   /* (the page is not what its file holds any more, as on the page) */
 	counts(); upd_sel(); state_soon();
 }
 static char *doc_html(void)
@@ -979,36 +1072,39 @@ static char *doc_html(void)
 	}
 	return g_string_free(o, FALSE);
 }
-static void save_now(void);
-static void save_doc(const char *path)
+static int save_now(void);
+static int save_doc(const char *path)
 {
-	char *h = doc_html();
+	char *h = doc_html(); int ok = 0;
 	if (!g_file_set_contents(path, h, -1, NULL)) say(rui_tr("That document could not be saved."));
-	else { g_free(DOCPATH); DOCPATH = g_strdup(path); }
+	else { g_free(DOCPATH); DOCPATH = g_strdup(path); DIRTY = 0; set_title(); ok = 1; }   /* (the writing is in its file: no * any more) */
 	g_free(h);
 	state_soon();
+	return ok;
 }
-static void choose_save(void)
+static int choose_save(void)
 {
 	GtkWidget *f = gtk_file_chooser_dialog_new(rui_tr("Save as"), GTK_WINDOW(W->win), GTK_FILE_CHOOSER_ACTION_SAVE,
 		rui_tr("Cancel"), GTK_RESPONSE_CANCEL, rui_tr("Save"), GTK_RESPONSE_ACCEPT, NULL);
 	gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(f), "LETTER.DOC");
 	gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(f), TRUE);
+	int ok = 0;
 	if (gtk_dialog_run(GTK_DIALOG(f)) == GTK_RESPONSE_ACCEPT) {
 		char *p = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(f));
-		if (p) save_doc(p);
+		if (p) ok = save_doc(p);
 		g_free(p);
 	}
 	gtk_widget_destroy(f);
+	return ok;
 }
-static void save_now(void) { if (DOCPATH) save_doc(DOCPATH); else choose_save(); }
+static int save_now(void) { return DOCPATH ? save_doc(DOCPATH) : choose_save(); }
 static void choose_open(void)
 {
 	GtkWidget *f = gtk_file_chooser_dialog_new(rui_tr("Open document"), GTK_WINDOW(W->win), GTK_FILE_CHOOSER_ACTION_OPEN,
 		rui_tr("Cancel"), GTK_RESPONSE_CANCEL, rui_tr("Open"), GTK_RESPONSE_ACCEPT, NULL);
 	if (gtk_dialog_run(GTK_DIALOG(f)) == GTK_RESPONSE_ACCEPT) {
 		char *p = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(f));
-		if (p) { open_doc(p); g_free(DOCPATH); DOCPATH = g_strdup(p); }
+		if (p) confirm_discard(ASK_OPEN, p);   /* (the page asks before a page with unsaved changes is replaced) */
 		g_free(p);
 	}
 	gtk_widget_destroy(f);
@@ -1182,14 +1278,16 @@ static void open_doc(const char *path)
 	}
 	gtk_text_buffer_delete_mark(BUF, pstart);
 	g_free(h);
-	counts(); upd_sel(); hist_push(); state_soon();
+	counts(); upd_sel(); hist_push();
+	g_free(DOCPATH); DOCPATH = g_strdup(path); DIRTY = 0; set_title();   /* (what was opened is its file's, with nothing unsaved) */
+	state_soon();
 }
 static void menu_do(const Mi *s)
 {
 	GtkTextIter a, b;
 	switch (s->op) {
 	case OP_NEW: new_page(); break;
-	case OP_CLOSE: gtk_widget_destroy(W->win); break;
+	case OP_CLOSE: confirm_discard(ASK_CLOSE, NULL); break;
 	case OP_UNDO: hist_undo(); break;
 	case OP_REDO: hist_redo(); break;
 	case OP_CUT: gtk_text_buffer_cut_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), TRUE); counts(); state_soon(); break;
@@ -1334,7 +1432,7 @@ static gboolean io_hook(gpointer d)
 {
 	(void)d;
 	const char *op = getenv("RUDOLF_WP_OPEN"), *sv = getenv("RUDOLF_WP_SAVE");
-	if (op && *op) { open_doc(op); g_free(DOCPATH); DOCPATH = g_strdup(op); }
+	if (op && *op) confirm_discard(ASK_OPEN, op);
 	if (sv && *sv) save_doc(sv);
 	return G_SOURCE_REMOVE;
 }
@@ -1436,6 +1534,19 @@ static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	default: return FALSE;
 	}
 }
+/* (the window's own close, as the page's W.onclose: the question stands before the writing goes with it) */
+static gboolean on_delete(GtkWidget *w, GdkEvent *e, gpointer d)
+{
+	(void)w; (void)e; (void)d;
+	if (!DIRTY) return FALSE;   /* (nothing written since the file: the window closes) */
+	confirm_discard(ASK_CLOSE, NULL);
+	return TRUE;
+}
+static gboolean close_hook(gpointer d)   /* (the tests: the window's close, as File > Close does it) */
+{
+	(void)d; if (!ASK && DIRTY) confirm_discard(ASK_CLOSE, NULL);
+	return G_SOURCE_CONTINUE;
+}
 int main(int argc, char **argv)
 {
 	rui_init(&argc, &argv, "wordpro");
@@ -1443,6 +1554,7 @@ int main(int argc, char **argv)
 	W = rui_window("wordpro", "WordPro", 980, 646);
 	build_menubar(); build_find(); build_toolbar(); build_editor(); build_status();
 	g_signal_connect(ED, "key-press-event", G_CALLBACK(key), NULL);
+	g_signal_connect(W->win, "delete-event", G_CALLBACK(on_delete), NULL);
 	gtk_widget_show_all(W->win); gtk_widget_hide(FIND);
 	{ const char *mo = getenv("RUDOLF_WP_MENU");   /* (the tests: the menu a click on the bar opens) */
 	  if (mo && *mo) for (int i = 0; i < NMENUS; i++) if (!strcmp(MENUS[i].title, mo)) { g_timeout_add(400, menu_hook, (gpointer)(intptr_t)i); break; } }
@@ -1452,6 +1564,8 @@ int main(int argc, char **argv)
 	if (getenv("RUDOLF_WP_FOCUS")) g_timeout_add(2500, focus_cell_hook, NULL);   /* (the tests: the cursor in a table's first cell,
 															   after the window has the display's focus) */
 	gtk_widget_grab_focus(ED);   /* (the page's window opens with its writing ready: typing goes into it at once) */
+	set_title();   /* (Untitled - WordPro, as the page opens its window) */
+	if (getenv("RUDOLF_WP_CLOSE")) g_timeout_add(2000, close_hook, NULL);   /* (the tests: the window's close, while anything is unsaved) */
 	counts(); state_soon();
 	gtk_main(); return 0;
 }
