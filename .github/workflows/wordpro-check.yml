@@ -34,6 +34,12 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends libgtk-3-dev pkg-config fontconfig \
             libfontconfig1-dev xvfb xdotool imagemagick x11-utils gdb
+      - name: rudolf-wordpro built as a release builds it (hardened, no warning, its size)
+        run: |
+          cd iso && . systools/hardflags.sh
+          RUI_WERROR=1 sh sys/ui/build.sh "$RUNNER_TEMP/ui" "$RUNNER_TEMP/rudolf-wordpro" wordpro $HARD
+          python3 systools/hardcheck.py "$RUNNER_TEMP/rudolf-wordpro"
+          echo "::notice title=rudolf-wordpro::$(stat -c %s "$RUNNER_TEMP/rudolf-wordpro") bytes, hardened (a native app's budget is 1 MB)"
       - name: build and use it (the editor and its toolbar)
         run: sh iso/qt/native/wordpro_t.sh out
       - name: the state and the log, when something failed
