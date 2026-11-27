@@ -5,6 +5,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 
 ## 1.6.3 (in progress)
 Summary: In progress.
+- New: on the native desktop, Settings is the native Settings app: Privacy, Security, System health and Users join the
+  pages built before it, so every page of Settings is native there (Chromium mode and Lite keep the web Settings, as the
+  owner's rule says). The Users page's security keys and fingerprints are added, removed and required through the page's own
+  dialogs.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
   is how the camera went a release without a capture source; it now names every plug-in it cannot find.
