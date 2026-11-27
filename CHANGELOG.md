@@ -4,6 +4,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.6.3 (in progress)
+
+- **PipeWire and WirePlumber, beside PulseAudio** (Part 9, begun): the camera and the microphone's capture need
+  PipeWire under WebKitGTK 2.52, so it now starts with the session beside PulseAudio, which keeps the sound cards
+  (WirePlumber's ALSA monitor is off). No `pipewire-pulse`; nothing listens.
 Summary: In progress.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which

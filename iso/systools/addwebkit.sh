@@ -50,7 +50,7 @@ $SUDO mkdir -p "$R$WK"; $SUDO cp -a "$WK/." "$R$WK/"; find "$WK" -type f >> "$LI
 # wrong host and stops the build -- the warning alone is what let a release go out with no capture path. "pipewire" is not
 # in this list yet: its plug-in would have no sound server to reach until Part 9 gives the image one, so today its absence
 # on the build host is the normal state and stays a warning (it joins this list with the server).
-FATAL=" interleave transcode "; fatal=
+FATAL=" interleave transcode pipewire "; fatal=
 GS=$ML/gstreamer-1.0; $SUDO mkdir -p "$R$GS" "$R$ML/gstreamer1.0/gstreamer-1.0"
 for s in $ML/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner; do [ -x "$s" ] && $SUDO cp -L "$s" "$R$s" && echo "$s" >> "$LIST"; done
 # One loop copies what it finds and says what is lost for what it does not: a plug-in named here and missing on the

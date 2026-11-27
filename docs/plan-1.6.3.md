@@ -818,6 +818,17 @@ unless the item is Native's own (then Native is made to match Chromium, never th
 
 ### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)
 
+**Status (2026-11-27): begun, on `pw-beside-pulse`.** The owner chose PipeWire *beside* PulseAudio: PulseAudio stays the
+sound server and keeps every card; WirePlumber's ALSA monitor is off, so nothing opens a card twice, and what runs is the
+daemon, its session manager and the camera's monitors (no `pipewire-pulse`). In: `systools/mkpipewire.sh` (the daemon,
+WirePlumber, libpipewire, the SPA plug-ins and both packages' share trees: dpkg/ldd discovery, named failures, a 12 MB
+budget), `systools/pwconf/51-no-alsa.lua` for WirePlumber 0.4 and `51-no-alsa.conf` for 0.5, the start in
+`usr/lib/rudolf/sound` (after PulseAudio's socket; `restart` stops both), the wiring in `mkrootfs.sh` and
+`ci_release.sh` (with its `BSRC` list), the packages in `rudolf-release.yml`, `pipewire` moved into `addwebkit.sh`'s
+`FATAL` list (a capture build without the plug-in lists a camera it cannot open), and
+`.github/workflows/pipewire-check.yml`, which installs the real packages, packages the layer, starts it under the
+layer's own configuration and fails on any audio node or ALSA device.
+
 **The fault.** On the Native desktop Camera answers "No camera is available or access is blocked" with the privacy switch
 on, the check's microphone reads −120 dB (all-zero samples) and Voice Recorder records nothing; on the same build and
 machine Chromium does all three (checklist V1–V3; findings N33 and N35 in docs/native-findings-2026-11-26.md).

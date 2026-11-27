@@ -1,0 +1,68 @@
+name: PipeWire check
+# 1.6.3 (docs/plan-1.6.3.md Part 9): PipeWire and WirePlumber go into the base layer beside PulseAudio, and WirePlumber's
+# ALSA monitor is off, so the sound cards stay PulseAudio's. This installs the real Ubuntu 24.04 packages, packages the
+# layer with systools/mkpipewire.sh, starts what the session starts (pipewire, then wireplumber) under the layer's own
+# configuration, and checks what the plan promises: no audio device from WirePlumber, a running daemon, and the camera's
+# v4l2 plug-in in the layer.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - iso/systools/mkpipewire.sh
+      - iso/systools/pwconf/**
+      - iso/sys/root/usr/lib/rudolf/sound
+      - .github/workflows/pipewire-check.yml
+permissions:
+  contents: read
+jobs:
+  layer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: the build machine's packages
+        run: run: sudo apt-get update -qq && sudo apt-get install -y -qq patchelf nftables iw cryptsetup-bin openvpn alsa-ucm-conf bluez bluez-alsa-utils libasound2-plugin-bluez pcscd libccid opensc opensc-pkcs11 libnss3-tools libfido2-1 libfprint-2-dev squashfs-tools nasm bc flex bison libelf-dev libssl-dev kmod jq python3-cryptography libx11-dev libxext-dev libxtst6 libxfixes3 libxrandr2 libxrandr-dev zlib1g-dev pipewire wireplumber libpipewire-0.3-0t64 libspa-0.2-modules gstreamer1.0-pipewire libglib2.0-dev sbsigntool mesa-vulkan-drivers libvulkan1 meson ninja-build libpixman-1-dev x11-xkb-utils xorg-sgml-doctools libxfont2 libxshmfence1 libxkbfile1 libpciaccess0 libepoxy0 libgbm1 libudev-dev libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking modemmanager mobile-broadband-provider-info libqmi-proxy libmbim-proxy libqmi-utils libmbim-utils tayga hostapd dnsmasq-base tor gnome-keyring libsecret-tools udev systemd file libsane1 sane-airscan >/dev/null
+      - name: package the layer (mkpipewire.sh)
+        run: |
+          set -e
+          rm -rf /tmp/root; mkdir -p /tmp/root
+          KB=$(sh iso/systools/mkpipewire.sh /tmp/root)
+          echo "mkpipewire.sh added $KB"
+          for f in usr/bin/pipewire usr/bin/wireplumber etc/wireplumber/main.lua.d/51-no-alsa.lua \
+                   etc/wireplumber/wireplumber.conf.d/51-no-alsa.conf; do
+            test -e "/tmp/root/$f" || { echo "FAIL $f is not in the layer"; exit 1; }
+          done
+          test -d /tmp/root/usr/lib/*/spa-0.2 || { echo "FAIL the SPA plug-ins are not in the layer"; exit 1; }
+          test -d /tmp/root/usr/lib/*/spa-0.2/v4l2 || { echo "FAIL the camera's SPA v4l2 plug-in is not in the layer"; exit 1; }
+          # none is packaged: PulseAudio is the sound server (the owner's choice, 2026-11-27)
+          test ! -e /tmp/root/usr/bin/pipewire-pulse || { echo "FAIL pipewire-pulse is in the layer: PulseAudio must stay the sound server"; exit 1; }
+          echo "PASS the layer has pipewire, wireplumber, the SPA plug-ins, the camera's v4l2, and none of pipewire-pulse"
+      - name: start it as the session does, with the layer's configuration
+        run: |
+          set -e
+          export XDG_RUNTIME_DIR=/tmp/rt; rm -rf "$XDG_RUNTIME_DIR"; mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+          sudo mkdir -p /etc/wireplumber/main.lua.d /etc/wireplumber/wireplumber.conf.d
+          sudo cp /tmp/root/etc/wireplumber/main.lua.d/51-no-alsa.lua /etc/wireplumber/main.lua.d/
+          sudo cp /tmp/root/etc/wireplumber/wireplumber.conf.d/51-no-alsa.conf /etc/wireplumber/wireplumber.conf.d/
+          # the session's order (usr/lib/rudolf/sound start): the daemon first, its session manager once its socket is there
+          pipewire --version
+          nohup pipewire > /tmp/pipewire.log 2>&1 &
+          for i in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/pipewire-0" ] && break; sleep 0.1; done
+          [ -S "$XDG_RUNTIME_DIR/pipewire-0" ] || { echo "FAIL no PipeWire socket: the camera and the microphone wait on it"; cat /tmp/pipewire.log; exit 1; }
+          nohup wireplumber > /tmp/wireplumber.log 2>&1 &
+          sleep 8
+          pgrep -x wireplumber >/dev/null || { echo "FAIL WirePlumber is not running"; cat /tmp/wireplumber.log; exit 1; }
+          pw-dump > /tmp/dump.json
+          test -s /tmp/dump.json || { echo "FAIL pw-dump returned nothing: PipeWire is not answering"; exit 1; }
+          N=$(jq '[.[] | select((.info.props["device.api"] // "") == "alsa" or ((.info.props["media.class"] // "") | startswith("Audio/")))] | length' /tmp/dump.json)
+          if [ "${N:-1}" != 0 ] || [ -z "${N}" ]; then
+            echo "FAIL WirePlumber published $N audio object(s): the sound cards are PulseAudio's (51-no-alsa)"
+            jq -c '.[] | select((.info.props["device.api"] // "") == "alsa") | .info.props | {node: .["node.name"], device: .["device.name"], cls: .["media.class"]}' /tmp/dump.json | head -20
+            exit 1
+          fi
+          echo "PASS no audio node and no ALSA device: the sound cards stay PulseAudio's"
+          grep -qi wireplumber /tmp/wireplumber.log || { echo "FAIL WirePlumber said nothing about itself"; cat /tmp/wireplumber.log; exit 1; }
+          echo "PASS WirePlumber runs beside PulseAudio with its ALSA monitor off"
+      - name: the logs, when something failed
+        if: failure()
+        run: tail -40 /tmp/pipewire.log /tmp/wireplumber.log 2>/dev/null || true
