@@ -396,8 +396,54 @@ grep -q '^words 4$' "$ST14" && grep -q '^obj table 2x2$' "$ST14" && grep -q '^tb
 	grep -q '<table class="wp-t nb">' "$T/nb-out.DOC" && ! grep -q '<th>' "$T/nb-out.DOC" && grep -q '<td>a</td><td>b</td>' "$T/nb-out.DOC"; RC=$?
 kill $WPP14 2>/dev/null
 ok "25. ...and the page's .wp-t nb -- no borders, no heading row -- is read and written as it was, with no <th>" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|objs|obj|tbl) ' "$ST14" 2>/dev/null | tr '\n' ' '); $(sed 's/.*<\/style>//' "$T/nb-out.DOC" 2>/dev/null | cut -c1-120); $(tail -2 "$T/wp14.log" 2>/dev/null | tr '\n' ' ')"
+# (the page's Insert picture dialog (imgDialog): a file from this computer, a web address, and the description that is
+#  the picture's alt text, Cancel / Insert. The test fills the file (0=) and the description (2=) and presses Insert; a
+#  picture is a place in the writing with its own bytes, its size and now its description, and neither a word nor a
+#  character of it)
+ST15=$T/state15.txt; A15=$T/ans15; rm -f "$ST15"; : > "$A15"
+RUDOLF_WP_STATE=$ST15 RUDOLF_WP_ANSWER=$A15 RUDOLF_WP_DIALOG=picture DISPLAY=$DSP $RUN "$BIN" >"$T/wp15.log" 2>&1 & WPP15=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^dialog 1$' "$ST15" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+D15=$(grep -c '^dialog 1$' "$ST15" 2>/dev/null)
+printf '0=%s\n2=Rudolf deer\nInsert\n' "$T/pic.png" > "$A15"
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST15" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^obj picture 40x30' "$ST15" && grep -q "^pic alt 'Rudolf deer' w 0 align 0$" "$ST15" &&
+	grep -q '^words 0$' "$ST15" && [ "$D15" = 1 ]; RC=$?
+kill $WPP15 2>/dev/null
+ok "26. the page's Insert picture dialog takes a file and a description, and Insert puts the picture in with its alt text" "$([ $RC = 0 ] && echo 1)" "dialog up $D15; $(grep -E '^(objs|obj|pic|words) ' "$ST15" 2>/dev/null | tr '\n' ' '); $(tail -2 "$T/wp15.log" 2>/dev/null | tr '\n' ' ')"
+# (the page's Picture tools (imgTools), opened as a click on the picture opens them: Width as a share of the sheet, Align,
+#  and the Description. The same picture, its width 50% and its place Centered, which is the page's 2 = Centered in its
+#  Align list; OK is the press. What the state says is what the model keeps: w 50, align 3)
+ST16=$T/state16.txt; A16=$T/ans16; rm -f "$ST16"; : > "$A16"
+RUDOLF_WP_STATE=$ST16 RUDOLF_WP_ANSWER=$A16 RUDOLF_WP_INSERT="picture:$T/pic.png" RUDOLF_WP_PICTOOLS=1 DISPLAY=$DSP $RUN "$BIN" >"$T/wp16.log" 2>&1 & WPP16=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST16" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 40 ] && ! grep -q '^dialog 1$' "$ST16" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+D16=$(grep -c '^dialog 1$' "$ST16" 2>/dev/null)
+printf '0=50%%\n1=Centered\n2=Deer\nOK\n' > "$A16"
+i=0; while [ $i -lt 40 ] && ! grep -q "^pic alt 'Deer' w 50 align 3$" "$ST16" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+H16=$(grep -c '^hist 3 3$' "$ST16" 2>/dev/null)   # (the picture, then its tools: two steps of the history)
+grep -q "^pic alt 'Deer' w 50 align 3$" "$ST16" && grep -q '^obj picture 40x30' "$ST16" && [ "$D16" = 1 ] && [ "$H16" = 1 ]; RC=$?
+kill $WPP16 2>/dev/null
+ok "27. the picture's tools set its width, its place and its description, and the change is a step of the history" "$([ $RC = 0 ] && echo 1)" "dialog up $D16; $(grep -E '^(objs|obj|pic|hist) ' "$ST16" 2>/dev/null | tr '\n' ' '); $(tail -2 "$T/wp16.log" 2>/dev/null | tr '\n' ' ')"
+# (a picture the web WordPro saved carries its alt text and the width and float imgTools wrote in its style: they open here
+#  as the model's own (alt, w, align) and are written back as they came, so the page's document and this one stay one)
+python3 - "$T/pic.png" "$T/pic.DOC" <<'PY'
+import sys, base64
+pic = base64.b64encode(open(sys.argv[1], 'rb').read()).decode()
+doc = ('<!--wp:%7B%7D--><style data-wp>.wp-t{border-collapse:collapse}</style>'
+       '<p>Deer</p><img src="data:image/png;base64,' + pic + '" alt="Deer &amp; fir" width="40" height="30" '
+       'style="max-width:100%;width:75%;float:left;margin:0 10px 6px 0">')
+open(sys.argv[2], 'w').write(doc)
+PY
+ST17=$T/state17.txt; rm -f "$ST17" "$T/pic-out.DOC"
+RUDOLF_WP_STATE=$ST17 RUDOLF_WP_OPEN="$T/pic.DOC" RUDOLF_WP_SAVE="$T/pic-out.DOC" DISPLAY=$DSP "$BIN" >"$T/wp17.log" 2>&1 & WPP17=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST17" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 60 ] && [ ! -s "$T/pic-out.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q "^pic alt 'Deer & fir' w 75 align 1$" "$ST17" && grep -q '^obj picture 40x30' "$ST17" &&
+	grep -q 'alt="Deer &amp; fir"' "$T/pic-out.DOC" && grep -q 'style="max-width:100%;width:75%;float:left;margin:0 10px 6px 0"' "$T/pic-out.DOC"; RC=$?
+kill $WPP17 2>/dev/null
+ok "28. a picture's alt text, width and alignment are read from the page's .DOC and written back as they were" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(objs|obj|pic|words) ' "$ST17" 2>/dev/null | tr '\n' ' '); $(grep -o '<img[^>]*>' "$T/pic-out.DOC" 2>/dev/null | sed 's/base64,[A-Za-z0-9+/=]*/base64,.../' | cut -c1-160); $(tail -2 "$T/wp17.log" 2>/dev/null | tr '\n' ' ')"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 
-for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt" "$T/state10.txt" "$T/state11.txt" "$T/state12.txt" "$T/state13.txt" "$T/state14.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
+for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt" "$T/state10.txt" "$T/state11.txt" "$T/state12.txt" "$T/state13.txt" "$T/state14.txt" "$T/state15.txt" "$T/state16.txt" "$T/state17.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
 echo "$NP passed, $NF failed"; [ $NF = 0 ]

@@ -12,8 +12,11 @@
  * half native, half web); Chromium and Lite keep the web one always.
  *   rudolf-wordpro
  * Built with librudolf-ui (iso/sys/ui/build.sh WORK OUT wordpro). Its test: iso/qt/native/wordpro_t.sh.
- * Tests' hooks: RUDOLF_WP_STATE=FILE (what it shows: the toolbar's choices, the counts, the text and its tags, and where
- * the undo stands).
+ * Tests' hooks: RUDOLF_WP_STATE=FILE (what it shows: the toolbar's choices, the counts, the text and its tags, where the
+ * undo stands, and the page's objects -- a table's rows, columns, heading row and borders, a picture's size, description,
+ * width and alignment). RUDOLF_WP_DIALOG=table|picture opens one of the page's dialogs as its menu opens it,
+ * RUDOLF_WP_PICTOOLS=1 opens a picture's tools as a click on it does, and RUDOLF_WP_ANSWER=FILE names the answer the test
+ * would press -- a dialog's button, and the fields it would fill ("0=/tmp/pic.png", "2=Deer") before it.
  * GPL-2.0-or-later.
  */
 #define _GNU_SOURCE
@@ -47,7 +50,8 @@ static int menus_n(void);
 static void obj_counts(int *w, int *c);
 static void state_objs(GString *s);
 static void state_steps(GString *s);
-static void insert_picture_data(guchar *data, gsize len);
+static void insert_picture_data(guchar *data, gsize len, const char *alt, int wpct, int walign);   /* (the bytes are the
+	caller's: they are the model's when it takes them, and freed here when they could not be read) */
 static void open_doc(const char *path);
 static void hist_push(void);
 static int save_now(void);
@@ -602,15 +606,57 @@ static void show_keys(void)
    a table's cells are entries of their own, whose words are part of the page's word count. There is no cap on how many a
    page holds, and an object leaves the list when its widget goes -- which is what undo, New and a Backspace do to it. */
 enum { OBJ_PIC = 1, OBJ_TABLE };
+enum { WAL_INLINE = 0, WAL_LEFT, WAL_RIGHT, WAL_CENTER };   /* (the page's Align list in its picture tools, imgTools) */
+#define PAGE_W 816.0   /* (the sheet's width in CSS px, as the page's .wp-ed is 816 px wide: a picture's width is its share) */
 typedef struct { guchar *d; gsize n; int refs; } Img;   /* (a picture's bytes, shared: the writing and every history entry
 															that has it point at one copy, so keeping the history costs no
 															new memory for a picture that has not changed) */
 static Img *img_new(guchar *data, gsize len) { Img *i = g_new0(Img, 1); i->d = data; i->n = len; i->refs = 1; return i; }
+/* (a picture as the page draws it: its own bytes at its own size, or as wide as the width tool says -- a share of the
+   sheet's 816 px, as imgTools' width is a share of the page -- placed in line, left, right or centred by its own box) */
+static GdkPixbuf *pic_decode(Img *im)
+{
+	if (!im || !im->n) return NULL;
+	GdkPixbufLoader *l = gdk_pixbuf_loader_new(); GdkPixbuf *pb = NULL;
+	if (gdk_pixbuf_loader_write(l, im->d, im->n, NULL) && gdk_pixbuf_loader_close(l, NULL)) pb = gdk_pixbuf_loader_get_pixbuf(l);
+	if (pb) g_object_ref(pb);
+	g_object_unref(l);
+	return pb;
+}
+static GtkWidget *pic_image(GdkPixbuf *pb, int wpct)
+{
+	GdkPixbuf *s = NULL;
+	if (wpct > 0 && gdk_pixbuf_get_width(pb) > 0) {
+		double want = PAGE_W * wpct / 100.0;
+		int nw = MAX(1, (int)lround(want)), nh = MAX(1, (int)lround(gdk_pixbuf_get_height(pb) * want / gdk_pixbuf_get_width(pb)));
+		s = gdk_pixbuf_scale_simple(pb, nw, nh, GDK_INTERP_BILINEAR);
+	}
+	GtkWidget *im = gtk_image_new_from_pixbuf(s ? s : pb);
+	if (s) g_object_unref(s);
+	return im;
+}
+static GtkAlign pic_align(int wa) { return wa == WAL_RIGHT ? GTK_ALIGN_END : wa == WAL_CENTER ? GTK_ALIGN_CENTER : GTK_ALIGN_START; }
+static GtkWidget *pic_widget(GdkPixbuf *pb, int wpct, int walign)
+{
+	GtkWidget *e = gtk_event_box_new();
+	gtk_widget_set_halign(e, pic_align(walign));
+	gtk_container_add(GTK_CONTAINER(e), pic_image(pb, wpct));
+	return e;
+}
 static Img *img_ref(Img *i) { if (i) i->refs++; return i; }
 static void img_unref(Img *i) { if (i && --i->refs <= 0) { g_free(i->d); g_free(i); } }
-typedef struct { int kind, wpx, hpx, rows, cols, hdr, border; GtkWidget *w; GtkTextChildAnchor *at; Img *im; } WpObj;   /* (a table's hdr: its first row is its heading; border: 0 is the page's .nb, the table without borders) */
+typedef struct { int kind, wpx, hpx, rows, cols, hdr, border, wpct, walign; char *alt; GtkWidget *w; GtkTextChildAnchor *at; Img *im; } WpObj;
+	/* (a table's hdr: its first row is its heading; border: 0 is the page's .nb, the table without borders. A picture's
+	   alt: its description, the page's alt text; wpct: how wide as a share of the sheet, 0 for its own size; walign: its
+	   place in the line, WAL_INLINE to WAL_CENTER) */
+static void pic_tools(WpObj *o);   /* (the page's Picture dialog: width, alignment and description) */
+static gboolean pic_click(GtkWidget *w, GdkEventButton *e, gpointer d)
+{
+	(void)w; if (e->button != 1 || e->type != GDK_BUTTON_RELEASE) return FALSE;
+	pic_tools(d); return TRUE;
+}
 static GPtrArray *OBJ;
-static void obj_free(gpointer p) { WpObj *o = p; img_unref(o->im); g_free(o); }
+static void obj_free(gpointer p) { WpObj *o = p; img_unref(o->im); g_free(o->alt); g_free(o); }
 static void obj_gone(GtkWidget *w, gpointer d)
 {
 	(void)d; if (!OBJ) return;
@@ -635,7 +681,8 @@ static void state_objs(GString *s)
 	g_string_append_printf(s, "objs %d\n", OBJ ? (int)OBJ->len : 0);
 	if (!OBJ) return;
 	for (guint i = 0; i < OBJ->len; i++) { WpObj *o = g_ptr_array_index(OBJ, i);
-		if (o->kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %u\n", o->wpx, o->hpx, (unsigned)(o->im ? o->im->n : 0));
+		if (o->kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %u\npic alt '%s' w %d align %d\n",
+			o->wpx, o->hpx, (unsigned)(o->im ? o->im->n : 0), o->alt ? o->alt : "", o->wpct, o->walign);
 		else {   /* (the cells' text, which is what an undo or a redo of a table has to bring back, and the two things the dialog chose) */
 			g_string_append_printf(s, "obj table %dx%d\ntbl hdr %d nb %d\ncells", o->rows, o->cols, o->hdr, o->border ? 0 : 1);
 			for (int r = 0; r < o->rows; r++) for (int c = 0; c < o->cols; c++) { g_string_append_c(s, '|'); g_string_append(s, cell_text(o, r, c)); }
@@ -654,6 +701,10 @@ static void obj_place(GtkTextChildAnchor *a, WpObj *o)
 	gtk_widget_show_all(o->w);   /* (an object made after the window is shown is not shown with it, and an unrealized table is
 									  not on the page: its grid and cells were never drawn, and a cell never took a key) */
 	gtk_text_view_add_child_at_anchor(GTK_TEXT_VIEW(ED), o->w, a);
+	if (o->kind == OBJ_PIC) {   /* (a click on a picture is the page's click on it: it opens the picture's tools) */
+		gtk_widget_add_events(o->w, GDK_BUTTON_RELEASE_MASK);
+		g_signal_connect(o->w, "button-release-event", G_CALLBACK(pic_click), o);
+	}
 }
 /* (the objects go before the text that holds their places is replaced: a buffer change takes the place of a picture away,
    and the widget it destroys while GTK is in the middle of that change is what used to stop the window -- an undo, a New
@@ -668,14 +719,17 @@ static void obj_clear(void)
 	}
 	g_ptr_array_set_size(OBJ, 0);
 }
-static void obj_add(GtkWidget *w, int kind, guchar *img, gsize img_len, int wpx, int hpx, int rows, int cols, int hdr, int border)
+typedef struct { int kind, wpx, hpx, rows, cols, hdr, border, wpct, walign; const char *alt; } ObjSpec;   /* (what the caller
+	decided: a table's cells, its heading row and borders; a picture's size, its description and how it is placed) */
+static void obj_add(GtkWidget *w, ObjSpec s, guchar *img, gsize img_len)
 {
 	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
 	SILENT = 1;   /* (the anchor is not a step of the history of its own: the object standing at it is, below) */
 	GtkTextChildAnchor *a = gtk_text_buffer_create_child_anchor(BUF, &it);
 	SILENT = 0;
 	WpObj *o = g_new0(WpObj, 1);
-	o->kind = kind; o->wpx = wpx; o->hpx = hpx; o->rows = rows; o->cols = cols; o->hdr = hdr; o->border = border; o->w = w;
+	o->kind = s.kind; o->wpx = s.wpx; o->hpx = s.hpx; o->rows = s.rows; o->cols = s.cols;
+	o->hdr = s.hdr; o->border = s.border; o->wpct = s.wpct; o->walign = s.walign; o->alt = g_strdup(s.alt); o->w = w;
 	o->im = img ? img_new(img, img_len) : NULL;
 	obj_place(a, o);
 	counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
@@ -708,11 +762,11 @@ static GtkWidget *cell_new(int r, int c, const char *t)
 	g_signal_connect(e, "key-press-event", G_CALLBACK(cell_key), NULL);
 	return e;
 }
-static void insert_picture(const char *path)
+static void insert_picture(const char *path, const char *alt)
 {
 	gchar *data = NULL; gsize len = 0;
 	if (!g_file_get_contents(path, &data, &len, NULL)) { say(rui_tr("That picture could not be read.")); return; }
-	insert_picture_data((guchar *)data, len);   /* (the bytes, which is what the page's document carries) */
+	insert_picture_data((guchar *)data, len, alt, 0, WAL_INLINE);   /* (the bytes, which is what the page's document carries) */
 }
 /* (a table's grid, with the page's wp-t or its wp-t nb: the .nb class is a table whose borders are not drawn) */
 static GtkWidget *table_grid(int border)
@@ -746,20 +800,77 @@ static void insert_table(int rows, int cols, int hdr, int border)
 {
 	GtkWidget *g = table_grid(border);
 	for (int r = 0; r < rows; r++) for (int c = 0; c < cols; c++) gtk_grid_attach(GTK_GRID(g), cell_new(r, c, NULL), c, r, 1, 1);
-	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, rows, cols, hdr, border);
+	ObjSpec s = { .kind = OBJ_TABLE, .rows = rows, .cols = cols, .hdr = hdr, .border = border };
+	obj_add(g, s, NULL, 0);
 }
-static void choose_picture(void)
+/* (the page's Insert picture dialog -- base_v24.html's imgDialog: a file from this computer, a web address, and the
+   description that becomes the picture's alt text. A picture fetched over a network address is not here yet: the page
+   asks the firewall first and reads the picture the browser's way, and both are a step of their own, so it says so.) */
+static void pic_dlg_done(int i, const RuiField *f, void *d)
 {
-	GtkWidget *f = gtk_file_chooser_dialog_new(rui_tr("Insert picture"), GTK_WINDOW(W->win), GTK_FILE_CHOOSER_ACTION_OPEN,
-		rui_tr("Cancel"), GTK_RESPONSE_CANCEL, rui_tr("Insert"), GTK_RESPONSE_ACCEPT, NULL);
-	GtkFileFilter *fl = gtk_file_filter_new(); gtk_file_filter_set_name(fl, rui_tr("Pictures")); gtk_file_filter_add_pixbuf_formats(fl);
-	gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(f), fl);
-	if (gtk_dialog_run(GTK_DIALOG(f)) == GTK_RESPONSE_ACCEPT) {
-		char *p = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(f));
-		if (p) insert_picture(p);
-		g_free(p);
+	(void)d; state_soon();
+	if (i != 1) return;   /* (Insert: the last of its buttons, the page's primary) */
+	const char *path = f[0].value ? f[0].value : "", *url = f[1].value ? f[1].value : "", *alt = f[2].value ? f[2].value : "";
+	if (!*path && !*url) { say(rui_tr("Choose a file or enter a web address.")); return; }
+	if (!*path) { say(rui_tr("A web address is not read here yet: choose a file.")); return; }
+	insert_picture(path, alt);
+}
+static void pic_dlg(void)
+{
+	RuiField f[3] = { { "From computer", RUI_F_FILE, "" }, { "Web address", RUI_F_TEXT, "" }, { "Description", RUI_F_TEXT, "" } };
+	static const char *B[] = { "Cancel", "Insert" };
+	rui_form(W, rui_tr("Insert picture"), NULL, f, 3, B, 2, 1, pic_dlg_done, NULL);
+	state_soon();   /* (the page says a dialog stands open: a check reads it here) */
+}
+/* (the page's Picture dialog -- imgTools: the width as a share of the sheet, the alignment, the description, and Delete
+   picture / Cancel / OK. It opens as the page's opens: on the picture a click chose) */
+static const char *const PIC_W[] = { "Original", "25%", "50%", "75%", "100%" };
+static const char *const PIC_A[] = { "In line", "Left (wrap text)", "Right (wrap text)", "Centered" };
+static WpObj *PIC_EDIT;
+static void pic_del(WpObj *o)
+{
+	if (!o || !o->at) return;
+	GtkTextIter a, b; gtk_text_buffer_get_iter_at_child_anchor(BUF, &a, o->at); b = a; gtk_text_iter_forward_char(&b);
+	SILENT = 1; gtk_text_buffer_delete(BUF, &a, &b); SILENT = 0;   /* (the picture's widget goes with its place) */
+	counts(); state_soon(); hist_push();
+}
+static void pic_tools_done(int i, const RuiField *f, void *d)
+{
+	(void)d; state_soon();
+	WpObj *o = PIC_EDIT; PIC_EDIT = NULL;
+	if (!o || i < 0) return;
+	if (i == 0) { pic_del(o); return; }   /* (Delete picture) */
+	if (i != 2) return;   /* (Cancel) */
+	const char *wv = f[0].value ? f[0].value : "Original";
+	int wpct = strcmp(wv, "Original") ? atoi(wv) : 0;
+	int walign = WAL_INLINE; for (int k = 0; k < 4; k++) if (f[1].value && !strcmp(f[1].value, PIC_A[k])) walign = k;
+	const char *alt = f[2].value ? f[2].value : "";
+	if (wpct == o->wpct && walign == o->walign && !g_strcmp0(alt, o->alt ? o->alt : "")) return;   /* (nothing changed: no step) */
+	o->wpct = wpct; o->walign = walign; g_free(o->alt); o->alt = g_strdup(alt);
+	GdkPixbuf *pb = pic_decode(o->im);   /* (the picture drawn again as its tools say: its bytes are the model's, and what
+											 changed is how wide it stands and where) */
+	if (pb) {
+		GtkWidget *im = pic_image(pb, o->wpct); g_object_unref(pb);
+		GList *ch = gtk_container_get_children(GTK_CONTAINER(o->w));
+		for (GList *k = ch; k; k = k->next) gtk_widget_destroy(k->data);
+		g_list_free(ch);
+		gtk_container_add(GTK_CONTAINER(o->w), im);
+		gtk_widget_set_halign(o->w, pic_align(o->walign));
+		gtk_widget_show_all(o->w);
 	}
-	gtk_widget_destroy(f);
+	counts(); state_soon(); hist_push();
+}
+static void pic_tools(WpObj *o)
+{
+	if (!o) return;
+	PIC_EDIT = o;
+	char wv[16] = "Original";
+	if (o->wpct > 0) snprintf(wv, sizeof wv, "%d%%", o->wpct);
+	RuiField f[3] = { { "Width", RUI_F_SEL, wv, PIC_W, 5 }, { "Align", RUI_F_SEL, PIC_A[o->walign], PIC_A, 4 },
+		{ "Description", RUI_F_TEXT, o->alt ? o->alt : "" } };
+	static const char *B[] = { "Delete picture", "Cancel", "OK" };
+	rui_form(W, rui_tr("Picture"), NULL, f, 3, B, 3, 1, pic_tools_done, NULL);
+	state_soon();
 }
 /* the page's Paste as plain text: the clipboard's text, and none of what came with it */
 static void paste_plain(void)
@@ -792,7 +903,7 @@ static gboolean focus_cell_hook(gpointer d)
 static gboolean insert_hook(gpointer d)
 {
 	const char *v = d;
-	if (!strncmp(v, "picture:", 8)) insert_picture(v + 8);
+	if (!strncmp(v, "picture:", 8)) insert_picture(v + 8, NULL);
 	else if (!strcmp(v, "table")) insert_table(3, 3, 1, 1);
 	else if (!strncmp(v, "table:", 6)) {   /* (the dialog's own choices, without a display to press its buttons on) */
 		int r = 3, c = 3, h = 1, b = 1;
@@ -805,7 +916,14 @@ static gboolean insert_hook(gpointer d)
 }
 static gboolean dialog_hook(gpointer d)
 {
-	const char *v = d; if (!strcmp(v, "table")) table_dlg();   /* (the tests: the page's dialog opened as its menu opens it) */
+	const char *v = d;   /* (the tests: the page's dialog opened as its menu opens it) */
+	if (!strcmp(v, "table")) table_dlg(); else if (!strcmp(v, "picture")) pic_dlg();
+	return G_SOURCE_REMOVE;
+}
+static gboolean pic_tools_hook(gpointer d)
+{
+	(void)d;   /* (the tests: the picture tools opened as a click on the picture opens them) */
+	if (OBJ) for (guint i = 0; i < OBJ->len; i++) { WpObj *o = g_ptr_array_index(OBJ, i); if (o->kind == OBJ_PIC) { pic_tools(o); break; } }
 	return G_SOURCE_REMOVE;
 }
 /* ------------------------------------------------------------------ saving and opening the page's .DOC
@@ -898,9 +1016,18 @@ static void obj_html(GString *o, WpObj *ob)
 {
 	if (!ob) return;
 	if (ob->kind == OBJ_PIC) {
+		/* (as the page's own <img> stands in its document: the bytes, its description, its size, and a style carrying the
+		   width and the place imgTools gave it -- imgTools writes width, float and display there) */
 		char *b = g_base64_encode(ob->im->d, ob->im->n);
-		g_string_append_printf(o, "<img src=\"data:image/png;base64,%s\" width=\"%d\" height=\"%d\">", b, ob->wpx, ob->hpx);
+		g_string_append_printf(o, "<img src=\"data:image/png;base64,%s\" alt=\"", b);
 		g_free(b);
+		esc_into(o, ob->alt ? ob->alt : "", (int)strlen(ob->alt ? ob->alt : ""));
+		g_string_append_printf(o, "\" width=\"%d\" height=\"%d\" style=\"max-width:100%%", ob->wpx, ob->hpx);
+		if (ob->wpct > 0) g_string_append_printf(o, ";width:%d%%", ob->wpct);
+		if (ob->walign == WAL_LEFT) g_string_append(o, ";float:left;margin:0 10px 6px 0");
+		else if (ob->walign == WAL_RIGHT) g_string_append(o, ";float:right;margin:0 0 6px 10px");
+		else if (ob->walign == WAL_CENTER) g_string_append(o, ";display:block;margin:6pt auto");
+		g_string_append(o, "\">");
 		return;
 	}
 	g_string_append(o, ob->border ? "<table class=\"wp-t\">" : "<table class=\"wp-t nb\">");
@@ -919,19 +1046,20 @@ static void obj_html(GString *o, WpObj *ob)
    Putting an entry back writes its text, turns each placeholder character into a place again, and makes the object that
    stood at it -- so undo and redo move the picture or the table itself, and a place with nothing behind it cannot be left
    (an entry whose place has lost its object drops the place). */
-typedef struct { int kind, wpx, hpx, rows, cols, hdr, border; Img *im; GPtrArray *cells; } Snap;
+typedef struct { int kind, wpx, hpx, rows, cols, hdr, border, wpct, walign; Img *im; char *alt; GPtrArray *cells; } Snap;
 struct Hist { char *t; GPtrArray *objs; GPtrArray *runs; };
 typedef struct { int a, b; char *t; } HstRun;   /* (a stretch of the writing with the same tags: an entry keeps them, so undo brings a page's formatting back with its text) */
 static void hst_run_free(gpointer p) { HstRun *r = p; g_free(r->t); g_free(r); }
 static void snap_free(gpointer p)
 {
-	Snap *s = p; img_unref(s->im); if (s->cells) g_ptr_array_free(s->cells, TRUE); g_free(s);
+	Snap *s = p; img_unref(s->im); g_free(s->alt); if (s->cells) g_ptr_array_free(s->cells, TRUE); g_free(s);
 }
 static Snap *snap_of(WpObj *o)
 {
 	Snap *s = g_new0(Snap, 1);
 	if (!o) return s;   /* (kind 0: a place the list has already lost; it takes its turn in the order, and no place back) */
 	s->kind = o->kind; s->wpx = o->wpx; s->hpx = o->hpx; s->rows = o->rows; s->cols = o->cols; s->hdr = o->hdr; s->border = o->border;
+	s->wpct = o->wpct; s->walign = o->walign; s->alt = g_strdup(o->alt);
 	s->im = img_ref(o->im);
 	if (o->kind == OBJ_TABLE) {
 		s->cells = g_ptr_array_new_with_free_func(g_free);
@@ -1015,7 +1143,7 @@ static int hist_same(Hist *a, Hist *b)
 	for (guint i = 0; i < a->objs->len; i++) {
 		Snap *x = g_ptr_array_index(a->objs, i), *y = g_ptr_array_index(b->objs, i);
 		if (x->kind != y->kind || x->wpx != y->wpx || x->hpx != y->hpx || x->rows != y->rows || x->cols != y->cols ||
-			x->hdr != y->hdr || x->border != y->border) return 0;
+			x->hdr != y->hdr || x->border != y->border || x->wpct != y->wpct || x->walign != y->walign || g_strcmp0(x->alt, y->alt)) return 0;
 		if (x->kind != OBJ_TABLE) continue;
 		for (guint k = 0; k < x->cells->len; k++) if (strcmp(g_ptr_array_index(x->cells, k), g_ptr_array_index(y->cells, k))) return 0;
 	}
@@ -1044,13 +1172,11 @@ static void snap_place(GtkTextChildAnchor *a, Snap *s)
 {
 	WpObj *o = g_new0(WpObj, 1);
 	o->kind = s->kind; o->wpx = s->wpx; o->hpx = s->hpx; o->rows = s->rows; o->cols = s->cols; o->hdr = s->hdr; o->border = s->border;
+	o->wpct = s->wpct; o->walign = s->walign; o->alt = g_strdup(s->alt);
 	o->im = img_ref(s->im);
 	if (s->kind == OBJ_PIC) {
-		GdkPixbufLoader *l = gdk_pixbuf_loader_new(); GdkPixbuf *pb = NULL;
-		if (s->im && gdk_pixbuf_loader_write(l, s->im->d, s->im->n, NULL) && gdk_pixbuf_loader_close(l, NULL))
-			pb = gdk_pixbuf_loader_get_pixbuf(l);
-		if (pb) { g_object_ref(pb); o->w = gtk_image_new_from_pixbuf(pb); g_object_unref(pb); }
-		g_object_unref(l);
+		GdkPixbuf *pb = pic_decode(s->im);
+		if (pb) { o->w = pic_widget(pb, s->wpct, s->walign); g_object_unref(pb); }
 	} else {
 		GtkWidget *g = table_grid(s->border);
 		for (int r = 0; r < s->rows; r++) for (int c = 0; c < s->cols; c++) {
@@ -1059,7 +1185,7 @@ static void snap_place(GtkTextChildAnchor *a, Snap *s)
 		}
 		o->w = g;
 	}
-	if (!o->w) { img_unref(o->im); g_free(o); return; }   /* (a picture that cannot be read again is not put back empty) */
+	if (!o->w) { img_unref(o->im); g_free(o->alt); g_free(o); return; }   /* (a picture that cannot be read again is not put back empty) */
 	obj_place(a, o);
 }
 static void hist_apply(Hist *h)
@@ -1189,13 +1315,15 @@ static void put_unescaped(const char *t, int n, const char **stk, int sp, GStrin
 	else put_at_end(o->str, (int)o->len, stk, sp);
 	g_string_free(o, TRUE);
 }
-static void insert_picture_data(guchar *data, gsize len)
+static void insert_picture_data(guchar *data, gsize len, const char *alt, int wpct, int walign)
 {
 	GdkPixbufLoader *l = gdk_pixbuf_loader_new(); GdkPixbuf *pb = NULL;
 	if (gdk_pixbuf_loader_write(l, data, len, NULL) && gdk_pixbuf_loader_close(l, NULL)) pb = gdk_pixbuf_loader_get_pixbuf(l);
 	if (!pb) { g_object_unref(l); g_free(data); say(rui_tr("That picture could not be read.")); return; }
 	g_object_ref(pb);
-	obj_add(gtk_image_new_from_pixbuf(pb), OBJ_PIC, data, len, gdk_pixbuf_get_width(pb), gdk_pixbuf_get_height(pb), 0, 0, 0, 0);
+	ObjSpec s = { .kind = OBJ_PIC, .wpx = gdk_pixbuf_get_width(pb), .hpx = gdk_pixbuf_get_height(pb), .alt = alt,
+		.wpct = wpct, .walign = walign };
+	obj_add(pic_widget(pb, wpct, walign), s, data, len);
 	g_object_unref(pb); g_object_unref(l);
 }
 static void insert_table_text(GPtrArray *rows, int hdr, int border)
@@ -1208,7 +1336,37 @@ static void insert_table_text(GPtrArray *rows, int hdr, int border)
 		for (int c = 0; c < nc; c++) {
 			gtk_grid_attach(GTK_GRID(g), cell_new(r, c, c < (int)row->len ? g_ptr_array_index(row, c) : NULL), c, r, 1, 1);
 		} }
-	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, nr, nc, hdr, border);
+	ObjSpec spec = { .kind = OBJ_TABLE, .rows = nr, .cols = nc, .hdr = hdr, .border = border };
+	obj_add(g, spec, NULL, 0);
+}
+/* (an attribute's own words, unescaped -- what the page wrote in alt="..." or style="..."; only a whole attribute, never
+   the middle of the picture's base64, which is why a name after a space or the tag's own < is required) */
+static char *unesc_dup(const char *t, int n)
+{
+	GString *o = g_string_new(NULL);
+	for (int i = 0; i < n; i++) {
+		if (t[i] == '&') {
+			if (n - i >= 5 && !strncmp(t + i, "&amp;", 5)) { g_string_append_c(o, '&'); i += 4; continue; }
+			if (n - i >= 4 && !strncmp(t + i, "&lt;", 4)) { g_string_append_c(o, '<'); i += 3; continue; }
+			if (n - i >= 4 && !strncmp(t + i, "&gt;", 4)) { g_string_append_c(o, '>'); i += 3; continue; }
+			if (n - i >= 6 && !strncmp(t + i, "&quot;", 6)) { g_string_append_c(o, '"'); i += 5; continue; }
+		}
+		g_string_append_c(o, t[i]);
+	}
+	return g_string_free(o, FALSE);
+}
+static char *attr_dup(const char *p, const char *end, const char *name)
+{
+	size_t nl = strlen(name);
+	for (const char *a = p; (a = strstr(a, name)) && a < end; a += nl) {
+		if (a > p && a[-1] != ' ' && a[-1] != '\t' && a[-1] != '\n' && a[-1] != '<') continue;
+		const char *q = a + nl; while (q < end && (*q == ' ' || *q == '=')) q++;
+		if (q >= end || *q != '"') continue;
+		q++; const char *e = memchr(q, '"', (size_t)(end - q));
+		if (!e) return NULL;
+		return unesc_dup(q, (int)(e - q));
+	}
+	return NULL;
 }
 static int par_close(const char *t)
 {
@@ -1239,12 +1397,26 @@ static void open_doc(const char *path)
 			char *gt = strstr(p, ">");
 			if (!gt) break;
 			char *s = strstr(p, "src=\"data:"), *cm = s && s < gt ? strchr(s, ',') : NULL, *q = cm ? strchr(cm + 1, '"') : NULL;
+			/* (its description and how the page places it: the alt the dialog gave it, and the width, float and display of
+			   the style imgTools wrote) */
+			char *alt = attr_dup(p, gt, "alt"), *sty = attr_dup(p, gt, "style");
+			int wpct = 0, walign = WAL_INLINE;
+			if (sty) {
+				/* (not max-width, which stands before it: the width tool's own is the one after a ; or at the start) */
+				char *w = strstr(sty, "width:");
+				while (w && w > sty && !strncmp(w - 4, "max-", 4)) w = strstr(w + 6, "width:");
+				if (w) wpct = atoi(w + 6);
+				if (strstr(sty, "float:left")) walign = WAL_LEFT;
+				else if (strstr(sty, "float:right")) walign = WAL_RIGHT;
+				else if (strstr(sty, "display:block")) walign = WAL_CENTER;
+			}
 			if (cm && q && q < gt) {
 				char *b64 = g_strndup(cm + 1, (gsize)(q - cm - 1));
 				gsize dl = 0; guchar *d = g_base64_decode(b64, &dl);
 				g_free(b64);
-				if (d) { cursor_end(); insert_picture_data(d, dl); }
+				if (d) { cursor_end(); insert_picture_data(d, dl, alt, wpct, walign); }
 			}
+			g_free(alt); g_free(sty);
 			p = gt + 1; continue;
 		}
 		char *e = strchr(p, '>'); if (!e) break;
@@ -1366,7 +1538,7 @@ static void menu_do(const Mi *s)
 	case OP_WHEN: insert_when(s->arg); break;
 	case OP_OPEN: choose_open(); break;
 	case OP_SAVE: save_now(); break;
-	case OP_PICTURE: choose_picture(); break;
+	case OP_PICTURE: pic_dlg(); break;   /* (the page's own dialog: a file, a web address, a description) */
 	case OP_TABLE: table_dlg(); break;   /* (the page's own dialog: its counts, its heading row and its borders) */
 	case OP_STATS: show_stats(); break;
 	case OP_KEYS: show_keys(); break;
@@ -1619,9 +1791,20 @@ static gboolean answer_hook(gpointer d)
 	const char *f = d;
 	if (!rui_dialog_box()) return G_SOURCE_CONTINUE;   /* (a form's buttons are pressed as a question's are) */
 	char *lab = NULL; if (!g_file_get_contents(f, &lab, NULL, NULL)) return G_SOURCE_CONTINUE;
-	g_strstrip(lab);
-	if (*lab) { GtkWidget *b = find_btn(rui_dialog_box(), rui_tr(lab)); if (b) gtk_button_clicked(GTK_BUTTON(b)); }
-	g_free(lab);
+	/* (its lines: "N=value" fills the dialog's field N as its own kind fills it -- a text, a path, a choice's own words, a
+	   check's 1 or 0 -- and the last line that is not one names the button the test would press) */
+	GtkWidget *box = rui_dialog_box(); char *btn = NULL;
+	for (char *line = lab; line && *line; ) {
+		char *nl = strchr(line, '\n'); if (nl) *nl = 0;
+		g_strstrip(line);
+		char *eq = strchr(line, '=');
+		if (*line && eq && strspn(line, "0123456789") == (size_t)(eq - line)) {
+			*eq = 0; GtkWidget *w = rui_form_field(box, atoi(line)); if (w) rui_form_value(w, eq + 1);
+		} else if (*line) { g_free(btn); btn = g_strdup(line); }
+		line = nl ? nl + 1 : NULL;
+	}
+	if (btn) { GtkWidget *b = find_btn(box, rui_tr(btn)); if (b) gtk_button_clicked(GTK_BUTTON(b)); }
+	g_free(btn); g_free(lab);
 	return G_SOURCE_CONTINUE;
 }
 int main(int argc, char **argv)
@@ -1646,6 +1829,8 @@ int main(int argc, char **argv)
 	if (getenv("RUDOLF_WP_ANSWER")) g_timeout_add(150, answer_hook, (gpointer)getenv("RUDOLF_WP_ANSWER"));   /* (the tests: the question's own buttons) */
 	{ const char *dl = getenv("RUDOLF_WP_DIALOG");   /* (the tests: a dialog of the page's opened as its menu opens it) */
 	  if (dl && *dl) g_timeout_add(400, dialog_hook, (gpointer)dl); }
+	if (getenv("RUDOLF_WP_PICTOOLS")) g_timeout_add(1200, pic_tools_hook, NULL);   /* (the tests: the picture tools, as a
+																			  click on the picture opens them) */
 	counts(); state_soon();
 	gtk_main(); return 0;
 }

@@ -763,13 +763,17 @@ GtkWidget *rui_dialog_box(void) { return DLG ? DLG->box : NULL; }
    -- dlg_end destroys it before it calls back -- so a press takes them first; Escape ends it with none taken, which is a
    Cancel, and the fields keep what they were given.) */
 typedef struct { RuiField *f; int n; GtkWidget **wd; void (*cb)(int, const RuiField *, void *); void *d; } Form;
+/* (a field's own words: an entry's, a choice's, or a check's "1"/"0") */
+static char *form_get(GtkWidget *w)
+{
+	if (!w) return g_strdup("");
+	if (GTK_IS_ENTRY(w)) return g_strdup(gtk_entry_get_text(GTK_ENTRY(w)));
+	if (GTK_IS_COMBO_BOX(w)) { const char *id = gtk_combo_box_get_active_id(GTK_COMBO_BOX(w)); return g_strdup(id ? id : ""); }
+	return g_strdup(rui_check_get(w) ? "1" : "0");
+}
 static void form_take(Form *g)
 {
-	for (int i = 0; i < g->n; i++) {
-		const char *v = g->f[i].kind == RUI_F_CHECK ? (rui_check_get(g->wd[i]) ? "1" : "0")
-			: gtk_entry_get_text(GTK_ENTRY(g->wd[i]));
-		g_free((gpointer)g->f[i].value); g->f[i].value = g_strdup(v ? v : "");
-	}
+	for (int i = 0; i < g->n; i++) { char *v = form_get(g->wd[i]); g_free((gpointer)g->f[i].value); g->f[i].value = v; }
 }
 static void form_done(int i, void *d)
 {
@@ -782,6 +786,38 @@ static void form_click(GtkButton *b, gpointer d)
 {
 	Form *g = d; form_take(g);   /* (the fields are read while they still stand: the dialog goes below them) */
 	dlg_end(GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "rui-i")));
+}
+/* (the page's file input: the path in its entry, and the button that chooses one) */
+static void form_choose(GtkButton *b, gpointer d)
+{
+	(void)b; GtkWidget *e = d;
+	GtkWidget *f = gtk_file_chooser_dialog_new(rui_tr("Choose a file"), DLG ? GTK_WINDOW(DLG->w->win) : NULL,
+		GTK_FILE_CHOOSER_ACTION_OPEN, rui_tr("Cancel"), GTK_RESPONSE_CANCEL, rui_tr("Choose"), GTK_RESPONSE_ACCEPT, NULL);
+	if (gtk_dialog_run(GTK_DIALOG(f)) == GTK_RESPONSE_ACCEPT) {
+		char *p = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(f));
+		if (p) { gtk_entry_set_text(GTK_ENTRY(e), p); g_free(p); }
+	}
+	gtk_widget_destroy(f);
+}
+GtkWidget *rui_form_field(GtkWidget *box, int i)
+{
+	Form *g = box ? g_object_get_data(G_OBJECT(box), "rui-form") : NULL;
+	return g && i >= 0 && i < g->n ? g->wd[i] : NULL;
+}
+void rui_form_value(GtkWidget *w, const char *v)
+{
+	if (!w) return;
+	if (GTK_IS_ENTRY(w)) { gtk_entry_set_text(GTK_ENTRY(w), v ? v : ""); return; }
+	if (GTK_IS_COMBO_BOX(w)) {   /* (a choice's own words, as the form was given them: its ids, not its translated labels) */
+		GtkTreeModel *m = gtk_combo_box_get_model(GTK_COMBO_BOX(w)); GtkTreeIter it; gboolean ok;
+		for (ok = gtk_tree_model_get_iter_first(m, &it); ok; ok = gtk_tree_model_iter_next(m, &it)) {
+			char *id = NULL; gtk_tree_model_get(m, &it, 1, &id, -1);
+			int hit = id && v && !strcmp(id, v); g_free(id);
+			if (hit) { gtk_combo_box_set_active_iter(GTK_COMBO_BOX(w), &it); return; }
+		}
+		gtk_combo_box_set_active(GTK_COMBO_BOX(w), 0); return;
+	}
+	rui_check_set(w, v && *v && strcmp(v, "0"));
 }
 void rui_form(RuiWin *w, const char *title, const char *text, const RuiField *f, int n, const char *const *buttons, int nb,
 	int pri, void (*cb)(int i, const RuiField *f, void *d), void *d)
@@ -797,21 +833,34 @@ void rui_form(RuiWin *w, const char *title, const char *text, const RuiField *f,
 		fm->f[i].label = g_strdup(f[i].label ? f[i].label : "");
 		fm->f[i].kind = f[i].kind;
 		fm->f[i].value = g_strdup(f[i].value ? f[i].value : "");
+		fm->f[i].opts = f[i].opts; fm->f[i].n = f[i].n;   /* (a choice's own list: its caller's, standing as long as the dialog does) */
 	}
+	g_object_set_data(G_OBJECT(g->box), "rui-form", fm);   /* (rui_form_field's, and the check's way into a field) */
 	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, (int)lround(rui_px(8)));
 	for (int i = 0; i < n; i++) {
 		GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (int)lround(rui_px(8)));
 		GtkWidget *lab = gtk_label_new(rui_tr(fm->f[i].label)); exact(lab); cls(lab, "rui-m");
 		gtk_label_set_xalign(GTK_LABEL(lab), 0); gtk_widget_set_size_request(lab, (int)lround(rui_px(110)), -1);
 		gtk_box_pack_start(GTK_BOX(row), lab, FALSE, FALSE, 0);
-		GtkWidget *wd;
-		if (fm->f[i].kind == RUI_F_CHECK) wd = rui_check("", fm->f[i].value[0] == '1', NULL, NULL);
-		else {
+		GtkWidget *wd = NULL, *pack = NULL;
+		if (fm->f[i].kind == RUI_F_CHECK) { wd = rui_check("", fm->f[i].value[0] == '1', NULL, NULL); pack = wd; }
+		else if (fm->f[i].kind == RUI_F_SEL) {
+			wd = gtk_combo_box_text_new();
+			for (int k = 0; k < fm->f[i].n; k++) gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(wd), fm->f[i].opts[k], rui_tr(fm->f[i].opts[k]));
+			gtk_combo_box_set_active(GTK_COMBO_BOX(wd), 0); rui_form_value(wd, fm->f[i].value); pack = wd;
+		} else if (fm->f[i].kind == RUI_F_FILE) {
+			GtkWidget *h = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (int)lround(rui_px(6)));
+			wd = rui_entry(NULL); if (*fm->f[i].value) gtk_entry_set_text(GTK_ENTRY(wd), fm->f[i].value);
+			gtk_widget_set_hexpand(wd, TRUE); gtk_box_pack_start(GTK_BOX(h), wd, TRUE, TRUE, 0);
+			GtkWidget *b = rui_button("Choose...", 0); g_signal_connect(b, "clicked", G_CALLBACK(form_choose), wd);
+			gtk_box_pack_start(GTK_BOX(h), b, FALSE, FALSE, 0); pack = h;
+		} else {
 			wd = rui_entry(NULL);
 			if (fm->f[i].kind == RUI_F_NUM) gtk_entry_set_input_purpose(GTK_ENTRY(wd), GTK_INPUT_PURPOSE_NUMBER);
 			if (*fm->f[i].value) gtk_entry_set_text(GTK_ENTRY(wd), fm->f[i].value);
+			pack = wd;
 		}
-		gtk_widget_set_hexpand(wd, TRUE); gtk_box_pack_start(GTK_BOX(row), wd, TRUE, TRUE, 0);
+		gtk_widget_set_hexpand(pack, TRUE); gtk_box_pack_start(GTK_BOX(row), pack, TRUE, TRUE, 0);
 		fm->wd[i] = wd; gtk_box_pack_start(GTK_BOX(box), row, FALSE, FALSE, 0);
 	}
 	gtk_box_pack_start(GTK_BOX(g->box), box, FALSE, FALSE, 0);
