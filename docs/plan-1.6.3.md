@@ -845,12 +845,14 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
    (`sound`, `hotkey mic`, the volume overlay) working.
 3. If it runs beside PulseAudio, turn WirePlumber's ALSA monitor off in its configuration, leaving the v4l2 (and libcamera)
    monitors: otherwise it takes the sound cards PulseAudio is using.
-4. **The microphone is not this camera fault, so do not expect PipeWire to bring it back** (findings N35 point 3: WebKit
-   reaches a real audio source whose reads fail, and the device manager never warns at that moment). Moving the sound
-   server from PulseAudio to PipeWire is a part of its own, and the camera does not need it.
+4. **The microphone is not this camera fault** (findings N35 point 3): it is `pulsesrc`, and what stops it is a GStreamer
+   element the image does not carry — `deinterleave`, from gst-plugins-good's `interleave` plug-in
+   (`libgstinterleave.so`) — so every capture ends `not-linked`. That plug-in is now in `addwebkit.sh`'s list; moving the
+   sound server from PulseAudio to PipeWire is a part of its own and has nothing to do with it.
 5. **Test on the Vivobook** (checklist V2 and V3): the camera's preview at 640×480, a photo and a 5 s video saved and
-   opened. Then with PipeWire stopped, to see what the app says. The microphone (V1) is a separate fault and a separate
-   check: the Recorder's `try`/`catch` (1.6.3) is what will name it.
+   opened. Then with PipeWire stopped, to see what the app says. V1 is the other fault and the other check: with
+   `libgstinterleave.so` in the image the level meter should move off −120 dB, and the Recorder should save a clip; if
+   `deinterleave` is still missing the log says so in its first line.
 6. **Cost:** two more daemons and their libraries, and their memory; read the native desktop's idle figure (checklist V42)
    before and after.
 
