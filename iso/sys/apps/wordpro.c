@@ -887,22 +887,29 @@ static void pic_tools(WpObj *o)
    A link is a stretch of the writing carrying an address: the page's <a href> is kept as the run's own tag, "a:<address>",
    which is what the history carries with the words (a run's tags go back with its text), what the save writes as
    <a href="..."> and what the state says (link <address>). */
-static GtkTextTag *link_at(GtkTextIter *a, GtkTextIter *b)
+static GtkTextTag *link_tag_in(GtkTextIter *i)
 {
-	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
-	GSList *l = gtk_text_iter_get_tags(&it); GtkTextTag *t = NULL;
+	GtkTextTag *t = NULL; GSList *l = gtk_text_iter_get_tags(i);
 	for (GSList *k = l; k && !t; k = k->next) {
 		char *nm = NULL; g_object_get(G_OBJECT(k->data), "name", &nm, NULL);
 		if (nm && !strncmp(nm, "a:", 2)) t = k->data;
 		g_free(nm);
 	}
 	g_slist_free(l);
+	return t;
+}
+static GtkTextTag *link_at(GtkTextIter *a, GtkTextIter *b)
+{
+	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
+	GtkTextTag *t = link_tag_in(&it);
+	/* (a caret just after a link's words is in the link, as a browser's caret at an anchor's end is -- the character before
+	   it is what says so, because a tag that ends at a place is not one of the tags at that place) */
+	if (!t && gtk_text_iter_get_offset(&it) > 0) { GtkTextIter p = it; gtk_text_iter_backward_char(&p); t = link_tag_in(&p); }
 	if (!t) return NULL;
 	*a = it; *b = it;
 	if (!gtk_text_iter_starts_tag(&it, t)) gtk_text_iter_backward_to_tag_toggle(a, t);
 	if (!gtk_text_iter_ends_tag(&it, t)) gtk_text_iter_forward_to_tag_toggle(b, t);
-	return t;   /* (the carets at its two ends are in it: a caret after an anchor's words is in the anchor, and words typed
-					there are the link's) */
+	return t;
 }
 static char *link_line(void)
 {
