@@ -44,6 +44,8 @@ static void upd_sel(void);
 static int menus_n(void);
 static void obj_counts(int *w, int *c);
 static void state_objs(GString *s);
+static void state_steps(GString *s);
+static const char *cell_text(WpObj *o, int r, int c);
 static void insert_picture_data(guchar *data, gsize len);
 static void open_doc(const char *path);
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
@@ -334,6 +336,7 @@ static void state_write(void)
 	if (MENU_OPEN) g_string_append_printf(s, "menu %s %d\n", MENU_OPEN, MENU_OPEN_N);
 	state_objs(s);
 	g_string_append_printf(s, "hist %d %d\n", HIST_I, HIST_N);   /* (where the undo stands: the tests read it) */
+	state_steps(s);
 	if (FIND && FI && REPL) g_string_append_printf(s, "findbar %d\nfind %s\nrepl %s\n", gtk_widget_get_visible(FIND) ? 1 : 0,
 		gtk_entry_get_text(GTK_ENTRY(FI)), gtk_entry_get_text(GTK_ENTRY(REPL)));
 	g_string_append_printf(s, "on %s\n", ON);
@@ -369,6 +372,17 @@ static void hist_push(void)
 	if (HIST_I < HIST_N) { for (int i = HIST_I; i < HIST_N; i++) { hist_free(HIST_T[i]); HIST_T[i] = NULL; } HIST_N = HIST_I; }
 	if (HIST_N == HIST) { hist_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
 	HIST_T[HIST_N++] = h; HIST_I = HIST_N;
+}
+static void state_steps(GString *s)
+{
+	for (int k = 0; k < HIST_N; k++) {   /* (each step: its text's length, its places, and a table's cells -- what a check reads) */
+		Hist *e = HIST_T[k];
+		g_string_append_printf(s, "step %d %d %d", k + 1, (int)strlen(e->t), (int)e->objs->len);
+		for (guint i = 0; i < e->objs->len; i++) { Snap *o = g_ptr_array_index(e->objs, i);
+			if (!o->cells) continue;
+			for (guint j = 0; j < o->cells->len; j++) g_string_append_printf(s, " %s", (char *)g_ptr_array_index(o->cells, j)); }
+		g_string_append_c(s, '\n');
+	}
 }
 static void on_text(GtkTextBuffer *b, gpointer d) { (void)b; (void)d; hist_push(); counts(); state_soon(); }
 static void on_mark(GtkTextBuffer *b, GtkTextIter *i, GtkTextMark *m, gpointer d) { (void)b; (void)i; (void)m; (void)d; counts(); upd_sel(); state_soon(); }
@@ -592,7 +606,11 @@ static void state_objs(GString *s)
 	if (!OBJ) return;
 	for (guint i = 0; i < OBJ->len; i++) { WpObj *o = g_ptr_array_index(OBJ, i);
 		if (o->kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %u\n", o->wpx, o->hpx, (unsigned)(o->im ? o->im->n : 0));
-		else g_string_append_printf(s, "obj table %dx%d\n", o->rows, o->cols);
+		else {   /* (the cells' text, which is what an undo or a redo of a table has to bring back) */
+			g_string_append_printf(s, "obj table %dx%d\ncells", o->rows, o->cols);
+			for (int r = 0; r < o->rows; r++) for (int c = 0; c < o->cols; c++) { g_string_append_c(s, '|'); g_string_append(s, cell_text(o, r, c)); }
+			g_string_append_c(s, '\n');
+		}
 	}
 }
 /* (the object's widget goes into the writing at the anchor it was made for: the menu and the parser create the anchor,
