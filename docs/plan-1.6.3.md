@@ -8,6 +8,7 @@ The owner's rule for the native desktop holds for every part: "Rudolf OS on the 
 function exactly as it does in Chromium mode." Chromium and Lite keep the web versions of every app unchanged.
 
 ## Parts
+A part's numbered bullet points are its **items**: a reference reads "Part 3, item 4" (AGENTS.md, Terms).
 
 ### Part 0. The signing keys: only main can use them (the first step of 1.6.3; the owner, 2026-11-24 08:55 CST)
 The owner asked how secure Rudolf's keys are, then: "Make it the first step of 1.6.3."
