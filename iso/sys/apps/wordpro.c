@@ -35,6 +35,7 @@ static int UPDATING;
 static int ZOOM = 100; static char SAY[200]; static const char *FAMILY = "Times New Roman"; static double PT = 12;
 static char *DOCPATH;   /* (the document's file, once it has been opened or saved: Save writes it, Save As asks) */
 static int DIRTY, ASK;   /* (the page's unsaved changes: 1 while the writing is not in its file, and whether its question is up) */
+static int ASK_LAST = -1;   /* (the answer the question was given, for the state the tests read) */
 static char ON[40];   /* (the toggles the cursor's place has, as the page's updSel writes them) */
 static const char *MENU_OPEN; static int MENU_OPEN_N;   /* (the menu open now, for the state the tests read) */
 
@@ -499,7 +500,7 @@ static void noop(int i, void *d) { (void)i; (void)d; }
    It stands before New, Open and Close, as on the page, and nothing is thrown away until it is answered. */
 enum { ASK_NEW = 1, ASK_OPEN, ASK_CLOSE };
 static void do_what(int what, const char *path);
-static int ASK_WHAT; static char *ASK_PATH; static int ASK_LAST = -1;
+static int ASK_WHAT; static char *ASK_PATH;
 static void ask_done(int i, void *d)
 {
 	(void)d; ASK = 0; ASK_LAST = i;   /* (what was answered, for the state the tests read) */
