@@ -39,7 +39,7 @@ ok "2. the toolbar's lists are the page's: 9 styles, 12 fonts (mkwordpro.py)" "$
 #  the focus is set with X's own request, waited for, and the keys and the press go in as the X server's own events)
 i=0; while [ $i -lt 60 ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
-sleep 1; DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 1
+sleep 2; DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 1   # (the window opens with its writing focused: the press is the person's, not a requirement)
 i=0; while [ $i -lt 3 ]; do   # (a first press into a window that has just appeared can be lost: tried again, as a person would)
 	DISPLAY=$DSP xdotool type --delay 12 'Hello world'; sleep 1
 	grep -q '^words 2$' "$ST" && break

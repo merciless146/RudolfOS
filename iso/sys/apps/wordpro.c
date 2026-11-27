@@ -466,6 +466,7 @@ int main(int argc, char **argv)
 	build_find(); build_toolbar(); build_editor(); build_status();
 	g_signal_connect(W->win, "key-press-event", G_CALLBACK(key), NULL);
 	gtk_widget_show_all(W->win); gtk_widget_hide(FIND);
+	gtk_widget_grab_focus(ED);   /* (the page's window opens with its writing ready: typing goes into it at once) */
 	counts(); state_soon();
 	gtk_main(); return 0;
 }
