@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Packages (as the release workflow installs them)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq xdotool libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-nice glib-networking xvfb imagemagick >/dev/null
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq xdotool libwebkit2gtk-4.1-dev libgles2 libglx-mesa0 gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav gstreamer1.0-nice gstreamer1.0-pipewire pipewire wireplumber libpipewire-0.3-0t64 libspa-0.2-modules glib-networking xvfb imagemagick >/dev/null
       - name: Build rudolf-webkit
         run: gcc -O2 -Wall -Wno-deprecated-declarations -o rudolf-webkit iso/sys/rudolf-webkit.c $(pkg-config --cflags --libs webkit2gtk-4.1 gtk+-3.0)
       - name: Build rudolf-native (1.5.9, plan Part 12)
@@ -26,7 +26,19 @@ jobs:
           R=$RUNNER_TEMP/root; mkdir -p $R/usr/lib/x86_64-linux-gnu $R/usr/bin
           iso/systools/addwebkit.sh $R ./rudolf-webkit ./rudolf-native | tee add.txt
           du -sh $R; find $R -type f | wc -l
-          echo "::notice title=Added to the system layer (at most)::$(tail -1 add.txt) — $(du -sh $R | cut -f1) in $(find $R -type f | wc -l) files" 
+          echo "::notice title=Added to the system layer (at most)::$(tail -1 add.txt) — $(du -sh $R | cut -f1) in $(find $R -type f | wc -l) files"
+      - name: The capture plug-ins the native desktop builds by name (1.6.3, plan Part 9)
+        run: |
+          # addwebkit.sh now refuses a build without any of these three; this says which one a broken host lost, and that
+          # the camera's plug-in really reaches libpipewire (the daemon and its SPA plug-ins come with mkpipewire.sh,
+          # which the PipeWire check packages and starts)
+          set -e
+          R=$RUNNER_TEMP/root; MA=$(gcc -print-multiarch); GS=$R/usr/lib/$MA/gstreamer-1.0
+          bad=
+          for p in pipewire interleave transcode; do [ -e "$GS/libgst$p.so" ] || bad="$bad $p"; done
+          if [ -n "$bad" ]; then echo "::error title=Capture plug-ins::the layer has no$bad (apt-get install gstreamer1.0-pipewire gstreamer1.0-plugins-good gstreamer1.0-plugins-bad)"; exit 1; fi
+          ldd "$GS/libgstpipewire.so" | grep -q 'libpipewire-0.3.so.0 =>' || { echo "::error title=Capture plug-ins::libgstpipewire.so does not reach libpipewire-0.3.so.0"; exit 1; }
+          echo "::notice title=Capture plug-ins::pipewire, interleave and transcode in the layer; libgstpipewire reaches libpipewire"
       - name: What it adds to the latest release's base layer (the real size)
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |

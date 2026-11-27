@@ -177,7 +177,7 @@ PBSRC=$(unsquashfs -cat "$PREV/base.sfs" usr/share/rudolf/base-src 2>/dev/null |
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-webkey.c sys/rudolfd-webkey.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the website data's key)
 BSRC=$( (echo "$BSRC"; cat sys/rudolfd-confine.inc sys/rudolf-confine.h sys/rudolfd-confine-tables.h sys/rudolfd-confine-narrow.h sys/rudolfd-confine-pure.h sys/rudolfd-winapi.h sys/rudolf-rootd-confine.h) | sha256sum | cut -c1-16)   # (1.6.1 Part 20: the confinement)
 BSRC=$( (echo "$BSRC"; cat sys/rudolf-secrets.h sys/rudolfd-guard.inc) | sha256sum | cut -c1-16)   # (1.6.1 Part 26: Blitzen's guards, the secret detector)
-BSRC=$( (echo "$BSRC"; cat systools/mkfprint.sh) | sha256sum | cut -c1-16)   # (1.6.3 Part 2: fingerprint readers' libraries)
+BSRC=$( (echo "$BSRC"; cat systools/mkfprint.sh systools/mkpipewire.sh systools/pwconf/51-no-alsa.lua systools/pwconf/51-no-alsa.conf) | sha256sum | cut -c1-16)   # (1.6.3 Part 2: fingerprint readers' libraries)
 BSRC=$( (echo "$BSRC"; cat sys/ui/*.c sys/ui/*.h sys/ui/*.py sys/ui/*.sh $(ls sys/apps/*.c sys/apps/*.h sys/apps/*.py 2>/dev/null); python3 sys/ui/mkui.py /dev/stdout) | sha256sum | cut -c1-16)   # (1.6.2 Part 39: librudolf-ui and the native apps, with what they take from the page)
 if [ "$BSRC" != "$PBSRC" ]; then
 	sudo rm -rf "$W/broot"; sudo unsquashfs -q -d "$W/broot" "$PREV/base.sfs" >/dev/null
@@ -207,6 +207,10 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	# machine's Ubuntu 24.04, installed there when missing; libfprint's list of readers it does not support; its own budget,
 	# 3 MB, the size said) and the fprint root helper built against it (no fprintd: nothing listens)
 	FPO=$(sudo sh systools/mkfprint.sh "$W/broot") || { echo "$FPO"; exit 1; }
+	# 1.6.3 (docs/plan-1.6.3.md Part 9): PipeWire and WirePlumber beside PulseAudio, from the build machine's packages
+	# (systools/mkpipewire.sh: installed on demand); WirePlumber's ALSA monitor is off, so PulseAudio keeps the cards
+	PWO=$(sudo sh systools/mkpipewire.sh "$W/broot") || { echo "$PWO"; exit 1; }
+	echo "pipewire: $PWO"
 	echo "  Fingerprint readers (libfprint): $FPO"; echo "::notice title=Fingerprint readers::$FPO added to the base layer (libfprint, what it links, its list of unsupported readers)"
 	gcc -O2 $HARD -o "$B/root-fprint" sys/rudolf-fprint.c $(pkg-config --cflags --libs libfprint-2)   # (1.6.3 Part 2: fingerprint readers)
 	gcc -O2 $HARD -o "$B/rudolf-launch" sys/rudolf-launch.c
@@ -469,6 +473,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	echo "https://github.com/${GITHUB_REPOSITORY:-merciless146/rudolfos}/releases/download/ext-$(echo "$ABI" | cut -c1-16)" | sudo tee "$W/broot/usr/share/rudolf/sysext-source" >/dev/null
 	echo "::notice title=Base ABI::$ABI (system extensions for this base: release ext-$(echo "$ABI" | cut -c1-16))"
 	sudo $MK "$W/broot" "$W/new/base.sfs" $SQ; sudo chown "$(id -u)" "$W/new/base.sfs"; sudo rm -rf "$W/broot"
+	# 1.6.3 (docs/plan-1.6.3.md Part 9): the layer itself, not the tree it came from, carries PipeWire's capture path
+	sh systools/layercheck.sh "$W/new/base.sfs" || exit 1
 	# (1.6.1: and in the layer itself, as the computer will see them)
 	for h in $RHELP $RINNER; do unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h" 2>/dev/null | grep -qE '^-rwx------ root/root .* squashfs-root/usr/lib/rudolf/root/'"$h"'$' || { echo "the root helper $h is not root's 0700 in base.sfs"; unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h"; exit 1; }; done
 	NOTES+=("system programs")

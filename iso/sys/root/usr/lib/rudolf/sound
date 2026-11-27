@@ -136,6 +136,16 @@ start)
 	asuser "pulseaudio --daemonize=yes -n -F $PA --exit-idle-time=-1 --log-target=file:$LOG" || echo "pulseaudio failed to start" >> $LOG
 	for i in $(seq 50); do [ -S $SOCK ] && break; sleep 0.1; done
 	[ -S $SOCK ] || exit 1
+	# 1.6.3 (docs/plan-1.6.3.md Part 9): PipeWire beside PulseAudio, for the camera and the microphone: WebKitGTK 2.52
+	# captures only through PipeWire. WirePlumber's ALSA monitor is off (systools/pwconf), so the sound cards stay
+	# PulseAudio's; the daemon, its session manager and the camera's monitors are all that runs (no pipewire-pulse).
+	if command -v pipewire >/dev/null 2>&1; then
+		PWL=${RUDOLF_SOUND_RUN:-/run/rudolf}/pipewire.log
+		asuser "nohup pipewire >>$PWL 2>&1 &" >/dev/null 2>&1 || echo "pipewire failed to start" >> $PWL
+		for i in $(seq 30); do [ -S $XDG_RUNTIME_DIR/pipewire-0 ] && break; sleep 0.1; done
+		if command -v wireplumber >/dev/null 2>&1; then asuser "nohup wireplumber >>$PWL 2>&1 &" >/dev/null 2>&1 || echo "wireplumber failed to start" >> $PWL; fi
+		[ -S $XDG_RUNTIME_DIR/pipewire-0 ] || echo "pipewire: no socket at $XDG_RUNTIME_DIR/pipewire-0: the camera and the microphone wait on it" >> $PWL
+	fi
 	open_outputs
 	for n in $(cards); do add_card "$n"; done
 	N=$(sed -n 's/^defaults.pcm.card \([0-9]*\)/\1/p' /etc/asound.conf 2>/dev/null)
@@ -188,6 +198,7 @@ status)
 	echo; asuser "pactl list short cards"; echo; asuser "pactl list short sinks";;
 restart)
 	# Task Manager: the sound server stopped answering; Chromium reconnects by itself
+	pkill -u rudolf -x wireplumber 2>/dev/null; pkill -u rudolf -x pipewire 2>/dev/null
 	pkill -u rudolf -x pulseaudio; for i in 1 2 3 4 5; do pgrep -u rudolf -x pulseaudio >/dev/null || break; sleep 1; done
 	pkill -9 -u rudolf -x pulseaudio; rm -f $SOCK
 	exec "$0" start;;

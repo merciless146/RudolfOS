@@ -45,12 +45,13 @@ $SUDO mkdir -p "$R$WK"; $SUDO cp -a "$WK/." "$R$WK/"; find "$WK" -type f >> "$LI
 # N33 and N35 in docs/native-findings-2026-11-26.md). "video4linux2" was added here on 2026-11-27 and taken out again the
 # same day: nothing would ever request it. The plug-in alone is still not enough -- the image also needs libpipewire-0.3
 # and a running PipeWire with WirePlumber (docs/plan-1.6.3.md Part 9).
-# The two the desktop cannot do without: an image built without them ships a silent microphone and a Recorder whose button
-# does nothing, and every host that builds an image installs their packages already (above), so a host without them is the
-# wrong host and stops the build -- the warning alone is what let a release go out with no capture path. "pipewire" is not
-# in this list yet: its plug-in would have no sound server to reach until Part 9 gives the image one, so today its absence
-# on the build host is the normal state and stays a warning (it joins this list with the server).
-FATAL=" interleave transcode "; fatal=
+# The three the desktop cannot do without: an image built without them ships a silent microphone, a Recorder whose button
+# does nothing, and a Camera that answers "No camera is available or access is blocked" with its switch on. Every host
+# that builds an image installs their packages already (above), so a host without them is the wrong host and stops the
+# build -- the warning alone is what let a release go out with no capture path at all. "pipewire" joined this list with
+# the image's own PipeWire and WirePlumber (plan Part 9): its plug-in has a server to reach now, and the Lite engine
+# check installs gstreamer1.0-pipewire with the rest so the layer it makes is the layer a release gets.
+FATAL=" interleave transcode pipewire "; fatal=
 GS=$ML/gstreamer-1.0; $SUDO mkdir -p "$R$GS" "$R$ML/gstreamer1.0/gstreamer-1.0"
 for s in $ML/gstreamer1.0/gstreamer-1.0/gst-plugin-scanner; do [ -x "$s" ] && $SUDO cp -L "$s" "$R$s" && echo "$s" >> "$LIST"; done
 # One loop copies what it finds and says what is lost for what it does not: a plug-in named here and missing on the
@@ -70,9 +71,10 @@ for p in coreelements app audioconvert audioresample audiotestsrc volume playbac
 	echo "addwebkit: no libgst$p.so: $why"
 	case $FATAL in *" $p "*) fatal=1;; esac
 done
-[ -z "$fatal" ] || { echo "addwebkit: stopping: a plug-in the desktop cannot do without is missing (see above; apt-get install"
-	"gstreamer1.0-plugins-good gstreamer1.0-plugins-bad). A build without it would ship the desktop with a silent microphone or"
-	"a Recorder that never starts, so this build is refused rather than made and posted." >&2; exit 1; }
+[ -z "$fatal" ] || { echo "addwebkit: stopping: a plug-in the desktop cannot do without is missing (see above; apt-get install" \
+	"gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-pipewire). A build without it would ship the desktop" \
+	"with a silent microphone, a Recorder that never starts or a Camera that finds nothing, so this build is refused" \
+	"rather than made and posted." >&2; exit 1; }
 # (1.5.9, plan 7.1: no WebRTC plug-ins: Ubuntu's WebKitGTK 2.52 has no WebRTC, so Lite opens call sites in Chromium's
 # window; the Lite engine check's call test says whether a newer WebKitGTK has it)
 # GLib: the TLS module (https), with its loader cache made for ROOT

@@ -15,7 +15,8 @@ on:
   pull_request:
     paths: ['iso/kconfig-arm64.sh', 'iso/systools/arm64_kernel.sh', 'iso/systools/arm64_base.sh', 'iso/qt/arm64_boot.py', 'iso/systools/chromium_fetch.sh', 'iso/sys/*.c', 'iso/sys/root/**', 'iso/initramfs/**',
       'iso/mkrootfs.sh', 'iso/xbuild.sh', 'iso/xshim.sh', 'iso/sndbuild.sh', 'iso/sndshim.sh', 'iso/wifibuild.sh', 'iso/pkgmanifest.py',
-      'iso/systools/mklayers.sh', 'iso/systools/addwebkit.sh', '.github/workflows/arm64-check.yml']
+      'iso/systools/mklayers.sh', 'iso/systools/mkpipewire.sh', 'iso/systools/layercheck.sh', 'iso/systools/addwebkit.sh',
+      '.github/workflows/arm64-check.yml']
 permissions: {contents: read, actions: read}
 jobs:
   arm64:
@@ -99,9 +100,12 @@ jobs:
             libasound2-dev libsndfile1-dev libltdl-dev alsa-ucm-conf \
             xvfb fontconfig fonts-dejavu-core fonts-liberation fonts-freefont-ttf fonts-noto-core fonts-noto-cjk adwaita-icon-theme tzdata \
             e2fsprogs nftables bluez bluez-alsa-utils libasound2-plugin-bluez pcscd libccid opensc opensc-pkcs11 libnss3-tools dbus gpg gpgv fuse3 libnss3 \
-            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking >/dev/null
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav glib-networking \
+            pipewire wireplumber libpipewire-0.3-0t64 libspa-0.2-modules gstreamer1.0-pipewire >/dev/null
       - name: Build the base layer
         run: OUT=$PWD/b-arm64 bash iso/systools/arm64_base.sh
+      - name: The base layer carries PipeWire's capture path (1.6.3, plan Part 9)
+        run: sh iso/systools/layercheck.sh b-arm64/layers/base.sfs
       - uses: actions/upload-artifact@v4
         with: {name: arm64-layers, path: 'b-arm64/layers/*.sfs', retention-days: 3}
       - name: Report

@@ -1,7 +1,8 @@
 # 1.6.3 (findings N35, plan Part 9 step 5): the self-test's own lines on the stand-in computer that
 # iso/qt/host/selftest_t.sh builds -- every check passing when things are as they should be, failing when they are not,
 # skipped when it does not apply, and the script changing nothing. It holds the capture line to its cases too (the
-# interleave and transcode plug-ins, each taken away, the camera's wait on PipeWire). As root: the camera's group and its
+# microphone's interleave and transcode plug-ins and the camera's pipewire plug-in and daemon, each taken away). As root:
+# the camera's group and its
 # setpriv case need it. No release key, nothing published.
 name: Self-test
 on:

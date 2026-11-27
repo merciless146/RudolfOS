@@ -4,6 +4,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 "What's new" and the notification after an update show. The newest version comes first.
 
 ## 1.6.3 (in progress)
+
+- **PipeWire and WirePlumber, beside PulseAudio** (Part 9, begun): the camera and the microphone's capture need
+  PipeWire under WebKitGTK 2.52, so it now starts with the session beside PulseAudio, which keeps the sound cards
+  (WirePlumber's ALSA monitor is off). No `pipewire-pulse`; nothing listens.
 Summary: In progress.
 - New: on the native desktop, Settings is the native Settings app: Privacy, Security, System health and Users join the
   pages built before it, so every page of Settings is native there (Chromium mode and Lite keep the web Settings, as the
@@ -19,7 +23,16 @@ Summary: In progress.
   Camera's video too (findings N35). The build now stops instead of warning when it or the interleave plug-in is missing:
   a host without their packages would ship a silent microphone and a Recorder that never starts.
 - Better: the self-test has a capture line: it fails when the image lacks the interleave or transcode plug-in (the
-  microphone's level meters and the Recorder), and says so when the camera still waits on PipeWire (findings N35).
+  microphone's level meters and the Recorder), and, with PipeWire in the image, when the pipewire plug-in or the daemon
+  is missing, naming which: then the camera cannot capture (findings N35).
+- Fixed: switching the camera off in Settings still works with the new PipeWire: WirePlumber's camera monitor keeps the
+device open, so the switch stops it before unloading the camera's driver and starts it again when the camera comes
+  back (before, the driver could not be unloaded and the switch answered "the camera is in use").
+- Better: the Lite engine check now installs PipeWire and GStreamer's pipewire plug-in and holds the layer it builds to
+  the three capture plug-ins, so a build without a camera path is refused here instead of shipping.
+- Better: a base layer is checked as it is packed, not as its build tree was: the daemon, WirePlumber, the camera's v4l2
+  plug-in and the setting that keeps WirePlumber off the sound cards must be in the layer itself, and pipewire-pulse must
+  not, in the ARM64 build and in a release's layer alike (`systools/layercheck.sh`).
 - Fixed: Voice Recorder's Record now says what went wrong (the error's name and message, in a notification) instead of
   playing the click sound and staying silent, with no clock and no recording; on the Native desktop the start block could
   throw where nothing caught it. It also cleans up the microphone if it fails, so Record can be tried again (checklist V1).

@@ -267,6 +267,11 @@ if [ -x "$SNS/usr/bin/pulseaudio" ]; then
 	copy_deps usr/bin/pulseaudio usr/bin/pactl usr/lib/$MA/pulseaudio/*.so usr/lib/$MA/pulseaudio/modules/*.so
 fi
 [ -d /usr/share/alsa ] && [ ! -d usr/share/alsa/ucm2 ] && cp -a /usr/share/alsa/. usr/share/alsa/ 2>/dev/null || true
+# ---------- 1.6.3 Part 9: PipeWire and WirePlumber, beside PulseAudio (WebKitGTK 2.52 captures the camera and the
+# microphone's WebAudio path only through PipeWire). WirePlumber's ALSA monitor is off (systools/pwconf), so the sound
+# cards stay PulseAudio's: see docs/plan-1.6.3.md Part 9
+PWV=$(sh "$HERE/systools/mkpipewire.sh" "$OUT" 2>&1) || { echo "mkrootfs: $PWV"; exit 1; }
+echo "pipewire: $PWV"
 
 # ---------- configuration
 cat > etc/passwd <<'E'
