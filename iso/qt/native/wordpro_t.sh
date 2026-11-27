@@ -166,13 +166,13 @@ kill $WPP 2>/dev/null
 P1=$(DISPLAY=$DSP xdotool getwindowpid "$WIN" 2>/dev/null); [ -n "$P1" ] && kill $P1 2>/dev/null
 i=0; while [ $i -lt 40 ] && [ -n "$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null)" ]; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 ST7=$T/state7.txt; rm -f "$ST7"
-# (run as itself, not under gdb: its own pid is the window's pid, so the keys go to it and not to a window left behind)
-RUDOLF_WP_STATE=$ST7 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP "$BIN" >"$T/wp7.log" 2>&1 & WPP7=$!
+# (under the same backtrace the first window has: if the undo itself is what stops the app, its reason is in the log)
+RUDOLF_WP_STATE=$ST7 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP sh -c '"$@"' sh $RUN "$BIN" >"$T/wp7.log" 2>&1 & WPP7=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 # (the first window is gone, so this copy is the only WordPro on the display; its window is looked for as it appears,
 #  never waited for without a limit: a search that never matches would hang the whole check)
 W7=""; i=0; while [ $i -lt 40 ] && [ -z "$W7" ]; do
-	W7=$(DISPLAY=$DSP xdotool search --onlyvisible --pid "$WPP7" 2>/dev/null | tail -1)
+	W7=$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null | tail -1)
 	[ -n "$W7" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W7" ] || W7=$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null | tail -1)
 W7PID=$(DISPLAY=$DSP xdotool getwindowpid "$W7" 2>/dev/null)
@@ -182,6 +182,10 @@ i=0; while [ $i -lt 60 ] && [ -n "$W7" ]; do DISPLAY=$DSP xdotool windowfocus --
 	FOCUS=$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)
 	[ "$FOCUS" = "$W7" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W7" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W7" 480 300 click 1; sleep 0.8; }
+DISPLAY=$DSP xdotool key ctrl+f; sleep 0.8   # (does a key reach the writing at all? the Find bar says so in the state)
+KF=$(grep -c '^findbar 1$' "$ST7")
+[ -n "$W7" ] && { DISPLAY=$DSP xdotool mousemove --window "$W7" 480 300 click 1; sleep 0.6; }
+ALIVE=$(kill -0 $WPP7 2>/dev/null && echo alive || echo gone)
 # (the state file is written again whenever the page changes: the undo is read here, before the redo takes its place)
 A=0
 i=0; while [ $i -lt 4 ]; do   # (a first press into a window that has just appeared can be lost: tried again, as a person would)
@@ -192,7 +196,7 @@ i=0; while [ $i -lt 4 ]; do
 	grep -q '^objs 1$' "$ST7" && break; i=$((i+1)); done
 grep -q '^objs 1$' "$ST7" && grep -q '^obj picture 40x30 [0-9][0-9]*$' "$ST7" && grep -q '^words 0$' "$ST7" && grep -q '^chars 0$' "$ST7"; RC=$?
 kill $WPP7 2>/dev/null
-ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(tr '\n' '|' < "$ST7" 2>/dev/null)(window $W7 of $WPP7, focus $FOCUS, the window's pid $W7PID; $(grep -E 'SIG|signal|abort|#[0-9]+ ' "$T/wp7.log" 2>/dev/null | tail -3 | tr '\n' ' '))"
+ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(tr '\n' '|' < "$ST7" 2>/dev/null)(window $W7, focus $FOCUS, the window's pid $W7PID, the keys $KF, the app $ALIVE since; $(tail -6 "$T/wp7.log" 2>/dev/null | tr '\n' '|'))(window $(grep -E 'SIG|signal|abort|#[0-9]+ ' "$T/wp7.log" 2>/dev/null | tail -3 | tr '\n' ' '))"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
