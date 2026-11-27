@@ -709,7 +709,12 @@ static gboolean focus_cell_hook(gpointer d)
 		WpObj *o = g_ptr_array_index(OBJ, i);
 		if (o->kind != OBJ_TABLE || !o->w) continue;
 		GList *ch = gtk_container_get_children(GTK_CONTAINER(o->w));
-		for (GList *k = ch; k; k = k->next) if (GTK_IS_ENTRY(k->data)) { gtk_widget_grab_focus(k->data); break; }
+		for (GList *k = ch; k; k = k->next) if (GTK_IS_ENTRY(k->data) && GPOINTER_TO_INT(g_object_get_data(G_OBJECT(k->data), "wp-cell")) == 1) {
+			gtk_widget_grab_focus(k->data);
+			/* (a click in a cell puts the cursor where it stands -- the focus alone chooses all of the cell's text, and the
+			   first letter typed would then be two changes: the choice taken away, and the letter in) */
+			gtk_editable_set_position(GTK_EDITABLE(k->data), -1);
+			break; }
 		g_list_free(ch);
 		break;
 	}
