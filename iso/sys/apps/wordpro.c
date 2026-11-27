@@ -864,7 +864,7 @@ static void pic_tools(WpObj *o)
 {
 	if (!o) return;
 	PIC_EDIT = o;
-	char wv[8] = "Original";
+	char wv[16] = "Original";
 	if (o->wpct > 0) snprintf(wv, sizeof wv, "%d%%", o->wpct);
 	RuiField f[3] = { { "Width", RUI_F_SEL, wv, PIC_W, 5 }, { "Align", RUI_F_SEL, PIC_A[o->walign], PIC_A, 4 },
 		{ "Description", RUI_F_TEXT, o->alt ? o->alt : "" } };
