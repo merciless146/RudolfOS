@@ -35,21 +35,22 @@ WIN=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -
 ok "1. the window opens, called WordPro" "$([ -n "$WIN" ] && echo 1)" "no window; $(cat "$T/wp.log")"
 grep -q '^styles 9$' "$ST" && grep -q '^fonts 12$' "$ST"
 ok "2. the toolbar's lists are the page's: 9 styles, 12 fonts (mkwordpro.py)" "$([ $? = 0 ] && echo 1)" "$(head -20 "$ST")"
-# (a press in the page's writing, as a person's first press in it, then the typing)
-DISPLAY=$DSP xdotool windowactivate --sync "$WIN" 2>/dev/null; DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.3
-DISPLAY=$DSP xdotool type --window "$WIN" --delay 12 'Hello world'
+# (the window takes the keys, as a person's first press gives them to it; there is no window manager on this display, so
+#  the focus is set with X's own request and the keys and the press go in as the X server's own events)
+DISPLAY=$DSP xdotool windowfocus --sync "$WIN" 2>/dev/null; DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.3
+DISPLAY=$DSP xdotool type --delay 12 'Hello world'
 sleep 1
 grep -q '^words 2$' "$ST" && grep -q '^chars 10$' "$ST"
 ok "3. typing counts the words and the characters" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(words|chars) ' "$ST")"
-DISPLAY=$DSP xdotool key --window "$WIN" ctrl+a; DISPLAY=$DSP xdotool key --window "$WIN" ctrl+b; sleep 1
+DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key ctrl+b; sleep 1
 grep -q 'tags b' "$ST"
 ok "4. Ctrl+B tags what is chosen" "$([ $? = 0 ] && echo 1)" "$(grep '^tags' "$ST")"
-DISPLAY=$DSP xdotool key --window "$WIN" ctrl+f; sleep 0.6
-DISPLAY=$DSP xdotool type --window "$WIN" --delay 12 'world'; DISPLAY=$DSP xdotool key --window "$WIN" Return; sleep 0.8
+DISPLAY=$DSP xdotool key ctrl+f; sleep 0.6
+DISPLAY=$DSP xdotool type --delay 12 'world'; DISPLAY=$DSP xdotool key Return; sleep 0.8
 grep -q '^sel 1$' "$ST" && grep -q '^text Hello world$' "$ST"
 ok "5. Ctrl+F finds 'world' (it is chosen), and the writing is unchanged" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(sel|text) ' "$ST")"
 DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.3
-DISPLAY=$DSP xdotool key --window "$WIN" ctrl+a; DISPLAY=$DSP xdotool type --window "$WIN" --delay 12 'one
+DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool type --delay 12 'one
 two'
 sleep 1
 grep -q '^words 2$' "$ST" && grep -q '^chars 6$' "$ST"
@@ -59,7 +60,10 @@ mkdir -p "$T/page/iso/sys/apps" "$T/page/iso/sys/ui" "$T/page/desktop"
 sed 's/const WP_STYLES=/const WP_STYLES_GONE=/' "$R/desktop/base_v24.html" > "$T/page/desktop/base_v24.html"
 cp "$R/iso/sys/apps/mkwordpro.py" "$T/page/iso/sys/apps/mkwordpro.py"
 python3 "$T/page/iso/sys/apps/mkwordpro.py" "$T/gone.h" >"$T/mk.log" 2>&1; RC=$?
-[ $RC = 1 ] && grep -q 'WP_STYLES' "$T/mk.log"
-ok "7. mkwordpro.py refuses a page it cannot read (no quiet default)" "([ $RC = 1 ] && grep -q WP_STYLES "$T/mk.log" && echo 1)" "$RC $(cat "$T/mk.log")"
+if [ $RC = 1 ] && grep -q 'WP_STYLES' "$T/mk.log"; then
+	ok "7. mkwordpro.py refuses a page it cannot read (no quiet default)" 1
+else
+	ok "7. mkwordpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
+fi
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 echo "$NP passed, $NF failed"; [ $NF = 0 ]
