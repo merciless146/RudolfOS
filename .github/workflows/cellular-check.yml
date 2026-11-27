@@ -37,8 +37,10 @@ jobs:
         run: sudo sh iso/qt/host/signal60_t.sh
       - name: sms60_t.sh (Part 6)
         run: sudo sh iso/qt/host/sms60_t.sh
-      - name: selftest_t.sh (its modem line)
-        run: sh iso/qt/host/selftest_t.sh || true
+      - name: The camera's group
+        run: sudo groupadd -f video
+      - name: selftest_t.sh (every line, its modem line included)
+        run: sudo sh iso/qt/host/selftest_t.sh
   qemu:
     runs-on: ubuntu-24.04
     timeout-minutes: 90

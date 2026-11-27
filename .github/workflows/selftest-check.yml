@@ -7,7 +7,9 @@ name: Self-test
 on:
   workflow_dispatch:
   pull_request:
-    paths: ['iso/sys/root/usr/lib/rudolf/selftest', 'iso/qt/host/selftest_t.sh', '.github/workflows/selftest-check.yml']
+    # the script and its test, the command that runs it, and rudolfd, which answers GET selftest (the test reads it)
+    paths: ['iso/sys/root/usr/lib/rudolf/selftest', 'iso/sys/root/usr/bin/rudolf-selftest', 'iso/sys/rudolfd.c',
+      'iso/qt/host/selftest_t.sh', '.github/workflows/selftest-check.yml']
 permissions: {contents: read}
 jobs:
   host:
