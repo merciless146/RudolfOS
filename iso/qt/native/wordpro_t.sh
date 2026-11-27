@@ -182,21 +182,20 @@ i=0; while [ $i -lt 60 ] && [ -n "$W7" ]; do DISPLAY=$DSP xdotool windowfocus --
 	FOCUS=$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)
 	[ "$FOCUS" = "$W7" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W7" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W7" 480 300 click 1; sleep 0.8; }
-DISPLAY=$DSP xdotool key ctrl+f; sleep 0.8   # (does a key reach the writing at all? the Find bar says so in the state)
-KF=$(grep -c '^findbar 1$' "$ST7")
-[ -n "$W7" ] && { DISPLAY=$DSP xdotool mousemove --window "$W7" 480 300 click 1; sleep 0.6; }
-ALIVE=$(kill -0 $WPP7 2>/dev/null && echo alive || echo gone)
-# (the state file is written again whenever the page changes: the undo is read here, before the redo takes its place)
+# (the state file is written again whenever the page changes, a moment after it: the undo is read here, before the redo
+#  takes its place, and a key is pressed again while the state has not caught up -- at the page's own two ends, pressing
+#  undo again or redo again is no step, so asking more than once cannot take more than the one change the case is about)
 A=0
-i=0; while [ $i -lt 4 ]; do   # (a first press into a window that has just appeared can be lost: tried again, as a person would)
-	DISPLAY=$DSP xdotool key ctrl+z; sleep 0.9
+i=0; while [ $i -lt 12 ]; do
+	DISPLAY=$DSP xdotool key ctrl+z; sleep 0.5
 	grep -q '^objs 0$' "$ST7" && { A=1; break; }; i=$((i+1)); done
-i=0; while [ $i -lt 4 ]; do
-	DISPLAY=$DSP xdotool key ctrl+y; sleep 0.9
+i=0; while [ $i -lt 12 ]; do
+	DISPLAY=$DSP xdotool key ctrl+y; sleep 0.5
 	grep -q '^objs 1$' "$ST7" && break; i=$((i+1)); done
+ALIVE=$(kill -0 $WPP7 2>/dev/null && echo alive || echo gone)
 grep -q '^objs 1$' "$ST7" && grep -q '^obj picture 40x30 [0-9][0-9]*$' "$ST7" && grep -q '^words 0$' "$ST7" && grep -q '^chars 0$' "$ST7"; RC=$?
 kill $WPP7 2>/dev/null
-ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(tr '\n' '|' < "$ST7" 2>/dev/null)(window $W7, focus $FOCUS, the window's pid $W7PID, the keys $KF, the app $ALIVE since; $(tail -6 "$T/wp7.log" 2>/dev/null | tr '\n' '|'))(window $(grep -E 'SIG|signal|abort|#[0-9]+ ' "$T/wp7.log" 2>/dev/null | tail -3 | tr '\n' ' '))"
+ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(tr '\n' '|' < "$ST7" 2>/dev/null)(window $W7, focus $FOCUS, the window's pid $W7PID, the app $ALIVE; $(tail -6 "$T/wp7.log" 2>/dev/null | tr '\n' '|'))"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
