@@ -1,0 +1,21 @@
+# 1.6.3 (findings N35, plan Part 9 step 5): the self-test's own lines on the stand-in computer that
+# iso/qt/host/selftest_t.sh builds -- every check passing when things are as they should be, failing when they are not,
+# skipped when it does not apply, and the script changing nothing. It holds the capture line to its cases too (the
+# interleave and transcode plug-ins, each taken away, the camera's wait on PipeWire). As root: the camera's group and its
+# setpriv case need it. No release key, nothing published.
+name: Self-test
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['iso/sys/root/usr/lib/rudolf/selftest', 'iso/qt/host/selftest_t.sh', '.github/workflows/selftest-check.yml']
+permissions: {contents: read}
+jobs:
+  host:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: The camera's group
+        run: sudo groupadd -f video
+      - name: selftest_t.sh (every line, and the capture line's cases)
+        run: sudo sh iso/qt/host/selftest_t.sh
