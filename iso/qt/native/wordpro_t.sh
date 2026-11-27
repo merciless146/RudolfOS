@@ -141,15 +141,22 @@ PY
 ST5=$T/state5.txt; rm -f "$ST5" "$T/out.DOC"
 RUDOLF_WP_STATE=$ST5 RUDOLF_WP_OPEN="$T/in.DOC" RUDOLF_WP_SAVE="$T/out.DOC" DISPLAY=$DSP "$BIN" >"$T/wp5.log" 2>&1 & WPP5=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 2$' "$ST5" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-grep -q '^words 6$' "$ST5" && grep -q '^chars 15$' "$ST5" && grep -q '^tags b' "$ST5" && grep -q '^obj table 2x2$' "$ST5" && [ -s "$T/out.DOC" ]; RC=$?
+i=0; while [ $i -lt 60 ] && [ ! -s "$T/out.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^words 2$' "$ST5" && grep -q '^chars 11$' "$ST5" && grep -q '^tags b' "$ST5" &&
+	grep -q '^obj picture 40x30' "$ST5" && grep -q '^obj table 2x2$' "$ST5" &&
+	grep -q '<th>a</th><th>b</th>' "$T/out.DOC" && grep -q '<td>c</td><td>d</td>' "$T/out.DOC" &&
+	grep -q 'data:image/png;base64,' "$T/out.DOC" && grep -q '<p>Hello <b>world</b>' "$T/out.DOC"; RC=$?
 kill $WPP5 2>/dev/null
-ok "16. the page's .DOC opens here: its paragraphs, its bold, its picture, its table" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST5" 2>/dev/null); $(tail -2 "$T/wp5.log" 2>/dev/null)"
-ST6=$T/state6.txt; rm -f "$ST6"
-RUDOLF_WP_STATE=$ST6 RUDOLF_WP_OPEN="$T/out.DOC" DISPLAY=$DSP "$BIN" >"$T/wp6.log" 2>&1 & WPP6=$!
+ok "16. the page's .DOC opens here (its paragraph, its bold, its picture, its table) and is written back" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST5" 2>/dev/null); $(sed 's/.*<\/style>//' "$T/out.DOC" 2>/dev/null | cut -c1-100)"
+ST6=$T/state6.txt; rm -f "$ST6" "$T/out2.DOC"
+RUDOLF_WP_STATE=$ST6 RUDOLF_WP_OPEN="$T/out.DOC" RUDOLF_WP_SAVE="$T/out2.DOC" DISPLAY=$DSP "$BIN" >"$T/wp6.log" 2>&1 & WPP6=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 2$' "$ST6" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-grep -q '^words 6$' "$ST6" && grep -q '^chars 15$' "$ST6" && grep -q '^tags b' "$ST6" && grep -q '^obj picture 40x30' "$ST6" && grep -q '^obj table 2x2$' "$ST6"; RC=$?
+i=0; while [ $i -lt 60 ] && [ ! -s "$T/out2.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+cmp -s "$T/out.DOC" "$T/out2.DOC"; SAME=$?
+grep -q '^words 2$' "$ST6" && grep -q '^chars 11$' "$ST6" && grep -q '^tags b' "$ST6" &&
+	grep -q '^obj picture 40x30' "$ST6" && grep -q '^obj table 2x2$' "$ST6" && [ $SAME = 0 ]; RC=$?
 kill $WPP6 2>/dev/null
-ok "17. ...and what was saved here opens again as it was (the round trip)" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST6" 2>/dev/null); $(tail -2 "$T/wp6.log" 2>/dev/null)"
+ok "17. ...and what was saved here opens and saves again as the very same document (the round trip)" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST6" 2>/dev/null); the second save is $( [ $SAME = 0 ] && echo 'the same bytes' || echo 'different' ) ($(stat -c %s "$T/out.DOC" 2>/dev/null) and $(stat -c %s "$T/out2.DOC" 2>/dev/null) bytes)"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 for f in "$T/state5.txt" "$T/state6.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"

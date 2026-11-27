@@ -96,10 +96,17 @@ accent colours), its memory at idle against the web version, built in the releas
   replace box and Shift+Ctrl+V pastes the clipboard's text alone, as the bar advertises; the document model is decided
   below; pictures and tables are places in the writing with their own data (a picture's bytes and size, a table's cells),
   the page's default 3 x 3 table, and a picture chosen through GTK's own file chooser until the page's dialog comes.
+- **Branch `wordpro-5`: saving and opening the page's .DOC** (step 2's file half): the document is written as the page
+  writes it -- `<!--wp:{meta}-->`, `<style data-wp>` with the page's stylesheet (read from `base_v24.html` at build time,
+  so it cannot drift), the blocks as its HTML (paragraphs, the inline tags, the colour and font spans, `<table>` with
+  `<th>`/`<td>`, `<img src="data:...">`) -- and opened by parsing that same subset back into the model, refusing nothing
+  silently. `File > Open...`, `Save` and `Save As...` are live in the bar (GTK's own choosers until the page's dialogs
+  come), with Ctrl+O and Ctrl+S; a document remembers its file. The check opens a document in the page's exact shape,
+  saves it, and opens and saves that again: the same bytes, which is the round trip the model promises.
 - **Not in this step, by the plan's own split:** the dialogs of those items (open, save, import, export, page setup,
-  print, table, picture, link, special characters, header and footer), tables, pictures, links, page setup, headers and
-  footers, the table of contents, printing, and opening and saving the page's .DOC (its HTML with the page's
-  stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
+  print, table, picture, link, special characters, header and footer), links, page setup, headers and footers, the table
+  of contents, printing, and the rest of the page's HTML (lists, the paragraph classes' other blocks, a nested table,
+  a picture's alt text) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
 #### The document model (decided 2026-11-27, step 2 begins: tables and pictures)
