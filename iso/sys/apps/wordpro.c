@@ -777,6 +777,7 @@ static void build_menubar(void)
 	gtk_box_pack_start(GTK_BOX(W->body), MBAR, FALSE, FALSE, 0);
 }
 static gboolean menu_hook(gpointer d) { int m = (int)(intptr_t)d; open_menu(MBTNS[m], m); return G_SOURCE_REMOVE; }
+static void on_find_text(GtkEditable *e, gpointer d) { (void)e; (void)d; state_soon(); }
 static void build_find(void)
 {
 	FIND = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (int)lround(rui_px(4)));
@@ -789,6 +790,9 @@ static void build_find(void)
 	gtk_box_pack_start(GTK_BOX(FIND), tb_button("Replace all", "Replace all", G_CALLBACK(replace_all), NULL), FALSE, FALSE, 0);
 	gtk_box_pack_end(GTK_BOX(FIND), tb_button("✕", "Close", G_CALLBACK(on_find_close), NULL), FALSE, FALSE, 0);
 	g_signal_connect(FI, "activate", G_CALLBACK(find_next), NULL);
+	/* (the bar's two boxes are part of what the page shows: typing in either moves the state on, as the writing does) */
+	g_signal_connect(FI, "changed", G_CALLBACK(on_find_text), NULL);
+	g_signal_connect(REPL, "changed", G_CALLBACK(on_find_text), NULL);
 	gtk_box_pack_start(GTK_BOX(W->body), FIND, FALSE, FALSE, 0);
 }
 static void build_editor(void)
