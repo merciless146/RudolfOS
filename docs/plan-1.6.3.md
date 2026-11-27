@@ -835,6 +835,13 @@ self-test's `capture` line fails when the pipewire plug-in or the daemon is miss
 Settings › Privacy › Camera's switch stops WirePlumber before unloading the camera's driver -- WirePlumber's v4l2 monitor
 keeps the device open, so every "camera off" would have answered "the camera is in use" -- and starts it again when the
 camera comes back, which `iso/qt/host/camwp_t.sh` checks in the PipeWire check.
+**Where the daemon comes from.** Both build paths carry it: `mkrootfs.sh` runs `systools/mkpipewire.sh` for the layer it
+makes -- so the ARM64 build, which builds through `mkrootfs.sh`, gets it too (its base layer's log reads
+`pipewire: 9019 KB`) -- and `ci_release.sh` runs the same script against the release's base layer. `mklayers.sh` keeps
+every file of it in `base.sfs`: it takes out only `opt/chromium`, `usr/share/rudolf/www` and `usr/lib/modules`. WendigOS
+builds the same layers from `main` and has no build switch around this, so it gets them when this part merges; the
+`kryptonite` branch (last at `ec2edfa9`, 2026-11-23) has neither `mkpipewire.sh` nor the call in its `mkrootfs.sh`, so it
+must merge `main` before a layer built from it has the daemon -- until then the self-test's `capture` line fails there.
 
 **The fault.** On the Native desktop Camera answers "No camera is available or access is blocked" with the privacy switch
 on, the check's microphone reads −120 dB (all-zero samples) and Voice Recorder records nothing; on the same build and
