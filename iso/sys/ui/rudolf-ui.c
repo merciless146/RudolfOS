@@ -759,6 +759,72 @@ void rui_confirm(RuiWin *w, const char *title, const char *text, const char *con
 	if (last) { gtk_window_set_focus_visible(GTK_WINDOW(w->win), TRUE); gtk_widget_grab_focus(last); }   /* (the page focuses its last button: its ring shown) */
 }
 GtkWidget *rui_dialog_box(void) { return DLG ? DLG->box : NULL; }
+/* (the page's dialog() with fields: its rows of a label and its input. The values are read while the dialog still stands
+   -- dlg_end destroys it before it calls back -- so a press takes them first; Escape ends it with none taken, which is a
+   Cancel, and the fields keep what they were given.) */
+typedef struct { RuiField *f; int n; GtkWidget **wd; void (*cb)(int, const RuiField *, void *); void *d; } Form;
+static void form_take(Form *g)
+{
+	for (int i = 0; i < g->n; i++) {
+		const char *v = g->f[i].kind == RUI_F_CHECK ? (rui_check_get(g->wd[i]) ? "1" : "0")
+			: gtk_entry_get_text(GTK_ENTRY(g->wd[i]));
+		g_free((gpointer)g->f[i].value); g->f[i].value = g_strdup(v ? v : "");
+	}
+}
+static void form_done(int i, void *d)
+{
+	Form *g = d;
+	if (g->cb) g->cb(i, g->f, g->d);
+	for (int k = 0; k < g->n; k++) { g_free((gpointer)g->f[k].value); g_free((gpointer)g->f[k].label); }
+	g_free(g->f); g_free(g->wd); g_free(g);
+}
+static void form_click(GtkButton *b, gpointer d)
+{
+	Form *g = d; form_take(g);   /* (the fields are read while they still stand: the dialog goes below them) */
+	dlg_end(GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "rui-i")));
+}
+void rui_form(RuiWin *w, const char *title, const char *text, const RuiField *f, int n, const char *const *buttons, int nb,
+	int pri, void (*cb)(int i, const RuiField *f, void *d), void *d)
+{
+	Dlg *g = dlg_new(w, title, text, 380); g->n = nb;
+	Form *fm = g_new0(Form, 1); fm->n = n; fm->cb = cb; fm->d = d;
+	fm->f = g_new0(RuiField, n > 0 ? (gsize)n : 1);
+	fm->wd = g_new0(GtkWidget *, n > 0 ? (gsize)n : 1);
+	g->cb = form_done; g->d = fm;
+	/* (the form's own fields: its caller's array is a dialog's arguments, and may be a frame the call that opened the dialog
+	   does not keep -- the press on a button comes long after it returned) */
+	for (int i = 0; i < n; i++) {
+		fm->f[i].label = g_strdup(f[i].label ? f[i].label : "");
+		fm->f[i].kind = f[i].kind;
+		fm->f[i].value = g_strdup(f[i].value ? f[i].value : "");
+	}
+	GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, (int)lround(rui_px(8)));
+	for (int i = 0; i < n; i++) {
+		GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (int)lround(rui_px(8)));
+		GtkWidget *lab = gtk_label_new(rui_tr(fm->f[i].label)); exact(lab); cls(lab, "rui-m");
+		gtk_label_set_xalign(GTK_LABEL(lab), 0); gtk_widget_set_size_request(lab, (int)lround(rui_px(110)), -1);
+		gtk_box_pack_start(GTK_BOX(row), lab, FALSE, FALSE, 0);
+		GtkWidget *wd;
+		if (fm->f[i].kind == RUI_F_CHECK) wd = rui_check("", fm->f[i].value[0] == '1', NULL, NULL);
+		else {
+			wd = rui_entry(NULL);
+			if (fm->f[i].kind == RUI_F_NUM) gtk_entry_set_input_purpose(GTK_ENTRY(wd), GTK_INPUT_PURPOSE_NUMBER);
+			if (*fm->f[i].value) gtk_entry_set_text(GTK_ENTRY(wd), fm->f[i].value);
+		}
+		gtk_widget_set_hexpand(wd, TRUE); gtk_box_pack_start(GTK_BOX(row), wd, TRUE, TRUE, 0);
+		fm->wd[i] = wd; gtk_box_pack_start(GTK_BOX(box), row, FALSE, FALSE, 0);
+	}
+	gtk_box_pack_start(GTK_BOX(g->box), box, FALSE, FALSE, 0);
+	GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (int)lround(rui_px(6))); gtk_widget_set_halign(row, GTK_ALIGN_END);
+	GtkWidget *last = NULL;
+	for (int i = 0; i < nb; i++) {
+		GtkWidget *b = rui_button(buttons[i], 0); if (pri && i == nb - 1) cls(b, "pri");
+		g_object_set_data(G_OBJECT(b), "rui-i", GINT_TO_POINTER(i)); g_signal_connect(b, "clicked", G_CALLBACK(form_click), fm);
+		gtk_box_pack_start(GTK_BOX(row), b, FALSE, FALSE, 0); last = b;
+	}
+	dlg_show(g, row);
+	if (last) { gtk_window_set_focus_visible(GTK_WINDOW(w->win), TRUE); gtk_widget_grab_focus(last); }
+}
 
 /* the administrator's permission (core25.js elevate): the account (an administrator), its password, Allow; rudolfd checks it
    (desktop/admin) as it checks a sign-in, so no app ever holds a password hash; refused attempts are counted there */

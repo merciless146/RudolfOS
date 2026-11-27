@@ -129,12 +129,19 @@ i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST3" 2>/dev/null; do timeout 
 grep -q '^obj picture 40x30' "$ST3" && grep -q '^words 0$' "$ST3" && grep -q '^chars 0$' "$ST3"; RC=$?
 kill $WPP3 2>/dev/null
 ok "14. a picture keeps its size, and is neither a word nor a character of the writing" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(objs|obj|words|chars) ' "$ST3" 2>/dev/null); $(tail -2 "$T/wp3.log" 2>/dev/null)"
-ST4=$T/state4.txt; rm -f "$ST4"
-RUDOLF_WP_STATE=$ST4 RUDOLF_WP_INSERT="table" DISPLAY=$DSP "$BIN" >"$T/wp4.log" 2>&1 & WPP4=$!
+# (a table is its own place too, and the page makes one through its own dialog (base_v24.html's tableDlg): Rows,
+#  Columns, Header row and Borders, Cancel and Insert. The dialog is opened as its menu opens it, and Insert -- the
+#  answer the test would press, in the file the app reads -- takes its defaults: 3 rows, 3 columns, a heading row and
+#  borders, which are the page's own 3 x 3 with <th> in its first row and the .wp-t class)
+ST4=$T/state4.txt; A4=$T/ans4; rm -f "$ST4"; : > "$A4"
+RUDOLF_WP_STATE=$ST4 RUDOLF_WP_ANSWER=$A4 RUDOLF_WP_DIALOG=table DISPLAY=$DSP $RUN "$BIN" >"$T/wp4.log" 2>&1 & WPP4=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^dialog 1$' "$ST4" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+D4=$(grep -c '^dialog 1$' "$ST4" 2>/dev/null)
+echo "Insert" > "$A4"   # (the answer: the dialog's own Insert)
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST4" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-grep -q '^obj table 3x3$' "$ST4"; RC=$?
+grep -q '^obj table 3x3$' "$ST4" && grep -q '^tbl hdr 1 nb 0$' "$ST4" && grep -q '^cells|||' "$ST4" && [ "$D4" = 1 ]; RC=$?
 kill $WPP4 2>/dev/null
-ok "15. a table is its own place too: the page's default 3 x 3" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(objs|obj) ' "$ST4" 2>/dev/null)"
+ok "15. the page's Insert table dialog opens on its defaults, and its Insert makes the page's 3 x 3 with a heading row and borders" "$([ $RC = 0 ] && echo 1)" "dialog up $D4; $(grep -E '^(objs|obj|tbl|dialog) ' "$ST4" 2>/dev/null | tr '\n' ' '); $(tail -20 "$T/wp4.log" 2>/dev/null | tr '\n' ' ')"
 # (the page's .DOC: what the web WordPro writes opens here, and what is saved here opens again as it was)
 python3 - "$T/pic.png" "$T/in.DOC" <<'PY'
 import sys, base64
@@ -150,7 +157,7 @@ RUDOLF_WP_STATE=$ST5 RUDOLF_WP_OPEN="$T/in.DOC" RUDOLF_WP_SAVE="$T/out.DOC" DISP
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 2$' "$ST5" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 i=0; while [ $i -lt 60 ] && [ ! -s "$T/out.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 grep -q '^words 6$' "$ST5" && grep -q '^chars 15$' "$ST5" && grep -q '^tags b' "$ST5" &&
-	grep -q '^obj picture 40x30' "$ST5" && grep -q '^obj table 2x2$' "$ST5" &&
+	grep -q '^obj picture 40x30' "$ST5" && grep -q '^obj table 2x2$' "$ST5" && grep -q '^tbl hdr 1 nb 0$' "$ST5" &&
 	grep -q '<th>a</th><th>b</th>' "$T/out.DOC" && grep -q '<td>c</td><td>d</td>' "$T/out.DOC" &&
 	grep -q 'data:image/png;base64,' "$T/out.DOC" && grep -q '<p>Hello <b>world</b>' "$T/out.DOC"; RC=$?
 kill $WPP5 2>/dev/null
@@ -373,8 +380,24 @@ kill $WPP13 2>/dev/null
 ok "24. the question's Save writes the page to its file, and the page that follows is a clean Untitled one" \
 	"$([ "$T0" = 'save.DOC - WordPro' ] && [ "$T1" = 'save.DOC * - WordPro' ] && [ "$D1$Q1$K1$W1" = 1111 ] && [ "$AN" = 2 ] && [ "$N1$N2" = 11 ] && [ "$T2" = 'Untitled - WordPro' ] && echo 1)" \
 	"titles '$T0', '$T1', '$T2'; dirty $D1; asked $Q1 with the writing kept $K1; the file has the change $W1 (answer $AN); after it dirty $N1 and empty $N2 ($(grep -E '^(dirty|ask|answer|text|words|hist) ' "$ST13" 2>/dev/null | tr '\n' ' '); $(grep -o '<p>[^<]*</p>' "$T/save.DOC" 2>/dev/null | head -2 | tr '\n' ' '); $(tail -2 "$T/wp13.log" 2>/dev/null | tr '\n' ' '))"
+# (a table the page draws without borders and without a heading row: its file says .wp-t nb and no <th>, and the page
+#  says it back in its own words -- tbl hdr 0 nb 1 -- and writes the very same class and the very same <td>s again)
+python3 - "$T/nb.DOC" <<'PY'
+import sys
+doc = ('<!--wp:%7B%7D--><style data-wp>.wp-t{border-collapse:collapse}</style>'
+       '<table class="wp-t nb"><tr><td>a</td><td>b</td></tr><tr><td>c</td><td>d</td></tr></table>')
+open(sys.argv[1], 'w').write(doc)
+PY
+ST14=$T/state14.txt; rm -f "$ST14" "$T/nb-out.DOC"
+RUDOLF_WP_STATE=$ST14 RUDOLF_WP_OPEN="$T/nb.DOC" RUDOLF_WP_SAVE="$T/nb-out.DOC" DISPLAY=$DSP "$BIN" >"$T/wp14.log" 2>&1 & WPP14=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST14" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+i=0; while [ $i -lt 60 ] && [ ! -s "$T/nb-out.DOC" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^words 4$' "$ST14" && grep -q '^obj table 2x2$' "$ST14" && grep -q '^tbl hdr 0 nb 1$' "$ST14" &&
+	grep -q '<table class="wp-t nb">' "$T/nb-out.DOC" && ! grep -q '<th>' "$T/nb-out.DOC" && grep -q '<td>a</td><td>b</td>' "$T/nb-out.DOC"; RC=$?
+kill $WPP14 2>/dev/null
+ok "25. ...and the page's .wp-t nb -- no borders, no heading row -- is read and written as it was, with no <th>" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|objs|obj|tbl) ' "$ST14" 2>/dev/null | tr '\n' ' '); $(sed 's/.*<\/style>//' "$T/nb-out.DOC" 2>/dev/null | cut -c1-120); $(tail -2 "$T/wp14.log" 2>/dev/null | tr '\n' ' ')"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 
-for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt" "$T/state10.txt" "$T/state11.txt" "$T/state12.txt" "$T/state13.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
+for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt" "$T/state10.txt" "$T/state11.txt" "$T/state12.txt" "$T/state13.txt" "$T/state14.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
 echo "$NP passed, $NF failed"; [ $NF = 0 ]

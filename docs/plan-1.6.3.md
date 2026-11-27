@@ -109,10 +109,24 @@ accent colours), its memory at idle against the web version, built in the releas
   thrown away unanswered; saving or opening puts the `*` away. Format changes (bold, italic, underline, strikethrough,
   size, colour, font, style, alignment, spacing, clear) are steps of the history as typed text is: an entry keeps the
   writing's runs of tags beside its text, so Ctrl+Z takes a bold away and leaves the writing, and Ctrl+Y puts it back.
-- **Not in this step, by the plan's own split:** the dialogs of those items (open, save, import, export, page setup,
-  print, table, picture, link, special characters, header and footer), links, page setup, headers and footers, the table
-  of contents, printing, and the rest of the page's HTML (lists, the paragraph classes' other blocks, a nested table,
-  a picture's alt text) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
+- **Branch `wordpro-9`: the page's Insert table dialog, and a table's heading row and borders** (the dialogs step begun):
+  `rui_form` in librudolf-ui is the page's `dialog()` with fields -- a label and its input on a row, a text, a number or
+  a check, the page's primary as the last button, Escape as Cancel -- and it keeps its own copy of the fields, since the
+  press comes long after the action that opened the dialog returned (a bug the check caught as `free(): invalid pointer`,
+  the dialog's case now running under gdb so a crash says where it was). The Table menu's *Insert table...* and the Insert
+  menu's *Table...* open the page's dialog -- Rows 3 (1 to 50), Columns 3 (1 to 20), *Header row* and *Borders* on,
+  Cancel / Insert -- and Insert makes the table it asks for. A table keeps the two choices: `<th>` in its first row only
+  when it has a heading row, and the page's `wp-t nb` class (a table whose borders are not drawn) when it has none -- in
+  the model, in every history entry (so an undo or a redo brings them back), in what the page says (`tbl hdr 1 nb 0`) and
+  in its .DOC -- and the parser reads both back, so the web WordPro's `wp-t nb` opens and saves unchanged. The check opens
+  the dialog as its menu opens it and presses Insert through the answer file (3 x 3, `hdr 1`, `nb 0`, nine cells), and
+  opens and saves a `.wp-t nb` table with no heading row (`hdr 0`, `nb 1`, the same class and no `<th>` in the file that
+  comes back). 25 cases, all green (340640 bytes).
+- **Not in this step, by the plan's own split:** the dialogs of those items that are still to come (open, save, import,
+  export, page setup, print, picture, link, special characters, header and footer), the Table menu's other items (insert
+  and delete a row or a column, merge, shade, toggle borders and header row), links, page setup, headers and footers, the
+  table of contents, printing, and the rest of the page's HTML (lists, the paragraph classes' other blocks, a nested
+  table, a picture's alt text) -- steps 1 to 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
 #### The document model (decided 2026-11-27, step 2 begins: tables and pictures)
