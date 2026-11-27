@@ -77,6 +77,7 @@ static void css(void)
 		"button.wp-mb-b:hover{background:#dbe6ff}"
 					".wp-table{border:1px solid #d1d5db;background:#fff}"
 		"entry.wp-cell{border:1px solid #d1d5db;border-radius:0;background:#fff;font-size:12px;color:#111;padding:0 4px;min-height:0}"
+		".wp-table-nb, .wp-table-nb entry.wp-cell{border-color:transparent}"
 		".wp-sep{background:#d1d5db}"
 		".wp-area{background:#e5e7eb}"
 		".wp-paper{background:#ffffff;box-shadow:0 1px 3px rgba(0,0,0,0.2)}"
@@ -353,7 +354,7 @@ static void state_write(void)
 	state_steps(s);
 	if (FIND && FI && REPL) g_string_append_printf(s, "findbar %d\nfind %s\nrepl %s\n", gtk_widget_get_visible(FIND) ? 1 : 0,
 		gtk_entry_get_text(GTK_ENTRY(FI)), gtk_entry_get_text(GTK_ENTRY(REPL)));
-	g_string_append_printf(s, "dirty %d\nask %d\nanswer %d\n", DIRTY, ASK, ASK_LAST);   /* (the tests read the guard: what is not saved, its question, and how it was answered) */
+	g_string_append_printf(s, "dirty %d\nask %d\nanswer %d\ndialog %d\n", DIRTY, ASK, ASK_LAST, rui_dialog_box() ? 1 : 0);   /* (the tests read the guard: what is not saved, its question, how it was answered, and a dialog standing open) */
 	g_string_append_printf(s, "on %s\n", ON);
 	gtk_text_buffer_get_start_iter(BUF, &a); gtk_text_buffer_get_end_iter(BUF, &b);
 	g_string_append(s, "tags");
@@ -607,7 +608,7 @@ typedef struct { guchar *d; gsize n; int refs; } Img;   /* (a picture's bytes, s
 static Img *img_new(guchar *data, gsize len) { Img *i = g_new0(Img, 1); i->d = data; i->n = len; i->refs = 1; return i; }
 static Img *img_ref(Img *i) { if (i) i->refs++; return i; }
 static void img_unref(Img *i) { if (i && --i->refs <= 0) { g_free(i->d); g_free(i); } }
-typedef struct { int kind, wpx, hpx, rows, cols; GtkWidget *w; GtkTextChildAnchor *at; Img *im; } WpObj;
+typedef struct { int kind, wpx, hpx, rows, cols, hdr, border; GtkWidget *w; GtkTextChildAnchor *at; Img *im; } WpObj;   /* (a table's hdr: its first row is its heading; border: 0 is the page's .nb, the table without borders) */
 static GPtrArray *OBJ;
 static void obj_free(gpointer p) { WpObj *o = p; img_unref(o->im); g_free(o); }
 static void obj_gone(GtkWidget *w, gpointer d)
@@ -635,8 +636,8 @@ static void state_objs(GString *s)
 	if (!OBJ) return;
 	for (guint i = 0; i < OBJ->len; i++) { WpObj *o = g_ptr_array_index(OBJ, i);
 		if (o->kind == OBJ_PIC) g_string_append_printf(s, "obj picture %dx%d %u\n", o->wpx, o->hpx, (unsigned)(o->im ? o->im->n : 0));
-		else {   /* (the cells' text, which is what an undo or a redo of a table has to bring back) */
-			g_string_append_printf(s, "obj table %dx%d\ncells", o->rows, o->cols);
+		else {   /* (the cells' text, which is what an undo or a redo of a table has to bring back, and the two things the dialog chose) */
+			g_string_append_printf(s, "obj table %dx%d\ntbl hdr %d nb %d\ncells", o->rows, o->cols, o->hdr, o->border ? 0 : 1);
 			for (int r = 0; r < o->rows; r++) for (int c = 0; c < o->cols; c++) { g_string_append_c(s, '|'); g_string_append(s, cell_text(o, r, c)); }
 			g_string_append_c(s, '\n');
 		}
@@ -667,14 +668,14 @@ static void obj_clear(void)
 	}
 	g_ptr_array_set_size(OBJ, 0);
 }
-static void obj_add(GtkWidget *w, int kind, guchar *img, gsize img_len, int wpx, int hpx, int rows, int cols)
+static void obj_add(GtkWidget *w, int kind, guchar *img, gsize img_len, int wpx, int hpx, int rows, int cols, int hdr, int border)
 {
 	GtkTextIter it; gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
 	SILENT = 1;   /* (the anchor is not a step of the history of its own: the object standing at it is, below) */
 	GtkTextChildAnchor *a = gtk_text_buffer_create_child_anchor(BUF, &it);
 	SILENT = 0;
 	WpObj *o = g_new0(WpObj, 1);
-	o->kind = kind; o->wpx = wpx; o->hpx = hpx; o->rows = rows; o->cols = cols; o->w = w;
+	o->kind = kind; o->wpx = wpx; o->hpx = hpx; o->rows = rows; o->cols = cols; o->hdr = hdr; o->border = border; o->w = w;
 	o->im = img ? img_new(img, img_len) : NULL;
 	obj_place(a, o);
 	counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
@@ -713,11 +714,38 @@ static void insert_picture(const char *path)
 	if (!g_file_get_contents(path, &data, &len, NULL)) { say(rui_tr("That picture could not be read.")); return; }
 	insert_picture_data((guchar *)data, len);   /* (the bytes, which is what the page's document carries) */
 }
-static void insert_table(int rows, int cols)
+/* (a table's grid, with the page's wp-t or its wp-t nb: the .nb class is a table whose borders are not drawn) */
+static GtkWidget *table_grid(int border)
 {
-	GtkWidget *g = gtk_grid_new(); gtk_style_context_add_class(gtk_widget_get_style_context(g), "wp-table");
+	GtkWidget *g = gtk_grid_new();
+	gtk_style_context_add_class(gtk_widget_get_style_context(g), "wp-table");
+	if (!border) gtk_style_context_add_class(gtk_widget_get_style_context(g), "wp-table-nb");
+	return g;
+}
+static void insert_table(int rows, int cols, int hdr, int border);
+/* (the page's Insert table dialog -- base_v24.html's tableDlg: Rows and Columns, the first row a heading, borders drawn.
+   Its limits are the page's own: 1 to 50 rows, 1 to 20 columns, and an empty or nonsense count is its 3) */
+static void table_dlg_done(int i, RuiField *f, void *d)
+{
+	(void)d; state_soon();   /* (the dialog is gone: what the page shows is written again, the table or not) */
+	if (i != 1) return;   /* (Insert: the last of its buttons, which the page makes its primary) */
+	int r = atoi(f[0].value ? f[0].value : ""), c = atoi(f[1].value ? f[1].value : "");
+	if (!r) r = 3; if (r < 1) r = 1; if (r > 50) r = 50;
+	if (!c) c = 3; if (c < 1) c = 1; if (c > 20) c = 20;
+	insert_table(r, c, f[2].value && f[2].value[0] == '1', f[3].value && f[3].value[0] == '1');
+}
+static void table_dlg(void)
+{
+	RuiField f[4] = { { "Rows", RUI_F_NUM, "3" }, { "Columns", RUI_F_NUM, "3" },
+		{ "Header row", RUI_F_CHECK, "1" }, { "Borders", RUI_F_CHECK, "1" } };
+	static const char *B[] = { "Cancel", "Insert" };
+	rui_form(W, rui_tr("Insert table"), NULL, f, 4, B, 2, 1, table_dlg_done, NULL);
+}
+static void insert_table(int rows, int cols, int hdr, int border)
+{
+	GtkWidget *g = table_grid(border);
 	for (int r = 0; r < rows; r++) for (int c = 0; c < cols; c++) gtk_grid_attach(GTK_GRID(g), cell_new(r, c, NULL), c, r, 1, 1);
-	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, rows, cols);
+	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, rows, cols, hdr, border);
 }
 static void choose_picture(void)
 {
@@ -764,7 +792,19 @@ static gboolean insert_hook(gpointer d)
 {
 	const char *v = d;
 	if (!strncmp(v, "picture:", 8)) insert_picture(v + 8);
-	else if (!strcmp(v, "table")) insert_table(3, 3);
+	else if (!strcmp(v, "table")) insert_table(3, 3, 1, 1);
+	else if (!strncmp(v, "table:", 6)) {   /* (the dialog's own choices, without a display to press its buttons on) */
+		int r = 3, c = 3, h = 1, b = 1;
+		if (sscanf(v + 6, "%dx%d:%d:%d", &r, &c, &h, &b) < 2) { r = 3; c = 3; h = 1; b = 1; }
+		if (!r) r = 3; if (r < 1) r = 1; if (r > 50) r = 50;
+		if (!c) c = 3; if (c < 1) c = 1; if (c > 20) c = 20;
+		insert_table(r, c, h, b);
+	}
+	return G_SOURCE_REMOVE;
+}
+static gboolean dialog_hook(gpointer d)
+{
+	const char *v = d; if (!strcmp(v, "table")) table_dlg();   /* (the tests: the page's dialog opened as its menu opens it) */
 	return G_SOURCE_REMOVE;
 }
 /* ------------------------------------------------------------------ saving and opening the page's .DOC
@@ -862,11 +902,11 @@ static void obj_html(GString *o, WpObj *ob)
 		g_free(b);
 		return;
 	}
-	g_string_append(o, "<table class=\"wp-t\">");
+	g_string_append(o, ob->border ? "<table class=\"wp-t\">" : "<table class=\"wp-t nb\">");
 	for (int r = 0; r < ob->rows; r++) {
 		g_string_append(o, "<tr>");
 		for (int c = 0; c < ob->cols; c++) {
-			const char *tag = r == 0 ? "th" : "td", *txt = cell_text(ob, r, c);
+			const char *tag = ob->hdr && r == 0 ? "th" : "td", *txt = cell_text(ob, r, c);
 			g_string_append_printf(o, "<%s>", tag); esc_into(o, txt, (int)strlen(txt)); g_string_append_printf(o, "</%s>", tag);
 		}
 		g_string_append(o, "</tr>");
@@ -878,7 +918,7 @@ static void obj_html(GString *o, WpObj *ob)
    Putting an entry back writes its text, turns each placeholder character into a place again, and makes the object that
    stood at it -- so undo and redo move the picture or the table itself, and a place with nothing behind it cannot be left
    (an entry whose place has lost its object drops the place). */
-typedef struct { int kind, wpx, hpx, rows, cols; Img *im; GPtrArray *cells; } Snap;
+typedef struct { int kind, wpx, hpx, rows, cols, hdr, border; Img *im; GPtrArray *cells; } Snap;
 struct Hist { char *t; GPtrArray *objs; GPtrArray *runs; };
 typedef struct { int a, b; char *t; } HstRun;   /* (a stretch of the writing with the same tags: an entry keeps them, so undo brings a page's formatting back with its text) */
 static void hst_run_free(gpointer p) { HstRun *r = p; g_free(r->t); g_free(r); }
@@ -890,7 +930,8 @@ static Snap *snap_of(WpObj *o)
 {
 	Snap *s = g_new0(Snap, 1);
 	if (!o) return s;   /* (kind 0: a place the list has already lost; it takes its turn in the order, and no place back) */
-	s->kind = o->kind; s->wpx = o->wpx; s->hpx = o->hpx; s->rows = o->rows; s->cols = o->cols; s->im = img_ref(o->im);
+	s->kind = o->kind; s->wpx = o->wpx; s->hpx = o->hpx; s->rows = o->rows; s->cols = o->cols; s->hdr = o->hdr; s->border = o->border;
+	s->im = img_ref(o->im);
 	if (o->kind == OBJ_TABLE) {
 		s->cells = g_ptr_array_new_with_free_func(g_free);
 		for (int r = 0; r < o->rows; r++) for (int c = 0; c < o->cols; c++) g_ptr_array_add(s->cells, g_strdup(cell_text(o, r, c)));
@@ -972,7 +1013,8 @@ static int hist_same(Hist *a, Hist *b)
 	if (!a || !b || strcmp(a->t, b->t) || a->objs->len != b->objs->len) return 0;
 	for (guint i = 0; i < a->objs->len; i++) {
 		Snap *x = g_ptr_array_index(a->objs, i), *y = g_ptr_array_index(b->objs, i);
-		if (x->kind != y->kind || x->wpx != y->wpx || x->hpx != y->hpx || x->rows != y->rows || x->cols != y->cols) return 0;
+		if (x->kind != y->kind || x->wpx != y->wpx || x->hpx != y->hpx || x->rows != y->rows || x->cols != y->cols ||
+			x->hdr != y->hdr || x->border != y->border) return 0;
 		if (x->kind != OBJ_TABLE) continue;
 		for (guint k = 0; k < x->cells->len; k++) if (strcmp(g_ptr_array_index(x->cells, k), g_ptr_array_index(y->cells, k))) return 0;
 	}
@@ -1000,7 +1042,8 @@ static void hist_empty(void) { HIST_T[0] = hist_now(); HIST_N = HIST_I = 1; }
 static void snap_place(GtkTextChildAnchor *a, Snap *s)
 {
 	WpObj *o = g_new0(WpObj, 1);
-	o->kind = s->kind; o->wpx = s->wpx; o->hpx = s->hpx; o->rows = s->rows; o->cols = s->cols; o->im = img_ref(s->im);
+	o->kind = s->kind; o->wpx = s->wpx; o->hpx = s->hpx; o->rows = s->rows; o->cols = s->cols; o->hdr = s->hdr; o->border = s->border;
+	o->im = img_ref(s->im);
 	if (s->kind == OBJ_PIC) {
 		GdkPixbufLoader *l = gdk_pixbuf_loader_new(); GdkPixbuf *pb = NULL;
 		if (s->im && gdk_pixbuf_loader_write(l, s->im->d, s->im->n, NULL) && gdk_pixbuf_loader_close(l, NULL))
@@ -1008,7 +1051,7 @@ static void snap_place(GtkTextChildAnchor *a, Snap *s)
 		if (pb) { g_object_ref(pb); o->w = gtk_image_new_from_pixbuf(pb); g_object_unref(pb); }
 		g_object_unref(l);
 	} else {
-		GtkWidget *g = gtk_grid_new(); gtk_style_context_add_class(gtk_widget_get_style_context(g), "wp-table");
+		GtkWidget *g = table_grid(s->border);
 		for (int r = 0; r < s->rows; r++) for (int c = 0; c < s->cols; c++) {
 			guint k = (guint)(r * s->cols + c);
 			gtk_grid_attach(GTK_GRID(g), cell_new(r, c, s->cells && k < s->cells->len ? g_ptr_array_index(s->cells, k) : NULL), c, r, 1, 1);
@@ -1151,20 +1194,20 @@ static void insert_picture_data(guchar *data, gsize len)
 	if (gdk_pixbuf_loader_write(l, data, len, NULL) && gdk_pixbuf_loader_close(l, NULL)) pb = gdk_pixbuf_loader_get_pixbuf(l);
 	if (!pb) { g_object_unref(l); g_free(data); say(rui_tr("That picture could not be read.")); return; }
 	g_object_ref(pb);
-	obj_add(gtk_image_new_from_pixbuf(pb), OBJ_PIC, data, len, gdk_pixbuf_get_width(pb), gdk_pixbuf_get_height(pb), 0, 0);
+	obj_add(gtk_image_new_from_pixbuf(pb), OBJ_PIC, data, len, gdk_pixbuf_get_width(pb), gdk_pixbuf_get_height(pb), 0, 0, 0, 0);
 	g_object_unref(pb); g_object_unref(l);
 }
-static void insert_table_text(GPtrArray *rows)
+static void insert_table_text(GPtrArray *rows, int hdr, int border)
 {
 	int nr = (int)rows->len, nc = 0;
 	for (int r = 0; r < nr; r++) { GPtrArray *row = g_ptr_array_index(rows, r); if ((int)row->len > nc) nc = (int)row->len; }
 	if (nr <= 0 || nc <= 0) return;
-	GtkWidget *g = gtk_grid_new(); gtk_style_context_add_class(gtk_widget_get_style_context(g), "wp-table");
+	GtkWidget *g = table_grid(border);
 	for (int r = 0; r < nr; r++) { GPtrArray *row = g_ptr_array_index(rows, r);
 		for (int c = 0; c < nc; c++) {
 			gtk_grid_attach(GTK_GRID(g), cell_new(r, c, c < (int)row->len ? g_ptr_array_index(row, c) : NULL), c, r, 1, 1);
 		} }
-	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, nr, nc);
+	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, nr, nc, hdr, border);
 }
 static int par_close(const char *t)
 {
@@ -1180,7 +1223,7 @@ static void open_doc(const char *path)
 	if (!strncmp(p, "<!--wp:", 7)) { char *e = strstr(p, "-->"); if (e) p = e + 3; }
 	{ char *s = strstr(p, "<style data-wp"); if (s) { char *e = strstr(s, "</style>"); if (e) p = e + 8; } }
 	const char *stk[32]; int sp = 0;
-	GPtrArray *rows = NULL, *cells = NULL; GString *cell = NULL; int in_table = 0;
+	GPtrArray *rows = NULL, *cells = NULL; GString *cell = NULL; int in_table = 0, thdr = 0, tnb = 0;
 	char pend[24] = "p";
 	GtkTextIter at; gtk_text_buffer_get_start_iter(BUF, &at);
 	GtkTextMark *pstart = gtk_text_buffer_create_mark(BUF, "wp-p", &at, TRUE);
@@ -1207,9 +1250,15 @@ static void open_doc(const char *path)
 		size_t tl = (size_t)(e - p + 1); char tag[512];
 		if (tl >= sizeof tag) { p = e + 1; continue; }
 		memcpy(tag, p, tl); tag[tl] = 0; p = e + 1;
-		if (!strncmp(tag, "<table", 6)) { in_table = 1; rows = g_ptr_array_new(); cells = NULL; cell = NULL; continue; }
+		if (!strncmp(tag, "<table", 6)) {
+			in_table = 1; rows = g_ptr_array_new(); cells = NULL; cell = NULL; thdr = 0; tnb = 0;
+			const char *cl = strstr(tag, "class=\"");   /* (the page's .wp-t nb: a table with no borders) */
+			if (cl) { cl += 7; const char *ce = strchr(cl, '"');
+				if (ce && ce - cl < 60) { char cs[60]; memcpy(cs, cl, (gsize)(ce - cl)); cs[ce - cl] = 0; if (strstr(cs, "nb")) tnb = 1; } }
+			continue;
+		}
 		if (!strncmp(tag, "</table", 7)) {
-			if (rows && rows->len) { cursor_end(); insert_table_text(rows); }
+			if (rows && rows->len) { cursor_end(); insert_table_text(rows, thdr, !tnb); }
 			if (rows) {
 				for (guint r = 0; r < rows->len; r++) { GPtrArray *row = g_ptr_array_index(rows, r);
 					for (guint c = 0; c < row->len; c++) g_free(g_ptr_array_index(row, c)); g_ptr_array_free(row, TRUE); }
@@ -1223,7 +1272,9 @@ static void open_doc(const char *path)
 			if (cells && rows) g_ptr_array_add(rows, cells);
 			cells = NULL; continue;
 		}
-		if (!strncmp(tag, "<td", 3) || !strncmp(tag, "<th", 3)) { if (!cells) cells = g_ptr_array_new(); if (cell) g_string_free(cell, TRUE); cell = g_string_new(NULL); continue; }
+		if (!strncmp(tag, "<td", 3) || !strncmp(tag, "<th", 3)) {
+			if (!strncmp(tag, "<th", 3) && rows && !rows->len) thdr = 1;   /* (its first row's <th>: the table's heading row) */
+			if (!cells) cells = g_ptr_array_new(); if (cell) g_string_free(cell, TRUE); cell = g_string_new(NULL); continue; }
 		if (!strncmp(tag, "</td", 4) || !strncmp(tag, "</th", 4)) {
 			if (cells) g_ptr_array_add(cells, g_strdup(cell ? cell->str : ""));
 			if (cell) { g_string_free(cell, TRUE); cell = NULL; }
@@ -1315,7 +1366,7 @@ static void menu_do(const Mi *s)
 	case OP_OPEN: choose_open(); break;
 	case OP_SAVE: save_now(); break;
 	case OP_PICTURE: choose_picture(); break;
-	case OP_TABLE: insert_table(3, 3); break;   /* (the page's own default table, until its dialog comes) */
+	case OP_TABLE: table_dlg(); break;   /* (the page's own dialog: its counts, its heading row and its borders) */
 	case OP_STATS: show_stats(); break;
 	case OP_KEYS: show_keys(); break;
 	case OP_ABOUT:
@@ -1565,7 +1616,7 @@ static GtkWidget *find_btn(GtkWidget *w, const char *label)
 static gboolean answer_hook(gpointer d)
 {
 	const char *f = d;
-	if (!ASK) return G_SOURCE_CONTINUE;
+	if (!rui_dialog_box()) return G_SOURCE_CONTINUE;   /* (a form's buttons are pressed as a question's are) */
 	char *lab = NULL; if (!g_file_get_contents(f, &lab, NULL, NULL)) return G_SOURCE_CONTINUE;
 	g_strstrip(lab);
 	if (*lab) { GtkWidget *b = find_btn(rui_dialog_box(), rui_tr(lab)); if (b) gtk_button_clicked(GTK_BUTTON(b)); }
@@ -1592,6 +1643,8 @@ int main(int argc, char **argv)
 	set_title();   /* (Untitled - WordPro, as the page opens its window) */
 	if (getenv("RUDOLF_WP_CLOSE")) g_timeout_add(2000, close_hook, NULL);   /* (the tests: the window's close, while anything is unsaved) */
 	if (getenv("RUDOLF_WP_ANSWER")) g_timeout_add(150, answer_hook, (gpointer)getenv("RUDOLF_WP_ANSWER"));   /* (the tests: the question's own buttons) */
+	{ const char *dl = getenv("RUDOLF_WP_DIALOG");   /* (the tests: a dialog of the page's opened as its menu opens it) */
+	  if (dl && *dl) g_timeout_add(400, dialog_hook, (gpointer)dl); }
 	counts(); state_soon();
 	gtk_main(); return 0;
 }
