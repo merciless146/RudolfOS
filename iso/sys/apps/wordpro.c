@@ -447,9 +447,8 @@ static void build_status(void)
 }
 /* the page's keys (Ctrl+B, I, U, Z, Y, F). An accelerator group is used, not a key handler on the window: the writing
    takes Ctrl+B and Ctrl+I itself (they move the cursor, as every GTK text view does), so a handler there never saw them. */
-static void accel(GtkAccelGroup *g, GObject *o, guint kv, GdkModifierType m, gpointer d)
+static gboolean accel_do(gpointer d)
 {
-	(void)g; (void)o; (void)kv; (void)m;
 	switch (GPOINTER_TO_INT(d)) {
 	case 'b': apply_name("b"); break;
 	case 'i': apply_name("i"); break;
@@ -459,7 +458,12 @@ static void accel(GtkAccelGroup *g, GObject *o, guint kv, GdkModifierType m, gpo
 	case 'f': gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); break;
 	default: break;
 	}
+	return G_SOURCE_REMOVE;
 }
+/* (done once the key event is over: GTK is still inside its own handling of it when an accelerator fires, and a tag
+   applied there is applied to iterators GTK is about to make stale) */
+static void accel(GtkAccelGroup *g, GObject *o, guint kv, GdkModifierType m, gpointer d)
+{(void)g; (void)o; (void)kv; (void)m; g_idle_add(accel_do, d);}
 int main(int argc, char **argv)
 {
 	rui_init(&argc, &argv, "wordpro");
