@@ -165,7 +165,7 @@ static void on_align(GtkWidget *b, gpointer d)
 /* bullets, numbering and the indent: the page's block commands, on each line of the choice */
 static void line_prefix(const char *kind)
 {
-	GtkTextIter s, e; if (!need_sel()) return;
+	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;   /* (the choice itself: its end was read unfilled) */
 	int end = gtk_text_iter_get_offset(&e); gtk_text_iter_set_line_offset(&s, 0); int n = 0;
 	for (;;) {
 		GtkTextIter line = s;
