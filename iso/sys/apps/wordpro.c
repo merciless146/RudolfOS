@@ -631,6 +631,33 @@ static void obj_add(GtkWidget *w, int kind, guchar *img, gsize img_len, int wpx,
 	counts(); upd_sel(); state_soon(); gtk_widget_grab_focus(ED);
 	hist_push();
 }
+/* (a table's cell: its writing is part of the page, so typing in it is a step of the history as typing in the page is --
+   the entry keeps the cells, and the step is pushed as the cell's text changes. The page's undo and redo are read in the
+   cell too, while the cursor stands in it, as a person's would: the writing is one, and so is its history) */
+static void on_cell(GtkEditable *e, gpointer d)
+{
+	(void)e; (void)d; if (SILENT) return;
+	hist_push(); counts(); state_soon();
+}
+static gboolean cell_key(GtkWidget *w, GdkEventKey *e, gpointer d)
+{
+	(void)w; (void)d; if (!(e->state & GDK_CONTROL_MASK)) return FALSE;
+	if (e->keyval == GDK_KEY_z) { hist_undo(); return TRUE; }
+	if (e->keyval == GDK_KEY_y) { hist_redo(); return TRUE; }
+	return FALSE;
+}
+static GtkWidget *cell_new(int r, int c, const char *t)
+{
+	GtkWidget *e = gtk_entry_new(); gtk_entry_set_width_chars(GTK_ENTRY(e), 8);
+	gtk_widget_set_size_request(e, (int)lround(rui_px(96)), (int)lround(rui_px(26)));
+	gtk_style_context_add_class(gtk_widget_get_style_context(e), "wp-cell");
+	g_object_set_data(G_OBJECT(e), "wp-cell", GINT_TO_POINTER(r * 100 + c + 1));   /* (+1: a cell at 0 would be a NULL pointer) */
+	if (t && *t) gtk_entry_set_text(GTK_ENTRY(e), t);
+	/* (the signals go on once the text is in: a cell being filled is not a step, what the typist changes is) */
+	g_signal_connect(e, "changed", G_CALLBACK(on_cell), NULL);
+	g_signal_connect(e, "key-press-event", G_CALLBACK(cell_key), NULL);
+	return e;
+}
 static void insert_picture(const char *path)
 {
 	gchar *data = NULL; gsize len = 0;
@@ -640,12 +667,7 @@ static void insert_picture(const char *path)
 static void insert_table(int rows, int cols)
 {
 	GtkWidget *g = gtk_grid_new(); gtk_style_context_add_class(gtk_widget_get_style_context(g), "wp-table");
-	for (int r = 0; r < rows; r++) for (int c = 0; c < cols; c++) {
-		GtkWidget *e = gtk_entry_new(); gtk_entry_set_width_chars(GTK_ENTRY(e), 8);
-		gtk_widget_set_size_request(e, (int)lround(rui_px(96)), (int)lround(rui_px(26)));
-		gtk_style_context_add_class(gtk_widget_get_style_context(e), "wp-cell");
-		gtk_grid_attach(GTK_GRID(g), e, c, r, 1, 1);
-	}
+	for (int r = 0; r < rows; r++) for (int c = 0; c < cols; c++) gtk_grid_attach(GTK_GRID(g), cell_new(r, c, NULL), c, r, 1, 1);
 	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, rows, cols);
 }
 static void choose_picture(void)
@@ -854,13 +876,8 @@ static void snap_place(GtkTextChildAnchor *a, Snap *s)
 	} else {
 		GtkWidget *g = gtk_grid_new(); gtk_style_context_add_class(gtk_widget_get_style_context(g), "wp-table");
 		for (int r = 0; r < s->rows; r++) for (int c = 0; c < s->cols; c++) {
-			GtkWidget *e = gtk_entry_new(); gtk_entry_set_width_chars(GTK_ENTRY(e), 8);
-			gtk_widget_set_size_request(e, (int)lround(rui_px(96)), (int)lround(rui_px(26)));
-			gtk_style_context_add_class(gtk_widget_get_style_context(e), "wp-cell");
 			guint k = (guint)(r * s->cols + c);
-			if (s->cells && k < s->cells->len) gtk_entry_set_text(GTK_ENTRY(e), g_ptr_array_index(s->cells, k));
-			g_object_set_data(G_OBJECT(e), "wp-cell", GINT_TO_POINTER(r * 100 + c + 1));
-			gtk_grid_attach(GTK_GRID(g), e, c, r, 1, 1);
+			gtk_grid_attach(GTK_GRID(g), cell_new(r, c, s->cells && k < s->cells->len ? g_ptr_array_index(s->cells, k) : NULL), c, r, 1, 1);
 		}
 		o->w = g;
 	}
@@ -871,6 +888,7 @@ static void hist_apply(Hist *h)
 {
 	if (!h) return;
 	SILENT = 1;
+	if (ED) gtk_widget_grab_focus(ED);   /* (the keys are the page's again before the cell that took them goes) */
 	obj_clear();
 	gtk_text_buffer_set_text(BUF, h->t, -1);
 	int n = (int)h->objs->len, have = 0; int *off = g_new0(int, n > 0 ? (gsize)n : 1);
@@ -1005,12 +1023,7 @@ static void insert_table_text(GPtrArray *rows)
 	GtkWidget *g = gtk_grid_new(); gtk_style_context_add_class(gtk_widget_get_style_context(g), "wp-table");
 	for (int r = 0; r < nr; r++) { GPtrArray *row = g_ptr_array_index(rows, r);
 		for (int c = 0; c < nc; c++) {
-			GtkWidget *e = gtk_entry_new(); gtk_entry_set_width_chars(GTK_ENTRY(e), 8);
-			gtk_widget_set_size_request(e, (int)lround(rui_px(96)), (int)lround(rui_px(26)));
-			gtk_style_context_add_class(gtk_widget_get_style_context(e), "wp-cell");
-			if (c < (int)row->len) gtk_entry_set_text(GTK_ENTRY(e), g_ptr_array_index(row, c));
-			g_object_set_data(G_OBJECT(e), "wp-cell", GINT_TO_POINTER(r * 100 + c + 1));   /* (+1: a cell at 0 would be a NULL pointer) */
-			gtk_grid_attach(GTK_GRID(g), e, c, r, 1, 1);
+			gtk_grid_attach(GTK_GRID(g), cell_new(r, c, c < (int)row->len ? g_ptr_array_index(row, c) : NULL), c, r, 1, 1);
 		} }
 	obj_add(g, OBJ_TABLE, NULL, 0, 0, 0, nr, nc);
 }

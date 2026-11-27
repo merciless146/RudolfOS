@@ -222,7 +222,42 @@ i=0; while [ $i -lt 12 ]; do
 grep -q '^obj table 2x2$' "$ST8" && grep -q '^words 4$' "$ST8" && grep -q '^chars 4$' "$ST8"; RC=$?
 kill $WPP8 2>/dev/null
 ok "19. undo takes the table away, and redo brings the table back with its cells" "$([ $RC = 0 ] && [ "$B" = 1 ] && echo 1)" "the undo took it away: $B, after redo $(grep -E '^(objs|obj|words|chars|hist) ' "$ST8" 2>/dev/null | tr '\n' ' ')(window $W8 of $WPP8, focus $F8)"
+# (a cell's writing is part of the page, so a change in it is a step of the history as typed text is: Ctrl+Z in the cell
+#  takes the letters back and Ctrl+Y puts them in again, the cursor still standing in the cell as a person's would. The
+#  click that puts the cursor in the table's first cell is tried down the page: one that misses lands in the writing, and
+#  what it typed there is taken back before the next try. A page holding only the table leaves the writing empty, which is
+#  how a miss is told from a hit -- letters in a cell are the page's words, never its text)
+ST9=$T/state9.txt; rm -f "$ST9"
+RUDOLF_WP_STATE=$ST9 RUDOLF_WP_OPEN="$T/tab.DOC" DISPLAY=$DSP "$BIN" >"$T/wp9.log" 2>&1 & WPP9=$!
+i=0; while [ $i -lt 40 ] && ! grep -q '^obj table 2x2$' "$ST9" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+W9=""; i=0; while [ $i -lt 40 ] && [ -z "$W9" ]; do
+	W9=$(DISPLAY=$DSP xdotool search --onlyvisible --pid "$WPP9" 2>/dev/null | tail -1)
+	[ -n "$W9" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+[ -n "$W9" ] && DISPLAY=$DSP xdotool windowraise "$W9" 2>/dev/null
+i=0; while [ $i -lt 60 ] && [ -n "$W9" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W9" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W9" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+C=0
+for Y in 200 215 230 245 260 275 290 305 320 335 350; do
+	[ -n "$W9" ] || break
+	sleep 0.5
+	DISPLAY=$DSP xdotool mousemove --window "$W9" 210 $Y click 1; sleep 0.6
+	DISPLAY=$DSP xdotool type --delay 60 'x'; sleep 0.8
+	grep -q '^words 5$' "$ST9" && grep -q '^text $' "$ST9" && { C=1; break; }
+	DISPLAY=$DSP xdotool key ctrl+z; sleep 0.9
+done
+U=0
+i=0; while [ $i -lt 12 ]; do
+	DISPLAY=$DSP xdotool key ctrl+z; sleep 0.5
+	grep -q '^words 4$' "$ST9" && { U=1; break; }; i=$((i+1)); done
+i=0; while [ $i -lt 12 ]; do
+	DISPLAY=$DSP xdotool key ctrl+y; sleep 0.5
+	grep -q '^words 5$' "$ST9" && break; i=$((i+1)); done
+ALIVE9=$(kill -0 $WPP9 2>/dev/null && echo alive || echo gone)
+grep -q '^obj table 2x2$' "$ST9" && grep -q '^words 5$' "$ST9" && grep -q '^chars 5$' "$ST9" && grep -q '^text $' "$ST9"; RC=$?
+kill $WPP9 2>/dev/null
+ok "20. a change in a table's cell is a step of the history: Ctrl+Z takes it back, Ctrl+Y puts it in again" "$([ $RC = 0 ] && [ "$C" = 1 ] && [ "$U" = 1 ] && echo 1)" "into a cell: $C, the undo took it back: $U, after redo $(grep -E '^(objs|obj|words|chars|hist) ' "$ST9" 2>/dev/null | tr '\n' ' ')(window $W9 of $WPP9, the app $ALIVE9)"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
+
 for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
 echo "$NP passed, $NF failed"; [ $NF = 0 ]
