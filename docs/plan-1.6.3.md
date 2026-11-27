@@ -828,6 +828,13 @@ budget), `systools/pwconf/51-no-alsa.lua` for WirePlumber 0.4 and `51-no-alsa.co
 `FATAL` list (a capture build without the plug-in lists a camera it cannot open), and
 `.github/workflows/pipewire-check.yml`, which installs the real packages, packages the layer, starts it under the
 layer's own configuration and fails on any audio node or ALSA device.
+**The capture rebuild, and the two switches it meets.** `addwebkit.sh` now names `gstreamer1.0-pipewire` when it stops a
+build (its comment still said the plug-in was a warning), the Lite engine check installs the daemon's packages and holds
+the layer to its three capture plug-ins (pipewire, interleave, transcode, the first reaching libpipewire), and the
+self-test's `capture` line fails when the pipewire plug-in or the daemon is missing instead of saying the camera waits.
+Settings › Privacy › Camera's switch stops WirePlumber before unloading the camera's driver -- WirePlumber's v4l2 monitor
+keeps the device open, so every "camera off" would have answered "the camera is in use" -- and starts it again when the
+camera comes back, which `iso/qt/host/camwp_t.sh` checks in the PipeWire check.
 
 **The fault.** On the Native desktop Camera answers "No camera is available or access is blocked" with the privacy switch
 on, the check's microphone reads −120 dB (all-zero samples) and Voice Recorder records nothing; on the same build and
@@ -873,10 +880,11 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
 5. **Test on the Vivobook** (checklist V2 and V3): the camera's preview at 640×480, a photo and a 5 s video saved and
    opened. Then with PipeWire stopped, to see what the app says. Two checks for two paths: the hardware check's microphone
    step reads through WebAudio, so it needs `libgstinterleave.so` and should move off −120 dB; V1 and the Camera's
-   "Record video" (V3) are the Recorder, which needs `libgsttranscode.so` and should then save a clip. The self-test's `capture` line says whether the image has both plug-ins before either is tried,
-   and its pass names the camera's remaining wait on PipeWire. (Host test: `iso/qt/host/selftest_t.sh` 12a–12e, which holds the two
-   plug-ins in, takes each away, and checks the wait is said.) If either stays dead, its own log line names the factory that is
-   still missing.
+   "Record video" (V3) are the Recorder, which needs `libgsttranscode.so` and should then save a clip. The self-test's
+   `capture` line now asks for the camera's side too: with PipeWire in the image it fails when the pipewire plug-in or the
+   daemon is missing (the camera cannot capture), names which, and passes only with all three. (Host test:
+   `iso/qt/host/selftest_t.sh` 12a–12f, which holds the two microphone plug-ins in, then takes the camera's plug-in and
+   the daemon away, each named.) If either stays dead, its own log line names the factory that is still missing.
 6. **Cost:** two more daemons and their libraries, and their memory; read the native desktop's idle figure (checklist V42)
    before and after.
 

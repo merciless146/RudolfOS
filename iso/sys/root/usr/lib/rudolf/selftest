@@ -212,13 +212,16 @@ fi
 # image, not only on the build host that copied them: WebAudio's microphone path builds `deinterleave` (the interleave
 # plug-in) and MediaRecorder builds `uritranscodebin` (transcode), so an image without either has a level meter stuck at
 # -120 dB and a Recorder whose button does nothing. addwebkit.sh refuses to make such a build, but a copy that failed
-# there, or an image made another way, is only known by asking the image. The camera's plug-in has no server to reach
-# until plan Part 9 installs PipeWire, so it is said, not failed.
+# there, or an image made another way, is only known by asking the image. 1.6.3, plan Part 9: the camera's is asked too,
+# now that the image has its server -- WebKitGTK 2.52 captures only through PipeWire, so the plug-in without the daemon,
+# or the daemon without the plug-in, leaves Camera saying there is no camera.
 if [ ! -x "${ST_WEBKIT:-/usr/bin/rudolf-webkit}" ]; then skip capture "not in this Rudolf OS"
 else gs=$ML/gstreamer-1.0; bad=""; for p in interleave transcode; do [ -e "$gs/libgst$p.so" ] || bad="$bad $p"; done
-	pw=""; [ -e "$gs/libgstpipewire.so" ] || pw="; the camera waits on PipeWire (plan Part 9)"
+	pw=""; [ -e "$gs/libgstpipewire.so" ] || pw="the pipewire plug-in"
+	[ -x "${ST_PIPEWIRE:-/usr/bin/pipewire}" ] || pw="${pw:+$pw and }the PipeWire daemon"
 	if [ -n "$bad" ]; then fail capture "missing:$bad (the microphone's level meters and the Recorder need them: findings N35; Chromium is used for the camera and calls)"
-	else pass capture "the microphone's level meters and the Recorder have their plug-ins (interleave, transcode)$pw"; fi
+	elif [ -n "$pw" ]; then fail capture "the microphone and the Recorder have their plug-ins, but $pw is missing: the camera cannot capture (plan Part 9)"
+	else pass capture "the microphone's level meters, the Recorder and the camera have what they build (interleave, transcode, PipeWire)"; fi
 fi
 
 # ---- 1.6.0: OpenGL for Linux apps and games (GLX): the X server on the graphics card loads Mesa's driver for it. 1.5.9's
