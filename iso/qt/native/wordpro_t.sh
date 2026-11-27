@@ -54,5 +54,12 @@ two'
 sleep 1
 grep -q '^words 2$' "$ST" && grep -q '^chars 6$' "$ST"
 ok "6. a second line is counted as text, its newline not a character" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(words|chars|text) ' "$ST")"
+# the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
+mkdir -p "$T/page/iso/sys/apps" "$T/page/iso/sys/ui" "$T/page/desktop"
+sed 's/const WP_STYLES=/const WP_STYLES_GONE=/' "$R/desktop/base_v24.html" > "$T/page/desktop/base_v24.html"
+cp "$R/iso/sys/apps/mkwordpro.py" "$T/page/iso/sys/apps/mkwordpro.py"
+python3 "$T/page/iso/sys/apps/mkwordpro.py" "$T/gone.h" >"$T/mk.log" 2>&1; RC=$?
+[ $RC = 1 ] && grep -q 'WP_STYLES' "$T/mk.log"
+ok "7. mkwordpro.py refuses a page it cannot read (no quiet default)" "([ $RC = 1 ] && grep -q WP_STYLES "$T/mk.log" && echo 1)" "$RC $(cat "$T/mk.log")"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 echo "$NP passed, $NF failed"; [ $NF = 0 ]
