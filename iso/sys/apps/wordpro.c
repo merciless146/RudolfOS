@@ -210,9 +210,8 @@ static void on_clear(GtkWidget *b, gpointer d)
 	gtk_text_buffer_remove_all_tags(BUF, &s, &e); counts(); state_soon();
 }
 /* undo and redo: GTK 3's text buffer keeps no history of its own, so the writing is kept step by step -- and what stands at
-   each of its places with it (the page's undo and redo, bounded to the last 120 changes). An entry is the text *with* its
-   placeholder characters and a copy of each object beside it, so an undo takes a picture or a table away and a redo makes
-   the object itself again: a place is never put back with nothing behind it. */
+   each of its places with it (the page's undo and redo, bounded to the last 120 changes). What an entry is, and how it is
+   put back, is said at the entry itself, below the objects. */
 #define HIST 120
 typedef struct Hist Hist;   /* (the text, and what stands at each of its places: made below, after the objects are) */
 static Hist *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
@@ -272,19 +271,6 @@ static void on_find_close(GtkWidget *b, gpointer d) { (void)b; (void)d; gtk_widg
 
 /* ------------------------------------------------------------------ the counts, and the state the tests read */
 static char *doc_text(void) { GtkTextIter s, e; gtk_text_buffer_get_start_iter(BUF, &s); gtk_text_buffer_get_end_iter(BUF, &e); return gtk_text_buffer_get_text(BUF, &s, &e, FALSE); }
-/* (what the writing is for the history: the same text, but with the place of every picture and table in it. get_text
-   leaves the placeholders out, which is right for the page's words and for a save -- and would lose where an object
-   stands in an entry, so an entry keeps them itself) */
-static char *hist_text(void)
-{
-	GString *o = g_string_new(NULL);
-	GtkTextIter i, e; gtk_text_buffer_get_start_iter(BUF, &i); gtk_text_buffer_get_end_iter(BUF, &e);
-	for (; gtk_text_iter_compare(&i, &e) < 0; gtk_text_iter_forward_char(&i)) {
-		gunichar c = gtk_text_iter_get_char(&i);
-		if (c == 0xFFFC) g_string_append(o, "\xef\xbf\xbc"); else g_string_append_unichar(o, c);
-	}
-	return g_string_free(o, FALSE);
-}
 /* (a picture or a table's place is the page's placeholder character, not a word and not a character of the writing) */
 static int words_of(const char *t) { int n = 0, in = 0; for (const char *p = t; *p; p++) {
 	if (!strncmp(p, "\xef\xbf\xbc", 3)) { p += 2; in = 0; continue; }
@@ -817,6 +803,19 @@ static Snap *snap_of(WpObj *o)
 	}
 	return s;
 }
+/* (what the writing is for the history: the same text, but with the place of every picture and table in it. get_text
+   leaves the placeholders out, which is right for the page's words and for a save -- and would lose where an object
+   stands in an entry, so an entry keeps them itself) */
+static char *hist_text(void)
+{
+	GString *o = g_string_new(NULL);
+	GtkTextIter i, e; gtk_text_buffer_get_start_iter(BUF, &i); gtk_text_buffer_get_end_iter(BUF, &e);
+	for (; gtk_text_iter_compare(&i, &e) < 0; gtk_text_iter_forward_char(&i)) {
+		gunichar c = gtk_text_iter_get_char(&i);
+		if (c == 0xFFFC) g_string_append(o, "\xef\xbf\xbc"); else g_string_append_unichar(o, c);
+	}
+	return g_string_free(o, FALSE);
+}
 static Hist *hist_now(void)
 {
 	Hist *h = g_new0(Hist, 1);
@@ -840,12 +839,7 @@ static int hist_same(Hist *a, Hist *b)
 }
 static void hist_free(Hist *h) { if (!h) return; g_free(h->t); g_ptr_array_free(h->objs, TRUE); g_free(h); }
 /* (the page as the window opens: the empty step undo walks back to, and the first thing put on the page can be undone) */
-static void hist_empty(void)
-{
-	Hist *h = g_new0(Hist, 1);
-	h->t = g_strdup(""); h->objs = g_ptr_array_new_with_free_func(snap_free);
-	HIST_T[0] = h; HIST_N = 1; HIST_I = 1;
-}
+static void hist_empty(void) { HIST_T[0] = hist_now(); HIST_N = HIST_I = 1; }
 static void snap_place(GtkTextChildAnchor *a, Snap *s)
 {
 	WpObj *o = g_new0(WpObj, 1);

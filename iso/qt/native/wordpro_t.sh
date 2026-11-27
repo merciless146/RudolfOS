@@ -158,24 +158,19 @@ grep -q '^words 2$' "$ST6" && grep -q '^chars 11$' "$ST6" && grep -q '^tags b' "
 kill $WPP6 2>/dev/null
 ok "17. ...and what was saved here opens and saves again as the very same document (the round trip)" "$([ $RC = 0 ] && echo 1)" "$(grep -E '^(words|chars|tags|objs|obj) ' "$ST6" 2>/dev/null); the second save is $( [ $SAME = 0 ] && echo 'the same bytes' || echo 'different' ) ($(stat -c %s "$T/out.DOC" 2>/dev/null) and $(stat -c %s "$T/out2.DOC" 2>/dev/null) bytes)"
 # (the picture is a step of the history: undo takes it away, redo brings the picture itself back -- not a place with
-#  nothing behind it. A copy of the app takes the keys: the same window, focused on this display as the first one was)
-# (the first window is taken down first: this copy has to be the only one on the display for its keys to be its own. The
-#  wrapper above is only the shell around gdb: the app itself is what holds the window, so it is the one stopped, by the
-#  pid the window gives, and the display is waited on until no WordPro is left)
+#  nothing behind it. The first window is taken down first, by the pid its window gives (the shell around gdb is not the
+#  app, and the app is what holds the window), and the display is waited on until no WordPro is left: this copy has to be
+#  the only one on the display for its keys to be its own. It runs as itself, so its pid is its window's.)
 kill $WPP 2>/dev/null
 P1=$(DISPLAY=$DSP xdotool getwindowpid "$WIN" 2>/dev/null); [ -n "$P1" ] && kill $P1 2>/dev/null
 i=0; while [ $i -lt 40 ] && [ -n "$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null)" ]; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 ST7=$T/state7.txt; rm -f "$ST7"
-# (under the same backtrace the first window has: if the undo itself is what stops the app, its reason is in the log)
-RUDOLF_WP_STATE=$ST7 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP sh -c '"$@"' sh $RUN "$BIN" >"$T/wp7.log" 2>&1 & WPP7=$!
+RUDOLF_WP_STATE=$ST7 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP "$BIN" >"$T/wp7.log" 2>&1 & WPP7=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-# (the first window is gone, so this copy is the only WordPro on the display; its window is looked for as it appears,
-#  never waited for without a limit: a search that never matches would hang the whole check)
+# (its window is looked for as it appears, a bounded number of tries: a search that never matches would hang the check)
 W7=""; i=0; while [ $i -lt 40 ] && [ -z "$W7" ]; do
-	W7=$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null | tail -1)
+	W7=$(DISPLAY=$DSP xdotool search --onlyvisible --pid "$WPP7" 2>/dev/null | tail -1)
 	[ -n "$W7" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-[ -n "$W7" ] || W7=$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null | tail -1)
-W7PID=$(DISPLAY=$DSP xdotool getwindowpid "$W7" 2>/dev/null)
 FOCUS=""
 [ -n "$W7" ] && DISPLAY=$DSP xdotool windowraise "$W7" 2>/dev/null
 i=0; while [ $i -lt 60 ] && [ -n "$W7" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W7" 2>/dev/null
@@ -195,7 +190,7 @@ i=0; while [ $i -lt 12 ]; do
 ALIVE=$(kill -0 $WPP7 2>/dev/null && echo alive || echo gone)
 grep -q '^objs 1$' "$ST7" && grep -q '^obj picture 40x30 [0-9][0-9]*$' "$ST7" && grep -q '^words 0$' "$ST7" && grep -q '^chars 0$' "$ST7"; RC=$?
 kill $WPP7 2>/dev/null
-ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(grep -E '^(objs|obj|words|chars|hist) ' "$ST7" 2>/dev/null | tr '\n' ' ')(window $W7, focus $FOCUS, the window's pid $W7PID, the app $ALIVE; $(tail -3 "$T/wp7.log" 2>/dev/null | tr '\n' ' '))"
+ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(grep -E '^(objs|obj|words|chars|hist) ' "$ST7" 2>/dev/null | tr '\n' ' ')(window $W7 of $WPP7, focus $FOCUS, the app $ALIVE; $(tail -3 "$T/wp7.log" 2>/dev/null | tr '\n' ' '))"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"
