@@ -59,7 +59,7 @@ Library's publish still sign on main; a computer on the new release trusts both 
 ### Part 1. The Office apps as native programs (moved from 1.6.2 Part 39, item 4)
 WordPro, SpreadsheetPro and PresentPro, about 130 MB each today as web windows (1.6.2 Part 38's readings), rewritten as
 native programs on librudolf-ui as the native Task Manager (1.6.2 #660) and native Settings (1.6.2 Part 39) were: each
-its own /usr/bin program (rudolf-wordpro, rudolf-sheets, rudolf-present), its checklist made from the web app's code and
+its own /usr/bin program (rudolf-wordpro, rudolf-sheetpro, rudolf-presentpro), its checklist made from the web app's code and
 tests, its windows screenshot-compared with the web version in Chromium mode (under 2 % different, light and dark, two
 accent colours), its memory at idle against the web version, built in the release build within the base layer's budget.
 - **The order:** WordPro first, then SpreadsheetPro, then PresentPro; one PR per app, or per part of an app when it is

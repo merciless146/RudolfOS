@@ -99,7 +99,7 @@ static int lay_has(const char *k, int ph)
    with -1 meaning "the layout's own", as the page's placeholder takes its look from its layout. */
 typedef struct { char *t; unsigned b, i, u, s; int ha, bl, fs; char *fc, *font; } Ph;
 typedef struct { char layout[16]; Ph ph[PH_N]; char *notes; int hidden; } Slide;
-typedef struct { Slide *sl; int n, cur; char *label; } Snap;
+typedef struct { Slide *sl; int n, cur; } Snap;
 
 typedef struct { const char *label, *key; int off, op; } Mi;   /* (a menu's row: its words, its key, and what it does) */
 typedef struct { const char *title; const Mi *items; int n; } Menu;
@@ -114,17 +114,18 @@ static int ZOOMF = 1; static int ZOOM = 100;
 static Snap *HS; static int HSN, HSC, HSI = -1;   /* (HSI: the step on the screen; -1 while the deck has no step) */
 static const char *MENU_OPEN; static int MENU_OPEN_N;
 static void state_soon(void); static void status_update(void); static void redraw(void);
-static void hist_push(const char *label); static void hist_undo(void); static void hist_redo(void);
+static void hist_push(void); static void hist_undo(void); static void hist_redo(void);
 static void goto_slide(int i); static void new_slide(void); static void dup_slide(void); static void del_slide(void);
 static void edit_begin(int ph); static void edit_commit(void); static void upd_tb(void); static void notes_sync(void);
 static void menu_do(const Mi *it); static int menus_n(void);
 static void redraw(void) { if (STAGE) { gtk_widget_queue_draw(STAGE); } if (LIST) gtk_widget_queue_draw(LIST); }
 
-static Slide *slide_new(void)
+static Slide slide_new(void)
 {
-	Slide *s = g_new0(Slide, 1);
-	g_strlcpy(s->layout, "title", sizeof s->layout);
-	for (int i = 0; i < PH_N; i++) { s->ph[i].ha = -1; s->ph[i].bl = -1; }
+	Slide s;
+	memset(&s, 0, sizeof s);
+	g_strlcpy(s.layout, "title", sizeof s.layout);
+	for (int i = 0; i < PH_N; i++) { s.ph[i].ha = -1; s.ph[i].bl = -1; }
 	return s;
 }
 static void slide_free(Slide *s)
@@ -164,7 +165,7 @@ static void deck_insert(int at, const Slide *proto)
 {
 	deck_ensure(SLN + 1);
 	if (at < SLN) memmove(SL + at + 1, SL + at, sizeof(Slide) * (size_t)(SLN - at));
-	if (proto) slide_copy(&SL[at], proto); else { SL[at] = *slide_new(); }
+	if (proto) slide_copy(&SL[at], proto); else SL[at] = slide_new();
 	SLN++;
 }
 static void deck_remove(int at)
@@ -176,7 +177,7 @@ static void deck_remove(int at)
 
 /* ------------------------------------------------------------------ the deck's history (the page's 60 steps, pushed
    after a change, as WordPro and SpreadsheetPro push theirs: the first undo goes back from what is on the screen) */
-static void snap_free(Snap *s) { for (int i = 0; i < s->n; i++) slide_free(&s->sl[i]); g_free(s->sl); g_free(s->label); memset(s, 0, sizeof *s); }
+static void snap_free(Snap *s) { for (int i = 0; i < s->n; i++) slide_free(&s->sl[i]); g_free(s->sl); memset(s, 0, sizeof *s); }
 static Slide *deck_copy(const Slide *src, int n)
 {
 	Slide *c = g_new0(Slide, n > 0 ? n : 1);
@@ -190,12 +191,12 @@ static void deck_take(Slide *src, int n)
 	if (CUR >= SLN) CUR = SLN - 1;
 	if (CUR < 0) CUR = 0;
 }
-static void hist_push(const char *label)
+static void hist_push(void)
 {
 	for (int i = HSI + 1; i < HSN; i++) snap_free(&HS[i]);
 	HSN = HSI + 1;
 	if (HSN == HSC) { HSC = HSC ? HSC * 2 : 16; HS = g_renew(Snap, HS, HSC); memset(HS + HSN, 0, sizeof(Snap) * (size_t)(HSC - HSN)); }
-	HS[HSN].sl = deck_copy(SL, SLN); HS[HSN].n = SLN; HS[HSN].cur = CUR; HS[HSN].label = g_strdup(label);
+	HS[HSN].sl = deck_copy(SL, SLN); HS[HSN].n = SLN; HS[HSN].cur = CUR;
 	HSI = HSN; HSN++;
 	if (HSN > HSTP) { snap_free(&HS[0]); memmove(HS, HS + 1, sizeof(Snap) * (size_t)(HSN - 1)); HSN--; HSI--; }
 }
@@ -437,9 +438,9 @@ static void status_update(void)
 }
 
 /* ------------------------------------------------------------------ what a change does */
-static void slide_changed(const char *label)
+static void slide_changed(void)
 {
-	hist_push(label);
+	hist_push();
 	list_size();
 	redraw();
 	status_update();
@@ -459,12 +460,12 @@ static void new_slide(void)
 {
 	/* (the page's addSlide: the slide before's layout, and a title slide is followed by a content one) */
 	const char *lay = strcmp(SL[CUR].layout, "title") ? SL[CUR].layout : "content";
-	Slide *s = slide_new();
-	g_strlcpy(s->layout, lay, sizeof s->layout);
-	deck_insert(CUR + 1, s);
-	slide_free(s);
+	Slide s = slide_new();
+	g_strlcpy(s.layout, lay, sizeof s.layout);
+	deck_insert(CUR + 1, &s);
+	slide_free(&s);
 	goto_slide(CUR + 1);
-	slide_changed("New slide");
+	slide_changed();
 }
 static void dup_slide(void)
 {
@@ -472,7 +473,7 @@ static void dup_slide(void)
 	deck_insert(CUR + 1, &tmp);
 	slide_free(&tmp);
 	goto_slide(CUR + 1);
-	slide_changed("Duplicate slide");
+	slide_changed();
 }
 static void del_slide(void)
 {
@@ -480,13 +481,13 @@ static void del_slide(void)
 	deck_remove(CUR);
 	if (CUR >= SLN) CUR = SLN - 1;
 	goto_slide(CUR);
-	slide_changed("Delete slide");
+	slide_changed();
 }
 static void set_layout(const char *key)
 {
 	layout_set(&SL[CUR], key);
 	goto_slide(CUR);
-	slide_changed("Layout");
+	slide_changed();
 }
 static void toggle_style(int k)
 {
@@ -494,14 +495,14 @@ static void toggle_style(int k)
 	if (!lay_has(SL[CUR].layout, PHCUR)) return;
 	unsigned *f = k == 0 ? &p->b : k == 1 ? &p->i : k == 2 ? &p->u : &p->s;
 	*f = !*f;
-	upd_tb(); slide_changed("Text style");
+	upd_tb(); slide_changed();
 }
 static void set_align(int ha)
 {
 	Ph *p = &SL[CUR].ph[PHCUR];
 	if (!lay_has(SL[CUR].layout, PHCUR)) return;
 	p->ha = ha;
-	upd_tb(); slide_changed("Align");
+	upd_tb(); slide_changed();
 }
 static void set_list(int mode)
 {
@@ -511,14 +512,14 @@ static void set_list(int mode)
 	int cur = p->bl >= 0 ? p->bl : 0;
 	for (int i = 0; i < n; i++) if (b[i].ph == PHCUR) cur = p->bl >= 0 ? p->bl : b[i].bullets;
 	p->bl = cur == mode ? 0 : mode;   /* (the page's act.ul/act.ol: the item again takes the list away) */
-	upd_tb(); slide_changed(mode == 1 ? "Bullets" : "Numbering");
+	upd_tb(); slide_changed();
 }
 static void set_text(int ph, const char *t)
 {
 	Ph *p = &SL[CUR].ph[ph];
 	g_free(p->t);
 	p->t = t && *t ? g_strdup(t) : NULL;
-	slide_changed("Edit text");
+	slide_changed();
 }
 static void upd_tb(void)
 {
@@ -745,7 +746,7 @@ static void on_font(GtkComboBox *c, gpointer d)
 	if (i < 0 || i >= NPPFONTS || !lay_has(SL[CUR].layout, PHCUR)) return;
 	g_free(SL[CUR].ph[PHCUR].font);
 	SL[CUR].ph[PHCUR].font = g_strdup(PP_FONTS[i]);
-	slide_changed("Font");
+	slide_changed();
 }
 static void on_fsize(GtkComboBox *c, gpointer d)
 {
@@ -754,7 +755,7 @@ static void on_fsize(GtkComboBox *c, gpointer d)
 	int i = gtk_combo_box_get_active(c);
 	if (i < 0 || i >= NPPSIZES || !lay_has(SL[CUR].layout, PHCUR)) return;
 	SL[CUR].ph[PHCUR].fs = PP_SIZES[i];
-	slide_changed("Font size");
+	slide_changed();
 }
 static void on_colour(GtkColorButton *cb, gpointer d)
 {
@@ -765,7 +766,7 @@ static void on_colour(GtkColorButton *cb, gpointer d)
 	char *hex = g_strdup_printf("#%02x%02x%02x", (int)lround(c.red * 255), (int)lround(c.green * 255), (int)lround(c.blue * 255));
 	g_free(SL[CUR].ph[PHCUR].fc);
 	SL[CUR].ph[PHCUR].fc = hex;
-	slide_changed("Text colour");
+	slide_changed();
 }
 
 /* ------------------------------------------------------------------ the eight menus, with the page's own rows */
@@ -917,12 +918,12 @@ static void menu_do(const Mi *it)
 {
 	switch (it->op) {
 	case OP_NEW: {
-		Slide *s = slide_new();
+		Slide s = slide_new();
 		for (int i = 0; i < SLN; i++) slide_free(&SL[i]);
 		g_free(SL); SL = NULL; SLN = 0; SLC = 0;
-		deck_insert(0, s); slide_free(s);
+		deck_insert(0, &s); slide_free(&s);
 		CUR = 0;
-		goto_slide(0); slide_changed("New");
+		goto_slide(0); slide_changed();
 		break; }
 	case OP_CLOSE: gtk_window_close(GTK_WINDOW(W->win)); break;
 	case OP_UNDO: hist_undo(); break;
@@ -932,7 +933,7 @@ static void menu_do(const Mi *it)
 	case OP_DELSLIDE: del_slide(); break;
 	case OP_HIDESLIDE:
 		SL[CUR].hidden = !SL[CUR].hidden;
-		slide_changed("Hide slide");
+		slide_changed();
 		break;
 	case OP_LAYOUT: {
 		/* (the page's Layout submenu: the eight layouts, in the page's order) */
@@ -1325,7 +1326,7 @@ static void do_one(const char *c)
 	if (!strcmp(c, "new")) new_slide();
 	else if (!strcmp(c, "dup")) dup_slide();
 	else if (!strcmp(c, "del")) del_slide();
-	else if (!strcmp(c, "hide")) { SL[CUR].hidden = !SL[CUR].hidden; slide_changed("Hide slide"); }
+	else if (!strcmp(c, "hide")) { SL[CUR].hidden = !SL[CUR].hidden; slide_changed(); }
 	else if (!strcmp(c, "bold")) toggle_style(0);
 	else if (!strcmp(c, "ital")) toggle_style(1);
 	else if (!strcmp(c, "under")) toggle_style(2);
@@ -1367,7 +1368,7 @@ int main(int argc, char **argv)
 	css();
 	W = rui_window("presentpro", "PresentPro", 1060, 700);
 	deck_ensure(1);
-	{ Slide *z = slide_new(); SL[0] = *z; g_free(z); }
+	SL[0] = slide_new();
 	SLN = 1; CUR = 0; PHCUR = PH_TITLE;
 	build_menubar(); build_toolbar(); build_panes(); build_status();
 	gtk_window_set_title(GTK_WINDOW(W->win), "Untitled presentation - PresentPro");
@@ -1376,7 +1377,7 @@ int main(int argc, char **argv)
 	gtk_widget_hide(EDF);
 	READY = 1;
 	goto_slide(0);
-	hist_push("Start");
+	hist_push();
 	status_update();
 	gtk_widget_grab_focus(STAGE);
 	{
