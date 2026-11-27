@@ -195,7 +195,7 @@ i=0; while [ $i -lt 12 ]; do
 ALIVE=$(kill -0 $WPP7 2>/dev/null && echo alive || echo gone)
 grep -q '^objs 1$' "$ST7" && grep -q '^obj picture 40x30 [0-9][0-9]*$' "$ST7" && grep -q '^words 0$' "$ST7" && grep -q '^chars 0$' "$ST7"; RC=$?
 kill $WPP7 2>/dev/null
-ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(tr '\n' '|' < "$ST7" 2>/dev/null)(window $W7, focus $FOCUS, the window's pid $W7PID, the app $ALIVE; $(tail -6 "$T/wp7.log" 2>/dev/null | tr '\n' '|'))"
+ok "18. undo takes the picture away, and redo brings the picture itself back" "$([ $RC = 0 ] && [ "$A" = 1 ] && echo 1)" "after undo $A (objs 0), after redo $(tr '\n' '|' < "$ST7" 2>/dev/null)(window $W7, focus $FOCUS, the window's pid $W7PID, the app $ALIVE; $(grep -F 'wp: ' "$T/wp7.log" 2>/dev/null | tr '\n' '|'))"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 for f in "$T/state5.txt" "$T/state6.txt" "$T/state7.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
 [ -f "$T/out.DOC" ] && head -c 4000 "$T/out.DOC" > "$OUT/out.txt" 2>/dev/null; [ -f "$T/out.DOC" ] && wc -c < "$T/out.DOC" > "$OUT/out-size.txt"

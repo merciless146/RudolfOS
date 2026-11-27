@@ -217,8 +217,10 @@ typedef struct Hist Hist;   /* (the text, and what stands at each of its places:
 static Hist *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
 static void hist_push(void); static void hist_apply(Hist *h);
 static Hist *hist_now(void); static int hist_same(Hist *a, Hist *b); static void hist_free(Hist *h);
-static void hist_undo(void) { if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
-static void hist_redo(void) { if (HIST_I < HIST_N) { HIST_I++; hist_apply(HIST_T[HIST_I - 1]); } }
+static void hist_undo(void) { fprintf(stderr, "wp: undo at %d of %d\n", HIST_I, HIST_N);
+	if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
+static void hist_redo(void) { fprintf(stderr, "wp: redo at %d of %d\n", HIST_I, HIST_N);
+	if (HIST_I < HIST_N) { HIST_I++; hist_apply(HIST_T[HIST_I - 1]); } }
 static void on_undo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_undo(); }
 static void on_redo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_redo(); }
 static void on_zoom(GtkComboBox *c, gpointer d)
@@ -848,6 +850,7 @@ static void snap_place(GtkTextChildAnchor *a, Snap *s)
 static void hist_apply(Hist *h)
 {
 	if (!h) return;
+	fprintf(stderr, "wp: apply %d places, %d bytes, %d objects before\n", (int)h->objs->len, (int)strlen(h->t), OBJ ? (int)OBJ->len : 0);
 	SILENT = 1;
 	gtk_text_buffer_set_text(BUF, h->t, -1);
 	int n = (int)h->objs->len, have = 0; int *off = g_new0(int, n > 0 ? (gsize)n : 1);
@@ -866,6 +869,7 @@ static void hist_apply(Hist *h)
 	}
 	g_free(off);
 	SILENT = 0;
+	fprintf(stderr, "wp: applied, %d objects after\n", OBJ ? (int)OBJ->len : 0);
 	counts(); upd_sel(); state_soon();
 }
 static char *doc_html(void)
@@ -1349,8 +1353,8 @@ static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	case GDK_KEY_b: apply_name("b"); return TRUE;
 	case GDK_KEY_i: apply_name("i"); return TRUE;
 	case GDK_KEY_u: apply_name("u"); return TRUE;
-	case GDK_KEY_z: hist_undo(); return TRUE;
-	case GDK_KEY_y: hist_redo(); return TRUE;
+	case GDK_KEY_z: fprintf(stderr, "wp: key z\n"); hist_undo(); return TRUE;
+	case GDK_KEY_y: fprintf(stderr, "wp: key y\n"); hist_redo(); return TRUE;
 	case GDK_KEY_f: gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); return TRUE;
 	case GDK_KEY_h: gtk_widget_show_all(FIND); gtk_widget_grab_focus(REPL); state_soon(); return TRUE;
 	case GDK_KEY_n: new_page(); return TRUE;
