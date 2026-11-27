@@ -165,8 +165,11 @@ ST7=$T/state7.txt; rm -f "$ST7"
 rm -f "$T/wp7.exit"
 RUDOLF_WP_STATE=$ST7 RUDOLF_WP_INSERT="picture:$T/pic.png" DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/wp7.exit"' sh $RUN "$BIN" >"$T/wp7.log" 2>&1 & WPP7=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^objs 1$' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-W7=$(DISPLAY=$DSP xdotool search --sync --onlyvisible --pid "$WPP7" 2>/dev/null | tail -1)
-[ -n "$W7" ] || W7=$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null | tail -1)
+# (the first window is gone, so this copy is the only WordPro on the display; its window is looked for as it appears,
+#  never waited for without a limit: a search that never matches would hang the whole check)
+W7=""; i=0; while [ $i -lt 40 ] && [ -z "$W7" ]; do
+	W7=$(DISPLAY=$DSP xdotool search --onlyvisible --name '^WordPro$' 2>/dev/null | tail -1)
+	[ -n "$W7" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 FOCUS=""
 [ -n "$W7" ] && DISPLAY=$DSP xdotool windowraise "$W7" 2>/dev/null
 i=0; while [ $i -lt 60 ] && [ -n "$W7" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W7" 2>/dev/null
