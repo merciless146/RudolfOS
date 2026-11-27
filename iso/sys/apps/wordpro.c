@@ -12,7 +12,8 @@
  * half native, half web); Chromium and Lite keep the web one always.
  *   rudolf-wordpro
  * Built with librudolf-ui (iso/sys/ui/build.sh WORK OUT wordpro). Its test: iso/qt/native/wordpro_t.sh.
- * Tests' hooks: RUDOLF_WP_STATE=FILE (what it shows: the toolbar's choices, the counts, the text and its tags).
+ * Tests' hooks: RUDOLF_WP_STATE=FILE (what it shows: the toolbar's choices, the counts, the text and its tags, and where
+ * the undo stands).
  * GPL-2.0-or-later.
  */
 #define _GNU_SOURCE
@@ -215,12 +216,10 @@ static void on_clear(GtkWidget *b, gpointer d)
 #define HIST 120
 typedef struct Hist Hist;   /* (the text, and what stands at each of its places: made below, after the objects are) */
 static Hist *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
-static void hist_push(void); static void hist_apply(Hist *h); static void obj_clear(void); static void hist_note(const char *w, Hist *h);
+static void hist_push(void); static void hist_apply(Hist *h); static void obj_clear(void);
 static Hist *hist_now(void); static int hist_same(Hist *a, Hist *b); static void hist_free(Hist *h);
-static void hist_undo(void) { fprintf(stderr, "wp: undo at %d of %d\n", HIST_I, HIST_N);
-	if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
-static void hist_redo(void) { fprintf(stderr, "wp: redo at %d of %d\n", HIST_I, HIST_N);
-	if (HIST_I < HIST_N) { HIST_I++; hist_apply(HIST_T[HIST_I - 1]); } }
+static void hist_undo(void) { if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
+static void hist_redo(void) { if (HIST_I < HIST_N) { HIST_I++; hist_apply(HIST_T[HIST_I - 1]); } }
 static void on_undo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_undo(); }
 static void on_redo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_redo(); }
 static void on_zoom(GtkComboBox *c, gpointer d)
@@ -379,7 +378,6 @@ static void hist_push(void)
 {
 	if (SILENT) return;
 	Hist *h = hist_now();
-	hist_note("push", h);
 	if (HIST_N && hist_same(HIST_T[HIST_N - 1], h)) { hist_free(h); return; }
 	if (HIST_I < HIST_N) { for (int i = HIST_I; i < HIST_N; i++) { hist_free(HIST_T[i]); HIST_T[i] = NULL; } HIST_N = HIST_I; }
 	if (HIST_N == HIST) { hist_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
@@ -829,10 +827,6 @@ static Hist *hist_now(void)
 		if (gtk_text_iter_get_char(&i) == 0xFFFC) g_ptr_array_add(h->objs, snap_of(obj_at(gtk_text_iter_get_child_anchor(&i))));
 	return h;
 }
-static void hist_note(const char *w, Hist *h)
-{
-	fprintf(stderr, "wp: %s %d places in %d bytes\n", w, (int)h->objs->len, (int)strlen(h->t));
-}
 static int hist_same(Hist *a, Hist *b)
 {
 	if (!a || !b || strcmp(a->t, b->t) || a->objs->len != b->objs->len) return 0;
@@ -875,13 +869,12 @@ static void snap_place(GtkTextChildAnchor *a, Snap *s)
 		}
 		o->w = g;
 	}
-	if (!o->w) { fprintf(stderr, "wp: kind %d would not be made again\n", s->kind); img_unref(o->im); g_free(o); return; }
+	if (!o->w) { img_unref(o->im); g_free(o); return; }   /* (a picture that cannot be read again is not put back empty) */
 	obj_place(a, o);
 }
 static void hist_apply(Hist *h)
 {
 	if (!h) return;
-	fprintf(stderr, "wp: apply %d places, %d bytes, %d objects before\n", (int)h->objs->len, (int)strlen(h->t), OBJ ? (int)OBJ->len : 0);
 	SILENT = 1;
 	obj_clear();
 	gtk_text_buffer_set_text(BUF, h->t, -1);
@@ -895,14 +888,12 @@ static void hist_apply(Hist *h)
 		GtkTextIter a, b; gtk_text_buffer_get_iter_at_offset(BUF, &a, off[k]); b = a; gtk_text_iter_forward_char(&b);
 		gtk_text_buffer_delete(BUF, &a, &b);
 		Snap *s = g_ptr_array_index(h->objs, k);
-		fprintf(stderr, "wp: place %d kind %d (%d bytes of picture, %d cells)\n", k, s->kind, (int)(s->im ? s->im->n : 0), (int)(s->cells ? s->cells->len : 0));
 		if (s->kind == 0) continue;
 		GtkTextIter at; gtk_text_buffer_get_iter_at_offset(BUF, &at, off[k]);
 		snap_place(gtk_text_buffer_create_child_anchor(BUF, &at), s);
 	}
 	g_free(off);
 	SILENT = 0;
-	fprintf(stderr, "wp: applied, %d objects after\n", OBJ ? (int)OBJ->len : 0);
 	counts(); upd_sel(); state_soon();
 }
 static char *doc_html(void)
@@ -1386,8 +1377,8 @@ static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	case GDK_KEY_b: apply_name("b"); return TRUE;
 	case GDK_KEY_i: apply_name("i"); return TRUE;
 	case GDK_KEY_u: apply_name("u"); return TRUE;
-	case GDK_KEY_z: fprintf(stderr, "wp: key z\n"); hist_undo(); return TRUE;
-	case GDK_KEY_y: fprintf(stderr, "wp: key y\n"); hist_redo(); return TRUE;
+	case GDK_KEY_z: hist_undo(); return TRUE;
+	case GDK_KEY_y: hist_redo(); return TRUE;
 	case GDK_KEY_f: gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); return TRUE;
 	case GDK_KEY_h: gtk_widget_show_all(FIND); gtk_widget_grab_focus(REPL); state_soon(); return TRUE;
 	case GDK_KEY_n: new_page(); return TRUE;

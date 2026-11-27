@@ -131,7 +131,10 @@ The native document is the page's document, not a text buffer that happens to lo
 - **What it costs, and what the first cut leaves out:** an entry of the history is the text with its places and, at each
   place, the object itself -- a picture's bytes (one copy shared by the writing and every entry that has it, so an
   unchanged picture costs nothing per step) and a table's cells -- so undo and redo take an object away and put the object
-  back, never a place with nothing behind it; a cell holds one paragraph, with no inline spans inside it yet; the page's
+  back, never a place with nothing behind it. Two things that follow, and that the first cut had to learn: an entry keeps
+  its own text, the places included (what a save reads leaves them out, which is right for the page's words and would lose
+  where an object stands), and the page's objects are taken away before the text that holds their places is written again
+  -- a widget destroyed in the middle of the buffer's own change stops the window (undo, New and an opened document). a cell holds one paragraph, with no inline spans inside it yet; the page's
   insert dialogs (rows, columns, header row, borders; a picture's size and text) come with the dialogs step, so the menu
   inserts the page's default table and asks for a picture's file through GTK's own chooser.
 
