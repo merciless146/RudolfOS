@@ -29,7 +29,7 @@ Xvfb "$DSP" -screen 0 1280x900x24 -nolisten tcp >/dev/null 2>&1 & XV=$!
 trap 'kill $RDP $XV 2>/dev/null; rm -rf "$T/ui" "$T/cc"' EXIT
 i=0; while [ $i -lt 40 ] && ! DISPLAY=$DSP xdotool getmouselocation >/dev/null 2>&1; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 ST=$T/state
-RUDOLF_SP_STATE=$ST DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/app.exit"' sh "$BIN" >"$T/sp.log" 2>&1 & SPP=$!
+RUDOLF_SP_STATE=$ST RUDOLF_SP_GOTO=A1 DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/app.exit"' sh "$BIN" >"$T/sp.log" 2>&1 & SPP=$!
 trap 'kill $SPP $RDP $XV 2>/dev/null; rm -rf "$T/ui" "$T/cc"' EXIT
 NP=0; NF=0
 ok() { if [ "$2" = 1 ]; then NP=$((NP+1)); echo "PASS $1"; else NF=$((NF+1)); echo "FAIL $1 - $3"; fi; }
@@ -42,7 +42,12 @@ ok "1. the window opens, called 'Book1 - SpreadsheetPro', with the page's eight 
 #  the focus is set with X's own request, waited for, and the press goes in as the X server's own event)
 i=0; while [ $i -lt 60 ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
-sleep 2; DISPLAY=$DSP xdotool mousemove --window "$WIN" 100 40 click 1; sleep 1   # (A1: 46 px of head, then 80 px a column)
+# (the grid has the focus: RUDOLF_SP_GOTO=A1 puts the cursor there as the window opens, and a press of Down shows that the
+#  keys are its own -- tried again, as a person would, while a key sent to a window that has just appeared can be lost)
+i=0; while [ $i -lt 8 ]; do
+	DISPLAY=$DSP xdotool key Down; sleep 0.5
+	grep -q '^sel 1 0 1 0 1 0$' "$ST" && break; i=$((i+1)); done
+DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.6
 # (a cell is typed into as a person types: the characters go into the grid, and Enter puts them in and goes down)
 cell() { DISPLAY=$DSP xdotool type --delay 20 "$1"; sleep 0.4; DISPLAY=$DSP xdotool key Return; sleep 0.7; }
 cell 5; cell 7; cell '=A1+A2'

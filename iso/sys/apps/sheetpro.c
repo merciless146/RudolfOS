@@ -36,7 +36,7 @@ static char SAY[200] = "Ready";
 static char AGGS[160];   /* (what the choice adds up to, as numbers the tests read: sum|average|min|max|count) */
 static int CUR_R, CUR_C, SEL_R0, SEL_C0, SEL_R1, SEL_C1, SEL_AR, SEL_AC;
 static int ZOOM = 100, SCX, SCY, SHOWF, GRIDON = 1, FBAR = 1, TABFROM = -1;
-static int EDITING, UPDATING, ALLOCATED;
+static int EDITING, UPDATING, ALLOCATED, READY;   /* (READY: the window is made, so the toolbar's own changes are not edits) */
 static GHashTable *CELLS, *VISIT;
 static const char *MENU_OPEN; static int MENU_OPEN_N;
 static void state_soon(void); static void status_update(void); static void redraw(void); static void layout_ranges(void);
@@ -839,13 +839,13 @@ static void on_class(GtkWidget *b, int on)
 }
 static void on_style_btn(GtkWidget *b, gpointer d)
 {
-	(void)b; int what = GPOINTER_TO_INT(d);
+	(void)b; if (!READY) return; int what = GPOINTER_TO_INT(d);
 	StArg a = { what, cur_is(what) ? 0 : 1, NULL };
 	style_sel(st_apply, &a);
 }
 static void on_align_btn(GtkWidget *b, gpointer d)
 {
-	(void)b; int ha = GPOINTER_TO_INT(d);
+	(void)b; if (!READY) return; int ha = GPOINTER_TO_INT(d);
 	StArg a = { 4, cur_is(4) == ha ? 0 : ha, NULL };
 	style_sel(st_apply, &a);
 }
@@ -855,18 +855,19 @@ static void do_under(void) { on_style_btn(NULL, GINT_TO_POINTER(2)); }
 static void do_strike(void) { on_style_btn(NULL, GINT_TO_POINTER(3)); }
 static void on_font(GtkComboBox *c, gpointer d)
 {
-	(void)d; if (UPDATING) return;
+	(void)d; if (UPDATING || !READY) return;
 	int i = gtk_combo_box_get_active(c); if (i < 0 || i >= NSPFONTS) return;
 	StArg a = { 7, 0, SP_FONTS[i] }; style_sel(st_apply, &a);
 }
 static void on_fsize(GtkComboBox *c, gpointer d)
 {
-	(void)d; if (UPDATING) return;
+	(void)d; if (UPDATING || !READY) return;
 	int i = gtk_combo_box_get_active(c); if (i < 0 || i >= NSP_SIZES) return;
 	StArg a = { 8, SP_SIZES[i], NULL }; style_sel(st_apply, &a);
 }
 static void on_colour(GtkColorButton *b, gpointer d)
 {
+	if (!READY) return;
 	GdkRGBA c; gtk_color_chooser_get_rgba(GTK_COLOR_CHOOSER(b), &c);
 	char hex[8]; snprintf(hex, sizeof hex, "#%02x%02x%02x", (int)lround(c.red * 255), (int)lround(c.green * 255), (int)lround(c.blue * 255));
 	StArg a = { GPOINTER_TO_INT(d) == 0 ? 5 : 6, 0, hex }; style_sel(st_apply, &a);
@@ -1498,6 +1499,7 @@ int main(int argc, char **argv)
 	hist_push("Start");
 	gtk_widget_show_all(W->win);
 	gtk_widget_hide(ENTRY);
+	READY = 1;
 	nb_update(); fx_update(); upd_tb(); layout_ranges(); status_update();
 	gtk_widget_grab_focus(AREA);
 	{ const char *mo = getenv("RUDOLF_SP_MENU");
