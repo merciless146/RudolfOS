@@ -105,14 +105,13 @@ typedef struct { const char *label, *key; int off, op; } Mi;   /* (a menu's row:
 typedef struct { const char *title; const Mi *items; int n; } Menu;
 
 static RuiWin *W;
-static GtkWidget *TB, *MBAR, *MBTNS[8], *LIST, *STAGE, *OVL, *EDF, *EDITV, *NOTESV, *STATUS, *ZTXT, *ZOOMSL;
-static GtkWidget *BTN_B, *BTN_I, *BTN_U, *BTN_S, *ALN[3], *BLB[2], *FONTW, *SIZEW, *LAYW;
+static GtkWidget *TB, *MBAR, *MBTNS[8], *LIST, *STAGE, *OVL, *EDF, *EDITV, *STATUS, *ZTXT, *ZOOMSL;
+static GtkWidget *BTN_B, *BTN_I, *BTN_U, *BTN_S, *ALN[3], *BLB[2], *SIZEW, *LAYW;
 static GtkTextBuffer *BUF, *NBUF;
-static Slide *SL; static int SLN, SLC, CUR, PHCUR, TH, READY, UPDATING, DIRTY, EDIT_ON, EDIT_PH;
+static Slide *SL; static int SLN, SLC, CUR, PHCUR, TH, READY, UPDATING, EDIT_ON, EDIT_PH;
 static double STK = 1, STX, STY;   /* (the stage's scale and where the slide's corner is: for the mouse and the editor) */
 static int ZOOMF = 1; static int ZOOM = 100;
 static Snap *HS; static int HSN, HSC, HSI = -1;   /* (HSI: the step on the screen; -1 while the deck has no step) */
-static char SAY[200] = "Ready";
 static const char *MENU_OPEN; static int MENU_OPEN_N;
 static void state_soon(void); static void status_update(void); static void redraw(void);
 static void hist_push(const char *label); static void hist_undo(void); static void hist_redo(void);
@@ -199,7 +198,6 @@ static void hist_push(const char *label)
 	HS[HSN].sl = deck_copy(SL, SLN); HS[HSN].n = SLN; HS[HSN].cur = CUR; HS[HSN].label = g_strdup(label);
 	HSI = HSN; HSN++;
 	if (HSN > HSTP) { snap_free(&HS[0]); memmove(HS, HS + 1, sizeof(Snap) * (size_t)(HSN - 1)); HSN--; HSI--; }
-	DIRTY = 1;
 }
 static void hist_apply(int i)
 {
@@ -207,17 +205,16 @@ static void hist_apply(int i)
 	deck_take(c, HS[i].n);
 	CUR = HS[i].cur < SLN ? HS[i].cur : SLN - 1;
 	PHCUR = 0;
-	snprintf(SAY, sizeof SAY, "%s", HS[i].label ? HS[i].label : "Undone");
 }
 static void hist_undo(void)
 {
-	if (HSI <= 0) { snprintf(SAY, sizeof SAY, "%s", rui_tr("Nothing to undo")); status_update(); return; }
-	HSI--; hist_apply(HSI); DIRTY = 1; goto_slide(CUR);
+	if (HSI <= 0) return;
+	HSI--; hist_apply(HSI); goto_slide(CUR);
 }
 static void hist_redo(void)
 {
-	if (HSI + 1 >= HSN) { snprintf(SAY, sizeof SAY, "%s", rui_tr("Nothing to redo")); status_update(); return; }
-	HSI++; hist_apply(HSI); DIRTY = 1; goto_slide(CUR);
+	if (HSI + 1 >= HSN) return;
+	HSI++; hist_apply(HSI); goto_slide(CUR);
 }
 
 /* ------------------------------------------------------------------ the look of a slide (the page's .pp-slide: the
@@ -443,7 +440,6 @@ static void status_update(void)
 static void slide_changed(const char *label)
 {
 	hist_push(label);
-	DIRTY = 1;
 	list_size();
 	redraw();
 	status_update();
@@ -467,7 +463,6 @@ static void new_slide(void)
 	g_strlcpy(s->layout, lay, sizeof s->layout);
 	deck_insert(CUR + 1, s);
 	slide_free(s);
-	snprintf(SAY, sizeof SAY, "%s", rui_tr("New slide"));
 	goto_slide(CUR + 1);
 	slide_changed("New slide");
 }
@@ -476,23 +471,20 @@ static void dup_slide(void)
 	Slide tmp; slide_copy(&tmp, &SL[CUR]);
 	deck_insert(CUR + 1, &tmp);
 	slide_free(&tmp);
-	snprintf(SAY, sizeof SAY, "%s", rui_tr("Slide duplicated"));
 	goto_slide(CUR + 1);
 	slide_changed("Duplicate slide");
 }
 static void del_slide(void)
 {
-	if (SLN <= 1) { snprintf(SAY, sizeof SAY, "%s", rui_tr("A deck keeps one slide")); status_update(); return; }
+	if (SLN <= 1) return;
 	deck_remove(CUR);
 	if (CUR >= SLN) CUR = SLN - 1;
-	snprintf(SAY, sizeof SAY, "%s", rui_tr("Slide deleted"));
 	goto_slide(CUR);
 	slide_changed("Delete slide");
 }
 static void set_layout(const char *key)
 {
 	layout_set(&SL[CUR], key);
-	snprintf(SAY, sizeof SAY, "%s: %s", rui_tr("Layout"), rui_tr(key));
 	goto_slide(CUR);
 	slide_changed("Layout");
 }
@@ -502,7 +494,6 @@ static void toggle_style(int k)
 	if (!lay_has(SL[CUR].layout, PHCUR)) return;
 	unsigned *f = k == 0 ? &p->b : k == 1 ? &p->i : k == 2 ? &p->u : &p->s;
 	*f = !*f;
-	snprintf(SAY, sizeof SAY, "%s %s", rui_tr(PH_KEY[PHCUR]), *f ? rui_tr("on") : rui_tr("off"));
 	upd_tb(); slide_changed("Text style");
 }
 static void set_align(int ha)
@@ -656,7 +647,7 @@ static gboolean on_list_click(GtkWidget *w, GdkEventButton *e, gpointer d)
 	if (e->button != 1) return FALSE;
 	int i = (int)floor((e->y - PAD) / list_item_h());
 	gtk_widget_grab_focus(LIST);
-	if (i >= 0 && i < SLN) { snprintf(SAY, sizeof SAY, "%s %d", rui_tr("Slide"), i + 1); goto_slide(i); }
+	if (i >= 0 && i < SLN) goto_slide(i);
 	return TRUE;
 }
 static void next_ph(int step)
@@ -715,7 +706,6 @@ static void on_notes_changed(GtkTextBuffer *b, gpointer d)
 	g_free(t);
 	/* (the notes are part of the slide, but a keystroke is not a step of the page's undo: it is put on the slide as it
 	   is typed, as the page's contenteditable leaves it) */
-	DIRTY = 1;
 	state_soon();
 }
 
@@ -931,7 +921,7 @@ static void menu_do(const Mi *it)
 		for (int i = 0; i < SLN; i++) slide_free(&SL[i]);
 		g_free(SL); SL = NULL; SLN = 0; SLC = 0;
 		deck_insert(0, s); slide_free(s);
-		CUR = 0; snprintf(SAY, sizeof SAY, "%s", rui_tr("A new presentation"));
+		CUR = 0;
 		goto_slide(0); slide_changed("New");
 		break; }
 	case OP_CLOSE: gtk_window_close(GTK_WINDOW(W->win)); break;
@@ -942,7 +932,6 @@ static void menu_do(const Mi *it)
 	case OP_DELSLIDE: del_slide(); break;
 	case OP_HIDESLIDE:
 		SL[CUR].hidden = !SL[CUR].hidden;
-		snprintf(SAY, sizeof SAY, "%s %s", rui_tr("Hide slide"), SL[CUR].hidden ? rui_tr("on") : rui_tr("off"));
 		slide_changed("Hide slide");
 		break;
 	case OP_LAYOUT: {
@@ -966,10 +955,7 @@ static void menu_do(const Mi *it)
 		rui_about(W, "PresentPro", rui_tr("The presentation app of Rudolf OS, a companion to WordPro and SpreadsheetPro: "
 		                                  "themes, transitions and animations, a presenter view, and PowerPoint files."));
 		break;
-	default:
-		snprintf(SAY, sizeof SAY, "%s", rui_tr("A later step of PresentPro"));
-		status_update();
-		break;
+	default: break;   /* (a row the step cannot choose is drawn greyed, and never gets here) */
 	}
 }
 static void menu_pick(int i, void *d)
@@ -1082,7 +1068,7 @@ static void build_toolbar(void)
 		gtk_style_context_add_class(gtk_widget_get_style_context(ff), "wp-tb");
 		gtk_combo_box_set_active(GTK_COMBO_BOX(ff), 0);
 		g_signal_connect(ff, "changed", G_CALLBACK(on_font), NULL);
-		FONTW = ff; tb_add(TB, ff);
+		tb_add(TB, ff);
 	}
 	{
 		GtkWidget *sz = gtk_combo_box_text_new();
@@ -1187,7 +1173,7 @@ static void build_panes(void)
 		gtk_style_context_add_class(gtk_widget_get_style_context(bar), "pp-nbar");
 		GtkWidget *sw2 = gtk_scrolled_window_new(NULL, NULL);
 		gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(sw2), GTK_POLICY_NEVER, GTK_POLICY_AUTOMATIC);
-		NOTESV = gtk_text_view_new();
+		GtkWidget *NOTESV = gtk_text_view_new();
 		NBUF = gtk_text_view_get_buffer(GTK_TEXT_VIEW(NOTESV));
 		gtk_text_view_set_wrap_mode(GTK_TEXT_VIEW(NOTESV), GTK_WRAP_WORD_CHAR);
 		gtk_text_view_set_left_margin(GTK_TEXT_VIEW(NOTESV), (int)lround(rui_px(10)));
@@ -1276,7 +1262,7 @@ static void state_write(void)
 	{
 		char z[16];
 		if (ZOOMF) snprintf(z, sizeof z, "Fit"); else snprintf(z, sizeof z, "%d%%", ZOOM);
-		g_string_append_printf(s, "zoom %s\nhist %d %d\nsay %s\n", z, HSI, HSN, SAY);
+		g_string_append_printf(s, "zoom %s\nhist %d %d\n", z, HSI, HSN);
 	}
 	char *tmp = g_strdup_printf("%s.t", f);
 	g_file_set_contents(tmp, s->str, -1, NULL);
@@ -1363,10 +1349,7 @@ static void do_one(const char *c)
 		g_free(SL[CUR].notes);
 		SL[CUR].notes = c[6] ? g_strdup(c + 6) : NULL;
 		notes_sync();
-		DIRTY = 1;
 		state_soon();
-	} else {
-		snprintf(SAY, sizeof SAY, "%s: %s", rui_tr("Nothing called"), c);
 	}
 }
 static gboolean do_hook(gpointer d)
