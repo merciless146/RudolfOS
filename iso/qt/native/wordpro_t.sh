@@ -446,6 +446,8 @@ ok "28. a picture's alt text, width and alignment are read from the page's .DOC 
 #  address (1=) and presses OK: the page's own rule makes an address without its scheme a web one -- example.com is
 #  https://example.com -- and the words carry it as the run's own tag, which the state says as link <address>. Then Ctrl+K
 #  opens the dialog again on the link the cursor stands in, and Escape is its Cancel: the link is as it was)
+# (the display is waited on until no earlier WordPro is left: the keys of the copy below have to be its own)
+i=0; while [ $i -lt 40 ] && [ -n "$(DISPLAY=$DSP xdotool search --onlyvisible --name 'WordPro$' 2>/dev/null)" ]; do timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 ST18=$T/state18.txt; A18=$T/ans18; rm -f "$ST18"; : > "$A18"
 RUDOLF_WP_STATE=$ST18 RUDOLF_WP_ANSWER=$A18 RUDOLF_WP_DIALOG=link DISPLAY=$DSP $RUN "$BIN" >"$T/wp18.log" 2>&1 & WPP18=$!
 i=0; while [ $i -lt 40 ] && ! grep -q '^dialog 1$' "$ST18" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
@@ -454,8 +456,10 @@ printf '0=Rudolf site\n1=example.com\nOK\n' > "$A18"
 i=0; while [ $i -lt 40 ] && ! grep -q '^link https://example.com$' "$ST18" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 L18=$(grep -c '^link https://example.com$' "$ST18" 2>/dev/null); T18=$(grep -c '^text Rudolf site$' "$ST18" 2>/dev/null)
 H18=$(grep -c '^hist 2 2$' "$ST18" 2>/dev/null); G18=$(grep '^tags' "$ST18" 2>/dev/null | grep -c 'a:https://example.com')
+# (the window is looked for by its name: this copy runs under the debugger, so the window belongs to the app it runs,
+#  not to the shell that is $WPP18 -- and it is the only WordPro left on the display, the earlier ones having been killed)
 W18=""; i=0; while [ $i -lt 40 ] && [ -z "$W18" ]; do
-	W18=$(DISPLAY=$DSP xdotool search --onlyvisible --pid "$WPP18" 2>/dev/null | tail -1)
+	W18=$(DISPLAY=$DSP xdotool search --onlyvisible --name 'WordPro$' 2>/dev/null | tail -1)
 	[ -n "$W18" ] || timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W18" ] && DISPLAY=$DSP xdotool windowraise "$W18" 2>/dev/null
 i=0; while [ $i -lt 60 ] && [ -n "$W18" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W18" 2>/dev/null
@@ -467,6 +471,7 @@ K18=0; i=0; while [ $i -lt 12 ]; do   # (the page's Ctrl+K: the dialog again, on
 	grep -q '^dialog 1$' "$ST18" && { K18=1; break; }; i=$((i+1)); done
 DISPLAY=$DSP xdotool key Escape; sleep 0.8
 E18=0; grep -q '^dialog 0$' "$ST18" && grep -q '^link https://example.com$' "$ST18" && grep -q '^text Rudolf site$' "$ST18" && E18=1
+P18=$(DISPLAY=$DSP xdotool getwindowpid "$W18" 2>/dev/null); [ -n "$P18" ] && kill $P18 2>/dev/null
 kill $WPP18 2>/dev/null
 ok "29. the page's Hyperlink dialog puts the words in with their address (its own https:// rule), and Ctrl+K opens it again on the link, whose Cancel keeps it" \
 	"$([ "$D18$L18$T18$H18$G18$K18$E18" = 1111111 ] && echo 1)" \

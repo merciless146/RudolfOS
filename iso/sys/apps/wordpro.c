@@ -303,9 +303,11 @@ static char *doc_text(void) { GtkTextIter s, e; gtk_text_buffer_get_start_iter(B
 static int words_of(const char *t) { int n = 0, in = 0; for (const char *p = t; *p; p++) {
 	if (!strncmp(p, "\xef\xbf\xbc", 3)) { p += 2; in = 0; continue; }
 	if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') in = 0; else if (!in) { in = 1; n++; } } return n; }
-static int chars_of(const char *t) { int n = 0; for (const char *p = t; *p; p++) {
-	if (!strncmp(p, "\xef\xbf\xbc", 3)) { p += 2; continue; }
-	if (*p != '\n' && *p != '\r') n++; } return n; }
+/* (a character is a character, not its bytes: the page counts its document's own -- © is one -- and only the newlines
+   and the places of pictures and tables (U+FFFC) are not counted) */
+static int chars_of(const char *t) { int n = 0; for (const char *p = t; *p; ) {
+	gunichar c = g_utf8_get_char(p); p = g_utf8_next_char(p);
+	if (c == 0xfffc || c == '\n' || c == '\r') continue; n++; } return n; }
 /* ------------------------------------------------------------------ what the writing is, shown in the toolbar (updSel) */
 static void on_class(GtkWidget *b, int on)
 {
@@ -899,8 +901,8 @@ static GtkTextTag *link_at(GtkTextIter *a, GtkTextIter *b)
 	*a = it; *b = it;
 	if (!gtk_text_iter_starts_tag(&it, t)) gtk_text_iter_backward_to_tag_toggle(a, t);
 	if (!gtk_text_iter_ends_tag(&it, t)) gtk_text_iter_forward_to_tag_toggle(b, t);
-	if (gtk_text_iter_compare(&it, b) >= 0) return NULL;   /* (just after it is not in it, as the page's anchorNode is not) */
-	return t;
+	return t;   /* (the carets at its two ends are in it: a caret after an anchor's words is in the anchor, and words typed
+					there are the link's) */
 }
 static char *link_line(void)
 {
