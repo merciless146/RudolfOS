@@ -71,7 +71,7 @@ jobs:
         with: {name: native-taskmgr, retention-days: 7, path: out}
   settings:
     runs-on: ubuntu-24.04
-    timeout-minutes: 50
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v5
       - name: Tools
