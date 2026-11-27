@@ -117,12 +117,13 @@ GtkWidget *rui_menu_window(void);                       /* the menu open now (th
 void rui_confirm(RuiWin *w, const char *title, const char *text, const char *const *buttons, int n, int pri, void (*cb)(int i, void *d), void *d);
 GtkWidget *rui_dialog_box(void);                        /* the dialog open now (the tests) */
 /* (the page's dialog() with fields, which is what a dialog of settings is: a row of its label and its input per field, as
-   its grid-template-columns:110px 1fr. The values come back in the same array, and are the form's until the callback
-   returns: a text's own words, a check's "1" or "0". The callback's i is the button pressed, or -1 for Escape.) */
+   its grid-template-columns:110px 1fr. The fields the callback is given are the form's own copy, and stand only while it
+   runs -- a text's words as typed, a check's "1" or "0" -- so the dialog outlives the call that opened it; the callback's
+   i is the button pressed, or -1 for Escape.) */
 enum { RUI_F_TEXT = 0, RUI_F_NUM, RUI_F_CHECK };
 typedef struct { const char *label; int kind; const char *value; } RuiField;
-void rui_form(RuiWin *w, const char *title, const char *text, RuiField *f, int n, const char *const *buttons, int nb,
-	int pri, void (*cb)(int i, RuiField *f, void *d), void *d);
+void rui_form(RuiWin *w, const char *title, const char *text, const RuiField *f, int n, const char *const *buttons, int nb,
+	int pri, void (*cb)(int i, const RuiField *f, void *d), void *d);
 /* the page's elevate: an administrator's account and password, checked by rudolfd; cb(1) allowed, cb(0) not */
 void rui_elevate(RuiWin *w, const char *reason, void (*cb)(int ok, void *d), void *d);
 /* the page's elevate(reason, {cred:true}): cred(name, password) once they are right (rudolfd checks them again with the request: send

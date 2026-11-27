@@ -725,7 +725,7 @@ static GtkWidget *table_grid(int border)
 static void insert_table(int rows, int cols, int hdr, int border);
 /* (the page's Insert table dialog -- base_v24.html's tableDlg: Rows and Columns, the first row a heading, borders drawn.
    Its limits are the page's own: 1 to 50 rows, 1 to 20 columns, and an empty or nonsense count is its 3) */
-static void table_dlg_done(int i, RuiField *f, void *d)
+static void table_dlg_done(int i, const RuiField *f, void *d)
 {
 	(void)d; state_soon();   /* (the dialog is gone: what the page shows is written again, the table or not) */
 	if (i != 1) return;   /* (Insert: the last of its buttons, which the page makes its primary) */
