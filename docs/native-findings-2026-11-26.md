@@ -1,9 +1,10 @@
 # Native vs Standard: test findings (2026-11-26)
 
 A hardware session on the owner's Vivobook, following `docs/native-vivobook-checklist.md` through the development link.
-**V58 passed**: the machine starts from its own drive with no stick attached. **Every other item is deferred**, not
-passed and not failed — the link had been dead for two days, and the desktop turned out to be on Standard, where the N
-items cannot be checked. Nothing below claims that something works on the machine unless the machine said so itself.
+**V58 passed**: the machine starts from its own drive with no stick attached. **N1 matches**: full-screen video on
+Native's GPU path shows the picture, not a black screen. **N2 and N3 are not established**, and every V item except V58
+is deferred — the link had been dead for two days, and the desktop was on Standard until the owner switched it to
+Native. Nothing below claims that something works on the machine unless the machine said so itself.
 
 ## Header
 
@@ -15,7 +16,7 @@ items cannot be checked. Nothing below claims that something works on the machin
 | Started | From **its own drive**, with **no stick attached**: `/live/media` is `/dev/loop0` backed by **`/dev/nvme0n1`**, no `/dev/sd*` exists, `rudolf.slot=b`, `rudolf.sb=1`, `rudolf.mediadisk=/dev/nvme0n1`, `lockdown=integrity`. That first boot was about 22:49Z (uptime 38 min at 23:27:51Z) |
 | Persistent disk | `/dev/nvme0n1p3`, 116.4 GB, 41.2 GB used (36 %), mounted at `/persist` and `/home/rudolf` |
 | Read-only | **On**, in the link's own words: the banner reads "can look at this computer (read-only)" and the Allow dialog "It runs read-only". **But** `sh` ran as `uid=0(root)`, where `DEVLINK.md` says it runs as `nobody` — recorded as a question in "Two things the banner and the command disagree on" below |
-| Ask first | **On**: `000584`-`000590` all read `approved: allowed on the computer` (it would read `not asked (Ask first was off)` otherwise). `000591` was **not answered** within 150 s |
+| Ask first | **On** until about 23:41Z: `000584`-`000590` all read `approved: allowed on the computer` (a command allowed with Ask first off reads `not asked (Ask first was off)`, which is the form from `000592` on). `000591` was **not answered** within 150 s and ran when the owner returned |
 | Home folders | **Not established** — nothing in this session read a home folder |
 | The link | `merciless146/rudolfos-devlink`, branch `link`, `iso/systools/devlink.py` |
 | Today's `main` | `745fcf18`, 2026-11-26 19:43Z, "Merge pull request #712 from merciless146/newfile-name"; this branch is `ros-vivobook-findings` |
@@ -36,6 +37,8 @@ written on.
   check them are still in `iso/qt/native/same_t.js`. That is a fact about the repository, not about the machine: not one
   of them was re-tested on the Vivobook.
 - **V58 passed.** The machine restarted on the session's `restart` at **23:34:07Z** and was up **54 s later** on the same build, still with **no stick attached**: it starts from its own drive, no firmware setup screen. Evidence: `docs/native-findings-2026-11-26/V58-native.png`.
+- **N1 matches**: on Native's GPU path (`rudolf-native --draw=gpu`) a full-screen video fills 1920x1080, the taskbar goes away and the picture keeps moving. Evidence: `N1-native.png`, `N1-fullscreen-a.png`.
+- **N2 and N3 are not established.** The burst for N2 caught only a bare desktop: Notepad had been closed, so there was nothing to open a dialog from. No claim is made either way.
 - **V59 was not needed** (the setup screen did not appear), and **the other 70 items are deferred**. No window was opened and no key was pressed by the session: it has no `xdotool`, `wmctrl`, `ydotool`, `import` or `ffmpeg` on that build, and `DISPLAY` is empty in its `sh`.
 - **Nothing was written to the computer.** The single command that ran was a read (`uname`, `/proc/cmdline`, `/run/rudolf`,
   `df`); it changed nothing, and it was not a `put`, a `restart` or a firmware operation.
@@ -91,9 +94,11 @@ Not findings with a checklist number, and not acted on: both are for the owner t
    says `sh` then runs as `nobody`; the command ran as `uid=0(root)`. Either the read-only mode no longer drops to
    `nobody`, or the banner is wrong about what it guarantees. Nothing in this session wrote anything, so the machine is
    unchanged either way — but the promise and the behaviour should agree.
-2. **What the banner says the link may do** is "look at this computer (read-only)" while the settings page was reported
-   as *Allow changes to this computer* ticked, which is why `restart` was accepted at all (a read-only link refuses it).
-   So the banner's wording and the setting conflict; the setting is what the protocol enforces.
+2. **When the banner's wording follows the setting.** The 23:35Z screenshot's banner read "can look at this computer
+   (read-only)" although `restart` had been accepted a minute earlier, and `DEVLINK.md` says a read-only link refuses
+   `restart`; from 23:41Z on, after the owner ticked changes and turned Ask first off, the same banner read "can control
+   this computer · 8 h". So the banner does follow the setting, but it lagged it by at least a minute here. Recorded, not
+   acted on.
 
 ## N1–N32 checked against today's `main`
 
@@ -104,8 +109,8 @@ machine's build (2026-11-24 22:xx) — if it does not, the machine cannot show i
 
 | # | Finding | On today's `main` | Evidence | In 1.6.2.261124? | Confirmed on the Vivobook? |
 |---|---|---|---|---|---|
-| N1 | Full-screen video black | fixed | `d363693` 2026-11-15; case `video-fs` | yes | no — deferred |
-| N2 | File dialog cut off inside the window | fixed | `d363693`; case `dlg-open` | yes | no — deferred |
+| N1 | Full-screen video black | fixed | `d363693` 2026-11-15; case `video-fs` | yes | **yes — matches.** 2026-11-26 on `--draw=gpu`: the picture fills 1920x1080, no taskbar, 1,059-1,091 distinct colours, 61 % of the screen changed between two frames. `N1-native.png`, `N1-fullscreen-a.png` |
+| N2 | File dialog cut off inside the window | fixed | `d363693`; case `dlg-open` | yes | **not established** — 12 frames over 35 s showed no dialog and no Notepad window (it was closed), so nothing was clicked. Needs one more try |
 | N3 | Task Manager lists only itself | fixed | `d363693`; case `tm-apps` | yes | no — deferred |
 | N4 | The page's dialogs in a window of their own | fixed | `d363693`; cases `dlg-ask`, `dlg-camera`, `dlg-print`, `dlg-dark` | yes | no — deferred |
 | N5 | Sliders drawn by GTK | fixed | `6212d1f` 2026-11-15; cases `ctl-volume`, `ctl-mouse`, `ctl-media` | yes | no — deferred |
@@ -248,19 +253,45 @@ What this does **not** show: that a *cold* start works (this was a warm restart 
 firmware's setup screen is never reached (one restart is one sample), or that `Drive` (0001) is harmless — it is stale
 and, being third in the order, untested. V60–V63 still need the owner.
 
-### N1–N3 were not started, and why
+### N1–N3: where they stand
 
-`000590` found `/run/rudolf/desktop-engine` = **`chromium`**: the desktop was on **Standard**, and N1–N3 are Native
-checks. Switching the engine is Settings › System health › Desktop engine and a restart, which is the owner's to do, so
-the three were left for the next step. Also missing for them: no `xdotool`, `wmctrl`, `ydotool`, `import` or `ffmpeg` on
-that build, `DISPLAY` empty in `sh`, and `~/Videos` empty — so N1 needs a video the owner adds (Media Player › URL… ›
-Add), and each step is the owner's hands with the session taking the pictures.
+`000590` found `/run/rudolf/desktop-engine` = **`chromium`**, i.e. Standard, where N1–N3 prove nothing. The owner
+switched Settings › System health › Desktop engine to **Native** and restarted; `000593` at 23:43Z confirmed
+`desktop-engine` = `native` and `rudolf-native --draw=gpu --size=1920x1080` — the real graphics path, which is what N1
+is for.
+
+- **N1 matches.** Two full-screen frames (`000598`, `000599`) differ in 61 % of sampled cells, with 1,059 and 1,091
+distinct colours and no taskbar in the bottom band, which is where the taskbar sits in the baseline shot. The old
+failure — a black screen with only WebKit's control bar — does not reproduce. The owner's own observation agrees and adds
+that **ESC returns the player to its previous display setting**. The three earlier frames (`N1-windowed-1..3.png`) are
+the player *before* full screen was chosen: the taskbar is visible in them, which is how that was told apart.
+- **N2 not established.** Attempted three times. The first two captures were taken with Freebuff's window covering most
+  of the screen, so a centred dialog would have been hidden behind it; Freebuff was then minimised and the third capture
+  (`000603`) showed the Glacier Lake desktop with Notepad at the top left and no dialog. A burst of 12 screenshots over
+  35 s (`000605`-`000616`) was identical in every frame — nothing changed at all — and its last frame shows a bare
+  desktop with **no Notepad window** (`N2-attempt-desktop-no-notepad.png`, that last frame). So the app had been closed
+  and there was nothing to open a dialog from. Nothing is concluded about N2 in either direction.
+- **N3 not started.** It needs Task Manager with Notepad and Settings open, and the same bare desktop ended the run.
+
+The lesson for the next attempt: keep the app open, minimise Freebuff first, and take the burst while the app window is
+known to be on screen. The session cannot click — that build has no `xdotool`, `wmctrl`, `ydotool` or `import`, and
+`DISPLAY` is empty in its `sh` — so every step is the owner's hands and the session's screenshots.
+
+### Reading a screenshot without an image library
+
+The session's own host has no `magick`, `convert`, `ffmpeg` or Python imaging library, so two small stdlib scripts did
+the work: one decoded the PNGs to measure near-black share, colour variety and per-frame change, the other wrote a
+downscaled copy (about 900 px wide, which is small enough to look at) and an ASCII luminance map. That is how "black
+screen" was told from "the picture, with the taskbar still there" — a full-screen video must show no taskbar. Worth
+keeping in the next session's notes: `docs/native-findings-2026-11-26/` keeps the full-size PNGs, and a downscale is
+enough to judge them.
 
 ## What this session did not do
 
 - No window was opened, no key was pressed, no item performed by the session itself. V58's restart was the one change,
   and it was the item.
-- N1, N2, N3, and every other item except V58: not run (see the table above).
+- N2 and N3 did not reach a result: N2's burst caught a bare desktop because Notepad had been closed, and N3 was never
+  started. Everything else except V58 and N1 is unrun (see the table above).
 - No `put`, no firmware operation, no update.
 - **No fix was made and no code was changed** — this document only. So there is no `deadcheck` run and no page rebuilt
   (`AGENTS.md`'s "Before every PR" applies to code and to the desktop page, not to a findings document).
