@@ -264,8 +264,9 @@ device") and some loose files; "voice" finds the app.
   `WebKitMediaRecorder`, which is the Cocoa-era name; the `JS…` and `Private…` names are the ones that matter. So the
   throw is **not** a missing constructor, and where it happens is not established: everything from `new AudioContext()`
   to `rec.start()` is uncaught, so any of it would look exactly like this from outside. What the machine does say is that
-  the audio track handed to the app carries only zeros (the check's −120 dB), so even a recorder that started would
-  record silence. A `try`/`catch` around that block, showing the error in the window, is the smallest change that would
+  the meter reads −120 dB, the check's floor, which its formula gives for all-zero samples. That a recorder which started
+  would then save silence is **inference**, not record: `MediaRecorder` builds a pipeline of its own, and N35 point 3 marks
+  that as unproven. A `try`/`catch` around that block, showing the error in the window, is the smallest change that would
   name the cause instead of leaving a dead button.
 
 ### V2 — Camera: fail (native), and the "Allow access?" prompt never appears on Native
@@ -340,9 +341,9 @@ list carried no capture plug-in at all (1.6.3 added `video4linux2` on 2026-11-27
 `desktop/apps25b.js` matches `main` byte for byte at the recorder's start block.
 
 Open here, and **answered by N35**: whether Native's silent audio and its missing camera share one cause. **They do not.**
-The camera is refused because the PipeWire device provider is missing — its log says `0 devices` — while the microphone is
-whose WebAudio path is stopped by a missing GStreamer element of its own (`deinterleave`, N35 point 3): PulseAudio and the
-DMIC itself are fine.
+The camera is refused because the PipeWire device provider is missing — its log says `0 devices` — while the microphone's
+WebAudio path is stopped by a missing GStreamer element of its own (`deinterleave`, N35 point 3): PulseAudio and the DMIC
+itself are fine.
 So a build with `video4linux` added would have proved nothing, and putting PipeWire in the image will not bring the
 microphone back. Also open: does `new MediaRecorder` on
 Native throw, or construct and produce nothing? `MediaRecorderPrivateGStreamer` is present (`000651`), so both are
@@ -399,7 +400,8 @@ through PipeWire, and says so in its own error message. Three consequences:
      `module-alsa-card device_id=2 name=card2` opens the DMIC — card 2 `acp6x`, PCM `DMIC capture dmic-hifi-0`, S32_LE,
      2 channels, 48 kHz — which PulseAudio holds and reads (`RUNNING`, its ring buffer advancing). Device and server are
      both fine, which is why Chromium reads −4 dB through the same PulseAudio.
-   - **What stops it is a GStreamer element that is not in the image: `deinterleave`.** Each of the four attempts in
+   - **What stops the WebAudio path is a GStreamer element the image does not have: `deinterleave`.** Each of the four
+     attempts in
      `starts/3` begins, 65 ms before anything else:
      `WARN GST_ELEMENT_FACTORY gstelementfactory.c:765:gst_element_factory_make_valist: no such element factory
      "deinterleave"!` and `GStreamer element deinterleave not found. Please install it`, then
