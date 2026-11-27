@@ -53,7 +53,9 @@ jobs:
           [ -S "$XDG_RUNTIME_DIR/pipewire-0" ] || { echo "FAIL no PipeWire socket: the camera and the microphone wait on it"; cat /tmp/pipewire.log; exit 1; }
           nohup wireplumber > /tmp/wireplumber.log 2>&1 &
           sleep 8
-          pgrep -x wireplumber >/dev/null || { echo "FAIL WirePlumber is not running"; cat /tmp/wireplumber.log; exit 1; }
+          echo "--- pipewire.log:"; cat /tmp/pipewire.log || true
+          echo "--- wireplumber.log:"; cat /tmp/wireplumber.log || true
+          pgrep -x wireplumber >/dev/null || { echo "FAIL WirePlumber is not running (above: its log and PipeWire's)"; exit 1; }
           pw-dump > /tmp/dump.json
           test -s /tmp/dump.json || { echo "FAIL pw-dump returned nothing: PipeWire is not answering"; exit 1; }
           N=$(jq '[.[] | select((.info.props["device.api"] // "") == "alsa" or ((.info.props["media.class"] // "") | startswith("Audio/")))] | length' /tmp/dump.json)
