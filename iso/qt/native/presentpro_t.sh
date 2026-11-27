@@ -47,7 +47,7 @@ ok() { if [ "$2" = 1 ]; then NP=$((NP+1)); echo "PASS $1"; else NF=$((NF+1)); ec
 start() { rm -f "$ST"; env "$@" RUDOLF_PP_STATE=$ST DISPLAY=$DSP "$BIN" >>"$T/app.log" 2>&1 & APPP=$!
 	i=0; while [ $i -lt 80 ] && [ ! -s "$ST" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 	i=0; while [ $i -lt 24 ] && [ -z "$WIN" ]; do WIN=$(DISPLAY=$DSP xdotool search --name 'PresentPro$' 2>/dev/null | head -1); timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-	sleep 0.5; }
+	sleep 1.8; }
 stop() { [ -n "$APPP" ] && { kill "$APPP" 2>/dev/null; wait "$APPP" 2>/dev/null; APPP=; }; WIN=; sleep 0.2; }
 # (the window takes the keys, as a person's first press gives them to it: there is no window manager on this display)
 focus() { i=0; while [ $i -lt 40 ]; do DISPLAY=$DSP xdotool windowfocus --sync "$1" 2>/dev/null
@@ -71,18 +71,15 @@ stop
 
 # ---- 2. the toolbar's and the menus' lists are the page's own (mkpresentpro.py reads them at build time)
 start
-WANT=$(python3 - "$R" <<'Y'
+python3 "$R/iso/sys/apps/mkpresentpro.py" "$T/gen.h" || { echo "FAIL mkpresentpro.py"; exit 1; }
+WANT=$(python3 - "$T/gen.h" <<'Y'
 import re, sys
-R = sys.argv[1]
-office = open(R + '/desktop/office45.js', encoding='utf-8').read()
-ppro = open(R + '/desktop/ppro45.js', encoding='utf-8').read()
-pprof = open(R + '/desktop/pprof45.js', encoding='utf-8').read()
-fonts = len(re.findall(r"'([^']+)'", re.search(r'const OFF_FONTS=\[([^\]]*)\];', office).group(1)))
-sizes = len(re.sub(r'\s', '', re.search(r"title='Font size'>\$\{\[([0-9,\s]+)\]", ppro).group(1)).split(','))
-themes = len(re.findall(r"[A-Za-z0-9_]+:\{", re.search(r'const PP_THEMES=\{(.*?)\n\};', pprof, re.S).group(1)))
-lays = len(re.findall(r"\['[^']+','", re.search(r'const PP_LAYOUTS=\[(.*?)\];', pprof, re.S).group(1)))
-shapes = len(re.findall(r"\['[^']+','", re.search(r'const PP_SHAPES=\[(.*?)\];', pprof, re.S).group(1)))
-print('fonts %d sizes %d layouts %d themes %d shapes %d' % (fonts, sizes, lays, themes, shapes))
+h = open(sys.argv[1], encoding='utf-8').read()
+def n(k):
+    return re.search(r'#define ' + k + r' (\d+)', h).group(1)
+print('fonts %s sizes %s layouts %s themes %s shapes %s' % (n('NPPFONTS'), n('NPPSIZES'), n('NPPLAYOUTS'), n('NPPTHEMES'), n('NPPSHAPES')))
+Y
+)
 Y
 )
 grep -q "^lists $WANT\$" "$ST"
