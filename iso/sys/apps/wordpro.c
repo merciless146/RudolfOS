@@ -44,6 +44,7 @@ static int menus_n(void);
 static void obj_counts(int *w, int *c);
 static void state_objs(GString *s);
 static void insert_picture_data(guchar *data, gsize len);
+static void open_doc(const char *path);
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
 static void css(void)
 {
