@@ -134,7 +134,9 @@ The native document is the page's document, not a text buffer that happens to lo
   back, never a place with nothing behind it. Two things that follow, and that the first cut had to learn: an entry keeps
   its own text, the places included (what a save reads leaves them out, which is right for the page's words and would lose
   where an object stands), and the page's objects are taken away before the text that holds their places is written again
-  -- a widget destroyed in the middle of the buffer's own change stops the window (undo, New and an opened document). a cell holds one paragraph, with no inline spans inside it yet; the page's
+  -- a widget destroyed in the middle of the buffer's own change stops the window (undo, New and an opened document) -- and
+  typing in a table's cell is a step of the history as typing on the page is, since a cell's words are part of the page
+  (Ctrl+Z standing in the cell is the page's undo, and the entry keeps the cells' text). A cell holds one paragraph, with no inline spans inside it yet; the page's
   insert dialogs (rows, columns, header row, borders; a picture's size and text) come with the dialogs step, so the menu
   inserts the page's default table and asks for a picture's file through GTK's own chooser.
 
