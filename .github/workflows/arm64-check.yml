@@ -15,7 +15,8 @@ on:
   pull_request:
     paths: ['iso/kconfig-arm64.sh', 'iso/systools/arm64_kernel.sh', 'iso/systools/arm64_base.sh', 'iso/qt/arm64_boot.py', 'iso/systools/chromium_fetch.sh', 'iso/sys/*.c', 'iso/sys/root/**', 'iso/initramfs/**',
       'iso/mkrootfs.sh', 'iso/xbuild.sh', 'iso/xshim.sh', 'iso/sndbuild.sh', 'iso/sndshim.sh', 'iso/wifibuild.sh', 'iso/pkgmanifest.py',
-      'iso/systools/mklayers.sh', 'iso/systools/addwebkit.sh', '.github/workflows/arm64-check.yml']
+      'iso/systools/mklayers.sh', 'iso/systools/mkpipewire.sh', 'iso/systools/layercheck.sh', 'iso/systools/addwebkit.sh',
+      '.github/workflows/arm64-check.yml']
 permissions: {contents: read, actions: read}
 jobs:
   arm64:
@@ -103,6 +104,8 @@ jobs:
             pipewire wireplumber libpipewire-0.3-0t64 libspa-0.2-modules gstreamer1.0-pipewire >/dev/null
       - name: Build the base layer
         run: OUT=$PWD/b-arm64 bash iso/systools/arm64_base.sh
+      - name: The base layer carries PipeWire's capture path (1.6.3, plan Part 9)
+        run: sh iso/systools/layercheck.sh b-arm64/layers/base.sfs
       - uses: actions/upload-artifact@v4
         with: {name: arm64-layers, path: 'b-arm64/layers/*.sfs', retention-days: 3}
       - name: Report

@@ -9,14 +9,24 @@ on:
   push:
     paths:
       - iso/systools/mkpipewire.sh
+      - iso/systools/layercheck.sh
+      - iso/systools/mklayers.sh
       - iso/systools/pwconf/**
       - iso/sys/root/usr/lib/rudolf/sound
       - iso/sys/root/usr/lib/rudolf/camera
       - iso/qt/host/camwp_t.sh
+      - iso/qt/host/layercheck163_t.sh
       - .github/workflows/pipewire-check.yml
 permissions:
   contents: read
 jobs:
+  layercheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: layercheck.sh's cases, against a listed layer (no squashfs-tools needed)
+        run: sh iso/qt/host/layercheck163_t.sh
   layer:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -41,6 +51,13 @@ jobs:
           # none is packaged: PulseAudio is the sound server (the owner's choice, 2026-11-27)
           test ! -e /tmp/root/usr/bin/pipewire-pulse || { echo "FAIL pipewire-pulse is in the layer: PulseAudio must stay the sound server"; exit 1; }
           echo "PASS the layer has pipewire, wireplumber, the SPA plug-ins, the camera's v4l2, and none of pipewire-pulse"
+      - name: the base layer mklayers.sh makes from it carries them (plan Part 9)
+        run: |
+          set -e
+          # (the tree above is what mkpipewire.sh made; this asks the packed base.sfs, so a layer that loses them on the
+          # way -- mklayers.sh's split, or a repack of the wrong tree -- is caught here, not on the camera's first try)
+          bash iso/systools/mklayers.sh /tmp/root /tmp/layers
+          sh iso/systools/layercheck.sh /tmp/layers/base.sfs
       - name: start it as the session does, with the layer's configuration
         run: |
           set -e

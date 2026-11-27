@@ -26,6 +26,9 @@ device open, so the switch stops it before unloading the camera's driver and sta
   back (before, the driver could not be unloaded and the switch answered "the camera is in use").
 - Better: the Lite engine check now installs PipeWire and GStreamer's pipewire plug-in and holds the layer it builds to
   the three capture plug-ins, so a build without a camera path is refused here instead of shipping.
+- Better: a base layer is checked as it is packed, not as its build tree was: the daemon, WirePlumber, the camera's v4l2
+  plug-in and the setting that keeps WirePlumber off the sound cards must be in the layer itself, and pipewire-pulse must
+  not, in the ARM64 build and in a release's layer alike (`systools/layercheck.sh`).
 - Fixed: Voice Recorder's Record now says what went wrong (the error's name and message, in a notification) instead of
   playing the click sound and staying silent, with no clock and no recording; on the Native desktop the start block could
   throw where nothing caught it. It also cleans up the microphone if it fails, so Record can be tried again (checklist V1).

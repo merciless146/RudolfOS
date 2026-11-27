@@ -842,6 +842,12 @@ every file of it in `base.sfs`: it takes out only `opt/chromium`, `usr/share/rud
 builds the same layers from `main` and has no build switch around this, so it gets them when this part merges; the
 `kryptonite` branch (last at `ec2edfa9`, 2026-11-23) has neither `mkpipewire.sh` nor the call in its `mkrootfs.sh`, so it
 must merge `main` before a layer built from it has the daemon -- until then the self-test's `capture` line fails there.
+**The layer itself, not the tree.** `systools/layercheck.sh` unpacks nothing: it reads a packed layer's file list and wants
+the daemon and WirePlumber (executable files), the camera's `spa-0.2/v4l2/libspa-v4l2.so`, the `51-no-alsa` drop-in and
+no `pipewire-pulse`; it names whatever is missing and fails. It runs on the base layer the ARM64 build makes
+(`arm64-check.yml`), on the one `ci_release.sh` packs for a release, and on the one the PipeWire check makes with
+`mklayers.sh` from `mkpipewire.sh`'s own tree; its nine cases are a host test needing no squashfs-tools
+(`iso/qt/host/layercheck163_t.sh`, its own job in the PipeWire check).
 
 **The fault.** On the Native desktop Camera answers "No camera is available or access is blocked" with the privacy switch
 on, the check's microphone reads −120 dB (all-zero samples) and Voice Recorder records nothing; on the same build and

@@ -473,6 +473,8 @@ if [ "$BSRC" != "$PBSRC" ]; then
 	echo "https://github.com/${GITHUB_REPOSITORY:-merciless146/rudolfos}/releases/download/ext-$(echo "$ABI" | cut -c1-16)" | sudo tee "$W/broot/usr/share/rudolf/sysext-source" >/dev/null
 	echo "::notice title=Base ABI::$ABI (system extensions for this base: release ext-$(echo "$ABI" | cut -c1-16))"
 	sudo $MK "$W/broot" "$W/new/base.sfs" $SQ; sudo chown "$(id -u)" "$W/new/base.sfs"; sudo rm -rf "$W/broot"
+	# 1.6.3 (docs/plan-1.6.3.md Part 9): the layer itself, not the tree it came from, carries PipeWire's capture path
+	sh systools/layercheck.sh "$W/new/base.sfs" || exit 1
 	# (1.6.1: and in the layer itself, as the computer will see them)
 	for h in $RHELP $RINNER; do unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h" 2>/dev/null | grep -qE '^-rwx------ root/root .* squashfs-root/usr/lib/rudolf/root/'"$h"'$' || { echo "the root helper $h is not root's 0700 in base.sfs"; unsquashfs -lls "$W/new/base.sfs" "usr/lib/rudolf/root/$h"; exit 1; }; done
 	NOTES+=("system programs")
