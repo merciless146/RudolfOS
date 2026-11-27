@@ -262,8 +262,10 @@ device") and some loose files; "voice" finds the app.
   carries `JSMediaRecorder`, `MediaRecorderPrivateGStreamer`, `MediaRecorderPrivateBackend` and `MediaRecorderEnabled`,
   so it is compiled in with a GStreamer backend. This session first read it as absent from a count of
   `WebKitMediaRecorder`, which is the Cocoa-era name; the `JS…` and `Private…` names are the ones that matter. So the
-  throw is **not** a missing constructor, and where it happens is not established: everything from `new AudioContext()`
-  to `rec.start()` is uncaught, so any of it would look exactly like this from outside. What the machine does say is that
+  throw is **not** a missing constructor and is not the `AudioContext` (that failure is asynchronous — it yields silence, not
+  an exception), so the one candidate the source puts in the way is `rec.start()`: `uritranscodebin` is missing from the
+  image and `startRecording` throws `NotSupportedError` without it (N35 point 3). Everything from `new AudioContext()` to
+  `rec.start()` is still uncaught, so nothing here proves the page reached it. What the machine does say is that
   the meter reads −120 dB, the check's floor, which its formula gives for all-zero samples. That a recorder which started
   would then save silence is **inference**, not record: `MediaRecorder` builds a pipeline of its own, and N35 point 3 marks
   that as unproven. A `try`/`catch` around that block, showing the error in the window, is the smallest change that would
@@ -411,9 +413,22 @@ through PipeWire, and says so in its own error message. Three consequences:
      `WebAudioProvider_MediaStreamTrack_*` pipeline reports `<capture-audiosrcN> … streaming stopped, reason not-linked
      (-1)`. **What was seen failing is the WebAudio path**, and only it: the check's level meter reads the microphone
      through an `AudioContext` (`hwcheck30.js`'s `hwcMicPeak`) and sat at −120 dB through all four attempts
-     (0:01:54–0:03:00). That the **Recorder** fails for the same reason is **inference**: `MediaRecorder` builds its own
-     pipeline, that pipeline is nowhere in this log, and only a build with the plug-in in it can show what the Recorder
-     does.
+     (0:01:54–0:03:00). The same `AudioContext` is what Settings › Sound › Microphones › Test and the Recorder's own level
+   display use (`desktop/mictest59.js`, `apps25b.js`), so both lose their meter for this reason too.
+   - **The Recorder is a third fault, and not this one.** Read from WebKitGTK 2.52's source (`webkitgtk-2.52.6`):
+     `MediaRecorderPrivateGStreamer` builds its pipeline as `gst_element_factory_make("uritranscodebin")` with
+     `source-uri=mediastream://`, `dest-uri=appsink://`, and takes its source from `webkitMediaStreamSrcAddTrack()`. The
+     audio it records arrives as one `appsrc capture-audiosrcN` per track from `WebKitMediaStreamSrc`, whose file names no
+     `deinterleave`; the capture pipeline is `pulsesrc ! audioconvert ! audioresample ! capsfilter ! appsink`
+     (`GStreamerAudioCapturer`), which names none either. So the missing `interleave` does **not** stop the Recorder.
+     What the Recorder needs is `uritranscodebin`, from GStreamer Bad's `transcode` plug-in (`libgsttranscode.so`), and the
+     image does not have it: the 39 plug-ins include no `libgsttranscode.so`, and `addwebkit.sh` never names `transcode`.
+     When that factory returns NULL, `preparePipeline()` returns false, `MediaRecorderPrivateGStreamer::create` returns
+     null, and `MediaRecorder::startRecording` turns it into `NotSupportedError: The MediaRecorder is unsupported on this
+     platform` out of `rec.start()` — which the Recorder page calls before it sets its clock, in a block with no `catch`,
+     so the button would stay dead with no message, exactly as V1 saw it. **What only a build can settle:** that
+     `rec.start()` is where V1 dies. The V1 attempt's own log is not among the saved starts (`starts/0` and `starts/2` are
+     empty), so no run has yet printed the `uritranscodebin` factory line.
    - **`deinterleave` ships in `libgstinterleave.so`** (gst-plugins-good's `interleave` plug-in), and the image has
      `libgstinterleave.so: absent` while `libgstinter.so` (the video interleaver) and `libgstaudiofx.so` are there.
      `iso/systools/addwebkit.sh`'s loop names `deinterlace`, `inter` and `audiofx` and **never `interleave`** — and the loop

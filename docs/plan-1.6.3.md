@@ -849,12 +849,15 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
    path — the one the level meter reads — is a GStreamer element the image does not carry: `deinterleave`, from
    gst-plugins-good's `interleave` plug-in (`libgstinterleave.so`), so each attempt ends `not-linked`. That plug-in is now
    in `addwebkit.sh`'s list; moving the sound server from PulseAudio to PipeWire is a part of its own and has nothing to do
-   with it.
+   with it. **The Recorder is a third fault and needs its own plug-in:** WebKitGTK 2.52's `MediaRecorderPrivateGStreamer`
+   builds `uritranscodebin` (GStreamer Bad's `transcode` plug-in, `libgsttranscode.so`), which the image also lacks — so
+   `rec.start()` throws `NotSupportedError` and the button stays dead. `transcode` is not in `addwebkit.sh` yet, and its
+   library pulls `libgsttranscoder-1.0.so.0` with it through the script's existing `ldd` pass.
 5. **Test on the Vivobook** (checklist V2 and V3): the camera's preview at 640×480, a photo and a 5 s video saved and
-   opened. Then with PipeWire stopped, to see what the app says. V1 is the other fault and the other check, and it settles
-   what is still inference: with `libgstinterleave.so` in the image the level meter should move off −120 dB; if it does and
-   the Recorder still saves nothing, the Recorder has a fault of its own, which nothing here has yet shown. If
-   `deinterleave` is still missing, the log says so in its first line.
+   opened. Then with PipeWire stopped, to see what the app says. Two checks for two paths: the hardware check's microphone
+   step reads through WebAudio, so it needs `libgstinterleave.so` and should move off −120 dB; V1 is the Recorder, which
+   needs `libgsttranscode.so` and should then save a clip. If either stays dead, its own log line names the factory that is
+   still missing.
 6. **Cost:** two more daemons and their libraries, and their memory; read the native desktop's idle figure (checklist V42)
    before and after.
 
