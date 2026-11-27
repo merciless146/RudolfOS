@@ -332,6 +332,7 @@ static void state_write(void)
 	g_string_append_printf(s, "menus %d\n", menus_n());
 	if (MENU_OPEN) g_string_append_printf(s, "menu %s %d\n", MENU_OPEN, MENU_OPEN_N);
 	state_objs(s);
+	g_string_append_printf(s, "hist %d %d\n", HIST_I, HIST_N);   /* (where the undo stands: the tests read it) */
 	if (FIND && FI && REPL) g_string_append_printf(s, "findbar %d\nfind %s\nrepl %s\n", gtk_widget_get_visible(FIND) ? 1 : 0,
 		gtk_entry_get_text(GTK_ENTRY(FI)), gtk_entry_get_text(GTK_ENTRY(REPL)));
 	g_string_append_printf(s, "on %s\n", ON);
