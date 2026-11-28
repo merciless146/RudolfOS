@@ -870,20 +870,37 @@ static void titlebar_ask(const char *id)
 #endif
 #define LR_DIAG_MAX 100   /* (the box says them all; the file, every line) */
 static char lr_diag[LR_DIAG_MAX][300]; static int lr_diag_n;
-static void lr_read_diag(const char *keep_at)
+/* a line of our own among the check's (kept with them) */
+static void lr_diag_say(FILE *k, const char *l)
+{
+	if (k) fprintf(k, "%s\n", l);
+	if (lr_diag_n < LR_DIAG_MAX) snprintf(lr_diag[lr_diag_n++], sizeof lr_diag[0], "%s", l);
+}
+/* what a Windows program runs with: the check's lines, or one of ours saying why there are none -- a check that could not
+   start, or one that printed nothing. Never nothing at all: the box is shown before this, and would then be silent about
+   what the program runs with (two of six runs in #762's CI wrote no readings request, so their box never got them and
+   nothing said so). Answers whether they were kept at keep_at (best effort: a check that cannot be kept is still said). */
+static int lr_read_diag(const char *keep_at)
 {
 	lr_diag_n = 0;
-	FILE *p = popen(LR_DIAG_CMD, "r"); if (!p) return;
-	FILE *k = keep_at && *keep_at ? fopen(keep_at, "w") : NULL;   /* (best effort: a check that cannot be kept is still said) */
-	char l[400];
-	while (fgets(l, sizeof l, p)) {
-		size_t n = strlen(l); while (n && (l[n - 1] == '\n' || l[n - 1] == '\r')) l[--n] = 0;
-		if (!*l) continue;
-		if (k) fprintf(k, "%s\n", l);
-		if (lr_diag_n < LR_DIAG_MAX) snprintf(lr_diag[lr_diag_n++], sizeof lr_diag[0], "%s", l);
+	FILE *k = keep_at && *keep_at ? fopen(keep_at, "w") : NULL;
+	FILE *p = popen(LR_DIAG_CMD, "r");
+	if (!p) {
+		int e = errno; char why[220];
+		snprintf(why, sizeof why, "(-- what it runs with could not be read: %s --)", strerror(e));
+		lr_diag_say(k, why);
+	} else {
+		char l[400];
+		while (fgets(l, sizeof l, p)) {
+			size_t n = strlen(l); while (n && (l[n - 1] == '\n' || l[n - 1] == '\r')) l[--n] = 0;
+			if (!*l) continue;
+			lr_diag_say(k, l);
+		}
+		pclose(p);
+		if (!lr_diag_n) lr_diag_say(k, "(-- what it runs with came back empty: the check ran and printed nothing --)");
 	}
-	if (k) fclose(k);
-	pclose(p);
+	if (k) { int bad = ferror(k); if (fclose(k) || bad) { unlink(keep_at); return 0; } return 1; }
+	return 0;
 }
 /* 1.6.2 (docs/plan-1.6.2.md Part 40, the owner's Vivobook on 2026-11-23: Starport GE's launcher could not find its folder, which
    was in the Wine prefix from before 1.5.9, and nothing at all was shown): a program that ends within LR_QUICK seconds of starting
@@ -927,7 +944,9 @@ static int lr_send_diag(const char *p, const char *tp, const char *id, const cha
 	FILE *f = fopen(tp, "w"); if (!f) return 1;
 	fprintf(f, "{\"kind\":\"lxfail\",\"app\":"); jstr(f, id); fprintf(f, ",\"diag\":[");
 	for (int i = 0; i < lr_diag_n; i++) { jstr(f, lr_diag[i]); if (i + 1 < lr_diag_n) fputc(',', f); }
-	fprintf(f, "],\"diaglog\":"); jstr(f, diaglog); fprintf(f, ",\"fill\":true,\"of\":"); jstr(f, of);
+	fprintf(f, "],");
+	if (diaglog && *diaglog) { fprintf(f, "\"diaglog\":"); jstr(f, diaglog); fputc(',', f); }   /* (empty: nothing was kept) */
+	fprintf(f, "\"fill\":true,\"of\":"); jstr(f, of);
 	fprintf(f, "}\n");
 	int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); return 1; }
 	if (rename(tp, p)) { unlink(tp); return 1; }
@@ -994,18 +1013,17 @@ static void launch_report(const char *id, const desk *k, int status, double secs
 	/* the box first: what it ended with and where its log is, said now */
 	if (lr_send(p, tp, id, k, status, secs, wine, dir, log, nl, lines)) { free(t); return; }
 	/* then what it runs with (a Windows program): read, kept beside the log, and said in a second request of its own,
-	   which the page fills into the box it already shows */
+	   which the page fills into the box it already shows -- always, even when the check said nothing (lr_read_diag says
+	   that in words rather than leaving the box without a word about it) */
 	if (wine) {
 		char diaglog[420] = ""; size_t l = strlen(log);
 		if (l > 4 && !strcmp(log + l - 4, ".log")) snprintf(diaglog, sizeof diaglog, "%.*s.diag.txt", (int)(l - 4), log);
 		else snprintf(diaglog, sizeof diaglog, "%s.diag.txt", log);
-		if (!strstr(diaglog, "..")) lr_read_diag(diaglog);
-		if (lr_diag_n) {
-			char base2[92], p2[312], tp2[332];
-			snprintf(base2, sizeof base2, "%s-diag", base);
-			snprintf(p2, sizeof p2, "%s/%s.json", LR_DIR, base2); snprintf(tp2, sizeof tp2, "%s.tmp", p2);
-			lr_send_diag(p2, tp2, id, diaglog, base);
-		}
+		int kept = lr_read_diag(strstr(diaglog, "..") ? NULL : diaglog);   /* (a path with .. keeps nothing, but is still read) */
+		char base2[92], p2[312], tp2[332];
+		snprintf(base2, sizeof base2, "%s-diag", base);
+		snprintf(p2, sizeof p2, "%s/%s.json", LR_DIR, base2); snprintf(tp2, sizeof tp2, "%s.tmp", p2);
+		lr_send_diag(p2, tp2, id, kept ? diaglog : "", base);
 	}
 	free(t);
 }
