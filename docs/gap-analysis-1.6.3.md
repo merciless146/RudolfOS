@@ -22,8 +22,8 @@ make someone keep another operating system on a second machine; 5 and on are cap
 | 9 | No Android apps, and Windows only as far as Wine goes | A phone's apps do not run here; a program Wine cannot run is out of reach | Waydroid measured on the Vivobook with Lite, before it is offered (the plan's own gate) |
 
 **Where each lands (the owner, 2026-11-28).** Gaps **1, 2, 4, 6, 7 and 8 are 1.6.4's**, in this order, in
-`docs/plan-1.6.4.md`; so is **1.6.3's Part 2, the fingerprint readers**, whose last two pieces are that plan's Part 7 (no
-gap of the nine). Gaps **3, 5 and 9 are the 2.0 WendigOS project's** (`docs/plan-2.0.md`: the newest kernel and the
+`docs/plan-1.6.4.md`; so is **1.6.3's Part 2, the fingerprint readers**, whose last piece, the owner's checklist with a real reader, is that plan's Part 7 (no gap of the
+nine). Gaps **3, 5 and 9 are the 2.0 WendigOS project's** (`docs/plan-2.0.md`: the newest kernel and the
 "next" channel; Wayland; Waydroid with the phone build). The two plans' text is what is built; this list is what is
 missing, and it is not changed as parts of it ship.
 
