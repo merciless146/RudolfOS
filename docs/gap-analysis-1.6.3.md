@@ -26,7 +26,7 @@ make someone keep another operating system on a second machine; 5 and on are cap
 The vault is good: each account's files are real files on the disk, encrypted with its own fscrypt key, and unreadable
 while it is signed out. What was not good was what the API trusted. This is the state after the audit of 2026-11-28.
 
-**Already shipped, in the Archive Manager's two open PRs (#754, #755).**
+**Already shipped, in the Archive Manager's PRs (#754, with #755 merged into its branch; the guard's follow-up is #757).**
 - **Path requests are scoped to the extraction.** `dl/read?path=` and `POST dl/file?path=&to=quar|del` may only name a
   file inside the folder the extraction just made beside a ZIP, recorded with the account that made it (15 minutes,
   cleared when the page takes the result or a new extraction starts). A folder another account unpacked is not this
