@@ -154,7 +154,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const ZP2 = "[...homePath('DOCUMENTS'),'GAME2.ZIP']";
   await q(`openPath(${ZP2})`); await wait(900);
   w = await q("(()=>{const W=wins.at(-1),b=W.body;return {t:W.title||W.el.querySelector('.tt,.title')?.textContent,rows:[...b.querySelectorAll('tbody tr')].map(r=>r.textContent),stat:(b.querySelector('.dlzs')||{}).textContent,ex:!!(b.querySelector('.dlzx')&&!b.querySelector('.dlzx').disabled)}})()");
-  ok('23. a ZIP in Documents, not in Downloads: Archive Manager lists it by its path (dl/zip?path=)', /Archive Manager - GAME2\.ZIP/.test(w.t) && w.rows.includes('📄 Made Up Game/bad.com') && w.rows.includes('📄 notes.txt') && w.ex && CALLS.includes('dl/zip?path=' + E2), w);
+  ok('23. a ZIP in Documents, not in Downloads: Archive Manager lists it by its path (dl/zip?path=)', w.rows.includes('📄 Made Up Game/bad.com') && w.rows.includes('📄 notes.txt') && /^3 file\(s\), 86 B unpacked, in GAME2\.ZIP$/.test(w.stat) && w.ex && CALLS.includes('dl/zip?path=' + E2), w);
   await q("document.querySelector('.dlzx').click()"); await wait(3200);
   const nt3 = await q('NT');
   ok('24. Extract here: rudolfd unpacks it beside itself (dl/unzip?path=), the folder beside the ZIP', CALLS.includes('POST dl/unzip?path=' + E2) && DISK.has(DP + '/game2/Made Up Game/readme.txt') && DISK.has(DP + '/game2/notes.txt'), [...DISK.keys()].slice(-4));
