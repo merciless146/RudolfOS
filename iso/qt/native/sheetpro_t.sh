@@ -274,7 +274,7 @@ SUM4=$(md5sum "$F4" | cut -d' ' -f1)
 case "$(sed -n 's/^say //p' "$ST8")" in *"has changes that are not saved"*) ;; *) RC=1 ;; esac
 [ "$(md5sum "$F4" | cut -d' ' -f1)" = "$SUM4" ] || RC=1   # (nothing is written while the question waits)
 DISPLAY=$DSP xdotool key Escape; sleep 0.9                # (Cancel: the book stays as it is)
-grep -q '^ask 0$' "$ST8" || RC=1
+grep -q '^answer 0$' "$ST8" || RC=1   # (Cancel: the question was answered, and the book stays as it is)
 [ -d "/proc/$SPP8" ] || RC=1
 grep -q '^cells 2$' "$ST8" || RC=1
 [ "$(md5sum "$F4" | cut -d' ' -f1)" = "$SUM4" ] || RC=1

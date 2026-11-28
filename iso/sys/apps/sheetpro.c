@@ -794,7 +794,7 @@ static void file_note(const char *title, const char *msg)
 /* ---- a book with changes is not thrown away: the page asks before it goes, and so does this (Save, Discard,
    Cancel). The question is the page's own overlay, so the answer is a button, Return (Save is the one it focuses) or
    Escape (Cancel). A Save with no file yet opens the chooser, and the act waits for it -- save_done runs it. ---- */
-static int PEND = PEND_NONE, ASK; static char *PEND_PATH;
+static int PEND = PEND_NONE, ASK, LAST_ANS = -1;   /* (LAST_ANS: the answer the question was given, -1 none yet) */ static char *PEND_PATH;
 static void pending_do(void)
 {
 	int act = PEND; char *p = PEND_PATH;
@@ -806,7 +806,7 @@ static void pending_do(void)
 }
 static void ask_cb(int i, void *d)
 {
-	(void)d; ASK = 0; state_soon();
+	(void)d; ASK = 0; LAST_ANS = i; state_soon();
 	if (i != 1 && i != 2) { g_free(PEND_PATH); PEND_PATH = NULL; PEND = PEND_NONE; return; }  /* (Cancel, or Escape) */
 	if (i == 1) { pending_do(); return; }                                                     /* (Discard) */
 	do_save(0);                                                                               /* (Save: then the act) */
@@ -1547,7 +1547,7 @@ static void state_write(void)
 				cl->ha, cl->fc ? cl->fc : "-", cl->bg ? cl->bg : "-");
 	}
 	g_array_free(ks, TRUE);
-	g_string_append_printf(s, "zoom %d\nhist %d %d\nagg %s\nask %d\nsay %s\n", ZOOM, UNDO_I, UNDO_N, AGGS, ASK, SAY);
+	g_string_append_printf(s, "zoom %d\nhist %d %d\nagg %s\nask %d\nanswer %d\nsay %s\n", ZOOM, UNDO_I, UNDO_N, AGGS, ASK, LAST_ANS, SAY);
 	char *tmp = g_strdup_printf("%s.t", f); g_file_set_contents(tmp, s->str, -1, NULL); rename(tmp, f); g_free(tmp);
 	g_string_free(s, TRUE);
 }
