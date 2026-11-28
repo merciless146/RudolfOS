@@ -4,8 +4,10 @@
 // in the ZIP, each file a reference to its file in the account's folder, checked by the antivirus (quarantined, or blocked and
 // deleted, said so). dl27.js dlScope leaves references in sub-folders of Downloads where they are (not moved to the top, not
 // renamed on the disk), still deletes files nothing refers to (a nested file deleted and the Trash emptied), still renames the
-// top's; dlAdopt takes nothing in while dl/home says "unzip", and a file nobody refers to afterwards. A stand-in rudolfd with a
-// disk in memory; made-up names only.   node dlzip61_t.js [CHROME]  (build iso/www first)
+// top's; dlAdopt takes nothing in while dl/home says "unzip", and a file nobody refers to afterwards. 1.6.3 Part 10, item 1: a
+// ZIP at a path (Documents, a drive): listed and extracted beside itself (dl/zip and dl/unzip by path, the result's dest), each
+// file checked by the antivirus at its path there and quarantined by path. A stand-in rudolfd with a disk in memory; made-up
+// names only.   node dlzip61_t.js [CHROME]  (build iso/www first)
 const {chromium} = require('playwright'); const http = require('http'), fs = require('fs'), path = require('path');
 const WWW = path.join(__dirname, '../../../iso/www');
 const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 'FAIL ') + n + (d !== undefined && !c ? ' - ' + String(typeof d == 'string' ? d : JSON.stringify(d)).slice(0, 700) : '')) };
@@ -19,25 +21,32 @@ const ZDIRS = ['Made Up Game', 'Made Up Game/data', 'Made Up Game/data/deep', 'M
 const zdirs = () => J.zip == ZIP ? ZDIRS : [...new Set(J.zip.map(x => x[0].split('/').slice(0, -1).join('/')).filter(Boolean))];
 const J = {job: null, pending: '', result: null, zip: ZIP, stopReq: 0, slow: 4};
 function unpack(acct, upto) { const files = [], d = dirOf('home', acct); for (const [p, c] of J.zip.slice(0, upto)) { const to = uniq(d, p.split('/').pop()); DISK.set(to, c); files.push({path: p, disk: to.split('/').pop(), size: c.length}) } return files }
+// a ZIP at a path (1.6.3 Part 10, item 1): unpacked beside itself, the ZIP's own names, as dlzip.sh does with "beside"
+function unpackB(dest) { const files = []; for (const [p, c] of J.zip) { DISK.set(dest + '/' + p, c); files.push({path: p, disk: p, size: c.length}) } return files }
 const api = (a, q, post) => { const p = new URLSearchParams(q || ''); CALLS.push((post ? 'POST ' : '') + a + '?' + (q || ''));
   if (a == 'dl/incoming' || a == 'dl/quarantine') return {ok: true, items: []};
   if (a == 'dl/home') { const r = {ok: true, items: ls(dirOf('home', p.get('acct')))}; if (J.pending && J.pending == p.get('acct')) r.unzip = true; return r }
-  if (a == 'dl/zip') { if (!DISK.has(dirOf('home', p.get('acct')) + '/' + p.get('name'))) return {ok: false, error: 'the file is not there any more', _code: 404};
+  if (a == 'dl/zip') { if (!DISK.has(p.get('path') || dirOf('home', p.get('acct')) + '/' + p.get('name'))) return {ok: false, error: 'the file is not there any more', _code: 404};
     const items = [{name: 'Made Up Game/', size: 0, dir: true}, ...J.zip.map(([n, c]) => ({name: n, size: c.length, dir: false})), {name: 'Made Up Game/empty/', size: 0, dir: true}];
     return {ok: true, items, more: false, total: items.length, bytes: J.zip.reduce((s, x) => s + x[1].length, 0)} }
   if (a == 'dl/unzip') { if (!post) return {ok: false, error: 'use POST', _code: 400};
     if (p.get('stop') == '1') { J.stopReq = 1; return {ok: true, message: 'stopping'} }
     if (J.job) return {ok: false, error: 'another task is still running, try again in a moment', _code: 409};
-    J.job = {n: 0, acct: p.get('acct'), name: p.get('name')}; J.pending = p.get('acct'); J.result = null; J.stopReq = 0; return {ok: true, message: 'started'} }
+    J.job = {n: 0, acct: p.get('acct'), name: p.get('name') || 'x.zip', path: p.get('path'), dest: p.get('path') ? p.get('path').replace(/\.zip$/i, '') : ''}; J.pending = p.get('acct') || ''; J.result = null; J.stopReq = 0; return {ok: true, message: 'started'} }
   if (a == 'dl/unzipped') { if (post) { J.result = null; J.pending = ''; return {ok: true} } const r = J.result || {dirs: [], files: [], end: ''}; return Object.assign({ok: true, running: !!J.job, acct: J.pending}, r) }
   if (a == 'job') { const j = J.job; if (!j) return {ok: true, name: J.last || '', running: false, status: 0, log: ''}; j.n++; const N = J.zip.length;
-    if (j.n == 1 && j.name) j.files = unpack(j.acct, N);   // (the files are in the account's folder while the job runs, as dlzip.sh moves them)
+    if (j.n == 1 && j.name) j.files = j.path ? unpackB(j.dest) : unpack(j.acct, N);   // (as dlzip.sh: flat into the account's folder, or beside the ZIP for a path)
     const head = `total ${N} ${J.zip.reduce((s, x) => s + x[1].length, 0)}\n`;
     if (J.stopReq) { const files = j.files.slice(0, 1); j.files.slice(1).forEach(f => DISK.delete(dirOf('home', j.acct) + '/' + f.disk)); J.result = {dirs: ZDIRS.slice(0, 1), files, end: 'stopped 1 ' + files[0].size}; J.job = null; J.last = 'dl-unzip'; return {ok: true, name: 'dl-unzip', running: false, status: 0, log: head + 'stopped 1'} }
     if (j.n < J.slow) return {ok: true, name: 'dl-unzip', running: true, status: -1, log: head + `progress 1 ${N} Made Up Game/readme.txt\nprogress 2 ${N} Made Up Game/data/level 1.dat\n`};
-    const files = j.files; J.result = {dirs: zdirs(), files, end: `done ${N} ${files.reduce((s, f) => s + f.size, 0)}`}; J.job = null; J.last = 'dl-unzip';
+    const files = j.files; J.result = Object.assign({dirs: zdirs(), files, end: `done ${N} ${files.reduce((s, f) => s + f.size, 0)}`}, j.path ? {dest: j.dest} : {}); J.job = null; J.last = 'dl-unzip';
     return {ok: true, name: 'dl-unzip', running: false, status: 0, log: head + files.map(f => `file ${f.path}\t${f.disk}\t${f.size}`).join('\n') + '\n' + J.result.end + '\n'} }
-  if (a == 'dl/file') { const n = p.get('name'), to = p.get('to'), from = p.get('from') || (to == 'release' ? 'quarantine' : 'incoming'), acct = p.get('acct');
+  if (a == 'dl/file') { const zf = p.get('path');
+    if (zf) { const to2 = p.get('to'); if (!DISK.has(zf)) return {ok: false, error: 'the file is not there any more', _code: 404};
+      if (to2 == 'del') { DISK.delete(zf); return {ok: true} }
+      if (to2 == 'quar') { const dst = uniq(DL + '/.quarantine', zf.split('/').pop()); DISK.set(dst, DISK.get(zf)); DISK.delete(zf); return {ok: true, path: dst, name: dst.split('/').pop(), size: DISK.get(dst).length} }
+      return {ok: false, error: 'to=quar or del', _code: 400} }
+    const n = p.get('name'), to = p.get('to'), from = p.get('from') || (to == 'release' ? 'quarantine' : 'incoming'), acct = p.get('acct');
     const src = dirOf(from, acct) + '/' + n; if (!DISK.has(src)) return {ok: false, error: 'the file is not there any more', _code: 404};
     const mv = dst => { DISK.set(dst, DISK.get(src)); DISK.delete(src); return {ok: true, path: dst, name: dst.split('/').pop(), size: DISK.get(dst).length} };
     if (to == 'del') { DISK.delete(src); return {ok: true} }
@@ -54,7 +63,7 @@ const srv = http.createServer((q, s) => { const [u0, qs] = q.url.split('?'); con
     if (u == '/' || u == '/index.html') { s.writeHead(200, {'content-type': 'text/html'});
       return s.end(fs.readFileSync(path.join(WWW, 'index.html'), 'utf8').replace('<head>', '<head><script>window.RUDOLFD={token:"t",base:"",boot:"uefi",media:"disk",live:0,recovery:0};</script>')) }
     if (u == '/api/events/wait') return setTimeout(() => { s.writeHead(200); s.end('{"ok":true,"events":""}') }, 20000);
-    if (u == '/api/dl/read') { CALLS.push('dl/read?' + qs); const p = new URLSearchParams(qs), b = Buffer.from(DISK.get(dirOf(p.get('from'), p.get('acct')) + '/' + p.get('name')) || ''); s.writeHead(200, {'content-type': 'application/octet-stream'}); return s.end(b) }
+    if (u == '/api/dl/read') { CALLS.push('dl/read?' + qs); const p = new URLSearchParams(qs), b = Buffer.from(DISK.get(p.get('path') || dirOf(p.get('from'), p.get('acct')) + '/' + p.get('name')) || ''); s.writeHead(200, {'content-type': 'application/octet-stream'}); return s.end(b) }
     if (u.startsWith('/api/')) { const j = api(u.slice(5), qs, q.method == 'POST'); s.writeHead(j._code || 200, {'content-type': 'application/json'}); return s.end(JSON.stringify(j)) }
     s.writeHead(404); s.end() }) }).listen(8600, '127.0.0.1');
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -136,6 +145,23 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   const nt2 = await q('NT');
   ok('21. another task running: said so, nothing started', /busy with another task/.test(nt2.at(-1)) && !(await q("!!node(downloadsPath())['GAME (5)']")), nt2.slice(-2));
   ok('21b. the stopped one said so', nt2.some(x => /^Extraction stopped: Stopped: 1 file\(s\) from GAME\.ZIP are in .*GAME \(4\)\.$/.test(x)), nt2.slice(-3));
+  // 1.6.3 Part 10, item 1: a ZIP in Documents, not in Downloads -- listed by its path, extracted beside itself, and the
+  // antivirus reading and quarantining its files by their paths there too
+  const DP = '/home/rudolf/Documents', Z2 = DP + '/game2.zip', E2 = encodeURIComponent(Z2);
+  DISK.set(Z2, 'PK' + 'y'.repeat(4000));
+  J.zip = [['Made Up Game/readme.txt', 'Read me first'], ['Made Up Game/bad.com', EICAR], ['notes.txt', 'notes']]; J.slow = 2; J.result = null;
+  await q(`(()=>{wins.slice().forEach(W=>{try{W.close()}catch(e){}});SECC.av.on=true;SECC.av.act='quarantine';const H=node(homePath('DOCUMENTS'));H['GAME2.ZIP']=dlMkRef('${Z2}',4002,'full');dlRefsAdd('${Z2}');fsSave();return 1})()`);
+  const ZP2 = "[...homePath('DOCUMENTS'),'GAME2.ZIP']";
+  await q(`openPath(${ZP2})`); await wait(900);
+  w = await q("(()=>{const W=wins.at(-1),b=W.body;return {t:W.title||W.el.querySelector('.tt,.title')?.textContent,rows:[...b.querySelectorAll('tbody tr')].map(r=>r.textContent),stat:(b.querySelector('.dlzs')||{}).textContent,ex:!!(b.querySelector('.dlzx')&&!b.querySelector('.dlzx').disabled)}})()");
+  ok('23. a ZIP in Documents, not in Downloads: Archive Manager lists it by its path (dl/zip?path=)', /Archive Manager - GAME2\.ZIP/.test(w.t) && w.rows.includes('📄 Made Up Game/bad.com') && w.rows.includes('📄 notes.txt') && w.ex && CALLS.includes('dl/zip?path=' + E2), w);
+  await q("document.querySelector('.dlzx').click()"); await wait(3200);
+  const nt3 = await q('NT');
+  ok('24. Extract here: rudolfd unpacks it beside itself (dl/unzip?path=), the folder beside the ZIP', CALLS.includes('POST dl/unzip?path=' + E2) && DISK.has(DP + '/game2/Made Up Game/readme.txt') && DISK.has(DP + '/game2/notes.txt'), [...DISK.keys()].slice(-4));
+  ok('25. the antivirus reads each file by its path there, and quarantines the bad one by its path', CALLS.some(c => c.startsWith('dl/read?path=' + encodeURIComponent(DP + '/game2/Made Up Game/readme.txt'))) && CALLS.includes('POST dl/file?path=' + encodeURIComponent(DP + '/game2/Made Up Game/bad.com') + '&to=quar') && !DISK.has(DP + '/game2/Made Up Game/bad.com') && DISK.has(DL + '/.quarantine/bad.com'), CALLS.filter(c => /dl\/(read|file)/.test(c)).slice(-5));
+  ok('26. ...said so, with where the folder is; nothing added to the page\'s Documents or Downloads', nt3.some(x => /^Extracted: 2 file\(s\) from GAME2\.ZIP are in \/home\/rudolf\/Documents\/game2\. The antivirus quarantined 1: bad\.com\.$/.test(x)) && !(await q("Object.keys(node(homePath('DOCUMENTS'))).some(k=>/^GAME2$/.test(k))")) && !(await q("Object.keys(node(downloadsPath())).some(k=>/^GAME2$/.test(k))")), nt3.slice(-1));
+  const qf = await q("(()=>{const e=QUAR.filter(x=>x.n=='bad.com').at(-1);return e?{from:e.from,src:e.src,th:e.th,p:dlRefInfo(e.data).p}:null})()");
+  ok('27. ...the quarantine entry names the folder the ZIP is in, and its file in the quarantine', qf && qf.src == 'download' && qf.th.join() == 'EICAR-Test-File' && qf.p == DL + '/.quarantine/bad.com' && JSON.stringify(qf.from) == JSON.stringify(await q("homePath('DOCUMENTS')")), qf);
   ok('22. no page error', !errs.length, errs);
   await b.close(); srv.close(); const n = R.filter(Boolean).length; console.log(`${n}/${R.length} passed`); process.exit(n == R.length ? 0 : 1);
 })().catch(e => { console.error(e); process.exit(1) });

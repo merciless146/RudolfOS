@@ -79,6 +79,8 @@ folder's (no link on the way).
 | `POST dl/unzip?stop=1` | Cancel: the job stops before the next file (what was moved stays, and is in its result). |
 | `GET dl/unzipped` | The last extraction's whole result (the job's log is only its end): `{"ok","running","acct","dest","dirs":[PATH],"files":[{"path","disk","size"}],"end"}`; `dest` is the folder beside a ZIP (`""` when the files went flat into an account's folder). |
 | `POST dl/unzipped` | The page has saved its references: the result is forgotten. |
+| `GET dl/read?path=` | Bytes of a file at an absolute path the account may read (the same places a ZIP at a path may be in), for the antivirus over a folder unpacked beside a ZIP: `off` (negative = from the end) and `len` (at most 8 MB) as `dl/read` has them. |
+| `POST dl/file?path=&to=` | A file at such a path found bad: `to=quar` moves it into Downloads' quarantine (`dl/home`'s `quarantine`) and answers with its `path`, `name` and `size`; `to=del` deletes it. |
 
 While an extraction runs, or its result has not been taken (at most 15 minutes), `GET dl/home?acct=` for that account says
 `"unzip":true`, and the page takes no file of that folder in as a download of its own (dl27.js `dlAdopt`, in every page).

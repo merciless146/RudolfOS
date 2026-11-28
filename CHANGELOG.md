@@ -9,6 +9,11 @@ Each version's first line after "Summary:" is what Settings shows before an upda
   PipeWire under WebKitGTK 2.52, so it now starts with the session beside PulseAudio, which keeps the sound cards
   (WirePlumber's ALSA monitor is off). No `pipewire-pulse`; nothing listens.
 Summary: In progress.
+- **Archive Manager, a ZIP anywhere** (Part 10, begun): the Archive Manager opens and unpacks a ZIP kept anywhere your account
+  may read — another folder in your home, a USB drive, `/tmp` — not only one in Downloads. A listing is the same answer
+  wherever the ZIP is; Extract here unpacks it into a new folder beside it, named after it (`game`, `game (2)`), with the ZIP's
+  own folders and names, and the antivirus checks every file there by its own path, quarantining or blocking a bad one as it
+  does in Downloads. Nothing is moved into Downloads, so an extraction from a path leaves your downloads as they are.
 - New: on the native desktop, Settings is the native Settings app: Privacy, Security, System health and Users join the
   pages built before it, so every page of Settings is native there (Chromium mode and Lite keep the web Settings, as the
   owner's rule says). The Users page's security keys and fingerprints are added, removed and required through the page's own

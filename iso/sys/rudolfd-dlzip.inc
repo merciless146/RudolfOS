@@ -59,23 +59,67 @@ static int dlzip_path_ok(const char *real)
 	for (char *sv, *t = strtok_r(c, ":", &sv); t && !ok; t = strtok_r(NULL, ":", &sv)) if (*t) ok = dlzip_under(real, t, strlen(t));
 	free(c); return ok;
 }
-/* a ZIP at an absolute path the account may read: its real path (no link, a plain file) and the folder it is in */
-static int dlzip_at_path(struct req *r, const char *p, char *zp, size_t zn, char *hd, size_t hn)
+/* a file at an absolute path the account may read: its real path (no link, a plain file) and how big it is; 0 after a reply */
+static int dlzip_real(struct req *r, const char *p, char *zp, size_t zn, struct stat *stp)
 {
-	if (*p != '/') { reply_err(r->fd, 400, "an absolute path, please"); return 0; }
+	if (!p || *p != '/') { reply_err(r->fd, 400, "an absolute path, please"); return 0; }
 	if (strlen(p) >= PATH_MAX) { reply_err(r->fd, 400, "that path is too long"); return 0; }
 	for (const unsigned char *c = (const unsigned char *)p; *c; c++) if (*c < 0x20 || *c == 0x7f) { reply_err(r->fd, 400, "a path, please"); return 0; }
 	char rz[PATH_MAX];
 	if (!realpath(p, rz)) { reply_err(r->fd, 404, "the file is not there any more"); return 0; }
-	if (!dlzip_path_ok(rz)) { reply_err(r->fd, 403, "only a ZIP in your home, on a drive, or in /tmp"); return 0; }
+	if (!dlzip_path_ok(rz)) { reply_err(r->fd, 403, "only a file in your home, on a drive, or in /tmp"); return 0; }
 	int f = open(rz, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC); struct stat st;
 	if (f < 0 || fstat(f, &st) || !S_ISREG(st.st_mode)) { if (f >= 0) close(f); reply_err(r->fd, 404, "the file is not there any more"); return 0; }
 	close(f);
 	if ((size_t)snprintf(zp, zn, "%s", rz) >= zn) { reply_err(r->fd, 400, "that path is too long"); return 0; }
-	char *sl = strrchr(rz, '/'); size_t dl = sl == rz ? 1 : (size_t)(sl - rz);
-	if (dl >= hn) { reply_err(r->fd, 400, "that path is too long"); return 0; }
-	memcpy(hd, rz, dl); hd[dl] = 0;
+	if (stp) *stp = st;
 	return 1;
+}
+/* a ZIP at an absolute path the account may read: its real path and the folder it is in */
+static int dlzip_at_path(struct req *r, const char *p, char *zp, size_t zn, char *hd, size_t hn)
+{
+	if (!dlzip_real(r, p, zp, zn, NULL)) return 0;
+	char *sl = strrchr(zp, '/'); size_t dl = sl == zp ? 1 : (size_t)(sl - zp);
+	if (dl >= hn) { reply_err(r->fd, 400, "that path is too long"); return 0; }
+	memcpy(hd, zp, dl); hd[dl] = 0;
+	return 1;
+}
+/* 1.6.3 Part 10, item 1: a file at a path, not only one in Downloads -- the bytes the page's antivirus reads of a file a ZIP
+   was unpacked into beside it (GET dl/read?path=), and moving such a file into the quarantine or deleting it when it is found
+   bad (POST dl/file?path=&to=quar|del). The same places a ZIP at a path may be in, the same off and len, and the same
+   quarantine and deletion the page already asks for a Downloads file, so a folder beside a ZIP is checked exactly as one
+   unpacked into Downloads. */
+static void api_dl_path(struct req *r, const char *what, int post)
+{
+	char fp[PATH_MAX]; struct stat st;
+	if (!dlzip_real(r, qparam(r->query, "path"), fp, sizeof fp, &st)) return;
+	if (!strcmp(what, "read")) {
+		const char *os = qparam(r->query, "off"), *ls = qparam(r->query, "len");
+		long long off = os ? atoll(os) : 0, len = ls ? atoll(ls) : 8 << 20;
+		int f = open(fp, O_RDONLY | O_NOFOLLOW);
+		if (f < 0) { reply_err(r->fd, 404, "the file is not there any more"); return; }
+		if (len < 0 || len > 8 << 20) len = 8 << 20;
+		if (off < 0) off = st.st_size + off < 0 ? 0 : st.st_size + off;
+		if (off > st.st_size) off = st.st_size;
+		if (len > st.st_size - off) len = st.st_size - off;
+		char *b = malloc(len + 1); ssize_t got = 0;
+		if (b && lseek(f, off, SEEK_SET) == off) { while (got < len) { ssize_t k = read(f, b + got, len - got); if (k <= 0) break; got += k; } }
+		close(f);
+		if (!b) { reply_err(r->fd, 500, "no memory"); return; }
+		reply(r->fd, 200, "application/octet-stream", b, got, NULL); free(b); return;
+	}
+	if (!post) { reply_err(r->fd, 400, "use POST"); return; }
+	const char *to = qparam(r->query, "to");
+	if (!to || (strcmp(to, "quar") && strcmp(to, "del"))) { reply_err(r->fd, 400, "to=quar or del"); return; }
+	if (!strcmp(to, "del")) { if (unlink(fp)) { reply_err(r->fd, 500, strerror(errno)); return; } reply_ok(r->fd, "deleted"); return; }
+	char b[300]; snprintf(b, sizeof b, "%s", strrchr(fp, '/') + 1);
+	mkdir(QUARANTINE, 0700); if (chown(QUARANTINE, 1000, 1000)) {}
+	char dst[700]; dl_unique(QUARANTINE, b, dst, sizeof dst);
+	if (rename(fp, dst)) { reply_err(r->fd, 500, strerror(errno)); return; }
+	if (chown(dst, 1000, 1000)) {}
+	char ob[760]; str s = {0}; sadd(&s, "{\"ok\":true,\"path\":"); sjson(&s, dl_out(dst, ob, sizeof ob));
+	sadd(&s, ",\"name\":"); sjson(&s, strrchr(dst, '/') + 1); sadd(&s, ",\"size\":%lld}", (long long)st.st_size);
+	reply_json(r->fd, &s); return;
 }
 /* a path inside the folder an extraction made: relative, nothing of it above that folder, no control characters */
 static int dlzip_rel_ok(const char *p)

@@ -1374,6 +1374,22 @@ compression the desktop does not already do — no new archive format of Rudolf 
 **Both editions:** all of it is the page's own code and rudolfd's helpers, so Standard, Native and Lite get it the same; the
 native desktop's window is a page of its own and shows the same dialogs.
 
+#### Status (2026-11-28, session): item 1 built (PRs "a ZIP at any path" and "asking by path")
+rudolfd's half (PR #754): `GET dl/zip?path=` and `POST dl/unzip?path=` take an absolute path instead of `name=` and `acct=` —
+`realpath()`ed, a plain file, under the home, a mounted drive, `/tmp`, `/var/tmp` or `/srv` (`DLZIP_ROOTS` adds more, for the
+checks), so a link cannot lead out; the listing is the same answer everywhere. An extraction from a path unpacks as it always
+did (free space first, progress, `..` and absolute entries refused, links removed, as the desktop user) and then moves the whole
+unpacked folder, in one `mv` inside the ZIP's folder, into a free folder beside it named after it (`game`, `game (2)`), keeping
+the ZIP's own folders and names; the result says where with `dest`, and no account is marked as unzipping. The page's half (this
+PR): `dlzOf` accepts a ZIP reference whose file is outside the accounts' folders and asks by `path=`; the window's list, the
+progress window and Cancel are the same, and an extraction there ends by checking every file with the same antivirus, at its
+path — `dl/read?path=` for the bytes (a new `from='path'` in `dlRead`, so `dlScanBig` is unchanged) and `dl/file?path=&to=` for
+the quarantine or the deletion — then says where the folder is. Checks: `dlzip161api_t.sh` 16–22, beside cases in
+`dlzip161_t.sh` for both unzips, and `dlzip61_t.js` 23–27 (a ZIP in Documents listed and extracted beside itself, the antivirus
+reading and quarantining by path, nothing added to the page's own folders). What is left of item 1: the window's *in-memory*
+path (a ZIP in the account's own files that was never on the disk) still reads it the old way, and choosing a destination is
+item 2.
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.

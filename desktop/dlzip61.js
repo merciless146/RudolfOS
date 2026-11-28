@@ -16,15 +16,17 @@
    Standard, Native and Lite: it is the page's own code. ===== */
 window.__dlzip61=1;
 const DLZ={run:null};
-/* the account's folder (acct) and the file's name on the disk for a reference to a ZIP kept on the disk, or null */
+/* the account's folder (acct) and the file's name on the disk for a reference to a ZIP kept on the disk, or null; 1.6.3 Part 10,
+   item 1: a ZIP at any other path the account may read says just where it is (p), and is listed and extracted there */
 function dlzOf(path){const v=node(path),i=isDlRef(v)&&dlRefInfo(v);if(!i||ext(path.at(-1))!='ZIP')return null;
- const m=/^\/home\/rudolf\/Downloads\/\.accounts\/([a-z0-9-]{1,64})\/([^/]+)$/.exec(String(i.p));return m?{i,acct:m[1],name:m[2]}:null}
-const dlzQ=z=>'name='+encodeURIComponent(z.name)+'&acct='+encodeURIComponent(z.acct);
+ const p=String(i.p||''),m=/^\/home\/rudolf\/Downloads\/\.accounts\/([a-z0-9-]{1,64})\/([^/]+)$/.exec(p);
+ if(m)return {i,acct:m[1],name:m[2]};return p.charAt(0)=='/'&&/\.zip$/i.test(p)?{i,p}:null}
+const dlzQ=z=>z.acct?'name='+encodeURIComponent(z.name)+'&acct='+encodeURIComponent(z.acct):'path='+encodeURIComponent(z.p);
 const dlzC=s=>String(s).toUpperCase().replace(/[\\\/:*?"<>|]/g,'_').slice(0,60)||'_';
 const dlzWait=ms=>new Promise(r=>setTimeout(r,ms));
 /* the window: what is inside (the first 3,000 rows drawn; all are extracted) */
 async function dlZipWin(path){const nm=path.at(-1),z=dlzOf(path);
- if(!z)return dlInfo(path,'Archive Manager opens archives up to 1.5 MB, and larger ones kept in your Downloads folder. Open this one in a Linux app from the Downloads folder.');
+ if(!z)return dlInfo(path,'Archive Manager opens archives up to 1.5 MB, and larger ones kept on the disk (in your home, on a drive, or in /tmp).'+(isDlRef(node(path))?' This one is not on the disk yet.':''));
  const W=appWin('archive','Archive Manager - '+nm,'📦',640,440);W.body.style.cssText='display:flex;flex-direction:column';
  W.body.innerHTML=`<div class='xb'><button class='dlzx' disabled>Extract here</button></div><div class='al dlzl' style='flex:1;overflow:auto;background:var(--wbg,#fff)'></div><div class='stat dlzs'>Reading the archive…</div>`;
  const q=s=>W.body.querySelector(s),list=q('.dlzl'),stat=q('.dlzs'),bx=q('.dlzx');
@@ -38,11 +40,11 @@ async function dlZipWin(path){const nm=path.at(-1),z=dlzOf(path);
  stat.textContent=`${nf.toLocaleString()} file(s), ${fmtB(j.bytes||0)} unpacked, in ${nm}`+(j.more||items.length>3000?` (the first ${Math.min(3000,items.length).toLocaleString()} of ${j.total.toLocaleString()} entries are shown; Extract here unpacks them all)`:'');
  bx.disabled=false;return W}
 /* Extract here */
-async function dlZipExtract(path){const nm=path.at(-1),z=dlzOf(path),parent=path.slice(0,-1);
+async function dlZipExtract(path){const nm=path.at(-1),z=dlzOf(path),parent=path.slice(0,-1),acct=!!(z&&z.acct);
  const no=t=>notify('Extract here',t,{kind:'error'});
- if(!z)return no(nm+' is not in a Downloads folder on the disk, so it cannot be extracted here.');
- if(z.acct!=dlAcct())return no(nm+' is kept with the downloads from before 1.5.5, which every account shares: copy it into your own Downloads first.');
- if(!isDir(node(parent))||!fsCanWrite(parent))return no('Files cannot be extracted into '+parent.join('\\')+'.');
+ if(!z)return no(nm+' is not a ZIP kept on the disk, so it cannot be extracted here.');
+ if(acct&&z.acct!=dlAcct())return no(nm+' is kept with the downloads from before 1.5.5, which every account shares: copy it into your own Downloads first.');
+ if(acct&&(!isDir(node(parent))||!fsCanWrite(parent)))return no('Files cannot be extracted into '+parent.join('\\')+'.');
  if(DLZ.run)return no('Another archive is being extracted. Try again when it has finished.');
  try{await rdPost('dl/unzip?'+dlzQ(z))}catch(e){return no(/busy|another task/i.test(e.message)?'Rudolf OS is busy with another task. Try again in a moment.':nm+' could not be extracted: '+e.message)}
  DLZ.run={path};DLN.ing=(DLN.ing||0)+1;
@@ -63,9 +65,27 @@ async function dlZipExtract(path){const nm=path.at(-1),z=dlzOf(path),parent=path
    if(j.name!='dl-unzip'||!j.running&&j.status>=0)break}
   cb.disabled=true;
   let r;try{r=await rd('dl/unzipped')}catch(e){r={files:[],dirs:[],end:'error '+e.message}}
-  const end=String(r.end||''),files=r.files||[],dirs=r.dirs||[];
+  const end=String(r.end||''),files=r.files||[],dirs=r.dirs||[],dest=String(r.dest||'');
   if(/^error /.test(end)||!end&&!files.length){show('Not extracted',end.slice(6)||'The extraction stopped unexpectedly.',100);no(nm+' was not extracted: '+(end.slice(6)||'the extraction stopped unexpectedly.'));return}
   if(!files.length&&!dirs.length){show(/^stopped/.test(end)?'Stopped':'Nothing to extract',/^stopped/.test(end)?'Nothing was extracted.':nm+' holds no files.',100);if(!/^stopped/.test(end))notify('Extract here',nm+' holds no files.');setTimeout(()=>{try{W.close()}catch(e){}},1500);return}
+  /* 1.6.3 Part 10, item 1: a ZIP at a path is unpacked into a folder beside itself, on the disk, not into the page's own folders
+     (rudolfd says where with dest), so each file is checked by the antivirus at its path there, quarantined or deleted through
+     rudolfd too, and there is no reference to make */
+  if(dest){const base=dest.replace(/\/+$/,'')+'/',blocked=[],quar=[],unchecked=[];let done=0;
+   for(const f of files){const rel=String(f.disk||f.path||'');if(!rel)continue;const NM=rel.split('/').pop();let av='off';
+    done++;if(done%20==1||done==files.length)show(SECC.av.on?'Checking the files with the antivirus':'Done',`${done.toLocaleString()} of ${files.length.toLocaleString()} files`,85+done/files.length*15);
+    if(SECC.av.on){let th;try{th=await dlScanBig(base+rel,'path',f.size,NM,false)}catch(e){unchecked.push(NM);continue}
+     av=f.size>DL_AVPART*2?'part':'full';
+     if(th.length){const qm=SECC.av.act=='quarantine';logEvt('av',`${qm?'Quarantined':'Blocked'} ${NM} (extracted from ${nm}): ${th.join(', ')}`);
+      try{if(qm){const q=await rdPost('dl/file?path='+encodeURIComponent(base+rel)+'&to=quar');QUAR.push({id:Date.now()+Math.random(),n:NM,from:[...parent],th,t:Date.now(),data:dlMkRef(q.path,f.size,av),src:'download'});saveQ();quar.push(NM)}
+       else{await rdPost('dl/file?path='+encodeURIComponent(base+rel)+'&to=del');blocked.push(NM)}}catch(e){unchecked.push(NM)}
+      continue}}}
+   const stopped=/^stopped/.test(end),n=Math.max(0,files.length-quar.length-blocked.length);
+   const bad=(quar.length?` The antivirus quarantined ${quar.length}: ${quar.slice(0,3).join(', ')}${quar.length>3?'…':''}.`:'')+(blocked.length?` The antivirus blocked and deleted ${blocked.length}: ${blocked.slice(0,3).join(', ')}${blocked.length>3?'…':''}.`:'')+
+    (unchecked.length?` ${unchecked.length} could not be checked and ${unchecked.length==1?'is':'are'} left as ${unchecked.length==1?'it is':'they are'}.`:'');
+   show(stopped?'Stopped':'Extracted',`${n.toLocaleString()} file(s) in ${dest}.${bad}`,100);
+   notify(stopped?'Extraction stopped':'Extracted',`${stopped?'Stopped: ':''}${n.toLocaleString()} file(s) from ${nm} are in ${dest}.${bad}`,{kind:quar.length||blocked.length?'error':''});
+   setTimeout(()=>{try{W.close()}catch(e){}},quar.length||blocked.length?0:1500);return}
   /* the folder beside the ZIP, its sub-folders as in the ZIP */
   const P=node(parent);if(!isDir(P)){no('The folder of '+nm+' is not there any more.');return}
   const fn=dlUniq(P,dlzC(nm.replace(/\.ZIP$/i,''))),root={},dm=new Map([['',root]]);
