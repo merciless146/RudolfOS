@@ -24,6 +24,11 @@ Summary: In progress.
 - Developers: `docs/gap-analysis-1.6.3.md` ranks what Rudolf OS still lacks beside other operating systems — the
   hardware it does not reach, the system software only this project can add, and the files it cannot yet manage — each
   gap with the first pull request it needs.
+- Changed: the release key's replacement (plan 1.6.3 Part 0): `iso/systools/keyswitch.py` says where the replacement
+  stands, checks the key list the tools and recovery.efi read (run by `deadcheck.py` before every pull request, and by
+  CI for every change of `iso/systools/**`), and makes the switch itself when the owner says the moment has come; the
+  gate names no key, so a later rotation passes it unchanged. Nothing is switched yet: the new key still waits behind
+  the old one, and docs/secure-boot.md now says what the switch's day is.
 - Developers: `docs/plan-1.6.4.md` is the plan for 1.6.4: the account's own folders, a system extension installed from a
   file, device firmware seen but not touched, installing beside Windows, the Archive Manager's items 2 to 8, File
   Explorer as a native program (gaps 1, 2, 4, 6, 7 and 8 of `docs/gap-analysis-1.6.3.md`; gaps 3, 5 and 9 are 2.0's),
