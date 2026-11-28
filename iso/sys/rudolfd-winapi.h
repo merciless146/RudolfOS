@@ -610,6 +610,7 @@ static const char *const WINAPI_APPS[] = {   /* (1.6.2 Part 39) the native apps 
 static const char *const WINAPI_APPS_EXE[] = {   /* their programs (/usr/bin/rudolf-NAME) */
 	"rudolf-presentpro",
 	"rudolf-settings",
+	"rudolf-sheetpro",
 	"rudolf-taskmgr",
 	"rudolf-wordpro",
 	NULL

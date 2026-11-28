@@ -90,6 +90,38 @@ accent colours), its memory at idle against the web version, built in the releas
   (its HTML with the page's stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
+#### Status (2026-11-27, scheduled task): SpreadsheetPro begun, step 1 (the window, the grid and its formulas)
+- **Branch `sheetpro-1`:** `iso/sys/apps/sheetpro.c` (`/usr/bin/rudolf-sheetpro`, with librudolf-ui) has the page's window
+  (1000 x 660) as `desktop/spro45.js` draws it: the page's eight menus (File, Edit, View, Insert, Format, Data, Tools,
+  Help -- File's 15 rows and Data's 12, each of them working here or greyed as the page draws an item it cannot choose),
+  the toolbar (the fonts and the sizes, bold, italic, underline, strikethrough, the text and fill colours, the three
+  alignments, Σ, undo, redo, clear; the number formats, wrap, merge, borders, sorting, filtering and charts greyed for
+  their later steps), the name box and the formula bar, the grid drawn with the page's own values (a head of 46 x 22 px,
+  a column 80 px and a row 20 px at 100 %, the lines `#e2e3e3`, the head `#f3f4f6` with `#444` letters, the choice
+  `#1a73e8` at 12 % with its 2 px border), the sheet tab and the status line with what a choice adds up to and the zoom.
+- **What a cell is:** what was typed, never a parsed value, with its style beside it, as `sprof45.js`/`spreng45.js` keep
+  it: numbers (`$` and commas allowed, a trailing %), text, TRUE and FALSE, and formulas -- references (`A1`, `$A$1`),
+  ranges (`A1:B9`), `^ * / + -`, the comparisons, `&`-less strings, and SUM, AVERAGE, MIN, MAX and COUNT, with the errors
+  `#DIV/0!`, `#VALUE!`, `#NAME?` and `#CIRCULAR!` (a reference that comes back to its own cell). 100 steps of undo and
+  redo, each a copy of the sheet as it stood (the page's own "the cells as they were").
+- **Its keys, the page's:** typing, F2, Enter (down, and back to the column the row started in when it was typed with
+  Tab), Tab and Shift+Tab, Shift+Enter, the arrows, Ctrl+arrows to the edge of the data, Shift+arrows choosing more,
+  Delete, Ctrl+Z and Ctrl+Y, Ctrl+B/I/U/5, Ctrl+` for the formulas, Ctrl+A, Ctrl+G and the name box (`A1`, `A1:B2`),
+  Alt+= for the numbers above, Ctrl+C/X/V as tab-separated text.
+- **Build time:** `iso/sys/apps/mksheetpro.py` reads the toolbar's lists from the page itself (`desktop/office45.js`'s
+  OFF_FONTS, `desktop/spro45.js`'s sizes and SP_NF), as `mkwordpro.py` does for WordPro: a list it cannot find stops the
+  build rather than shipping a blank toolbar.
+- **Its test:** `iso/qt/native/sheetpro_t.sh` (`sheetpro-check.yml`): built with `RUI_WERROR=1` and checked hardened,
+  then used under Xvfb with a stand-in rudolfd -- **14 passed, 0 failed, 317 072 bytes**: the window and its title, typing
+  with Enter, a formula worked out (A3 = A1 + A2 is 12), the formula bar and the name box, Tab's run and Enter's return,
+  `#DIV/0!` and `SUM(A1:A3)`, Ctrl+Down, Ctrl+A with the status line's figures (Sum 48, Average 12, Min 5, Max 24,
+  Count 7), undo and redo, Ctrl+B twice, Ctrl+`, the name box's cell and range, the page's 15-row File and 12-row Data
+  menus, and `mksheetpro.py` refusing a page it cannot read.
+- **Not in this step, by the plan's own split:** the files (`.RSHEET`, CSV, `.xlsx`; open, save, print, PDF), charts,
+  conditional formatting, data validation, sorting, filtering, the number formats, wrap, merge, borders, row and column
+  sizes, frozen panes, more than one sheet, and the assistant -- steps 2 and 3. The screenshot comparison against the web
+  SpreadsheetPro is **not** in it yet either: it comes with the step that makes every view of the window. The native
+  desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is **not** in `NATIVE_APPS[]`.
 #### Status (2026-11-27, scheduled task): PresentPro begun, step 1 (the window, its slides and their places)
 - **Branch `presentpro-1`:** `iso/sys/apps/presentpro.c` (`/usr/bin/rudolf-presentpro`, with librudolf-ui) has the page's
   window with its eight menus and the page's own rows (File 18, Home 20, Insert 16, Design 4, Arrange 21, Slide Show 7,
