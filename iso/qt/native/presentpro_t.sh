@@ -5,7 +5,9 @@
 # release builds it (iso/sys/ui/build.sh) and then used: a title typed in the editor, a second slide made the page's way, a
 # body's two lines, bold and the lists, undo, the page's PageUp and PageDown, a layout that keeps what it still has, a
 # duplicated and a deleted slide, a hidden slide, the speaker's notes, the menus' own rows, and Enter opening the place the
-# stage has. It reads RUDOLF_PP_STATE, so no screenshot is needed here; the page-by-page comparison against the web
+# stage has, and thirteen slides made so the deck outgrows the eight slots it starts with -- where the copy that makes
+# room can move the deck, the place a pointer bug lived (the same walk is run on the ASan build). It reads
+# RUDOLF_PP_STATE, so no screenshot is needed here; the page-by-page comparison against the web
 # PresentPro comes with the step that makes every one of its views.
 #   sh presentpro_t.sh [OUT]
 # Needs Xvfb, xdotool, node, gcc and GTK 3's headers. (display :90, port 8686)
@@ -191,6 +193,30 @@ DISPLAY=$DSP xdotool key Escape; sleep 0.8
 grep -q '^text sub A subtitle$' "$ST"
 ok "15. Tab goes to the next place, Enter opens it, and what is typed goes on the slide" "$([ $? = 0 ] && echo 1)" \
 	"$(grep -E '^(text|say) ' "$ST" | tr '\n' ' '); $(cat "$T/app.log")"
+stop
+
+# ---- 16. the deck outgrows the eight slots it starts with: the copy that makes room can move it, so nothing the
+# page's addSlide reads may point into the deck across that move (this is where the pointer bug was; the ASan build
+# is walked the same way, where a read of the moved-from block is reported rather than passing silently)
+DO="layout:content"; i=0; while [ $i -lt 12 ]; do DO="$DO;new"; i=$((i+1)); done
+start RUDOLF_PP_DO="$DO"
+RC=0
+grep -q '^slides 13$' "$ST" || RC=1
+grep -q '^cur 12$' "$ST" || RC=1
+# every slide kept the page's rule -- the one before's layout -- so each new slide's layout was read from the deck
+[ "$(grep -c '^slide ' "$ST")" = 13 ] || RC=1
+[ "$(grep -c '^slide [0-9]* content $' "$ST")" = 13 ] || RC=1
+kill -0 "$APPP" 2>/dev/null || RC=1
+ASAN=skipped
+if [ -x "$T/rudolf-presentpro-debug" ]; then
+	rm -f "$T/asan"; ASAN=clean
+	ASAN_OPTIONS=detect_leaks=0 RUDOLF_PP_DO="$DO" RUDOLF_PP_STATE=$T/asan DISPLAY=$DSP timeout 12 "$T/rudolf-presentpro-debug" >"$T/asan.txt" 2>&1
+	grep -q '^slides 13$' "$T/asan" 2>/dev/null || ASAN="no state from the ASan build"
+	grep -Eq 'AddressSanitizer|SEGV|use-after-free' "$T/asan.txt" && ASAN="$(head -2 "$T/asan.txt" | tr '\n' ' ')"
+	[ "$ASAN" = clean ] || RC=1
+fi
+ok "16. thirteen slides outgrow the deck's first eight slots, every slide keeping the layout it was made with (asan: $ASAN)" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(slides|cur|slide) ' "$ST" | tr '\n' ' '); $(tail -3 "$T/asan.txt" 2>/dev/null)"
 stop
 
 cp "$ST" "$OUT/state.txt" 2>/dev/null

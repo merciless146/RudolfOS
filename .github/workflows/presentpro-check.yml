@@ -3,7 +3,8 @@ name: PresentPro (1.6.3)
 # of slides, its stage and its notes -- built hardened as the release builds it (RUI_WERROR=1: a single warning fails it)
 # and then used under Xvfb: a title typed into the place, a second slide made the page's way, a body's two lines, bold, the
 # bullets and the numbering, undo, PageUp and PageDown, a layout that keeps what it still has, a duplicated and a deleted
-# slide, a hidden slide, the speaker's notes, the page's menus' own rows, and Enter opening the place the stage has. No
+# slide, a hidden slide, the speaker's notes, the page's menus' own rows, Enter opening the place the stage has, and
+# thirteen slides made so the deck outgrows the eight slots it starts with (that move, on the ASan build too). No
 # screenshots yet: the comparison against the web PresentPro comes with the step that makes every one of its views.
 on:
   pull_request:
