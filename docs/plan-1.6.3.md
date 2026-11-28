@@ -1063,6 +1063,28 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    not opened by itself once named, as on Windows. **Not done yet:** Guest keeps nothing and
    says so only in Settings (a line at sign-in and a notice on the first save); double-clicking a picture opens Paint, not a viewer; a wrong user name
    once gave no message at sign-in (unconfirmed); a battery shown on a computer without one (browser edition).
+11. **The Command Prompt and the Linux terminal, one Terminal** (the owner, 2026-11-28: "the way in which the application
+   is supposed to allow the user to switch between Linux terminal and the C++ command prompt is broken"), **done:** the
+   1.5.6 design (one app, each shell a tab, ＋ opens either) was lost in two places. **A window kept its first answer:**
+   `termUI`'s newTab began `if(!ui.linux)return add('cmd')`, and `ui.linux` was set once, when the window opened (or by
+   `termCheckLinux`), never again — so one failed `debian/status` (at sign-in the encrypted folder may not be open yet, or
+   rudolfd busy) locked the window to the Command Prompt for its whole life: ＋ gave another Command Prompt tab, nothing
+   was said, and there was no route to Linux or to Debian's own setup; with no Debian installed there was nothing offered
+   at all. **And each way in opened another window:** `terminalApp()` and `termCmd()` always called `win()`, so Ctrl+Alt+T,
+   the Start menu's Terminal and Command Prompt, the taskbar, `prompt()` (.BAT, Lua, rpk) and `openPath` each made a new
+   Terminal, and the tabs one expected were in another. Now: `newTab` always shows the menu, built from `termLinuxReady()`
+   — a fresh `termLinuxOk()` (which asks a failed status again once, `debStatus2`) with only a "yes" remembered, for 8 s —
+   with `Command Prompt (C:)` always, `Linux (Debian)` when it is set up, `Set up Linux (Debian)…` (→ `termSetup()`, the
+   setup page) when it is not, and, in a web browser, `Linux (Debian) — needs the installed Rudolf OS`, off. A `TERMS`
+   list of the open Terminals (`termOpen()`, pruned as windows close) makes `terminalApp()`/`termCmd()` add their tab to the
+   Terminal that is open and focus it, a new window only when none is. `termUI` keeps the window's current ui in `W.term`
+   (so the setup page's rebuild drops the old one and its 15 s poll). The native side needed no C: the Terminal is this
+   page. *Nothing in the native shell was touched, so no rebuild of `rudolf-native` is needed.*
+   Tests: `termtabs63_t.js` (new — both shells in one window and switching, the ＋ menu when Debian is set up / not / after
+   a failed status, `prompt()` and `terminalApp()` reusing the window, Ctrl+Shift+T; the test's rudolfd stands in for the
+   daemon) and `terminal56_t.js` (1.5.6's own check, run by the same workflow) 4, 6 and 7, which asserted the old "＋ opens another
+   C: tab", "prompt() opens a Terminal" and a read of the first tab only; they now assert the menu, the tab in the open
+   window and the text of whichever tab the file opened.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)

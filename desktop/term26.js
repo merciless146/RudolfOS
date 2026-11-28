@@ -6,6 +6,10 @@
 const DEB={st:null,apps:[],appsAt:0,open:0};
 const DEB_AK='bd95debapps';
 async function debStatus(size){try{DEB.st=await lxApi('debian/status'+(size?'?size=1':''))}catch(e){DEB.st=null}return DEB.st}
+/* (1.6.3: at sign-in the encrypted folder may not be open yet, and the status call fails then; a failure used to be read as
+   "no Linux" for the whole window -- the Terminal opened on the Command Prompt only, and its ＋ gave another Command
+   Prompt tab for good. A failed call is asked again once, here and wherever the Linux answer is needed.) */
+async function debStatus2(size){const a=await debStatus(size);if(a)return a;await new Promise(r=>setTimeout(r,400));return debStatus(size)}
 function debLib(){if(window.Terminal&&window.FitAddon)return Promise.resolve();
  if(!debLib.p)debLib.p=new Promise((res,rej)=>{const l=document.createElement('link');l.rel='stylesheet';l.href='/lib/xterm.css';document.head.appendChild(l);
   const s=document.createElement('script');s.src='/lib/xterm.js';s.onload=()=>res();s.onerror=()=>{debLib.p=null;rej(new Error('The terminal could not be loaded.'))};document.head.appendChild(s)});return debLib.p}
@@ -48,15 +52,35 @@ class DebSession{
    1.5.6: one Terminal (with the Command Prompt's icon) for the Command Prompt (drive C:, everywhere, also in a web
    browser) and the Linux shell (Debian, on an installed Rudolf OS): each is a tab; ＋ opens either. It opens on
    Linux when Linux is set up, otherwise on the Command Prompt. prompt() (Lua, .BAT files, rpk) opens a C: tab. */
-async function termLinuxOk(){if(!RD||!USER||USER.r=='guest')return false;const st=await debStatus();if(!st||!st.installed)return false;try{await debLib();return true}catch(e){return false}}
+/* (1.6.3: the Linux answer is asked again -- a failed status call is tried once more, and every way to a tab asks it
+   afresh -- so a window cannot keep a "no Linux" it was born with for its whole life) */
+async function termLinuxOk(){if(!RD||!USER||USER.r=='guest')return false;
+ const st=await debStatus2();if(!st||!st.installed)return false;try{await debLib();return true}catch(e){return false}}
+const TERMS=[];let LXC={at:0,ok:false};
+function termOpen(){for(let i=TERMS.length-1;i>=0;i--){const u=TERMS[i];if(u.W&&u.W.el&&u.W.el.isConnected)return u;TERMS.splice(i,1)}return null}
+async function termLinuxReady(){if(LXC.ok&&Date.now()-(LXC.at||0)<8000)return true;const ok=await termLinuxOk();LXC.ok=ok;LXC.at=Date.now();return ok}
+async function termSetup(){const W=win('Terminal','⬛',720,520);await debStatus();debSetupPage(W);return W}
 async function terminalApp(kind){
  if(kind=='linux'){
   if(!RD)return notify('Terminal','The Linux terminal needs the installed Rudolf OS (bootable disc or USB).',{kind:'error'});
   if(!USER||USER.r=='guest')return notify('Terminal','The Linux terminal is not available to guests. Sign in with your own account.',{kind:'error'})}
+ /* (1.6.3: the Terminal is one app -- Ctrl+Alt+T, the Start menu, a .BAT or rpk come to the window that is open rather
+    than opening a second one whose tabs are somewhere else) */
+ const open=termOpen();
+ if(open){
+  if(kind=='linux'){
+   const st=RD&&USER&&USER.r!='guest'?await debStatus():null;
+   if(!st){open.info('This Rudolf OS cannot run Debian (the system is too old: update it in Settings › Update and recovery).');open.W.focus();return open.W}
+   if(!st.installed){open.W.focus();return termSetup()}
+   open.linux=await debLib().then(()=>true,()=>false);
+   if(!open.linux){open.info('The terminal could not be loaded.');open.W.focus();return open.W}
+   open.add('linux');open.W.focus();lxSync();return open.W}
+  if(kind=='cmd')open.add('cmd');
+  open.W.focus();return open.W}
  const W=win('Terminal','⬛',820,520);const ui=termUI(W);
  if(kind=='cmd'){ui.add('cmd');termCheckLinux(ui);return W}
  W.body.querySelector('.dtarea').innerHTML="<div class='msg dtwait' style='padding:16px'>Starting…</div>";
- const st=RD&&USER&&USER.r!='guest'?await debStatus():null;
+ const st=RD&&USER&&USER.r!='guest'?await debStatus2():null;
  W.body.querySelector('.dtwait')?.remove();
  if(kind=='linux'&&!st){ui.add('cmd');ui.info('This Rudolf OS cannot run Debian (the system is too old: update it in Settings › Update and recovery).');return W}
  if(kind=='linux'&&!st.installed){debSetupPage(W);return W}
@@ -64,7 +88,9 @@ async function terminalApp(kind){
  ui.add(ui.linux?'linux':'cmd');if(ui.linux)lxSync();return W}
 function termCheckLinux(ui){termLinuxOk().then(ok=>{ui.linux=ok})}
 /* a Command Prompt tab in a new Terminal window, for prompt(): its P (print, exec, input) at once */
-function termCmd(startCmd){const W=win('Terminal','⬛',720,440);const ui=termUI(W);const t=ui.add('cmd',startCmd);termCheckLinux(ui);return t.P}
+function termCmd(startCmd){const open=termOpen();
+ if(open){const t=open.add('cmd',startCmd);open.W.focus();return t.P}
+ const W=win('Terminal','⬛',720,440);const ui=termUI(W);const t=ui.add('cmd',startCmd);termCheckLinux(ui);return t.P}
 /* the Command Prompt in a tab: the same shape as DebSession for the tab bar (resize, font, focus, close) */
 class CmdSession{constructor(box,startCmd,onexit){box.classList.add('dtcmd');box.__close=onexit;this.box=box;this.P=promptMount(startCmd,box);const i=this.P.input;this.t={focus:()=>i.focus()};this.font(ld('bd95termfs',15))}
  resize(){}font(n){this.box.style.fontSize=n+'px'}close(){}send(k){const i=this.P.input;if(k=='\t')return;i.value+=k;i.focus()}paste(t){this.send(String(t||'').replace(/\r?\n/g,' '))}}
@@ -84,9 +110,19 @@ function termUI(W){
   btn.onclick=e=>{if(e.target.tagName=='B'){closeTab(t);return}show(t)};tabs.push(t);show(t);return t};
  ui.add=add;
  const closeTab=t=>{t.s.close();t.box.remove();t.btn.remove();tabs.splice(tabs.indexOf(t),1);if(t.kind=='linux'&&--linuxTabs==0){DEB.open--;setTimeout(debApps,1500);lxSync()}if(!tabs.length){W.close();return}show(tabs.at(-1))};
- const newTab=e=>{if(!ui.linux)return add('cmd');const r=(e&&e.target||W.body.querySelector('.dtnew')).getBoundingClientRect();
-  cmenu(r.left,r.bottom,[['Command Prompt (C:)',()=>add('cmd'),true,{icon:'⬛'}],['Linux (Debian)',()=>add('linux'),true,{icon:'🐧'}]])};
+ /* (1.6.3: the menu is always the way to the other shell. It used to be skipped when the window's one check had said
+    "no Linux" -- another Command Prompt tab, nothing said, and no way to Linux for the window's life -- and there was
+    nothing at all to choose when Debian had never been set up. Now the answer is asked when the menu opens, and a
+    Rudolf OS without Debian offers to set it up.) */
+ const newTab=async e=>{const b0=(e&&e.target&&e.target.getBoundingClientRect)?e.target:W.body.querySelector('.dtnew');
+  const r=b0.getBoundingClientRect();const ok=await termLinuxReady();ui.linux=ok;
+  const items=[['Command Prompt (C:)',()=>add('cmd'),true,{icon:'⬛'}],
+   ok?['Linux (Debian)',()=>add('linux'),true,{icon:'🐧'}]
+   :(RD?['Set up Linux (Debian)…',()=>termSetup(),true,{icon:'🐧'}]
+       :['Linux (Debian) — needs the installed Rudolf OS',null,false,{icon:'🐧'}])];
+  cmenu(r.left,r.bottom,items)};
  W.body.querySelector('.dtnew').onclick=newTab;
+ ui.W=W;{const old=W.term;if(old){const k=TERMS.indexOf(old);if(k>=0)TERMS.splice(k,1)}}W.term=ui;TERMS.push(ui);
  const fsz=d=>{const n=Math.max(10,Math.min(28,ld('bd95termfs',15)+d));svj('bd95termfs',n);tabs.forEach(t=>t.s.font(n))};
  W.body.querySelector('.dtfm').onclick=()=>fsz(-1);W.body.querySelector('.dtfp').onclick=()=>fsz(1);
  const K={Esc:'\x1b',Tab:'\t','↑':'\x1b[A','↓':'\x1b[B','→':'\x1b[C','←':'\x1b[D'};
@@ -96,8 +132,8 @@ function termUI(W){
  W.body.addEventListener('keydown',e=>{if(e.ctrlKey&&e.shiftKey&&(e.key=='T'||e.key=='t')){e.preventDefault();newTab()}if(cur&&cur.kind=='linux')e.stopPropagation()});
  W.body.addEventListener('keyup',e=>{if(cur&&cur.kind=='linux')e.stopPropagation()});
  let rt;new ResizeObserver(()=>{clearTimeout(rt);rt=setTimeout(()=>cur&&cur.s.resize(),80)}).observe(area);
- const poll=setInterval(()=>{if(!W.el.isConnected){clearInterval(poll);return}if(linuxTabs){debApps();lxSync()}},15000);
- W.onclose=()=>{tabs.forEach(t=>t.s.close());if(linuxTabs){DEB.open--;setTimeout(debApps,1500);lxSync()}};
+ const poll=setInterval(()=>{if(!W.el.isConnected||W.term!==ui){clearInterval(poll);return}if(linuxTabs){debApps();lxSync()}},15000);
+ W.onclose=()=>{const k=TERMS.indexOf(ui);if(k>=0)TERMS.splice(k,1);tabs.forEach(t=>t.s.close());if(linuxTabs){DEB.open--;setTimeout(debApps,1500);lxSync()}};
  W.term=ui;return ui}
 /* (kept for older callers) the Linux terminal in an existing window */
 function debTermUI(W){const ui=termUI(W);ui.linux=true;ui.add('linux');return W}
