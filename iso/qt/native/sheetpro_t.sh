@@ -263,7 +263,7 @@ WIN8=$(DISPLAY=$DSP xdotool search --name '^ask\.RSHEET - SpreadsheetPro$' 2>/de
 i=0; while [ $i -lt 60 ] && [ -n "$WIN8" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN8" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN8" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.4
-DISPLAY=$DSP xdotool type --delay 20 '4'; sleep 0.4; DISPLAY=$DSP xdotool key Return; sleep 0.8
+DISPLAY=$DSP xdotool type --delay 20 '4'; sleep 0.4; DISPLAY=$DSP xdotool key Tab; sleep 0.8   # (a Tab commits the cell; Return would answer the question instead)
 RC=0
 grep -q '^dirty 1$' "$ST8" || RC=1
 i=0; while [ $i -lt 40 ] && ! grep -q '^ask 1$' "$ST8" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done

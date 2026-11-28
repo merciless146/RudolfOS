@@ -799,7 +799,7 @@ static void pending_do(void)
 {
 	int act = PEND; char *p = PEND_PATH;
 	PEND = PEND_NONE; PEND_PATH = NULL;
-	if (act == PEND_CLOSE) gtk_widget_destroy(W->win);
+	if (act == PEND_CLOSE) { gtk_widget_destroy(W->win); gtk_main_quit(); }   /* (a destroyed window alone does not end the loop) */
 	else if (act == PEND_NEW) new_book();
 	else if (act == PEND_OPEN && p) do_open(p);
 	g_free(p);
@@ -823,7 +823,7 @@ static void ask_discard(int act, const char *path)
 	rui_confirm(W, rui_tr("Save the changes?"), msg, b, 3, 1, ask_cb, NULL);
 	g_free(msg);
 }
-static void do_close(void) { if (DIRTY) ask_discard(PEND_CLOSE, NULL); else gtk_widget_destroy(W->win); }
+static void do_close(void) { if (DIRTY) ask_discard(PEND_CLOSE, NULL); else { gtk_widget_destroy(W->win); gtk_main_quit(); } }
 static void do_new(void) { if (DIRTY) ask_discard(PEND_NEW, NULL); else new_book(); }
 static gboolean on_delete(GtkWidget *w, GdkEvent *e, gpointer d)
 {
@@ -2059,7 +2059,7 @@ static gboolean close_hook(gpointer d)
 	(void)d;
 	if (ASK) return G_SOURCE_CONTINUE;
 	if (DIRTY) { do_close(); return G_SOURCE_CONTINUE; }
-	if (++HOOK_TICKS > 10) { do_close(); return G_SOURCE_REMOVE; }
+	if (++HOOK_TICKS > 20) { do_close(); return G_SOURCE_REMOVE; }
 	return G_SOURCE_CONTINUE;
 }
 static gboolean export_hook(gpointer d) { export_quiet((const char *)d); state_soon(); return G_SOURCE_REMOVE; }
