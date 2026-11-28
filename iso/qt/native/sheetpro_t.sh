@@ -253,7 +253,7 @@ kill $SPP7 2>/dev/null; sleep 0.4
 #  question is put off. the question is the page's own overlay in the window: Escape is Cancel, and Cancel keeps the book)
 F4=$T/ask.RSHEET
 cat > "$F4" <<'RS'
-{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"Sheet1","color":"","cells":[[0,1],[1407,"keep"]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"Sheet1","color":"","cells":[[0,1],[702,"keep"]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
 RS
 ST8=$T/state_ask; rm -f "$ST8"
 RUDOLF_SP_STATE=$ST8 RUDOLF_SP_DO=close DISPLAY=$DSP "$BIN" "$F4" >"$T/sp_ask.log" 2>&1 & SPP8=$!
@@ -265,6 +265,7 @@ DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.4
 DISPLAY=$DSP xdotool type --delay 20 '4'; sleep 0.4; DISPLAY=$DSP xdotool key Tab; sleep 0.8
 RC=0; WHY=""
 chk() { if eval "$1" >/dev/null 2>&1; then :; else RC=1; WHY="$WHY $2"; fi; }
+SUM4=$(md5sum "$F4" | cut -d' ' -f1)   # (the book as it was while the question waits)
 chk 'grep -q "^dirty 1$" "$ST8"' dirty
 i=0; while [ $i -lt 40 ] && ! grep -q '^ask 1$' "$ST8" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 chk 'grep -q "^ask 1$" "$ST8"' question          # (the question is up)
