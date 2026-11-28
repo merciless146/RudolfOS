@@ -112,9 +112,11 @@ def slug(s):
 
 
 def menus(page):
-    if page.count('const MENUS') != 1:
-        die("base_v24.html has %d MENUS (the menu bar): one is read here, and the page must have exactly one"
-            % page.count('const MENUS'))
+    found = page.count('const MENUS=')
+    if not found:
+        die("base_v24.html's MENUS (the menu bar) was not found")
+    if found > 1:
+        die("base_v24.html has %d menu bars (const MENUS=): one is read here, and the page must have one" % found)
     i = page.find('const MENUS=')
     b = page.index('{', i)
     e = close_of(page, b, '{', '}')
