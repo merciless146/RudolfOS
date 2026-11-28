@@ -58,20 +58,20 @@ Library's publish still sign on main; a computer on the new release trusts both 
   branch policies). Item 2: `rudolf-release.yml`, `extensions.yml` and `blitzen-model.yml` each name it, and the
   signing step fails loudly when the secret is missing.
 - **Built here:** `iso/systools/keyswitch.py` — `--status` says where the replacement stands (which key signs, whether
-  both official keys are trusted, and what the switch still waits for), `--check` is the list's own invariant (one to
-  four public keys as `mkuki.py` reads them, no key twice, and at least one of the two official keys, since a list
-  without one makes every computer refuse this tree's releases) and `deadcheck.py` runs it before every pull request;
-  `--switch --yes` makes the switch (the new key first, the old one after it) and refuses without the owner's
-  word and whenever the list would not check. The gate names no key, so a later rotation changes `ROTATION` in the tool
-  and nothing else.
-- **Its check:** `iso/qt/host/keyswitch_t.sh`, 15 cases on copies of the list (the state as it stands, each refusal,
-  the switch, a second switch, and that this tree is still before the switch so one cannot be made by accident), and
-  `.github/workflows/keyswitch-check.yml`: the tool and its 19 cases, `deadcheck.py` (no workflow ran it before, so its
-  new gate had no CI at all) and a negative control that breaks a copy of the list and expects deadcheck to refuse it,
-  so the job proves the gate fires rather than only that it exits 0; and on `main` a job in the `release` environment
-  that fails if `RPK_SIGNING_KEY` is not there — a broken secret shows now, not at the next 6-hourly release. What the plan asked as a one-off, that a branch
-  cannot see the signing key, is answered by the environment's policy read from GitHub (Deployment branches: `main`),
-  not by a job of its own.
+  the 2026-11-24 pair is still trusted, and what the switch still waits for); `--check` is the list's own invariant and
+  names no key: one to four public keys in the shape `mkuki.py` reads for `recovery.efi`, no key twice, and no list
+  without a key. A rotation after this one therefore passes it unchanged; it is `deadcheck.py`'s new step before every
+  pull request. `--switch --yes [--to KEY]` makes the switch (that key first, the one that signed after it), and refuses
+  without the owner's word, on a list that would not check, on a key the list does not trust, and on `--to` with no key
+  after it — which on the day would otherwise switch to the default.
+- **Its check:** `iso/qt/host/keyswitch_t.sh`, 19 cases on copies of the list (the state as it stands, each refusal, the
+  gate on a later rotation's keys, the switch, a second switch, a key given twice, the wording of `--status`); and
+  `.github/workflows/keyswitch-check.yml`: the tool and its 19 cases, `deadcheck.py` for every change of
+  `iso/systools/**` — no workflow ran it before, so its new gate had no CI at all — with a negative control that breaks a
+  copy of the list and expects deadcheck to refuse it, so the job proves the gate fires rather than only that it exits 0;
+  and on `main` a job in the `release` environment that fails if `RPK_SIGNING_KEY` is not there — a broken secret shows
+  now, not at the next 6-hourly release. What the plan asked as a one-off, that a branch cannot see the signing key, is
+  answered by the environment's policy read from GitHub (Deployment branches: `main`), not by a job of its own.
 - **The day itself (3d) is not done and cannot be:** it needs a stable release that ships both keys to have been out
   for a while (the owner's call), then `keyswitch.py --switch --yes`, the environment's `RPK_SIGNING_KEY` set to the
   new key and the repository secret deleted, and the merge — in that order, which `docs/secure-boot.md` now writes
