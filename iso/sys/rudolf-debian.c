@@ -855,7 +855,9 @@ static void titlebar_ask(const char *id)
    with an error (an exit status other than 0, or a signal) is said, as a request of the desktop portal's that waits for no
    answer ("lxfail-...", kind "lxfail": rudolfd's portal/poll hands it to the page, Chromium's and Lite's desktop page or the
    native desktop's hidden page, which shows the message, linux26.js and wineold62.js): the program's name, how it ended, the
-   last lines of its log (RUND/ID.log; Wine's "fixme:" lines left out), whether it is a Windows program, and a folder of the
+   first real error in its log and the last lines (RUND/ID.log; Wine's "fixme:" lines left out, and its driver-service setup
+   -- winebth and wineusb, and the scmdatabase line after them -- which fails on every launch of every Windows program and
+   once filled this message alone, hiding the cause above it), whether it is a Windows program, and a folder of the
    Wine prefix it names (its launcher's Path=, or the first /home/rudolf/.wine/... in those lines), which rudolfd checks against
    the prefix from before 1.5.9 (rudolfd-wineold.inc). One that runs longer, or ends with 0, is not said. */
 #ifndef LR_DIR
@@ -867,14 +869,33 @@ static void launch_report(const char *id, const desk *k, int status, double secs
 	if (!status || secs > LR_QUICK) return;
 	char *t = slurp(log, NULL); char lines[4][300]; int nl = 0; const char *wdir = NULL; char dir[400] = "";
 	if (t) {
-		/* the last 3 lines that say something */
-		char *e = t + strlen(t);
-		while (e > t && nl < 3) {
-			while (e > t && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ')) *--e = 0;
-			char *b = e; while (b > t && b[-1] != '\n') b--;
-			if (*b && strncmp(b, "fixme:", 6) && !strstr(b, ":fixme:")) snprintf(lines[nl++], sizeof lines[0], "%s", b);   /* (Wine's: "0024:fixme:...") */
-			e = b; if (e > t) *--e = 0;
+		/* the lines that say something: no "fixme:" (Wine's), and nothing of Wine's driver-service setup, which is the
+		   same on every launch and says nothing about this program */
+		static const char *const NOISE[] = { "winebth", "wineusb", "scmdatabase_autostart_services" };
+		char *keep[3]; int nk = 0; char *first_err = NULL; int noise_seen = 0;
+		for (char *p = t; *p;) {
+			char *fe = strchr(p, '\n'); if (fe) *fe = 0;
+			size_t n = strlen(p); while (n && (p[n - 1] == '\r' || p[n - 1] == ' ' || p[n - 1] == '\t')) p[--n] = 0;
+			int noise = 0; for (unsigned q = 0; q < sizeof NOISE / sizeof *NOISE; q++) if (strstr(p, NOISE[q])) noise = 1;
+			if (noise) noise_seen = 1;
+			if (*p && strncmp(p, "fixme:", 6) && !strstr(p, ":fixme:") && !noise) {
+				if (!first_err && (strstr(p, ":err:") || !strncmp(p, "err:", 4))) first_err = p;   /* (the cause, ahead of the noise) */
+				keep[nk % 3] = p; nk++;
+			}
+			if (!fe) break;
+			p = fe + 1;
 		}
+		/* the earliest real error first, then the last lines: three at most */
+		int have = nk < 3 ? nk : 3;
+		if (first_err) snprintf(lines[nl++], sizeof lines[0], "%s", first_err);
+		for (int i = 0; i < have && nl < 3; i++) {
+			char *s2 = keep[(nk - have + i) % 3];
+			if (first_err && s2 == first_err) continue;
+			snprintf(lines[nl++], sizeof lines[0], "%s", s2);
+		}
+		/* (a log of nothing but that setup: said as much; an empty log stays empty, for the page's own words) */
+		if (!nl && noise_seen) snprintf(lines[nl++], sizeof lines[0], "%s",
+			"(-- nothing in the log but Wine's driver and Bluetooth setup, which fails on every launch and harms nothing --)");
 	}
 	int wine = strstr(k->exec, "wine") || strstr(k->exec, ".exe") || strstr(k->path, "/.wine/");
 	for (int i = 0; i < nl && !wine; i++) if (strstr(lines[i], "/.wine/") || strstr(lines[i], "wine:")) wine = 1;
@@ -887,7 +908,7 @@ static void launch_report(const char *id, const desk *k, int status, double secs
 	fprintf(f, "{\"kind\":\"lxfail\",\"app\":"); jstr(f, id); fprintf(f, ",\"name\":"); jstr(f, k->name);
 	fprintf(f, ",\"status\":%d,\"secs\":%.1f,\"wine\":%s,\"dir\":", status, secs, wine ? "true" : "false"); jstr(f, dir);
 	fprintf(f, ",\"log\":"); jstr(f, log); fprintf(f, ",\"lines\":[");
-	for (int i = nl - 1; i >= 0; i--) { jstr(f, lines[i]); if (i) fputc(',', f); }
+	for (int i = 0; i < nl; i++) { jstr(f, lines[i]); if (i + 1 < nl) fputc(',', f); }
 	fprintf(f, "]}\n"); int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); free(t); return; }
 	/* (the request file appears whole: rudolfd lists only *.json) */
 	if (rename(tp, p)) unlink(tp);

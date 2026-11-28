@@ -111,6 +111,14 @@ mkdir -p $T/req; printf "fixme:x\n/usr/local/bin/starport-ge: 1: cd: can't cd to
 $T/dr starport-ge 'Starport GE' '/usr/local/bin/starport-ge' '' 2 0.3 $T/sp.log; f=$(ls $T/req/*.json 2>/dev/null | head -1)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(JSON.stringify(j))" "$f" 2>&1)
 ok "13. rudolf-debian: Starport GE's launcher ending at once (exit 2): a portal request lxfail-..., valid JSON: its name, how it ended, its log's last line (Wine's fixme: left out), a Windows program, its folder" "$(echo "$f" | grep -q '/lxfail-[0-9]*-[0-9]*\.json$' && echo 1)$(has "$j" '"kind":"lxfail"')$(has "$j" '"name":"Starport GE"')$(has "$j" '"status":2')$(has "$j" "\"lines\":\[\"/usr/local/bin/starport-ge: 1: cd: can't cd to /home/rudolf/.wine/drive_c/users/rudolf/StarportGE\"\]")$(has "$j" '"wine":true')$(has "$j" '"dir":"/home/rudolf/.wine/drive_c/users/rudolf/StarportGE"')" "$f $j"
+rm -f $T/req/*; printf '0024:fixme:ntdll:wine_init\n00b0:err:d3d:wined3d_init No available renderer\n00b8:err:ntoskrnl:ZwLoadDriver failed to create driver L"winebth": c00000e5\n0034:fixme:service:scmdatabase_autostart_services Auto-start service L"winebth" failed to start: 1359\n0010:err:wineusb:add_device no device\n0070:err:d3d:swapchain_create Failed to create swap chain\n' > $T/d3d.log
+$T/dr sf 'Starport GE' 'wine' '' 3 0.4 $T/d3d.log; f=$(ls $T/req/*.json | head -1)
+j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.lines.join('|'))" "$f" 2>&1)
+ok "...a Windows game that ended at once: the first real error first, then the last line (Wine's driver-service setup and fixme: left out)" "$([ "$j" = '00b0:err:d3d:wined3d_init No available renderer|0070:err:d3d:swapchain_create Failed to create swap chain' ] && echo 1)" "$j"
+rm -f $T/req/*; printf '00b8:err:ntoskrnl:ZwLoadDriver failed to create driver L"winebth": c00000e5\n0034:fixme:service:scmdatabase_autostart_services Auto-start service L"winebth" failed to start: 1359\n' > $T/noise.log
+$T/dr nz 'Dead Frontier' 'wine' '' 3 0.2 $T/noise.log; f=$(ls $T/req/*.json | head -1)
+j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.lines.join('|'))" "$f" 2>&1)
+ok "...a log of nothing but that setup: one line saying so, neither the setup nor \"its log is empty\"" "$(echo "$j" | grep -q 'harms nothing' && echo 1)$(echo "$j" | grep -q 'winebth' || echo 1)$(echo "$j" | grep -q '|' || echo 1)" "$j"
 rm -f $T/req/*; printf 'line "one"\tq\\x\n' > $T/q.log
 $T/dr x 'A "quoted" app' 'prog' '' 0 0.5 $T/q.log; n0=$(ls $T/req | wc -l); $T/dr x 'Slow' 'prog' '' 1 30 $T/q.log; n1=$(ls $T/req | wc -l)
 $T/dr x 'A "quoted" app' 'prog' '' 137 0.2 $T/q.log; f=$(ls $T/req/*.json | head -1); j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.name+'|'+j.lines[0]+'|'+j.status+'|'+j.wine)" "$f" 2>&1)

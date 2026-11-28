@@ -8,6 +8,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 - **PipeWire and WirePlumber, beside PulseAudio** (Part 9, begun): the camera and the microphone's capture need
   PipeWire under WebKitGTK 2.52, so it now starts with the session beside PulseAudio, which keeps the sound cards
   (WirePlumber's ALSA monitor is off). No `pipewire-pulse`; nothing listens.
+- Fixed: **the box a Windows program that ended at once is shown in** no longer shows Wine's Bluetooth and USB driver
+  setup (`winebth`, `wineusb`, and the `scmdatabase_autostart_services` line after them) — a failure on every launch that
+  harms nothing — but the first real error in the log, then the last lines; a log of nothing else says so (the owner's
+  Asus desktop, Starport: GE and Dead Frontier, 2026-11-28).
 Summary: In progress.
 - Developers: `docs/gap-analysis-1.6.3.md` ranks what Rudolf OS still lacks beside other operating systems — the
   hardware it does not reach, the system software only this project can add, and the files it cannot yet manage — each
