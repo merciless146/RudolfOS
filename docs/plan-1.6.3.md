@@ -72,6 +72,38 @@ accent colours), its memory at idle against the web version, built in the releas
   three open together free roughly 200-350 MB.
 - **The owner's checklist:** each app on the Vivobook against Chromium mode's (every menu and toolbar button, a real
   document, spreadsheet and presentation of the owner's, printing), light and dark; the memory in Task Manager.
+#### Status (2026-11-28, session): SpreadsheetPro's heads -- a press takes the whole column or row, and the status line adds it up
+- **The heads answered nothing:** a press on a column's letter, a row's number or the corner returned before it was
+  handled ("choosing a whole row or column is a later step"), so a person had no way to choose a column -- and so no way
+  to see its sum, make it bold or empty it. The press is the page's now (`spro45.js`'s mousedown): a column's head takes
+  the whole column from row 1 to 100 000, a row's head its whole row to ZZ, the corner the sheet (`A1:ZZ100000`, the
+  page's `selAll`), and Shift grows the choice from where it started. The cursor goes to the top of the view, where the
+  page puts it, so a head's press never throws the sheet to its last row.
+- **The figures follow the choice:** the status line's Sum, Average, Min, Max and Count were worked out only for a choice
+  of 20 000 cells or fewer, which a column never is; they now read the sheet's own cells inside the choice -- the page's
+  `eachIn` -- so a column is added up and a range gives the same answer as before.
+- **A big choice is bounded as the page bounds it:** a format over more than 200 000 cells (a column, a row, the sheet)
+  takes the cells that hold something plus the ones on the screen, as the page's `styleSel` does, so a hundred thousand
+  empty cells are not given an entry each; Clear contents and Delete on such a choice take the cells that hold something
+  rather than returning without a word, and Clear formats walks only cells that exist.
+- **The fault this step found:** the choice's tint painted every cell of it -- 100 000 rows for a chosen column and 70
+  million for the sheet -- so a press on the corner left the window painting cells the clip throws away, and every press
+  after it went unanswered (the check saw the press "do nothing" while the app was still running, its window in place).
+  It paints the visible rectangle now, both ends, and the rest as the sheet is scrolled to.
+- **Its test (the same workflow): 23 passed, 0 failed, 343 552 bytes**, hardened (the app's budget is 1 MB). Case 24
+  opens a book of seven cells (A1 5, A2 10, A3 15, B1 `x`, A5 4, B5 6, C5 8), presses column A's head and finds
+  `sel 0 0 0 0 99999 0`, the name box's `A1:A100000` and `agg 34|8.5|4|15|4`; Shift and B's head grow it across
+  (`A1:B100000`, `40|8|4|15|6`, B1's text counted and not summed); row 5's head takes its row (`A5:ZZ5`,
+  `18|6|4|8|3`); the corner takes the sheet (`A1:ZZ100000`, `48|8|4|15|7`); and Delete on column A takes its four cells
+  and nothing else (`cells 3`, C5's 8 still there), Ctrl+Z putting them back (`cells 7`). The state's new `area x y`
+  line is where the grid sits in the window, because a head's press is at its corner and a check cannot guess it; each
+  press is tried again while its effect is missing, and a failure prints what every press saw.
+- **Not in this step, by the plan's own split:** a drag from a head (or from a cell, or the fill handle) -- the app
+  handles no motion at all yet, which is the step that gives the grid its drags -- Ctrl+click for a second range, the
+  widths, hiding and freezing of rows and columns, and the rest of Part 1's steps. The screenshot comparison is still
+  not in it: it comes with the step that makes every view of the window. The native desktop keeps opening the web
+  SpreadsheetPro until the whole app passes, and `sheets` is still not in `NATIVE_APPS[]`.
+
 #### Status (2026-11-28, session): WordPro's functions check -- what the page's own commands were doing to the writing
 - **Undo took the marks with it:** Ctrl+Z put the text back but not the bold, the italic or the find mark, because a
   step was the characters alone. A step is now the writing *and* its tag set, taken before each change (serialised with
