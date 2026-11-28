@@ -122,6 +122,18 @@ accent colours), its memory at idle against the web version, built in the releas
   sizes, frozen panes, more than one sheet, and the assistant -- steps 2 and 3. The screenshot comparison against the web
   SpreadsheetPro is **not** in it yet either: it comes with the step that makes every view of the window. The native
   desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is **not** in `NATIVE_APPS[]`.
+#### Status (2026-11-28, session): PresentPro's functions check -- the notes and the order of the deck
+- **The notes were outside the undo:** typing a speaker's note and pressing Ctrl+Z undid the last *slide* change while
+  the note stayed, because the notes were written onto the slide as they were typed and never entered the history. They
+  are a step of the history now, taken when the typing pauses (one keystroke is not a step, a sentence is), and undoing
+  from the notes puts the notes back and touches nothing else.
+- **A slide could only stay where it was typed:** Ctrl+Up and Ctrl+Down move the chosen slide up or down the deck (the
+  choice goes with it, and it is one step of the history). The page's Slide menu has the same two rows.
+- **Its test (the same workflow): 17 passed, 0 failed.** Case 16 types a note (`notes:Speaker's line`), finds it on the
+  slide and sees the step it puts on the history (`hist 1 2`), then presses Ctrl+Z: the note is gone and the history
+  went back exactly one step (`hist 0 2` -- the history counts its first step as 0). Case 17 makes a slide and moves it
+  up: `cur 0`, the new slide first, the title slide second.
+
 #### Status (2026-11-27, scheduled task): PresentPro begun, step 1 (the window, its slides and their places)
 - **Branch `presentpro-1`:** `iso/sys/apps/presentpro.c` (`/usr/bin/rudolf-presentpro`, with librudolf-ui) has the page's
   window with its eight menus and the page's own rows (File 18, Home 20, Insert 16, Design 4, Arrange 21, Slide Show 7,
