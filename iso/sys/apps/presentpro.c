@@ -649,6 +649,18 @@ static gboolean on_list_click(GtkWidget *w, GdkEventButton *e, gpointer d)
 	if (i >= 0 && i < SLN) goto_slide(i);
 	return TRUE;
 }
+/* (Ctrl+Up and Ctrl+Down move the slide itself, as the page's own list does; the choice goes with the slide it moved) */
+static void move_slide(int d)
+{
+	if (SLN < 2 || CUR + d < 0 || CUR + d >= SLN) return;
+	Slide t = SL[CUR];
+	SL[CUR] = SL[CUR + d];
+	SL[CUR + d] = t;
+	CUR += d;
+	notes_sync();
+	goto_slide(CUR);
+	slide_changed();
+}
 static void next_ph(int step)
 {
 	int n; const PhBox *b = lay_boxes(SL[CUR].layout, &n);
@@ -675,8 +687,8 @@ static gboolean on_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	case GDK_KEY_u: if (ctrl) { toggle_style(2); return TRUE; } break;
 	case GDK_KEY_Page_Down: goto_slide(CUR + 1); return TRUE;
 	case GDK_KEY_Page_Up: goto_slide(CUR - 1); return TRUE;
-	case GDK_KEY_Down: if (listf) { goto_slide(CUR + 1); return TRUE; } break;
-	case GDK_KEY_Up: if (listf) { goto_slide(CUR - 1); return TRUE; } break;
+	case GDK_KEY_Down: if (ctrl) { move_slide(1); return TRUE; } if (listf) { goto_slide(CUR + 1); return TRUE; } break;
+	case GDK_KEY_Up: if (ctrl) { move_slide(-1); return TRUE; } if (listf) { goto_slide(CUR - 1); return TRUE; } break;
 	case GDK_KEY_Delete: if (listf) { del_slide(); return TRUE; } break;
 	case GDK_KEY_Return: case GDK_KEY_KP_Enter: case GDK_KEY_F2: edit_begin(PHCUR); return TRUE;
 	case GDK_KEY_Tab: next_ph(shift ? -1 : 1); return TRUE;
@@ -685,6 +697,13 @@ static gboolean on_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	default: break;
 	}
 	return FALSE;
+}
+static guint NOTES_T;
+static gboolean notes_step(gpointer d)
+{
+	(void)d; NOTES_T = 0;
+	hist_push(); state_soon();
+	return G_SOURCE_REMOVE;
 }
 static void notes_sync(void)
 {
@@ -703,8 +722,11 @@ static void on_notes_changed(GtkTextBuffer *b, gpointer d)
 	g_free(SL[CUR].notes);
 	SL[CUR].notes = *t ? g_strdup(t) : NULL;
 	g_free(t);
-	/* (the notes are part of the slide, but a keystroke is not a step of the page's undo: it is put on the slide as it
-	   is typed, as the page's contenteditable leaves it) */
+	/* (the notes are part of the slide, and a step of the undo as one: one keystroke is not a step -- that would make
+	   Ctrl+Z take a letter back out of the notes and leave the slide change it undid -- so the step is taken when the
+	   typing pauses, as the page's own history does) */
+	if (NOTES_T) g_source_remove(NOTES_T);
+	NOTES_T = g_timeout_add(700, notes_step, NULL);
 	state_soon();
 }
 
@@ -1333,6 +1355,8 @@ static void do_one(const char *c)
 	else if (!strcmp(c, "redo")) hist_redo();
 	else if (!strcmp(c, "fit")) { ZOOMF = 1; redraw(); status_update(); }
 	else if (!strcmp(c, "tab")) next_ph(1);
+	else if (!strcmp(c, "up")) move_slide(-1);
+	else if (!strcmp(c, "down")) move_slide(1);
 	else if (!strncmp(c, "goto:", 5)) goto_slide(atoi(c + 5) - 1);
 	else if (!strncmp(c, "layout:", 7)) set_layout(c + 7);
 	else if (!strncmp(c, "align:", 6)) set_align(c[6] == 'l' ? 1 : c[6] == 'c' ? 2 : 3);
@@ -1347,6 +1371,8 @@ static void do_one(const char *c)
 		g_free(SL[CUR].notes);
 		SL[CUR].notes = c[6] ? g_strdup(c + 6) : NULL;
 		notes_sync();
+		if (NOTES_T) g_source_remove(NOTES_T);
+		NOTES_T = g_timeout_add(700, notes_step, NULL);   /* (the same step the typing takes when it pauses) */
 		state_soon();
 	}
 }
