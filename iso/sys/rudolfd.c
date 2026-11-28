@@ -3292,7 +3292,9 @@ static void api_dl(struct req *r, const char *what, int post)
 	/* 1.5.5: home: the files in Downloads itself, so ones that no C:\DOWNLOADS entry points at (saved by a Linux app,
 	   or a download whose entry was lost) can be shown there too */
 	if (!strcmp(what, "incoming") || !strcmp(what, "quarantine") || !strcmp(what, "home")) {
-		char hd[300]; if (!strcmp(what, "home") && !dl_acct_dir(qparam(r->query, "acct"), hd, sizeof hd)) { reply_err(r->fd, 400, "which account?"); return; }
+		char hd[300]; if (!strcmp(what, "home") && (!dl_acct_dir(qparam(r->query, "acct"), hd, sizeof hd))) { reply_err(r->fd, 400, "which account?"); return; }
+		/* (1.6.3 Part 10, item 1: an account's Downloads is nobody else's; rudolfd-dlzip.inc's dlz_acct_mine) */
+		if (!strcmp(what, "home") && !dlz_acct_mine(qparam(r->query, "acct"))) { reply_err(r->fd, 403, "another account's Downloads is not yours"); return; }
 		const char *dir = !strcmp(what, "incoming") ? INCOMING : !strcmp(what, "home") ? hd : QUARANTINE;
 		if (!strcmp(what, "incoming")) dl_old_partials(dir);
 		DIR *d = opendir(dir); str s = {0}; sadd(&s, "{\"ok\":true,\"items\":["); int first = 1;
@@ -3332,6 +3334,7 @@ static void api_dl(struct req *r, const char *what, int post)
 		char *name = qparam(r->query, "name"), *from = qparam(r->query, "from"), *os = qparam(r->query, "off"), *ls = qparam(r->query, "len");
 		if (!dl_name_ok(name)) { reply_err(r->fd, 400, "which file?"); return; }
 		char hd[300]; if (!dl_acct_dir(qparam(r->query, "acct"), hd, sizeof hd)) { reply_err(r->fd, 400, "which account?"); return; }
+		if (!dlz_acct_mine(qparam(r->query, "acct"))) { reply_err(r->fd, 403, "another account's Downloads is not yours"); return; }
 		const char *dir = from && !strcmp(from, "quarantine") ? QUARANTINE : from && !strcmp(from, "home") ? hd : INCOMING;
 		char fp[600]; snprintf(fp, sizeof fp, "%s/%s", dir, name);
 		int f = open(fp, O_RDONLY | O_NOFOLLOW); struct stat st;
@@ -3356,6 +3359,7 @@ static void api_dl(struct req *r, const char *what, int post)
 		/* 1.5.5: acct = the account whose folder is meant (from=home, keep, release); from=root: Downloads itself (a file
 		   from before 1.5.5, to=acct moves it into acct's folder) */
 		char hd[300]; if (!dl_acct_dir(qparam(r->query, "acct"), hd, sizeof hd)) { reply_err(r->fd, 400, "which account?"); return; }
+		if (!dlz_acct_mine(qparam(r->query, "acct"))) { reply_err(r->fd, 403, "another account's Downloads is not yours"); return; }
 		int fromhome = from && (!strcmp(from, "home") || !strcmp(from, "root"));
 		const char *src_dir = !strcmp(to, "release") || (from && !strcmp(from, "quarantine")) ? QUARANTINE : from && !strcmp(from, "root") ? DLHOME : from && !strcmp(from, "home") ? hd : INCOMING;
 		if (fromhome && strcmp(to, "del") && strcmp(to, "rename") && strcmp(to, "quar") && strcmp(to, "acct") && strcmp(to, "copy")) { reply_err(r->fd, 400, "to?"); return; }
@@ -3394,6 +3398,7 @@ static void api_dl(struct req *r, const char *what, int post)
 		/* 1.5.5: an account's folder of large downloads, deleted (the guest's after sign-out; an account that is removed) */
 		char *a = qparam(r->query, "acct");
 		if (!dl_acct_ok(a) || !strcmp(a, "shared")) { reply_err(r->fd, 400, "which account?"); return; }
+		if (!dlz_acct_mine(a)) { reply_err(r->fd, 403, "another account's Downloads is not yours"); return; }
 		char cmd[300]; snprintf(cmd, sizeof cmd, "rm -rf '%s/%s'", DLACCTS, a); run(cmd); reply_ok(r->fd, "cleared"); return;
 	}
 	reply_err(r->fd, 404, "unknown download action");

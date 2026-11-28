@@ -18,13 +18,35 @@
  * account, so the page does not take the files it moves there in as downloads of their own (dl27.js dlAdopt).
  * The ZIP's name and the folder go to the script as arguments and in a root-only file, never in a command line. */
 static char DLZIP_SH[200] = "/usr/lib/rudolf/dlzip.sh", DLZIP_OUT[200] = RUN "/dlzip.files", DLZIP_STOP[200] = RUN "/dlzip.stop",
-	DLZIP_LIST[200] = RUN "/dlzip.list", DLZIP_ACCT[200] = RUN "/dlzip.acct";
+	DLZIP_LIST[200] = RUN "/dlzip.list", DLZIP_ACCT[200] = RUN "/dlzip.acct", DLZIP_DEST[200] = RUN "/dlzip.dest";
+/* ---- whose files a request may name (1.6.3 Part 10, item 1: the account check)
+   An account's Downloads is a folder of this computer that no key protects: it belongs to the desktop's user, and every
+   account's is beside the others. So the account a request names is checked to be the one signed in -- never only to be a
+   name of the right shape, which any page of the desktop may say. The guest's store and the shared one are nobody's (the
+   guest is a shared sandbox by design). With no account signed in nothing is refused here and there is no desktop to ask:
+   the sign-in screen's own housekeeping (and the checks, which run so) go on as before. */
+static void dlz_sess(char *o, size_t n)
+{
+	o[0] = 0; char *c = slurp(HOME_SESSION, NULL); if (!c) return; trim(c); snprintf(o, n, "%s", c); free(c);
+}
+static int dlz_acct_mine(const char *acct)
+{
+	if (!acct || !*acct) return 1;
+	char s[80]; dlz_sess(s, sizeof s);
+	if (!*s || !strcmp(acct, "guest") || !strcmp(acct, "shared")) return 1;
+	/* the page sends the account's id in lower case (dlAcct); the session holds it as it was made */
+	for (const char *a = acct, *b = s;; a++, b++) {
+		if (!*a && !*b) return 1;
+		if (!*a || !*b || tolower((unsigned char)*a) != tolower((unsigned char)*b)) return 0;
+	}
+}
 /* the account's folder (hd) and the ZIP in it (zp) for the request's name and acct: an account's own folder only, a plain
    file there (not a link), the folders on the way none either; 0 after a reply */
 static int dlzip_file(struct req *r, char *zp, size_t zn, char *hd, size_t hn, char *acct, size_t an)
 {
 	const char *name = qparam(r->query, "name"), *a = qparam(r->query, "acct");
 	if (!a || !*a || !dl_acct_ok(a)) { reply_err(r->fd, 400, "which account?"); return 0; }
+	if (!dlz_acct_mine(a)) { reply_err(r->fd, 403, "another account's Downloads is not yours"); return 0; }
 	if (!dl_name_ok(name)) { reply_err(r->fd, 400, "which file?"); return 0; }
 	for (const unsigned char *c = (const unsigned char *)name; *c; c++) if (*c < 0x20 || *c == 0x7f) { reply_err(r->fd, 400, "which file?"); return 0; }
 	if (!dl_acct_dir(a, hd, hn)) { reply_err(r->fd, 400, "which account?"); return 0; }
@@ -51,7 +73,11 @@ static int dlzip_under(const char *p, const char *r, size_t rl)
 }
 static int dlzip_path_ok(const char *real)
 {
-	static const char *const R[] = { "/home", "/media", "/run/media", "/mnt", "/tmp", "/var/tmp", "/srv", NULL };
+	/* the signed-in account's own places, not /home as a whole: each account has a Linux home of its own under /home, and
+	   it is that account's. Nor any hidden part of a path: the accounts' unencrypted downloads store is
+	   /home/rudolf/Downloads/.accounts/<id>, the shared quarantine is another, and both are other accounts' files. */
+	for (const char *c = real; *c; c++) if (*c == '/' && c[1] == '.') return 0;
+	static const char *const R[] = { "/home/rudolf", "/media", "/run/media", "/mnt", "/tmp", "/var/tmp", "/srv", NULL };
 	for (int i = 0; R[i]; i++) if (dlzip_under(real, R[i], strlen(R[i]))) return 1;
 	const char *e = getenv("DLZIP_ROOTS"); if (!e || !*e) return 0;
 	char *c = strdup(e); if (!c) return 0;
