@@ -11,7 +11,7 @@ const R = []; const ok = (n, c, d) => { R.push(!!c); console.log((c ? 'PASS ' : 
 const T = {'.wasm': 'application/wasm', '.js': 'text/javascript', '.html': 'text/html', '.webp': 'image/webp', '.jpg': 'image/jpeg', '.png': 'image/png', '.woff2': 'font/woff2', '.css': 'text/css'};
 const FAIL = {kind: 'lxfail', app: 'starport-ge', name: 'Starport GE', status: 2, secs: 0.3, wine: true, dir: '/home/rudolf/.wine/drive_c/users/rudolf/StarportGE', log: '/run/rudolf/debian/starport-ge.log',
   lines: ["/usr/local/bin/starport-ge: 1: cd: can't cd to /home/rudolf/.wine/drive_c/users/rudolf/StarportGE"]};
-/* (rudolf-debian writes the request without the readings first, and again with them: the same id) */
+/* (rudolf-debian writes the request without the readings first, then a second one with them, saying whose box it fills) */
 const FAIL2 = Object.assign({}, FAIL, {diag: ['# Wine', 'wine-10.0 (Debian 10.0~rc4)', '# the renderer', 'llvmpipe (LLVM 19.1.7, 256 bits)', '# /dev/dri', 'no /dev/dri'], diaglog: '/run/rudolf/debian/starport-ge.diag.txt'});
 const WO0 = () => ({ok: true, on: true, offer: true, pending: true, declined: false, several: false, accounts: 1, count: 2, launchers: 1, bytes: 1288490188, free: 40e9, room: true, mode: 'replace', own: false, cut: false, brought: false, running: false, programs: ['StarportGE', 'Notepad2'], job: null});
 const M = {calls: [], reqs: [], wo: WO0(), body: null, session: null, engine: null};
@@ -70,7 +70,7 @@ const txt = (p, sel) => p.evaluate(s => { const e = document.querySelector(s); r
     ok(`1${eng ? 'L' : ''}. ${label}: Starport GE's launcher ending at once is said: its name, how it ended, its log's last line`, shown && /Starport GE did not start/.test(f) && /exit status 2/.test(f) && /can't cd to \/home\/rudolf\/\.wine\/drive_c\/users\/rudolf\/StarportGE/.test(f) && /starport-ge\.log/.test(f) && !/What it runs with/.test(f), f);   // (the box is shown before the readings: none yet)
     ok(`...${label}: its folder is among the Windows programs from before 1.5.9 (asked of rudolfd with its folder): Bring them in…`, /Its folder \(StarportGE\) is among the Windows programs from before Rudolf OS 1\.5\.9/.test(f) && await p.evaluate("!document.querySelector('.wo62fb').hidden") && M.calls.some(c => c.startsWith('GET wine/old?dir=')), [f, M.calls.filter(c => /wine/.test(c))]);
     ok(`...${label}: the request is answered (taken away, shown once)`, M.calls.some(c => c.startsWith('POST portal/answer?id=lxfail-')) && M.reqs.length == 0 && await p.evaluate("document.querySelectorAll('.wo62f').length") == 1, M.calls.filter(c => /portal\/answer/.test(c)));
-    M.reqs = [{id: rid, req: FAIL2}];   // (the same request, its readings in)
+    M.reqs = [{id: rid + '-diag', req: Object.assign({}, FAIL2, {fill: true, of: rid})}];   // (the readings: a request of its own, saying whose box it fills)
     const filled = await until(p, "/llvmpipe/.test((document.querySelector('.wo62fd')||{}).textContent||'')", 9000);
     const ff = await txt(p, '.wo62f');
     ok(`...${label}: the readings fill that box in, once they are read, and no second box is shown`, filled && /What it runs with \(Wine, its 32- and 64-bit GL and Vulkan/.test(ff) && /no \/dev\/dri/.test(ff) && /starport-ge\.diag\.txt/.test(ff) && await p.evaluate("document.querySelectorAll('.wo62f').length") == 1 && M.reqs.length == 0, ff);

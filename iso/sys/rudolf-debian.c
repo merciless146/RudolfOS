@@ -903,10 +903,11 @@ static void lr_read_diag(const char *keep_at)
 #endif
 #define LR_QUICK 10
 /* the request as rudolfd lists it (whole: only *.json): written first without what it runs with -- the box is shown at
-   once -- and again with it, once the readings are in (glxinfo and vulkaninfo can each take seconds), which the page fills
-   into the box it already shows (wineold62.js). */
+   once -- and then a second one with it, once the readings are in (glxinfo and vulkaninfo can each take seconds). The second
+   has an id of its own (the page never takes an id twice, lxPortalPoll's LX.seen) and says which request's box it fills
+   ("of"); wineold62.js fills that box in rather than showing another. */
 static void lr_request(FILE *f, const char *id, const desk *k, int status, double secs, int wine, const char *dir,
-	const char *log, int nl, char (*lines)[300], const char *diaglog)
+	const char *log, int nl, char (*lines)[300], const char *diaglog, const char *of)
 {
 	fprintf(f, "{\"kind\":\"lxfail\",\"app\":"); jstr(f, id); fprintf(f, ",\"name\":"); jstr(f, k->name);
 	fprintf(f, ",\"status\":%d,\"secs\":%.1f,\"wine\":%s,\"dir\":", status, secs, wine ? "true" : "false"); jstr(f, dir);
@@ -918,13 +919,14 @@ static void lr_request(FILE *f, const char *id, const desk *k, int status, doubl
 		for (int i = 0; i < lr_diag_n; i++) { jstr(f, lr_diag[i]); if (i + 1 < lr_diag_n) fputc(',', f); }
 		fprintf(f, "],\"diaglog\":"); jstr(f, diaglog);
 	}
+	if (of && *of) { fprintf(f, ",\"fill\":true,\"of\":"); jstr(f, of); }
 	fprintf(f, "}\n");
 }
 static int lr_send(const char *p, const char *tp, const char *id, const desk *k, int status, double secs, int wine,
-	const char *dir, const char *log, int nl, char (*lines)[300], const char *diaglog)
+	const char *dir, const char *log, int nl, char (*lines)[300], const char *diaglog, const char *of)
 {
 	FILE *f = fopen(tp, "w"); if (!f) return 1;
-	lr_request(f, id, k, status, secs, wine, dir, log, nl, lines, diaglog);
+	lr_request(f, id, k, status, secs, wine, dir, log, nl, lines, diaglog, of);
 	int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); return 1; }
 	if (rename(tp, p)) { unlink(tp); return 1; }
 	return 0;
@@ -968,17 +970,24 @@ static void launch_report(const char *id, const desk *k, int status, double secs
 	for (int i = nl - 1; i >= 0 && !wdir; i--) { char *w = strstr(lines[i], "/home/rudolf/.wine/"); if (w) wdir = w; }
 	if (wdir) { snprintf(dir, sizeof dir, "%s", wdir); dir[strcspn(dir, "\"':\n")] = 0; size_t l = strlen(dir); while (l && (dir[l - 1] == ' ' || dir[l - 1] == '/')) dir[--l] = 0; if (strstr(dir, "..")) dir[0] = 0; }
 	mkdirs("/run/rudolf/portal", 0755); if (!mkdir(LR_DIR, 01733)) chmod(LR_DIR, 01733);   /* (as rudolfd makes it: anyone may add, only the owner changes) */
-	char p[300], tp[320]; snprintf(p, sizeof p, LR_DIR "/lxfail-%ld-%d.json", (long)time(NULL), (int)getpid()); snprintf(tp, sizeof tp, "%s.tmp", p);
+	char base[80], p[300], tp[320];
+	snprintf(base, sizeof base, "lxfail-%ld-%d", (long)time(NULL), (int)getpid());
+	snprintf(p, sizeof p, "%s/%s.json", LR_DIR, base); snprintf(tp, sizeof tp, "%s.tmp", p);
 	/* the box first: what it ended with and where its log is, said now */
-	if (lr_send(p, tp, id, k, status, secs, wine, dir, log, nl, lines, NULL)) { free(t); return; }
-	/* then what it runs with (a Windows program): read, kept beside the log, and into the same request, which the
-	   page fills into the box it shows */
+	if (lr_send(p, tp, id, k, status, secs, wine, dir, log, nl, lines, NULL, NULL)) { free(t); return; }
+	/* then what it runs with (a Windows program): read, kept beside the log, and said in a second request of its own,
+	   which the page fills into the box it already shows */
 	if (wine) {
 		char diaglog[420] = ""; size_t l = strlen(log);
 		if (l > 4 && !strcmp(log + l - 4, ".log")) snprintf(diaglog, sizeof diaglog, "%.*s.diag.txt", (int)(l - 4), log);
 		else snprintf(diaglog, sizeof diaglog, "%s.diag.txt", log);
 		if (!strstr(diaglog, "..")) lr_read_diag(diaglog);
-		if (lr_diag_n) lr_send(p, tp, id, k, status, secs, wine, dir, log, nl, lines, diaglog);
+		if (lr_diag_n) {
+			char base2[92], p2[312], tp2[332];
+			snprintf(base2, sizeof base2, "%s-diag", base);
+			snprintf(p2, sizeof p2, "%s/%s.json", LR_DIR, base2); snprintf(tp2, sizeof tp2, "%s.tmp", p2);
+			lr_send(p2, tp2, id, k, status, secs, wine, dir, log, nl, lines, diaglog, base);
+		}
 	}
 	free(t);
 }

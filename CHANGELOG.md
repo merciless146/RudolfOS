@@ -15,8 +15,9 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 - New: **when a Windows program ends at once, what it runs with is read and shown** (every Windows program, from 1.6.3
   on): Wine's version, its 64- and 32-bit GL and Vulkan packages and which of them is not installed cleanly, the OpenGL
   renderer, Vulkan's device, `/dev/dri`, the room left, and this account's newest logs — kept beside the program's log as
-  `…/ID.diag.txt`. The box is shown before them and they fill it in, so it never waits for `glxinfo` or `vulkaninfo`. A
-  game that ends at once is nearly always one of these; before, nothing said which.
+  `…/ID.diag.txt`. The box is shown before them and they fill it in (a second request of their own, `…-diag`), so it
+  never waits for `glxinfo` or `vulkaninfo`; the newest logs are this account's only. A game that ends at once is nearly
+  always one of these; before, nothing said which.
 Summary: In progress.
 - Developers: `docs/gap-analysis-1.6.3.md` ranks what Rudolf OS still lacks beside other operating systems — the
   hardware it does not reach, the system software only this project can add, and the files it cannot yet manage — each

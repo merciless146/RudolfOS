@@ -61,9 +61,10 @@ Library's publish still sign on main; a computer on the new release trusts both 
   when a Windows program ends at once and shown in it: Wine's version, its 64- and 32-bit GL and Vulkan packages and any
   that is not installed cleanly, the OpenGL renderer, Vulkan's device, `/dev/dri`, the room left, and the newest logs —
   kept beside the program's log as `…/ID.diag.txt` (`LR_DIAG_CMD`, a fixed command; a test's own in `debreport.c`'s
-  build). **The request is written first and the readings fill it in** (the same request written again, `wineold62.js`
-  filling the box it already shows, never a second box): the box never waits for `glxinfo` or `vulkaninfo`, which can each
-  take seconds. The newest logs are this account's only (`find … -uid $(id -u)`). The owner's block of commands did not
+  build). **The request is written first and the readings fill it in**: they come in a request of their own (`…-diag`, as
+  the page never takes an id twice: `lxPortalPoll`'s `LX.seen`) that says whose box it fills (`"fill"`, `"of"`), which
+  `wineold62.js` does, never a second box: the box never waits for `glxinfo` or `vulkaninfo`, which can each take seconds.
+  The newest logs are this account's only (`find … -uid $(id -u)`). The owner's block of commands did not
   have to be typed on the stick: it is what the box now says by itself, in 1.6.3 and after. `wineold162_t.sh` holds the
   error-first, the noise-only, the check read and the Debian-program (nothing read) cases; `wineold162_t.js` the box shown
   before the readings, then filled in, one box. PR #762.

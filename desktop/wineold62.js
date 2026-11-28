@@ -15,7 +15,7 @@
       the person's choice), in Settings › Apps › Linux beside Wine, and in System health while it is pending.
    Everything here is the page's own, so the three engines show it alike (the owner's rule). */
 window.__wineold62=1;
-const WO62={st:null,dlg:null,poll:0,said:0,seen:{},fill:{}};
+const WO62={st:null,dlg:null,poll:0,said:0,fill:{}};
 function woSize(b){b=+b||0;return b>=1e9?(b/1e9).toFixed(1)+' GB':Math.max(1,Math.round(b/1e6))+' MB'}
 async function woGet(dir){if(!RD)return null;try{const j=await rd('wine/old'+(dir?'?dir='+encodeURIComponent(dir):''));WO62.st=j;return j}catch(e){return null}}
 function woProgress(j){if(!j)return'';if(j.phase=='finish')return'Putting the copy in its place…';if(j.phase=='launchers')return'Bringing their Start menu entries and icons…';
@@ -62,8 +62,7 @@ function woWatch(on){const tick=async()=>{const s=await woGet();const j=s&&s.job
 async function woFail(id,r){try{await lxAnswer(id,{})}catch(e){}
  /* (one left from more than 10 minutes ago, when no desktop was there to say it: not said now) */
  const at=+(String(id).split('-')[1]||0);if(at&&Date.now()/1000-at>600)return;
- if(WO62.seen[id]){const f=WO62.fill[id];if(f)f(r);return}   /* (the same box, its readings in now: filled in, never shown twice) */
- WO62.seen[id]=1;
+ if(r.fill){const f=WO62.fill[String(r.of||'')];if(f)f(r);return}   /* (what it runs with, in a request of its own: fills that box in, never another) */
  const name=String(r.name||'A program'),st=+r.status||0,secs=+r.secs||0;
  const how=st>=128?'it was stopped (signal '+(st-128)+')':st==127?'its program could not be found':'exit status '+st;
  const s=r.wine?await woGet(String(r.dir||'')):null;const offer=s&&s.on&&(s.inOld||(s.offer&&s.count));
