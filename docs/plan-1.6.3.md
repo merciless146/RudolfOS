@@ -765,6 +765,34 @@ Windows today means another disk (an internal second drive, an external SSD, or 
 6. **Removing it:** Settings > Update and recovery > "Remove Rudolf OS from this drive" (from a stick or from Windows'
    side: a guide) deletes RUDOLFDATA, \EFI\rudolf\ and the boot entry, and leaves the space unallocated for Windows to
    take back (Disk Management > Extend Volume).
+7. **The computer's other systems, each a bootable choice** (the owner, 2026-11-28: "Part 6 will be expanded in scope so
+   that the OS will recognize the license or fetch of whatever other operating system is installed as a bootable choice
+   on the device (if possible, this might be done or assisted by referring to the options in the BIOS boot menu)").
+   Windows above is the first of them; the same reading is made of the whole computer, and each system found is offered
+   by name at start-up:
+   - **What is read, read-only:** every EFI system partition's own folders under \EFI\ -- a vendor's folder and the
+     start-up file in it (\EFI\Microsoft\Boot\bootmgfw.efi, \EFI\ubuntu\shimx64.efi, \EFI\fedora\...,
+     \EFI\refind\..., \EFI\Manjaro\...) -- and the firmware's own boot entries (efibootmgr: each one's name, the disk and
+     partition it is on, whether it is enabled and its place in the order). A system is named as the firmware and the
+     loader's own folder name it (**Windows**, **Ubuntu**, **Fedora**...), never by reading its files; a folder whose
+     name is not one known is shown by that name, with its date and size.
+   - **The licence is the other system's own:** nothing here reads, checks, activates or changes it. What is recognised
+     is that a system is installed and can be started, as a bootable choice -- no disk of another system is written to,
+     mounted read-write, moved, or made the default by Rudolf OS.
+   - **At start-up and in Settings:** Rudolf OS's menu lists them after its own entries (Rudolf OS first, the short wait
+     kept), each starting the loader that was found; Settings > Update and recovery lists them with what was found, where
+     it is and whether the firmware knows it, with "Start this system now" (one restart) and "Refresh". A system whose
+     firmware entry has gone (a Windows update, a disk moved, a reset NVRAM) is found again from its loader's folder, so
+     its entry is put back at Rudolf OS's next start, as Windows' own is.
+   - **The firmware's own boot menu as the way through** (the BIOS boot menu, as the owner put it): where a loader is
+     not offered by the firmware at all (a hidden or missing entry, a system on a disk the firmware does not list),
+     Settings says so plainly and offers "Restart into the firmware's boot menu" (UEFI's OsIndications, else a restart
+     into the firmware's setup), with the key each maker uses for its one-time boot menu (ASUS F8 or Esc, Dell F12,
+     Lenovo F12, HP F9, Acer F12) and the fact that a choice made there starts that system whether or not Rudolf OS's
+     menu knows it. Nothing about another system's licence is asked for or needed.
+   - **Never:** the other system's files read as its own (no reading a registry, a ``/boot`` or a licence store), its
+     boot loader replaced or its folder renamed, its firmware entry deleted, or its disk written to at all -- every one of
+     these is read-only, and a system found is only ever started.
 **Never:** a Windows partition written, resized or formatted; anything in \EFI\Microsoft\; the firmware's Secure Boot
 keys changed; an install that goes on when the free area, the EFI system partition or the disk's partition table is not
 what was shown.
@@ -774,6 +802,11 @@ partition with files, a recovery partition, free space; no Windows files or imag
 partition's checksum unchanged and \EFI\Microsoft\ unchanged; Rudolf OS starts, updates, rolls back, Recovery mode;
 the menu's Windows entry starts the stand-in; the boot order put back; too little free space, a full EFI system
 partition, an MBR disk and a BIOS computer refused with plain words; removal leaves the disk as before (unallocated).
+For the other systems of item 7, the same QEMU disk carries a stand-in second system in its own \EFI\ folder (a loader
+that only prints a mark) and a firmware entry for it, and a third folder whose name is not one known: each listed by
+name at start-up and in Settings and started, the one without a firmware entry found again from its folder, the unknown
+one shown by its own name, every byte of both left as it was (checksums), and "Restart into the firmware's boot menu"
+offered where the firmware lists no entry at all.
 **The owner's checklist** (the ASUS desktop): back up and note the BitLocker key; shrink in Disk Management; install
 beside; Rudolf OS and Windows each start from the menu and from F8; a Windows update, then Rudolf OS's next start; an
 update of Rudolf OS; removal and Extend Volume back.
@@ -1114,6 +1147,43 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    daemon) and `terminal56_t.js` (1.5.6's own check, run by the same workflow) 4, 6 and 7, which asserted the old "＋ opens another
    C: tab", "prompt() opens a Terminal" and a read of the first tab only; they now assert the menu, the tab in the open
    window and the text of whichever tab the file opened.
+12. **A new installation from a stick: its setup wizard is not restarted under the person's hands** (the owner,
+   2026-11-28: "New installs using USB drives produced in Rudolf's update and recovery \"make a USB stick\" function are
+   buggy — they'll boot normally but the startup window force-resets quickly and puts the user at the sign-in screen
+   without having allowed them to make their first account (which is supposed to be their admin account). This causes
+   them to be locked out of a computer which has no account that they can use"), **done:** two causes, each enough on its
+   own. **A: the one-time move to the browser shell restarted the browser over the wizard.** `shell26.js`'s `shellOffer`
+   moves a plain desktop page to the shell by itself right after start-up (within two minutes and with no window open:
+   "Real browser tabs are ready" then `shell/switch` 600 ms later), and it asked only about the engine — on a new
+   installation the page is the plain one (Standard, the only engine before setup), the mirror is ready at once
+   (`idbm/ready`), and Chromium has installed the shell a few seconds in, so it fired about 6 s after the start, while the
+   wizard (up at 1.2 s) had the screen. Now `shellOffer` returns unless Rudolf OS is set up (`bd95setup`, the wizard's
+   last step) and while `#oobe` is on the screen: the move waits for a start after setup, or Settings › Oracle sign-in ›
+   "Restart the desktop now". **B: the next start treated the placeholder account as setup.** The page keeps a placeholder
+   account (`admin`, the hash of "admin") under `bd95user` at its very first start, before the wizard runs, and the
+   session's `native_setup_done()` counted `bd95user` — so from the second start the Native desktop came up (install.sh
+   writes it for new installations), whose sign-in screen has no setup wizard and whose only account was one nobody had
+   chosen a password for. `native_setup_done()` now reads `bd95setup` alone, as the wizard's own `firstRun` does, so an
+   unfinished setup starts on Standard with its wizard again (and an update repairs a computer already caught by this).
+   The daemon's `setup` flag (`desktop/accounts`, Native's "not set up yet" line) is unchanged: with A and B, Native is
+   never started before setup. *Nothing in the native shell was touched, so no rebuild of `rudolf-native` is needed.*
+   Tests: `setuprun63_t.js` (new — a new installation: the wizard stays at step 1 while the automatic move would fire and
+   when `shellOffer()` is called by hand, no `shell/switch`, no box; set up: the move still happens by itself with its
+   box) and `setupnative63_t.sh` (new — the session's `native_setup_done` read from the session itself: nothing, the
+   placeholder account alone, other data: Standard; `bd95setup`: Native; and the wizard's rule is the same one), both in
+   `setuprun63-check.yml`; `engine57_t.js` case 7 (the Chromium desktop's move) sets up first, as its WebKit page already
+   did.
+   - **Follow-up (the owner, 2026-11-28): the wizard keeps its place.** "Make the wizard keep its place if the desktop
+     restarts or the computer is switched off mid-setup, so the step and the name already typed come back instead of step
+     1, with a check for it." The wizard's place is kept in `bd95oobe`, `{step, name}`, written as the wizard is drawn,
+     the name is typed and every step is left; `firstRun` starts from it (and no longer draws a second wizard over one
+     already on the screen). The password is never kept: a restart after it is typed comes back to the step that asks for
+     it — the two last steps come after it — with the name still in its box and both password boxes empty, which is also
+     why a saved place is capped there. The key is removed when the wizard ends, so nothing is left behind on a computer
+     that is set up. Test: `setupkeep63_t.js` (new, in `setuprun63-check.yml`): step 1 at a new installation, the place as
+     the name is typed, a restart back at the account step with the name, the passwords empty, the password step's restart
+     back at the account step (not step 1 and never the last one), Back kept, Finish making the account (`Ann`) and
+     clearing the place, and no wizard on the next start.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)
