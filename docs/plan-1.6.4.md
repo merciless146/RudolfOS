@@ -7,7 +7,9 @@ Gap numbers 3, 5, and 9 will be addressed as part of the 2.0 WendigOS project."*
 
 **Where the six come from.** Three are new work (gap 1, gap 2, gap 4), two are parts already written for 1.6.3 that
 nothing of was built (gap 6 is 1.6.3's Part 6, gap 7 is 1.6.3's Part 10, items 2 to 8), and one is a piece of 2.0's
-wave 2 pulled forward because it is the desktop's most-used window (gap 8, File Explorer, step 1). This plan is the
+wave 2 pulled forward because it is the desktop's most-used window (gap 8, File Explorer, step 1). **A seventh part has
+no gap of its own:** the fingerprint readers (1.6.3's Part 2) are three steps built and two small pieces left, and the
+owner moved them here on 2026-11-28 so that both sign-in's parts are finished together. This plan is the
 whole of them: the parts below are their items, and 1.6.3's plan keeps what was written there with a line saying where
 it went, as `plan-1.6.3.md` does for the parts it took from 1.6.2.
 
@@ -181,6 +183,32 @@ wave 2 (`docs/plan-2.0.md`, "The order"), and 2.0 keeps the rest of the wave.
 - **The owner's checklist:** File Explorer on the Vivobook against Chromium mode's — the folders he uses, a USB drive,
   a folder of photos, and Task Manager's memory for both.
 
+### Part 7. Fingerprint readers, finished (no gap of the nine; 1.6.3's Part 2, moved here)
+Three of 1.6.3's Part 2 steps are built and in main: the root helper `fprint` (libfprint, no daemon, no service to ask,
+CAP_DAC_READ_SEARCH only, Landlock), each account's prints in PERSIST/fprint/ACCOUNT **encrypted under the account's own
+file key** so that signing out locks them, rudolfd's `fp/*` requests, Settings › Users' Sign-in options, the page's lock
+screen and administrator prompts, and Native's lock screen, unlock and authenticator step (every touch checked against a
+new random challenge; five fingers not recognised, the password; never the first sign-in after a restart; never instead
+of two-step sign-in's code; Guest none). Its size, 972 KB in the base layer, is already in the images. What is left is
+small and needs the owner's own hands:
+- **1. The native apps' administrator prompt takes a finger too.** `librudolf-ui`'s own prompt
+  (`iso/sys/ui/rudolf-ui.c`), used by the native apps while the native Settings is switched on, asks for the
+  administrator's password today. It gains the reader's line, and its answer goes in place of the password by the same
+  one-time answer rudolfd already gives (`fp/verify`'s `"t"`, 60 s, once, an administrator's finger only), as the
+  page's prompt and Native's own do. Never for a standard user; never for an account whose files are not open; the
+  password always still works.
+- **2. The owner's checklist with a real reader.** The Vivobook has no fingerprint reader (checked read-only,
+  2026-11-23: its USB and I2C devices are a hub, the Bluetooth radio, the webcam, the touchpad and the system's buses;
+  nothing on SPI), so this needs a supported USB reader from libfprint's list. On the Vivobook: enrol a finger in
+  Settings › Users; unlock the lock screen with it; answer an administrator's prompt with it; five wrong fingers and
+  then the password; after a restart the password is asked; a reader libfprint does not support named plainly.
+- **The tests:** `iso/qt/host/fprint163_t.sh` (already 50/50, libfprint's virtual reader with made-up fingerprints) gains
+  the native prompt's case; `iso/qt/native/` gets the prompt's own check under Xvfb with a stand-in rudolfd, as
+  `nativefp163_t.sh` has Native's lock screen.
+- **Not here:** a fingerprint as the first sign-in after a restart (it would need the file key kept where a finger
+  opens it: the TPM, a part of its own if ever), a finger instead of two-step sign-in's code, and Android's own
+  fingerprint use.
+
 ## The order
 The owner's list is the gap analysis' ranking, and this plan keeps that numbering: Part 1 is a security gap, Part 5
 continues code that is in review today, Part 6 is the one part a person feels every day, and Parts 2, 3 and 4 are the
@@ -191,6 +219,8 @@ longest (Part 4 needs a Windows computer to test on).
 4. **Part 2** — an extension from a file.
 5. **Part 3** — firmware, seen and not touched.
 6. **Part 4** — installing beside Windows.
+7. **Part 7** — fingerprints' last two pieces, the prompt first and the owner's checklist with a reader when one is
+   here (nothing else waits on it).
 
 ## What 1.6.4 weighs
 Measured in the repository: the images at release 2026112219 are base 297 MB, Chromium 131 MB, modules 97 MB and
@@ -206,6 +236,7 @@ per-part figures the plans already record:
 | 4. Installing beside Windows | 0–2 MB (the installer's own code; `sfdisk` and `blkid` are in the base) | 0 |
 | 5. The Archive Manager, items 2 to 8 | 0–2 MB (7z only if a Linux app is there; TAR.GZ uses what ships) | 0 |
 | 6. File Explorer, native | +1–3 MB (one program; native Settings is 587 KB stripped) | 0 at idle; **about −80 MB** with a window open (15–40 MB instead of ~100 MB) |
+| 7. Fingerprints, finished | 0 (the 972 KB layer shipped in 1.6.3) | 0 |
 
 So **1.6.4 lands the images at roughly 590–600 MB** (from 578), and an update still wants about 1 GB free while the new
 image set downloads. Idle memory does not move: nothing in these six parts runs at idle, and the one saving is a window
@@ -217,8 +248,8 @@ that is open (Part 6). 2.0's under-700 MB target stays 2.0's, with its trimming 
   1.5–2.5 GB on the disk and 1–1.5 GB while Android runs, against the Vivobook's 3.3 GB of memory, which is why it is
   measured before it is offered and never part of a 1.6.x image.
 - **1.6.3's own unfinished parts stay in 1.6.3:** the Office apps' remaining steps (Part 1), the native Settings' pages
-  and its switch (Part 3), the native apps' administrator prompt with a finger (Part 2's left item), Oracle's encrypted
-  websites in the page (Part 5, which waits on its proof), Oracle's extensions and password manager (Part 7, step 2
-  waiting on the owner's decision), PipeWire's capture (Part 9), and Part 8's own list.
+  and its switch (Part 3), Oracle's encrypted websites in the page (Part 5, which waits on its proof), Oracle's extensions
+  and password manager (Part 7, step 2 waiting on the owner's decision), PipeWire's capture (Part 9), and Part 8's own
+  list. (Part 2, the fingerprint readers, is here now: Part 7.)
 - **Anything of 2.0's waves beyond File Explorer's step 1:** the App Store, Packages, the archive window's own native
   version, and the rest of wave 2.

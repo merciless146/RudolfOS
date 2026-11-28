@@ -9,9 +9,13 @@ Each version's first line after "Summary:" is what Settings shows before an upda
   PipeWire under WebKitGTK 2.52, so it now starts with the session beside PulseAudio, which keeps the sound cards
   (WirePlumber's ALSA monitor is off). No `pipewire-pulse`; nothing listens.
 Summary: In progress.
+- Developers: `docs/gap-analysis-1.6.3.md` ranks what Rudolf OS still lacks beside other operating systems — the
+  hardware it does not reach, the system software only this project can add, and the files it cannot yet manage — each
+  gap with the first pull request it needs.
 - Developers: `docs/plan-1.6.4.md` is the plan for 1.6.4: the account's own folders, a system extension installed from a
-  file, device firmware seen but not touched, installing beside Windows, the Archive Manager's items 2 to 8, and File
-  Explorer as a native program (gaps 1, 2, 4, 6, 7 and 8 of `docs/gap-analysis-1.6.3.md`); gaps 3, 5 and 9 are 2.0's.
+  file, device firmware seen but not touched, installing beside Windows, the Archive Manager's items 2 to 8, File
+  Explorer as a native program (gaps 1, 2, 4, 6, 7 and 8 of `docs/gap-analysis-1.6.3.md`; gaps 3, 5 and 9 are 2.0's),
+  and the last pieces of the fingerprint readers, moved from 1.6.3.
 - New: on the native desktop, Settings is the native Settings app: Privacy, Security, System health and Users join the
   pages built before it, so every page of Settings is native there (Chromium mode and Lite keep the web Settings, as the
   owner's rule says). The Users page's security keys and fingerprints are added, removed and required through the page's own

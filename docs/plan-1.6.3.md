@@ -314,7 +314,9 @@ accent colours), its memory at idle against the web version, built in the releas
   drawn as the page draws an item it cannot choose. The native desktop keeps opening the web PresentPro until the whole
   app passes, and `presentpro` is **not** in `NATIVE_APPS[]` yet.
 
-### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
+### Part 2. Fingerprint readers (from the owner's question of 2026-11-23; moved to `docs/plan-1.6.4.md`, Part 7)
+**Moved 2026-11-28:** steps 1 to 3 are built (below); the last pieces are 1.6.4's, and its text stays here as
+written.
 A dedicated fingerprint sensor is needed (in the power button, a corner of the touchpad, a pad beside the keyboard, or
 a USB reader): a touchscreen or touchpad senses at a few millimetres, far too coarse for a fingerprint's ridges.
 - **What it does:** a fingerprint unlocks the lock screen and answers administrator prompts; the password always still
