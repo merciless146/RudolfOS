@@ -27,7 +27,8 @@ static char DLZIP_SH[200] = "/usr/lib/rudolf/dlzip.sh", DLZIP_OUT[200] = RUN "/d
    the sign-in screen's own housekeeping (and the checks, which run so) go on as before. */
 static void dlz_sess(char *o, size_t n)
 {
-	o[0] = 0; char *c = slurp(HOME_SESSION, NULL); if (!c) return; trim(c); snprintf(o, n, "%s", c); free(c);
+	/* rudolfd-home.inc's HOME_SESSION, written by home_bind and removed at sign-out (this include comes before it) */
+	o[0] = 0; char *c = slurp(RUN "/home-session", NULL); if (!c) return; trim(c); snprintf(o, n, "%s", c); free(c);
 }
 static int dlz_acct_mine(const char *acct)
 {
