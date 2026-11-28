@@ -1204,6 +1204,106 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
 **Not this Part:** Oracle's WebRTC, which Native's WebKit does not have at all (docs/plan-1.5.9.md 7.1), and the camera in
 Linux apps, which use the Debian container's own stack.
 
+### Part 10. Archive Manager: unpacking and installing made easier (the owner's question, 2026-11-28)
+
+**Asked:** "assess the archive manager application and determine the necessary changes to make unpacking and working with .zip
+files or installations easier and more intuitive." This part is that assessment and the list of changes; nothing of it is built
+yet, and the owner chooses which items to take.
+
+**What it is today (the two halves).** One app, `Archive Manager`, made of two pieces of code that share a name and a window and
+little else:
+- `apps25a.js` (the window, `regApp('archive', …)`, `archiveApp`, `tarEntries`) handles an archive **in the account's own files**
+  (C:\ and everything in it): a ZIP through JSZip, a TAR by hand, listed in a table with a tick per entry, `Extract all`, `Extract
+  selected`, `Add a file…`, `New archive from files…`, and `Open…` picking a file from those same files.
+- `dlzip61.js` (1.6.1) handles a ZIP **kept on the disk** as a download larger than 1.5 MB (a reference into
+  `/home/rudolf/Downloads/.accounts/<id>/`): `dlZipWin` lists it through rudolfd's `dl/zip` (`unzip -l`, at most 20,000 entries),
+  and `Extract here` runs rudolfd's `dl/unzip` job (root writes nothing; `dlzip.sh` unpacks as the desktop user into a hidden
+  folder, then moves every file flat into the account's folder), with a progress window, Cancel, the antivirus on each file, and
+  then a folder of references beside the ZIP.
+- File Explorer adds `Extract here` (its own, `doUnzip` → `zipToVfs`), `Compress to ZIP` (`doZip` → `vfsToZip`, folders
+  included), and Open with › Archive Manager for ZIP and TAR (`files25.js`).
+
+**Where it is hard, in the order a person meets it.**
+- **The same ZIP behaves differently by where it lives, and nothing says so.** A ZIP from Oracle in Downloads gets the good path
+  (read on the disk, 20,000 entries, progress, Cancel, antivirus, no size limit); the same ZIP copied anywhere else gets the
+  in-memory path, and a TAR on the disk gets "Rudolf OS has no app that opens this kind of file from the disk". A person holding
+  a ZIP on a USB stick cannot tell which they will get or why.
+- **The in-memory path's real ceiling is the account's storage, and it fails late.** Every file is stored as a base64 `data:`
+  URL in the account's own record (`fsFlush`, one IndexedDB/localStorage record), and extraction writes each member back the same
+  way: about 2.4 times the archive's size, twice over. A 3–4 MB ZIP of binaries can pass `Open…` and then fill the storage
+  half-way through `Extract all`, leaving a half-filled folder and `storageFull()`'s "Storage is full" with no word about what
+  is in it.
+- **There is no destination choice and no merging.** `Extract all` always makes a new folder (`uniq`) — extracting an update
+  a second time gives "Game (2)" beside "Game" — and `dlZipExtract` always writes beside the ZIP (`dlUniq`). No "Extract to…",
+  no "into this folder", no overwrite question.
+- **Names are changed silently.** `dlzC` and `doUnzip` upper-case every name, replace `\ / : * ? " < > |` with `_` and cut it to
+  60 characters, and `dlUniq`/`uniq` add " (2)" when two collide; nothing tells the person, and the 60-character cut can make two
+  different names collide in the first place.
+- **A ZIP kept on the disk can only be list-and-extract-all.** `dl/zip` lists names, sizes and folders but returns no entry's
+  contents, so `Extract selected` (and a peek at one file) is impossible for exactly the big archives where it matters; a TAR or
+  TAR.GZ from the disk has no path at all (`dlzOf` asks for `.ZIP`).
+- **Formats.** ZIP (with no password field, though JSZip can decrypt) and TAR by hand, whose reader ignores GNU long names, pax
+  headers, symlinks and hard links; `.7z`, `.rar`, `.gz`, `.tgz`, `.xz` and `.bz2` appear in File Explorer's search types and in
+  Open with's Archive Manager entry is offered for them nowhere; a damaged ZIP is answered with one flat "could not be read".
+- **Nothing turns an archive into an installation.** Rudolf OS already knows what to do with a `.RAPP` (`rappInstall`), a `.DEB`,
+  `.EXE`/`.MSI` (Wine), an AppImage or a `.bin`/`.run` (`install56.js`'s `installWizard`, opened by a double-click); but the
+  Archive Manager hands the person a folder of files and leaves them to find `setup.exe` among thirty others. That is the gap
+  the question is really about.
+- **The window offers little for a big archive:** no sort, no filter by name, no "Select all"/"Select none", no total of the
+  ticked files, `Extract selected` always live (it answers in the status line instead), no keyboard route (Enter) to the ticked
+  files, and no "Open" on one entry. `Add a file…` can only add single files (not a folder) and rewrites the whole ZIP in memory;
+  nothing can be renamed or removed inside one.
+- **Two doors into a damaged or blocked archive's folder:** the antivirus run on the disk path's files can block or quarantine
+  them, and the in-memory path checks nothing at all — the same ZIP is scanned or not depending on where it came from.
+
+**What to change** (each item its own PR; item 1 is the one that makes the rest possible):
+1. **One path for every archive, on the disk, whatever its size.** rudolfd's `dl/zip` and `dl/unzip` take any ZIP at a path the
+   account may read (not only Downloads) — a USB stick, `/home/rudolf`, a folder inside the account's own files written out to a
+   temporary file first — and the window always uses them, so listing, the 20,000-entry cap, the progress window, Cancel and the
+   antivirus are the same everywhere, and the in-memory path stays only as the fallback the native desktop's `/bin/sh` will not
+   always be there for. **Test:** opening a 200 MB ZIP from a USB stick lists it and extracts it with progress; opening a 3 MB ZIP
+   from C:\ does not touch storage.
+2. **Choose where it goes, and merge when asked.** `Extract here` (a new folder, as now), `Extract to…` (a folder picker over the
+   account's files and the drives), and "Extract into this folder" with a question when a name is already there (Replace, Keep
+   both, Cancel for all); a second extraction into the same folder then updates instead of making "Game (2)". `dlzip.sh` takes
+   the destination as a line of its request file (never a command line, as now). **Test:** extract twice into one folder → one
+   folder; a name that is there → the question, and each answer.
+3. **Say what was changed.** A summary line after extraction: "12 names were changed (Windows' \ : * ? are not allowed here)", and
+   keep names as they are otherwise (drop the upper-casing and the 60-character cut; cut only what the filesystem refuses).
+   **Test:** a ZIP of long and oddly named files extracts under its own names, and the changed ones are said.
+4. **One file, and the ones you ticked, from a big archive too.** `dl/zip` gains entry contents (one entry on request, a range of
+   bytes for a preview) and `dl/unzip` takes a list of names to extract, so `Extract selected` and a preview of one member work on
+   the disk path as they do in memory. **Test:** tick two of 5,000 entries, `Extract selected` extracts exactly those; a text
+   member previews without extracting.
+5. **Install from the archive.** When an archive holds an installer — `.RAPP` (one or more), `.DEB`, `.EXE`, `.MSI`, `.AppImage`,
+   `.bin`, `.run`, an `install.sh`, a folder with a `.desktop` file — the window names them above the list and offers `Install…`,
+   which hands the file to what already exists (`rappInstall`, `installWizard`, with the same administrator prompt they use when
+   opened from Explorer) — a zip of a game or a program then becomes two clicks instead of a hunt. When there are several, a
+   short list; when the archive is an app's own update (a `.RAPP` with a higher version of one that is installed), say so.
+   **Test:** a ZIP holding one `.RAPP` and one `setup.exe` offers both, and each installs as a double-click would; a ZIP holding a
+   `.DESKTOP` folder offers its app.
+6. **Read more, and say what is not read.** TAR.GZ, and whatever Info-ZIP already does (a password field for an encrypted ZIP,
+   fed to `unzip -P` through the request file so it never appears in a command line); then `7z` through a Linux app if one is
+   there, or a plain "Rudolf OS cannot read .7z; unpack it in a Linux app from Open with" for the formats it cannot. The TAR
+   reader learns GNU long names and pax, and drops links rather than following them, as `dlzip.sh` already does. **Test:** a
+   TAR.GZ with long names lists and extracts; an encrypted ZIP asks once and extracts; `.7z` says what it cannot do.
+7. **A damaged archive is named as damaged, before anything is written.** `unzip -t` (or `unzip -l`'s rc when it fails) in the
+   list step; the window says "This ZIP is damaged: 3 files fail their checksum" and `Extract` then warns instead of half-writing,
+   and extraction into a new folder stays all-or-nothing (it already unpacks into a hidden folder; it must remove it when it
+   stops). **Test:** a ZIP with one byte flipped is named damaged, and its folder is not left behind.
+8. **The window's small things:** sort and a filter box for the list, Select all/Select none, the ticked files' count and size in
+   the status line, `Extract selected` disabled until something is ticked, Enter extracting, `Add a folder…` and `Remove` inside
+   the ZIP, and the archive's own total (packed and unpacked) in its title. Same for the native Settings-independent shapes it
+   already has. **Test:** `iso/qt/shell2/dlzip61_t.js` gains the keyboard route, the disabled button and the sizes; a 5,000-entry
+   list filters and sorts.
+
+**Not this Part:** the antivirus, the sandbox and the administrator prompts (they stay as they are and are used, never widened);
+Wine, `dpkg` and AppImage handling (`install56.js`'s own parts) and the Oracle downloads' disk references (`dl27.js`); and any
+compression the desktop does not already do — no new archive format of Rudolf OS's own.
+
+**Both editions:** all of it is the page's own code and rudolfd's helpers, so Standard, Native and Lite get it the same; the
+native desktop's window is a page of its own and shows the same dialogs.
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
@@ -1215,3 +1315,5 @@ Linux apps, which use the Debian container's own stack.
 - Part 7 (option C): step 1 (Oracle's own password manager) early; step 2 (extensions in a Chromium window opened from
   Oracle, with about:safety) after it.
 - Part 8: alongside the others; each item its own PR.
+- Part 10: any time after 1.6.2 is stable, when the owner wants it; item 1 first, then 5 (install from an archive) if that is the
+  one that matters most; each item its own PR.
