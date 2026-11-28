@@ -850,31 +850,156 @@ static void titlebar_ask(const char *id)
 	}
 	int st; waitpid(c, &st, 0);
 }
+/* 1.6.3 (the owner's Asus desktop, 2026-11-28: Starport: GE and Dead Frontier started through Wine both ended at once,
+   exit 3, and nothing said what the container had to run them with): what a Windows program runs with, read when one ends
+   at once, kept beside its log (RUND/ID.diag.txt) and said with the box once it is shown: Wine's version, its 64- and 32-bit
+   GL and Vulkan packages, the renderer, Vulkan's device, /dev/dri, the room left, and this account's newest logs (never
+   another account's). A game that ends at once is nearly always one of these. (LR_DIAG_CMD is a test's.) */
+#ifndef LR_DIAG_CMD
+#define LR_DIAG_CMD \
+	"echo '# Wine'; wine --version 2>&1 | head -1; " \
+	"echo '# Wine, GL and Vulkan, 64- and 32-bit'; " \
+	"dpkg-query -W -f='${Package} ${Version} ${Architecture}\\n' 'wine*' 'libgl1*' 'libglx*' 'libegl*' 'mesa-vulkan-drivers*' 'libvulkan1*' 2>/dev/null | sort | head -20; " \
+	"echo '# not installed cleanly'; dpkg --audit 2>&1 | head -5; " \
+	"dpkg-query -W -f='${Package}: ${Status}\\n' 'wine32*' 'wine64*' 'libgl1-mesa-dri:i386' 'libglx-mesa0:i386' 'mesa-vulkan-drivers:i386' 2>/dev/null | grep -v 'install ok installed' | head -5; " \
+	"echo '# the renderer'; if command -v glxinfo >/dev/null; then timeout 3 glxinfo -B 2>&1 | grep -Ei 'vendor string|renderer string|OpenGL version|OpenGL core profile version|Device:|Video memory' | head -8; else echo '(glxinfo is not installed: apt install mesa-utils)'; fi; " \
+	"echo '# Vulkan'; if command -v vulkaninfo >/dev/null; then timeout 3 vulkaninfo --summary 2>&1 | grep -Ei 'apiVersion|driverName|deviceName|deviceType' | head -8; else echo '(vulkaninfo is not installed: apt install vulkan-tools)'; fi; " \
+	"echo '# /dev/dri'; ls -l /dev/dri 2>&1 | head -6; " \
+	"echo '# room'; df -h /home /tmp 2>&1 | head -4; " \
+	"echo '# the newest logs'; find " RUND " -maxdepth 1 -name '*.log' -uid $(id -u) -printf '%T@ %p\\n' 2>/dev/null | sort -rn | head -3 | cut -d' ' -f2- | while read -r f; do echo \"--- $f\"; tail -12 \"$f\"; done"
+#endif
+#define LR_DIAG_MAX 100   /* (the box says them all; the file, every line) */
+static char lr_diag[LR_DIAG_MAX][300]; static int lr_diag_n;
+/* a line of our own among the check's (kept with them) */
+static void lr_diag_say(FILE *k, const char *l)
+{
+	if (k) fprintf(k, "%s\n", l);
+	if (lr_diag_n < LR_DIAG_MAX) snprintf(lr_diag[lr_diag_n++], sizeof lr_diag[0], "%s", l);
+}
+/* what a Windows program runs with: the check's lines, or one of ours saying why there are none -- a check that could not
+   start, or one that printed nothing. Never nothing at all: the box is shown before this, and would then be silent about
+   what the program runs with (two of six runs in #762's CI wrote no readings request, so their box never got them and
+   nothing said so). Answers whether they were kept at keep_at (best effort: a check that cannot be kept is still said). */
+static int lr_read_diag(const char *keep_at)
+{
+	lr_diag_n = 0;
+	FILE *k = keep_at && *keep_at ? fopen(keep_at, "w") : NULL;
+	FILE *p = popen(LR_DIAG_CMD, "r");
+	if (!p) {
+		int e = errno; char why[220];
+		snprintf(why, sizeof why, "(-- what it runs with could not be read: %s --)", strerror(e));
+		lr_diag_say(k, why);
+	} else {
+		char l[400];
+		while (fgets(l, sizeof l, p)) {
+			size_t n = strlen(l); while (n && (l[n - 1] == '\n' || l[n - 1] == '\r')) l[--n] = 0;
+			if (!*l) continue;
+			lr_diag_say(k, l);
+		}
+		pclose(p);
+		if (!lr_diag_n) lr_diag_say(k, "(-- what it runs with came back empty: the check ran and printed nothing --)");
+	}
+	if (k) { int bad = ferror(k); if (fclose(k) || bad) { unlink(keep_at); return 0; } return 1; }
+	return 0;
+}
 /* 1.6.2 (docs/plan-1.6.2.md Part 40, the owner's Vivobook on 2026-11-23: Starport GE's launcher could not find its folder, which
    was in the Wine prefix from before 1.5.9, and nothing at all was shown): a program that ends within LR_QUICK seconds of starting
    with an error (an exit status other than 0, or a signal) is said, as a request of the desktop portal's that waits for no
    answer ("lxfail-...", kind "lxfail": rudolfd's portal/poll hands it to the page, Chromium's and Lite's desktop page or the
    native desktop's hidden page, which shows the message, linux26.js and wineold62.js): the program's name, how it ended, the
-   last lines of its log (RUND/ID.log; Wine's "fixme:" lines left out), whether it is a Windows program, and a folder of the
-   Wine prefix it names (its launcher's Path=, or the first /home/rudolf/.wine/... in those lines), which rudolfd checks against
-   the prefix from before 1.5.9 (rudolfd-wineold.inc). One that runs longer, or ends with 0, is not said. */
+   first real error in its log and the last lines (RUND/ID.log; Wine's "fixme:" lines left out, and its driver-service setup
+   -- winebth and wineusb, and the scmdatabase line after them -- which fails on every launch of every Windows program and
+   once filled this message alone, hiding the cause above it; a real error is any of Wine's err: lines, its own "wine: ..."
+   words of a failure, and Direct3D's, whose renderer is where a game usually gives up -- lr_cause), whether it is a Windows
+   program, what it runs with (Wine's version, its 64- and 32-bit GL and Vulkan packages, the renderer, /dev/dri, the room
+   left, this account's newest logs; read after the request is written, so the box never waits for them, kept in
+   RUND/ID.diag.txt, and sent in a request of its own for the box to fill in), and a folder of the Wine prefix it names (its
+   launcher's Path=, or the first /home/rudolf/.wine/... in those lines),
+   which rudolfd checks against the prefix from before 1.5.9 (rudolfd-wineold.inc). One that runs longer, or ends with 0, is
+   not said. */
 #ifndef LR_DIR
 #define LR_DIR "/run/rudolf/portal/req"
 #endif
 #define LR_QUICK 10
+/* the request as rudolfd lists it (whole: only *.json): everything the box says, but what it runs with -- written at once,
+   so the box is shown without waiting for the readings (glxinfo and vulkaninfo can each take seconds) */
+static int lr_send(const char *p, const char *tp, const char *id, const desk *k, int status, double secs, int wine,
+	const char *dir, const char *log, int nl, char (*lines)[300])
+{
+	FILE *f = fopen(tp, "w"); if (!f) return 1;
+	fprintf(f, "{\"kind\":\"lxfail\",\"app\":"); jstr(f, id); fprintf(f, ",\"name\":"); jstr(f, k->name);
+	fprintf(f, ",\"status\":%d,\"secs\":%.1f,\"wine\":%s,\"dir\":", status, secs, wine ? "true" : "false"); jstr(f, dir);
+	fprintf(f, ",\"log\":"); jstr(f, log); fprintf(f, ",\"lines\":[");
+	for (int i = 0; i < nl; i++) { jstr(f, lines[i]); if (i + 1 < nl) fputc(',', f); }
+	fprintf(f, "]}\n");
+	int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); return 1; }
+	if (rename(tp, p)) { unlink(tp); return 1; }
+	return 0;
+}
+/* the readings, once they are in, in a request of their own: an id of its own (the page never takes an id twice,
+   lxPortalPoll's LX.seen) and the id of the box it fills ("of": wineold62.js fills that box in, never a second), and
+   nothing the box has already -- its name, how it ended, its lines, its log */
+static int lr_send_diag(const char *p, const char *tp, const char *id, const char *diaglog, const char *of)
+{
+	FILE *f = fopen(tp, "w"); if (!f) return 1;
+	fprintf(f, "{\"kind\":\"lxfail\",\"app\":"); jstr(f, id); fprintf(f, ",\"diag\":[");
+	for (int i = 0; i < lr_diag_n; i++) { jstr(f, lr_diag[i]); if (i + 1 < lr_diag_n) fputc(',', f); }
+	fprintf(f, "],");
+	if (diaglog && *diaglog) { fprintf(f, "\"diaglog\":"); jstr(f, diaglog); fputc(',', f); }   /* (empty: nothing was kept) */
+	fprintf(f, "\"fill\":true,\"of\":"); jstr(f, of);
+	fprintf(f, "}\n");
+	int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); return 1; }
+	if (rename(tp, p)) { unlink(tp); return 1; }
+	return 0;
+}
+/* what a line of a Windows program's log says about why it stopped: 3, Wine's own word of a failure ("wine: ...",
+   how it says a file is missing or an exception was not handled; not its "created the configuration directory");
+   2, one of its errors (err:, with or without its thread id, on any of its channels: winediag, d3d); 1, one of
+   Direct3D's other lines ("warn:d3d: ... Failed to create swap chain", where a game's renderer gives up); 0, nothing
+   (a fixme: says what Wine has not done, not why this program stopped). The highest wins; a tie, the earliest. */
+static int lr_cause(const char *p)
+{
+	if (!strncmp(p, "wine: ", 6)) {
+		static const char *const BAD[] = { "cannot", "could not", "failed", "Unhandled", "unimplemented", "Bad ", "error", "not find", "no " };
+		for (unsigned q = 0; q < sizeof BAD / sizeof *BAD; q++) if (strstr(p, BAD[q])) return 3;
+	}
+	if (strstr(p, ":err:") || !strncmp(p, "err:", 4)) return 2;
+	if (strstr(p, ":d3d:")) return 1;
+	return 0;
+}
 static void launch_report(const char *id, const desk *k, int status, double secs, const char *log)
 {
 	if (!status || secs > LR_QUICK) return;
 	char *t = slurp(log, NULL); char lines[4][300]; int nl = 0; const char *wdir = NULL; char dir[400] = "";
 	if (t) {
-		/* the last 3 lines that say something */
-		char *e = t + strlen(t);
-		while (e > t && nl < 3) {
-			while (e > t && (e[-1] == '\n' || e[-1] == '\r' || e[-1] == ' ')) *--e = 0;
-			char *b = e; while (b > t && b[-1] != '\n') b--;
-			if (*b && strncmp(b, "fixme:", 6) && !strstr(b, ":fixme:")) snprintf(lines[nl++], sizeof lines[0], "%s", b);   /* (Wine's: "0024:fixme:...") */
-			e = b; if (e > t) *--e = 0;
+		/* the lines that say something: no "fixme:" (Wine's), and nothing of Wine's driver-service setup, which is the
+		   same on every launch and says nothing about this program */
+		static const char *const NOISE[] = { "winebth", "wineusb", "scmdatabase_autostart_services" };
+		char *keep[3]; int nk = 0; char *first_err = NULL; int first_rank = 0; int noise_seen = 0;
+		for (char *p = t; *p;) {
+			char *fe = strchr(p, '\n'); if (fe) *fe = 0;
+			size_t n = strlen(p); while (n && (p[n - 1] == '\r' || p[n - 1] == ' ' || p[n - 1] == '\t')) p[--n] = 0;
+			int noise = 0; for (unsigned q = 0; q < sizeof NOISE / sizeof *NOISE; q++) if (strstr(p, NOISE[q])) noise = 1;
+			if (noise) noise_seen = 1;
+			if (*p && strncmp(p, "fixme:", 6) && !strstr(p, ":fixme:") && !noise) {
+				int rank = lr_cause(p);   /* (the cause, ahead of the noise) */
+				if (rank > first_rank) { first_err = p; first_rank = rank; }
+				keep[nk % 3] = p; nk++;
+			}
+			if (!fe) break;
+			p = fe + 1;
 		}
+		/* the clearest word of the cause first (lr_cause's rank), then the last lines: three at most */
+		int have = nk < 3 ? nk : 3;
+		if (first_err) snprintf(lines[nl++], sizeof lines[0], "%s", first_err);
+		for (int i = 0; i < have && nl < 3; i++) {
+			char *s2 = keep[(nk - have + i) % 3];
+			if (first_err && s2 == first_err) continue;
+			snprintf(lines[nl++], sizeof lines[0], "%s", s2);
+		}
+		/* (a log of nothing but that setup: said as much; an empty log stays empty, for the page's own words) */
+		if (!nl && noise_seen) snprintf(lines[nl++], sizeof lines[0], "%s",
+			"(-- nothing in the log but Wine's driver and Bluetooth setup, which fails on every launch and harms nothing --)");
 	}
 	int wine = strstr(k->exec, "wine") || strstr(k->exec, ".exe") || strstr(k->path, "/.wine/");
 	for (int i = 0; i < nl && !wine; i++) if (strstr(lines[i], "/.wine/") || strstr(lines[i], "wine:")) wine = 1;
@@ -882,15 +1007,24 @@ static void launch_report(const char *id, const desk *k, int status, double secs
 	for (int i = nl - 1; i >= 0 && !wdir; i--) { char *w = strstr(lines[i], "/home/rudolf/.wine/"); if (w) wdir = w; }
 	if (wdir) { snprintf(dir, sizeof dir, "%s", wdir); dir[strcspn(dir, "\"':\n")] = 0; size_t l = strlen(dir); while (l && (dir[l - 1] == ' ' || dir[l - 1] == '/')) dir[--l] = 0; if (strstr(dir, "..")) dir[0] = 0; }
 	mkdirs("/run/rudolf/portal", 0755); if (!mkdir(LR_DIR, 01733)) chmod(LR_DIR, 01733);   /* (as rudolfd makes it: anyone may add, only the owner changes) */
-	char p[300], tp[320]; snprintf(p, sizeof p, LR_DIR "/lxfail-%ld-%d.json", (long)time(NULL), (int)getpid()); snprintf(tp, sizeof tp, "%s.tmp", p);
-	FILE *f = fopen(tp, "w"); if (!f) { free(t); return; }
-	fprintf(f, "{\"kind\":\"lxfail\",\"app\":"); jstr(f, id); fprintf(f, ",\"name\":"); jstr(f, k->name);
-	fprintf(f, ",\"status\":%d,\"secs\":%.1f,\"wine\":%s,\"dir\":", status, secs, wine ? "true" : "false"); jstr(f, dir);
-	fprintf(f, ",\"log\":"); jstr(f, log); fprintf(f, ",\"lines\":[");
-	for (int i = nl - 1; i >= 0; i--) { jstr(f, lines[i]); if (i) fputc(',', f); }
-	fprintf(f, "]}\n"); int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); free(t); return; }
-	/* (the request file appears whole: rudolfd lists only *.json) */
-	if (rename(tp, p)) unlink(tp);
+	char base[80], p[300], tp[320];
+	snprintf(base, sizeof base, "lxfail-%ld-%d", (long)time(NULL), (int)getpid());
+	snprintf(p, sizeof p, "%s/%s.json", LR_DIR, base); snprintf(tp, sizeof tp, "%s.tmp", p);
+	/* the box first: what it ended with and where its log is, said now */
+	if (lr_send(p, tp, id, k, status, secs, wine, dir, log, nl, lines)) { free(t); return; }
+	/* then what it runs with (a Windows program): read, kept beside the log, and said in a second request of its own,
+	   which the page fills into the box it already shows -- always, even when the check said nothing (lr_read_diag says
+	   that in words rather than leaving the box without a word about it) */
+	if (wine) {
+		char diaglog[420] = ""; size_t l = strlen(log);
+		if (l > 4 && !strcmp(log + l - 4, ".log")) snprintf(diaglog, sizeof diaglog, "%.*s.diag.txt", (int)(l - 4), log);
+		else snprintf(diaglog, sizeof diaglog, "%s.diag.txt", log);
+		int kept = lr_read_diag(strstr(diaglog, "..") ? NULL : diaglog);   /* (a path with .. keeps nothing, but is still read) */
+		char base2[92], p2[312], tp2[332];
+		snprintf(base2, sizeof base2, "%s-diag", base);
+		snprintf(p2, sizeof p2, "%s/%s.json", LR_DIR, base2); snprintf(tp2, sizeof tp2, "%s.tmp", p2);
+		lr_send_diag(p2, tp2, id, kept ? diaglog : "", base);
+	}
 	free(t);
 }
 static int cmd_launch(const char *id, const char *file)
