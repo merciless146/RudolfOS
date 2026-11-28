@@ -736,6 +736,34 @@ Windows today means another disk (an internal second drive, an external SSD, or 
 6. **Removing it:** Settings > Update and recovery > "Remove Rudolf OS from this drive" (from a stick or from Windows'
    side: a guide) deletes RUDOLFDATA, \EFI\rudolf\ and the boot entry, and leaves the space unallocated for Windows to
    take back (Disk Management > Extend Volume).
+7. **The computer's other systems, each a bootable choice** (the owner, 2026-11-28: "Part 6 will be expanded in scope so
+   that the OS will recognize the license or fetch of whatever other operating system is installed as a bootable choice
+   on the device (if possible, this might be done or assisted by referring to the options in the BIOS boot menu)").
+   Windows above is the first of them; the same reading is made of the whole computer, and each system found is offered
+   by name at start-up:
+   - **What is read, read-only:** every EFI system partition's own folders under \EFI\ -- a vendor's folder and the
+     start-up file in it (\EFI\Microsoft\Boot\bootmgfw.efi, \EFI\ubuntu\shimx64.efi, \EFI\fedora\...,
+     \EFI\refind\..., \EFI\Manjaro\...) -- and the firmware's own boot entries (efibootmgr: each one's name, the disk and
+     partition it is on, whether it is enabled and its place in the order). A system is named as the firmware and the
+     loader's own folder name it (**Windows**, **Ubuntu**, **Fedora**...), never by reading its files; a folder whose
+     name is not one known is shown by that name, with its date and size.
+   - **The licence is the other system's own:** nothing here reads, checks, activates or changes it. What is recognised
+     is that a system is installed and can be started, as a bootable choice -- no disk of another system is written to,
+     mounted read-write, moved, or made the default by Rudolf OS.
+   - **At start-up and in Settings:** Rudolf OS's menu lists them after its own entries (Rudolf OS first, the short wait
+     kept), each starting the loader that was found; Settings > Update and recovery lists them with what was found, where
+     it is and whether the firmware knows it, with "Start this system now" (one restart) and "Refresh". A system whose
+     firmware entry has gone (a Windows update, a disk moved, a reset NVRAM) is found again from its loader's folder, so
+     its entry is put back at Rudolf OS's next start, as Windows' own is.
+   - **The firmware's own boot menu as the way through** (the BIOS boot menu, as the owner put it): where a loader is
+     not offered by the firmware at all (a hidden or missing entry, a system on a disk the firmware does not list),
+     Settings says so plainly and offers "Restart into the firmware's boot menu" (UEFI's OsIndications, else a restart
+     into the firmware's setup), with the key each maker uses for its one-time boot menu (ASUS F8 or Esc, Dell F12,
+     Lenovo F12, HP F9, Acer F12) and the fact that a choice made there starts that system whether or not Rudolf OS's
+     menu knows it. Nothing about another system's licence is asked for or needed.
+   - **Never:** the other system's files read as its own (no reading a registry, a ``/boot`` or a licence store), its
+     boot loader replaced or its folder renamed, its firmware entry deleted, or its disk written to at all -- every one of
+     these is read-only, and a system found is only ever started.
 **Never:** a Windows partition written, resized or formatted; anything in \EFI\Microsoft\; the firmware's Secure Boot
 keys changed; an install that goes on when the free area, the EFI system partition or the disk's partition table is not
 what was shown.
@@ -745,6 +773,11 @@ partition with files, a recovery partition, free space; no Windows files or imag
 partition's checksum unchanged and \EFI\Microsoft\ unchanged; Rudolf OS starts, updates, rolls back, Recovery mode;
 the menu's Windows entry starts the stand-in; the boot order put back; too little free space, a full EFI system
 partition, an MBR disk and a BIOS computer refused with plain words; removal leaves the disk as before (unallocated).
+For the other systems of item 7, the same QEMU disk carries a stand-in second system in its own \EFI\ folder (a loader
+that only prints a mark) and a firmware entry for it, and a third folder whose name is not one known: each listed by
+name at start-up and in Settings and started, the one without a firmware entry found again from its folder, the unknown
+one shown by its own name, every byte of both left as it was (checksums), and "Restart into the firmware's boot menu"
+offered where the firmware lists no entry at all.
 **The owner's checklist** (the ASUS desktop): back up and note the BitLocker key; shrink in Disk Management; install
 beside; Rudolf OS and Windows each start from the menu and from F8; a Windows update, then Rudolf OS's next start; an
 update of Rudolf OS; removal and Extend Volume back.
