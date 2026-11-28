@@ -34,6 +34,7 @@ static char ON[40];   /* (the toggles the cursor's place has, as the page's updS
 
 /* ------------------------------------------------------------------ tags, and the page's "select some text first" */
 static void state_soon(void);
+static void hist_push(void); static void hist_undo(void); static void hist_redo(void);
 static void counts(void);
 static void upd_sel(void);
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
@@ -82,18 +83,22 @@ static void apply_name(const char *name)
 	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
 	GtkTextTag *t = tag_new(name);
 	if (all_have(&s, &e, name)) gtk_text_buffer_remove_tag(BUF, t, &s, &e);   /* (a second press takes it off, as the page's) */
-	else gtk_text_buffer_apply_tag(BUF, t, &s, &e);
-	counts(); upd_sel(); state_soon();
+	else {
+		const char *other = !strcmp(name, "sub") ? "sup" : !strcmp(name, "sup") ? "sub" : NULL;
+		if (other) gtk_text_buffer_remove_tag(BUF, tag_new(other), &s, &e);   /* (a character is one or the other, never both) */
+		gtk_text_buffer_apply_tag(BUF, t, &s, &e);
+	}
+	hist_push(); counts(); upd_sel(); state_soon();
 }
 static void apply_str(const char *name, const char *prop, const char *v)
 {
 	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
-	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); hist_push(); counts(); state_soon();
 }
 static void apply_dbl(const char *name, const char *prop, double v)
 {
 	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
-	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	GtkTextTag *t = tag_new(name); g_object_set(G_OBJECT(t), prop, v, NULL); gtk_text_buffer_apply_tag(BUF, t, &s, &e); hist_push(); counts(); state_soon();
 }
 static void toggle(GtkWidget *b, gpointer d) { (void)b; apply_name((const char *)d); }
 
@@ -139,11 +144,17 @@ static void on_style(GtkComboBox *c, gpointer d)
 		{ 12, 1, 0, GTK_JUSTIFY_LEFT }, { 26, 1, 0, GTK_JUSTIFY_CENTER }, { 14, 0, 1, GTK_JUSTIFY_CENTER }, { 12, 0, 1, GTK_JUSTIFY_LEFT },
 		{ 11, 0, 0, GTK_JUSTIFY_LEFT } };
 	int n = (int)(sizeof ST / sizeof ST[0]); if (i >= n) i = n - 1;
+	/* (a paragraph is one style: the one it had goes, as the page's own does) */
+	for (int j = 0; j < NWPSTYLES; j++) {
+		char on[48]; snprintf(on, sizeof on, "st:%s", WP_STYLES[j].k);
+		GtkTextTag *o = gtk_text_tag_table_lookup(gtk_text_buffer_get_tag_table(BUF), on);
+		if (o) gtk_text_buffer_remove_tag(BUF, o, &s, &e);
+	}
 	char nm[48]; snprintf(nm, sizeof nm, "st:%s", WP_STYLES[i].k); GtkTextTag *t = tag_new(nm);
 	g_object_set(G_OBJECT(t), "size-points", ST[i].pt, "weight", ST[i].bold ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL,
 		"style", ST[i].italic ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL, "justification", ST[i].just, NULL);
 	if (!strcmp(WP_STYLES[i].k, "code")) g_object_set(G_OBJECT(t), "family", "monospace", NULL);
-	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	gtk_text_buffer_apply_tag(BUF, t, &s, &e); hist_push(); counts(); state_soon();
 }
 static void on_align(GtkWidget *b, gpointer d)
 {
@@ -153,31 +164,68 @@ static void on_align(GtkWidget *b, gpointer d)
 	GtkTextTag *t = tag_new(n);
 	g_object_set(G_OBJECT(t), "justification", !strcmp(k, "center") ? GTK_JUSTIFY_CENTER : !strcmp(k, "right") ? GTK_JUSTIFY_RIGHT :
 		!strcmp(k, "fill") ? GTK_JUSTIFY_FILL : GTK_JUSTIFY_LEFT, NULL);
-	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	gtk_text_buffer_apply_tag(BUF, t, &s, &e); hist_push(); counts(); state_soon();
 }
 /* bullets, numbering and the indent: the page's block commands, on each line of the choice */
+/* (a line's first characters, for the two block commands that can be taken off again) */
+static char *line_head(GtkTextIter at)
+{
+	GtkTextIter s = at, e;
+	gtk_text_iter_set_line_offset(&s, 0); e = s; gtk_text_iter_forward_chars(&e, 10);
+	return gtk_text_iter_get_slice(&s, &e);
+}
+static int has_prefix(const char *h, const char *kind)
+{
+	if (!strcmp(kind, "bul"))   /* (a bullet's three UTF-8 bytes and the space after it) */
+		return (unsigned char)h[0] == 0xe2 && (unsigned char)h[1] == 0x80 && (unsigned char)h[2] == 0xa2 && h[3] == ' ';
+	if (!strcmp(kind, "num")) {
+		const char *p = h;
+		if (!(*p >= '0' && *p <= '9')) return 0;
+		while (*p >= '0' && *p <= '9') p++;
+		return p[0] == '.' && p[1] == ' ';
+	}
+	return 0;
+}
+/* (the page's block commands, on each line of the choice. A second press takes the bullet or the number off, as the page's
+   own does, and the lines are taken by their number: an inserted prefix does not move the ones still to come.) */
 static void line_prefix(const char *kind)
 {
-	GtkTextIter s, e; if (!need_sel()) return;
-	int end = gtk_text_iter_get_offset(&e); gtk_text_iter_set_line_offset(&s, 0); int n = 0;
-	for (;;) {
-		GtkTextIter line = s;
-		if (!strcmp(kind, "ind") || !strcmp(kind, "out")) {
-			gtk_text_iter_set_line_offset(&line, 0);
-			if (!strcmp(kind, "ind")) gtk_text_buffer_insert(BUF, &line, "    ", -1);
-			else {
-				GtkTextIter t = line; int k = 0;
-				while (k < 4 && gtk_text_iter_get_char(&t) == ' ') { gtk_text_iter_forward_char(&t); k++; }
-				if (k) gtk_text_buffer_delete(BUF, &line, &t);
-			}
+	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;   /* (need_sel fills its own iterators, not these) */
+	int l0 = gtk_text_iter_get_line(&s), l1 = gtk_text_iter_get_line(&e), block = !strcmp(kind, "ind") || !strcmp(kind, "out");
+	if (l1 > l0 && gtk_text_iter_get_line_offset(&e) == 0) l1--;   /* (a choice ending at a line's start does not take that line) */
+	int all = 1, n = 0;
+	for (int L = l0; L <= l1; L++) {
+		GtkTextIter i; gtk_text_buffer_get_iter_at_line(BUF, &i, L);
+		char *h = line_head(i);
+		if (!block && !has_prefix(h, kind)) all = 0;
+		g_free(h); n++;
+	}
+	all = all && n > 0;
+	for (int L = l0, num = 0; L <= l1; L++) {
+		GtkTextIter i; gtk_text_buffer_get_iter_at_line(BUF, &i, L);
+		GtkTextIter t = i; gtk_text_iter_set_line_offset(&t, 0);
+		if (!strcmp(kind, "ind")) { gtk_text_buffer_insert(BUF, &t, "    ", -1); continue; }
+		if (!strcmp(kind, "out")) {
+			GtkTextIter u = t; int k = 0;
+			while (k < 4 && gtk_text_iter_get_char(&u) == ' ') { gtk_text_iter_forward_char(&u); k++; }
+			if (k) gtk_text_buffer_delete(BUF, &t, &u);
+			continue;
+		}
+		if (all) {
+			GtkTextIter u = t;
+			if (!strcmp(kind, "num")) {
+				while (gtk_text_iter_get_char(&u) >= '0' && gtk_text_iter_get_char(&u) <= '9') gtk_text_iter_forward_char(&u);
+				gtk_text_iter_forward_char(&u);                              /* (the dot) */
+				if (gtk_text_iter_get_char(&u) == ' ') gtk_text_iter_forward_char(&u);
+			} else gtk_text_iter_forward_chars(&u, 2);                       /* (the bullet and its space) */
+			gtk_text_buffer_delete(BUF, &t, &u);
 		} else {
 			char m[16];
-			if (!strcmp(kind, "num")) snprintf(m, sizeof m, "%d. ", ++n); else snprintf(m, sizeof m, "• ");
-			gtk_text_buffer_insert(BUF, &line, m, -1);
+			if (!strcmp(kind, "num")) snprintf(m, sizeof m, "%d. ", ++num); else snprintf(m, sizeof m, "• ");
+			gtk_text_buffer_insert(BUF, &t, m, -1);
 		}
-		if (!gtk_text_iter_forward_line(&s) || gtk_text_iter_get_offset(&s) > end) break;
 	}
-	counts(); state_soon();
+	hist_push(); counts(); state_soon();
 }
 static void on_list(GtkWidget *b, gpointer d) { (void)b; line_prefix((const char *)d); }
 static void on_spacing(GtkComboBox *c, gpointer d)
@@ -187,20 +235,55 @@ static void on_spacing(GtkComboBox *c, gpointer d)
 	char n[32]; snprintf(n, sizeof n, "ls:%.2f", V[i]); GtkTextTag *t = tag_new(n);
 	int pad = (int)lround((V[i] - 1) * PT * 0.66);
 	g_object_set(G_OBJECT(t), "pixels-above-lines", pad, "pixels-below-lines", pad, NULL);
-	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); state_soon();
+	gtk_text_buffer_apply_tag(BUF, t, &s, &e); hist_push(); counts(); state_soon();
 }
 static void on_clear(GtkWidget *b, gpointer d)
 {
 	(void)b; (void)d; GtkTextIter s, e; if (!need_sel()) return;
-	gtk_text_buffer_remove_all_tags(BUF, &s, &e); counts(); state_soon();
+	gtk_text_buffer_remove_all_tags(BUF, &s, &e); hist_push(); counts(); state_soon();
 }
 /* undo and redo: GTK 3's text buffer keeps no history of its own, so the writing is kept step by step (the page's undo and
-   redo, bounded to the last 120 changes) */
+   redo, bounded to the last 120 changes). A step is the writing *with its marks* -- GTK's own tag-set serialization --
+   so undoing a letter no longer takes the bold, the colour, the size and the lists with it; and the cursor and the
+   choice are kept with it, so an undo leaves a person where the change was, not at the top of the page. */
 #define HIST 120
-static char *HIST_T[HIST]; static int HIST_N, HIST_I, SILENT;
-static void hist_apply(const char *t) { SILENT = 1; gtk_text_buffer_set_text(BUF, t, -1); SILENT = 0; counts(); state_soon(); }
-static void hist_undo(void) { if (HIST_I > 1) { HIST_I--; hist_apply(HIST_T[HIST_I - 1]); } }
-static void hist_redo(void) { if (HIST_I < HIST_N) { HIST_I++; hist_apply(HIST_T[HIST_I - 1]); } }
+static GdkAtom HIST_ATOM;
+typedef struct { guint8 *d; gsize n; int cur, a, b, has; } Step;
+static Step HS[HIST]; static int HN, HI, SILENT;
+static void step_free(Step *s) { g_free(s->d); s->d = NULL; s->n = 0; }
+static void step_take(Step *s)
+{
+	step_free(s);
+	GtkTextIter a, b, i;
+	gtk_text_buffer_get_bounds(BUF, &a, &b);
+	s->d = gtk_text_buffer_serialize(BUF, BUF, HIST_ATOM, &a, &b, &s->n);
+	gtk_text_buffer_get_iter_at_mark(BUF, &i, gtk_text_buffer_get_insert(BUF));
+	s->cur = gtk_text_iter_get_offset(&i);
+	s->has = gtk_text_buffer_get_selection_bounds(BUF, &a, &b);
+	if (s->has) { s->a = gtk_text_iter_get_offset(&a); s->b = gtk_text_iter_get_offset(&b); }
+}
+static void step_apply(Step *s)
+{
+	SILENT = 1;
+	gtk_text_buffer_set_text(BUF, "", -1);   /* (the text and its marks go together; the step puts both back) */
+	if (s->d && s->n) {
+		GtkTextIter at; gtk_text_buffer_get_start_iter(BUF, &at);
+		gtk_text_buffer_deserialize(BUF, BUF, HIST_ATOM, &at, s->d, s->n, NULL);
+	}
+	int len = gtk_text_buffer_get_char_count(BUF), cur = s->cur > len ? len : s->cur;
+	if (s->has) {
+		int x = s->a > len ? len : s->a, y = s->b > len ? len : s->b;
+		GtkTextIter a, b;
+		gtk_text_buffer_get_iter_at_offset(BUF, &a, x); gtk_text_buffer_get_iter_at_offset(BUF, &b, y);
+		gtk_text_buffer_select_range(BUF, &a, &b);
+	} else {
+		GtkTextIter at; gtk_text_buffer_get_iter_at_offset(BUF, &at, cur);
+		gtk_text_buffer_place_cursor(BUF, &at);
+	}
+	SILENT = 0; counts(); upd_sel(); state_soon();
+}
+static void hist_undo(void) { if (HI > 1) { HI--; step_apply(&HS[HI - 1]); } }
+static void hist_redo(void) { if (HI < HN) { HI++; step_apply(&HS[HI - 1]); } }
 static void on_undo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_undo(); }
 static void on_redo(GtkWidget *b, gpointer d) { (void)b; (void)d; hist_redo(); }
 static void on_zoom(GtkComboBox *c, gpointer d)
@@ -216,6 +299,13 @@ static void reveal(GtkTextIter *a, GtkTextIter *b)
 	GtkTextMark *m = gtk_text_buffer_create_mark(BUF, NULL, a, 0);
 	gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(ED), m); gtk_text_buffer_delete_mark(BUF, m);
 }
+/* (the match is marked, as the page marks it: the tag exists for this and nothing else) */
+static void mark_find(GtkTextIter *a, GtkTextIter *b)
+{
+	GtkTextIter s, e; gtk_text_buffer_get_bounds(BUF, &s, &e);
+	gtk_text_buffer_remove_tag(BUF, tag_new("find"), &s, &e);
+	gtk_text_buffer_apply_tag(BUF, tag_new("find"), a, b);
+}
 static void find_next(void)
 {
 	const char *n = gtk_entry_get_text(GTK_ENTRY(FI)); if (!*n) { say(""); return; }
@@ -225,7 +315,7 @@ static void find_next(void)
 		gtk_text_buffer_get_start_iter(BUF, &at);
 		if (!gtk_text_iter_forward_search(&at, n, 0, &a, &b, NULL)) { say("Not found."); state_soon(); return; }
 	}
-	reveal(&a, &b); state_soon();
+	mark_find(&a, &b); reveal(&a, &b); state_soon();
 }
 static void find_prev(void)
 {
@@ -236,7 +326,7 @@ static void find_prev(void)
 		while (gtk_text_iter_forward_search(&at, n, 0, &a, &b, NULL) && gtk_text_iter_compare(&a, &stop) < 0) { ha = a; hb = b; have = 1; at = b; } }
 	else while (gtk_text_iter_forward_search(&at, n, 0, &a, &b, NULL)) { ha = a; hb = b; have = 1; at = b; }
 	if (!have) { say("Not found."); state_soon(); return; }
-	reveal(&ha, &hb); state_soon();
+	mark_find(&ha, &hb); reveal(&ha, &hb); state_soon();
 }
 static void replace_all(void)
 {
@@ -332,12 +422,13 @@ static gboolean state_tick(gpointer d) { (void)d; state_write(); return G_SOURCE
 static void state_soon(void) { if (getenv("RUDOLF_WP_STATE")) g_timeout_add(120, state_tick, NULL); }
 static void hist_push(void)
 {
-	if (SILENT) return;
-	char *t = doc_text();
-	if (HIST_N && HIST_T[HIST_N - 1] && !strcmp(HIST_T[HIST_N - 1], t)) { g_free(t); return; }
-	if (HIST_I < HIST_N) { for (int i = HIST_I; i < HIST_N; i++) { g_free(HIST_T[i]); HIST_T[i] = NULL; } HIST_N = HIST_I; }
-	if (HIST_N == HIST) { g_free(HIST_T[0]); memmove(HIST_T, HIST_T + 1, sizeof(HIST_T[0]) * (HIST - 1)); HIST_N--; }
-	HIST_T[HIST_N++] = t; HIST_I = HIST_N;
+	if (SILENT || !BUF) return;
+	Step s = { 0 };
+	step_take(&s);
+	if (HN && HS[HN - 1].d && s.n == HS[HN - 1].n && !memcmp(HS[HN - 1].d, s.d, s.n)) { step_free(&s); return; }
+	if (HI < HN) { for (int i = HI; i < HN; i++) step_free(&HS[i]); HN = HI; }
+	if (HN == HIST) { step_free(&HS[0]); memmove(HS, HS + 1, sizeof(HS[0]) * (HIST - 1)); HN--; }
+	HS[HN++] = s; HI = HN;
 }
 static void on_text(GtkTextBuffer *b, gpointer d) { (void)b; (void)d; hist_push(); counts(); state_soon(); }
 static void on_mark(GtkTextBuffer *b, GtkTextIter *i, GtkTextMark *m, gpointer d) { (void)b; (void)i; (void)m; (void)d; counts(); upd_sel(); state_soon(); }
@@ -467,7 +558,6 @@ static void build_editor(void)
 	gtk_text_view_set_right_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
 	gtk_text_view_set_top_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
 	gtk_text_view_set_bottom_margin(GTK_TEXT_VIEW(ED), (int)lround(rui_px(96)));
-	HIST_T[0] = g_strdup(""); HIST_N = 1; HIST_I = 1;   /* (the history undo and redo walk, from the empty page) */
 	gtk_text_buffer_create_tag(BUF, "b", "weight", PANGO_WEIGHT_BOLD, NULL);
 	gtk_text_buffer_create_tag(BUF, "i", "style", PANGO_STYLE_ITALIC, NULL);
 	gtk_text_buffer_create_tag(BUF, "u", "underline", PANGO_UNDERLINE_SINGLE, NULL);
@@ -475,6 +565,10 @@ static void build_editor(void)
 	gtk_text_buffer_create_tag(BUF, "sub", "rise", -4000, "size-points", 9.0, NULL);
 	gtk_text_buffer_create_tag(BUF, "sup", "rise", 6000, "size-points", 9.0, NULL);
 	gtk_text_buffer_create_tag(BUF, "find", "background", "#fde68a", NULL);
+	HIST_ATOM = gtk_text_buffer_register_serialize_tagset(BUF, "application/x-rudolf-wordpro");
+	gtk_text_buffer_register_deserialize_tagset(BUF, "application/x-rudolf-wordpro");
+	gtk_text_buffer_deserialize_set_can_create_tags(BUF, HIST_ATOM, TRUE);
+	hist_push();   /* (the empty page is the step undo comes back to) */
 	set_editor_font();
 	gtk_container_add(GTK_CONTAINER(paper), ED);
 	gtk_box_pack_start(GTK_BOX(area), paper, TRUE, TRUE, 0);
@@ -518,11 +612,35 @@ static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	case GDK_KEY_b: apply_name("b"); return TRUE;
 	case GDK_KEY_i: apply_name("i"); return TRUE;
 	case GDK_KEY_u: apply_name("u"); return TRUE;
-	case GDK_KEY_z: hist_undo(); return TRUE;
+	case GDK_KEY_z: if (e->state & GDK_SHIFT_MASK) hist_redo(); else hist_undo(); return TRUE;
 	case GDK_KEY_y: hist_redo(); return TRUE;
 	case GDK_KEY_f: gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); return TRUE;
 	default: return FALSE;
 	}
+}
+/* (the check's hand on the toolbar's own commands: RUDOLF_WP_DO=bul,bul applies each to the whole writing, once there is
+   some -- a click on a button is the person's, and the check cannot aim one) */
+static int DO_TICKS;
+static gboolean do_hook(gpointer d)
+{
+	if (!gtk_text_buffer_get_char_count(BUF) && ++DO_TICKS < 50) return G_SOURCE_CONTINUE;
+	char *copy = g_strdup((const char *)d), *sv = NULL;
+	for (char *tok = strtok_r(copy, ",", &sv); tok; tok = strtok_r(NULL, ",", &sv)) {
+		GtkTextIter a, b;
+		gtk_text_buffer_get_bounds(BUF, &a, &b);
+		gtk_text_buffer_select_range(BUF, &a, &b);   /* (the page's commands act on the choice, so the whole writing is one) */
+		if (!strcmp(tok, "bul") || !strcmp(tok, "num") || !strcmp(tok, "ind") || !strcmp(tok, "out")) line_prefix(tok);
+		else if (!strncmp(tok, "style:", 6)) {
+			int k = atoi(tok + 6);
+			if (k >= 0 && k < NWPSTYLES && STYLEW) {
+				UPDATING = 1; gtk_combo_box_set_active(GTK_COMBO_BOX(STYLEW), k); UPDATING = 0;
+				on_style(GTK_COMBO_BOX(STYLEW), NULL);
+			}
+		}
+	}
+	g_free(copy);
+	state_soon();
+	return G_SOURCE_REMOVE;
 }
 int main(int argc, char **argv)
 {
@@ -534,5 +652,6 @@ int main(int argc, char **argv)
 	gtk_widget_show_all(W->win); gtk_widget_hide(FIND);
 	gtk_widget_grab_focus(ED);   /* (the page's window opens with its writing ready: typing goes into it at once) */
 	counts(); state_soon();
+	{ const char *w = getenv("RUDOLF_WP_DO"); if (w && *w) g_timeout_add(200, do_hook, (gpointer)w); }
 	gtk_main(); return 0;
 }

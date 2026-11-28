@@ -72,6 +72,26 @@ accent colours), its memory at idle against the web version, built in the releas
   three open together free roughly 200-350 MB.
 - **The owner's checklist:** each app on the Vivobook against Chromium mode's (every menu and toolbar button, a real
   document, spreadsheet and presentation of the owner's, printing), light and dark; the memory in Task Manager.
+#### Status (2026-11-28, session): WordPro's functions check -- what the page's own commands were doing to the writing
+- **Undo took the marks with it:** Ctrl+Z put the text back but not the bold, the italic or the find mark, because a
+  step was the characters alone. A step is now the writing *and* its tag set, taken before each change (serialised with
+  GTK's own tag set), so undoing a letter leaves the bold where it was, the choice and the cursor go back with the text,
+  and Ctrl+Shift+Z is the redo the page has.
+- **The block commands:** Bullets, Numbering, Indent and Outdent did nothing on a person's choice and could only add --
+  a second press added another bullet. They act on every line of the choice, a second press takes the bullet or the
+  number off (as the page's `wpBlock` does), the numbering counts up line by line, and the lines are taken by number so
+  an inserted prefix does not move the ones still to come.
+- **The formatting steps and Find:** a style, font, size, colour, alignment, spacing or list change is a step of the
+  history now (they were applied and forgotten); Ctrl+F puts the page's `find` tag on the match, not only the choice;
+  bold/italic/underline/strike are toggles of their own (a second Ctrl+B takes bold off and leaves italic), sub and sup
+  take each other off, and the styles do not stack.
+- **Its test (the same workflow): 13 passed, 0 failed, 278 856 bytes.** Cases 10-13: the undo that keeps the bold and
+  the find mark that is on the writing; a bullet on and the same press taking it off. The bullets cases open their own
+  app (`RUDOLF_WP_DO=bul`, the check's hand on the toolbar's buttons, which it cannot aim) and count the characters the
+  command put in.
+- **A claim that was wrong:** a "replace-all hang" I had listed is **not** real -- GTK's `gtk_text_buffer_insert`
+  advances the iterator past what it inserted, so the loop always moves on. Nothing was changed for it.
+
 #### Status (2026-11-27, scheduled task): WordPro begun, step 1 (the editor and its toolbar)
 - **Branch `wordpro-1`:** `iso/sys/apps/wordpro.c` (`/usr/bin/rudolf-wordpro`, with librudolf-ui) has the page's window
   (980 x 646), the toolbar of `.wp-tb` -- the paragraph styles, the fonts, the size with its - and +, bold, italic,
