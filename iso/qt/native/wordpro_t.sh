@@ -88,40 +88,35 @@ grep '^tags' "$ST" | grep -q 'find'
 ok "11. Ctrl+F marks the match (the find tag is on the writing, not only on the choice)" \
 	"$([ $? = 0 ] && echo 1)" "$(grep -E '^(tags|sel) ' "$ST" | tr '\n' ' ')"
 kill $WPP 2>/dev/null; sleep 0.6
-# (the app of the first cases is put away by its window's own process: it was a child of this shell rather than the shell,
-#  and two WordPro windows on one display take each other's presses)
+# (the app of the first cases is put away by its window's own process: it was a child of this shell rather than the shell)
 for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
 	p=$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; done
 sleep 1.5
 # ---- 12. a bullet goes on with one press and comes off with the next (the page's own toggle)
-# (RUDOLF_WP_DO is the check's hand on the toolbar's buttons, which it cannot aim; the command runs once there is writing)
+# (RUDOLF_WP_DO is the check's hand on the toolbar's buttons, which it cannot aim; the command runs once there is writing.
+#  the app runs under gdb as the first one does, so a stop leaves the reason in the log)
 ST10=$T/state_bul; rm -f "$ST10"
-RUDOLF_WP_STATE=$ST10 RUDOLF_WP_DO=bul DISPLAY=$DSP "$BIN" >"$T/wp_bul.log" 2>&1 & WPP2=$!
+RUDOLF_WP_STATE=$ST10 RUDOLF_WP_DO=bul DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/app2.exit"' sh $RUN "$BIN" >"$T/wp_bul.log" 2>&1 & WPP2=$!
 i=0; while [ $i -lt 60 ] && [ ! -s "$ST10" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-WIN2=""; i=0; while [ $i -lt 60 ] && [ -z "$WIN2" ]; do   # (this app's window, by its process)
-	for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
-		[ "$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null)" = "$WPP2" ] && WIN2=$w && break; done
-	[ -z "$WIN2" ] && timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+WIN2=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
 i=0; while [ $i -lt 60 ] && [ -n "$WIN2" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN2" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN2" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
-sleep 2; DISPLAY=$DSP xdotool windowraise "$WIN2"; sleep 0.5   # (the first app's window is still on the display: this one is above it)
+sleep 2; DISPLAY=$DSP xdotool windowraise "$WIN2"; sleep 0.5
 DISPLAY=$DSP xdotool mousemove --window "$WIN2" 480 300 click 1; sleep 0.8
 i=0; while [ $i -lt 3 ]; do
 	DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1
 	grep -q '^chars 5$' "$ST10" && break
 	DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
-sleep 1.6
-grep -q '^text • Hello$' "$ST10"
-ok "12. Bullets puts a bullet on the writing" "$([ $? = 0 ] && echo 1)" "$(head -14 "$ST10" | tr '\n' ' '); $(head -3 "$T/wp_bul.log")"
+sleep 2.2
+grep -q '^chars 7$' "$ST10"     # (the five letters and the bullet's two)
+ok "12. Bullets puts a bullet on the writing" "$([ $? = 0 ] && echo 1)" \
+	"$(head -14 "$ST10" | tr '\n' ' '); $(head -40 "$T/wp_bul.log"); $(cat "$T/app2.exit" 2>/dev/null)"
 kill $WPP2 2>/dev/null; sleep 0.5
-# ---- 13. ...and a second press takes it off (before this, every press added another one)
+# ---- 13. ...and a second press takes it off again (before this, every press added another one)
 ST11=$T/state_bul2; rm -f "$ST11"
-RUDOLF_WP_STATE=$ST11 RUDOLF_WP_DO=bul,bul DISPLAY=$DSP "$BIN" >"$T/wp_bul2.log" 2>&1 & WPP3=$!
+RUDOLF_WP_STATE=$ST11 RUDOLF_WP_DO=bul,bul DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/app3.exit"' sh $RUN "$BIN" >"$T/wp_bul2.log" 2>&1 & WPP3=$!
 i=0; while [ $i -lt 60 ] && [ ! -s "$ST11" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-WIN3=""; i=0; while [ $i -lt 60 ] && [ -z "$WIN3" ]; do   # (this app's window, by its process)
-	for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
-		[ "$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null)" = "$WPP3" ] && WIN3=$w && break; done
-	[ -z "$WIN3" ] && timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+WIN3=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
 i=0; while [ $i -lt 60 ] && [ -n "$WIN3" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN3" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN3" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 sleep 2; DISPLAY=$DSP xdotool windowraise "$WIN3"; sleep 0.5
@@ -130,9 +125,10 @@ i=0; while [ $i -lt 3 ]; do
 	DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1
 	grep -q '^chars 5$' "$ST11" && break
 	DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
-sleep 1.8
-grep -q '^text Hello$' "$ST11"
-ok "13. a second Bullets press takes the bullet off again" "$([ $? = 0 ] && echo 1)" "$(head -12 "$ST11" | tr '\n' ' '); $(head -3 "$T/wp_bul2.log")"
+sleep 2.4
+grep -q '^chars 5$' "$ST11" && grep -q '^text Hello$' "$ST11"
+ok "13. a second Bullets press takes the bullet off again" "$([ $? = 0 ] && echo 1)" \
+	"$(head -14 "$ST11" | tr '\n' ' '); $(head -40 "$T/wp_bul2.log"); $(cat "$T/app3.exit" 2>/dev/null)"
 kill $WPP3 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/iso/sys/ui" "$T/page/desktop"

@@ -194,7 +194,6 @@ static void line_prefix(const char *kind)
 	int l0 = gtk_text_iter_get_line(&s), l1 = gtk_text_iter_get_line(&e), block = !strcmp(kind, "ind") || !strcmp(kind, "out");
 	if (l1 > l0 && gtk_text_iter_get_line_offset(&e) == 0) l1--;   /* (a choice ending at a line's start does not take that line) */
 	int all = 1, n = 0;
-	snprintf(SAY, sizeof SAY, "bul? l %d %d", l0, l1); state_soon();
 	for (int L = l0; L <= l1; L++) {
 		GtkTextIter i; gtk_text_buffer_get_iter_at_line(BUF, &i, L);
 		char *h = line_head(i);
@@ -625,7 +624,6 @@ static int DO_TICKS;
 static gboolean do_hook(gpointer d)
 {
 	if (!gtk_text_buffer_get_char_count(BUF) && ++DO_TICKS < 50) return G_SOURCE_CONTINUE;
-	snprintf(SAY, sizeof SAY, "the check's hand: %s", (const char *)d); state_soon();   /* (the state says the hand ran) */
 	char *copy = g_strdup((const char *)d), *sv = NULL;
 	for (char *tok = strtok_r(copy, ",", &sv); tok; tok = strtok_r(NULL, ",", &sv)) {
 		GtkTextIter a, b;
