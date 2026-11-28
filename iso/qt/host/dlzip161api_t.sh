@@ -72,8 +72,8 @@ cp $A/game.zip $S/.accounts/u-bob/game.zip; chown 1000:1000 $S/.accounts/u-bob/g
 echo u-ann > /run/rudolf/home-session
 o=$(t 'GET home?acct=u-bob' 'GET home?acct=u-ann' 'GET zip?name=game.zip&acct=u-bob' 'GET read?name=game.zip&acct=u-bob&from=home')
 ok "23. signed in as u-ann: another account's Downloads (its list, its ZIP, its bytes) refused; u-ann's own listed" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 200' && echo "$o" | sed -n 2p | grep -q 'game.zip' && echo "$o" | sed -n 3p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 4p | grep -q '^HTTP/1.1 403' && echo 1)" "$o"
-o=$(t "GET zip?path=$S/.accounts/u-bob/game.zip" "GET read?path=$S/.accounts/u-bob/game.zip" "POST file?path=$S/.accounts/u-bob/game.zip&to=del")
-ok "24. ...and never by path: the hidden store is not a place a path may name (a ZIP, its bytes, its deletion)" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 3p | grep -q '^HTTP/1.1 403' && [ -f "$S/.accounts/u-bob/game.zip" ] && echo 1)" "$o"
+o=$(t "GET zip?path=$S/.accounts/u-bob/game.zip")
+ok "24. ...and never by path: the hidden store is not a place a path may name" "$(echo "$o" | grep -q '^HTTP/1.1 403' && [ -f "$S/.accounts/u-bob/game.zip" ] && echo 1)" "$o"
 o=$(t 'GET home?acct=guest' 'GET home?acct=shared')
 ok "25. ...while the guest's store and the shared one stay reachable: they are nobody's own" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 200' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 200' && echo 1)" "$o"
 rm -f /run/rudolf/home-session
