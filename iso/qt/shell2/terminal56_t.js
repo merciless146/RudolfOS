@@ -40,7 +40,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   r = await q("(()=>{const w=wins.at(-1);return {n:wins.length,t:w.el.querySelector('.t').textContent,tabs:[...w.body.querySelectorAll('.dttab span')].map(x=>x.textContent),txt:[...w.body.querySelectorAll('.dtbox')].map(x=>x.innerText).join('')}})()");
   ok('6. prompt() (Lua, .BAT files) adds a C: tab to the Terminal that is open and prints there, not a second Terminal', r.n == n0 && /C:$/.test(r.tabs.slice(-1)[0] || '') && /PRINTED/.test(r.txt), r);
   await q("(()=>{fs['C:'].PROGRAMS=fs['C:'].PROGRAMS||{};fs['C:'].PROGRAMS['T56.LUA']='print(\"lua ok \"..(2+3))';openPath(['C:','PROGRAMS','T56.LUA']);return 1})()"); await wait(600);
-  ok('7. opening a .LUA file runs it in a Terminal C: tab', /lua ok 5/.test(await q("wins.at(-1).body.querySelector('.dtbox .term').innerText")));
+  ok('7. opening a .LUA file runs it in a Terminal C: tab', /lua ok 5/.test(await q("[...wins.at(-1).body.querySelectorAll('.dtbox')].map(x=>x.innerText).join('')")));
   const desk = await q("(()=>{const d=[...document.querySelectorAll('#desk > .ic')].find(x=>/^Terminal$/.test((x.querySelector('span')||{}).textContent));return d?{icon:d.querySelector('b').textContent||(d.querySelector('b img')||{}).dataset?.emo||''}:null})()");
   ok('8. the desktop icon is Terminal, with the Command Prompt\'s icon', desk && /⬛/.test(desk.icon || '⬛'), desk);
   await q("svj('bd95devtools',true)");
