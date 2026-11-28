@@ -109,41 +109,41 @@ o=$(t answer lxfail-1-2); ok "11. a program's message, answered: taken away, no 
 rm -f /run/rudolf/acct-session.env; o=$(t get); ok "12. signed out: nothing offered (on: false)" "$(has "$o" '"on":false')" "$o"
 # ---- rudolf-debian: a program that ended at once (fixtures/debreport.c: launch_report as cmd_launch calls it)
 mkdir -p $T/req; printf "fixme:x\n/usr/local/bin/starport-ge: 1: cd: can't cd to /home/rudolf/.wine/drive_c/users/rudolf/StarportGE\n0024:fixme:ntdll:y\n" > $T/sp.log
-$T/dr starport-ge 'Starport GE' '/usr/local/bin/starport-ge' '' 2 0.3 $T/sp.log; f=$(ls $T/req/*.json 2>/dev/null | head -1)
+$T/dr starport-ge 'Starport GE' '/usr/local/bin/starport-ge' '' 2 0.3 $T/sp.log; f=$(grep -l '"lines"' $T/req/*.json | head -1)   # (the box's request: the readings have one of their own, without them)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(JSON.stringify(j))" "$f" 2>&1)
 ok "13. rudolf-debian: Starport GE's launcher ending at once (exit 2): a portal request lxfail-..., valid JSON: its name, how it ended, its log's last line (Wine's fixme: left out), a Windows program, its folder" "$(echo "$f" | grep -q '/lxfail-[0-9]*-[0-9]*\.json$' && echo 1)$(has "$j" '"kind":"lxfail"')$(has "$j" '"name":"Starport GE"')$(has "$j" '"status":2')$(has "$j" "\"lines\":\[\"/usr/local/bin/starport-ge: 1: cd: can't cd to /home/rudolf/.wine/drive_c/users/rudolf/StarportGE\"\]")$(has "$j" '"wine":true')$(has "$j" '"dir":"/home/rudolf/.wine/drive_c/users/rudolf/StarportGE"')" "$f $j"
 rm -f $T/req/*; printf '0024:fixme:ntdll:wine_init\n00b0:err:d3d:wined3d_init No available renderer\n00b8:err:ntoskrnl:ZwLoadDriver failed to create driver L"winebth": c00000e5\n0034:fixme:service:scmdatabase_autostart_services Auto-start service L"winebth" failed to start: 1359\n0010:err:wineusb:add_device no device\n0070:err:d3d:swapchain_create Failed to create swap chain\n' > $T/d3d.log
-$T/dr sf 'Starport GE' 'wine' '' 3 0.4 $T/d3d.log; f=$(ls $T/req/*.json | head -1)
+$T/dr sf 'Starport GE' 'wine' '' 3 0.4 $T/d3d.log; f=$(grep -l '"lines"' $T/req/*.json | head -1)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.lines.join('|'))" "$f" 2>&1)
 ok "...a Windows game that ended at once: the first real error first, then the last line (Wine's driver-service setup and fixme: left out)" "$([ "$j" = '00b0:err:d3d:wined3d_init No available renderer|0070:err:d3d:swapchain_create Failed to create swap chain' ] && echo 1)" "$j"
 # (the three kinds of line that say why, each with the cause out of the last three: the owner's Starport GE and Dead Frontier)
 rm -f $T/req/*; printf "0024:fixme:ntdll:x\n0024:err:winediag:nodrv_CreateWindow Application tried to create a window, but no driver could be loaded.\n0024:fixme:d3d:y\n0024:fixme:d3d:z\n0024:fixme:ddraw:w\n" > $T/wdiag.log
-$T/dr wd 'Dead Frontier' 'wine' '' 3 0.4 $T/wdiag.log; f=$(ls $T/req/*.json | head -1)
+$T/dr wd 'Dead Frontier' 'wine' '' 3 0.4 $T/wdiag.log; f=$(grep -l '"lines"' $T/req/*.json | head -1)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.lines.join('|'))" "$f" 2>&1)
 ok "...Wine's error on another of its channels (err:winediag:, no window could be made): the cause, ahead of the fixme: lines" "$([ "$j" = '0024:err:winediag:nodrv_CreateWindow Application tried to create a window, but no driver could be loaded.' ] && echo 1)" "$j"
 rm -f $T/req/*; printf "wine: created the configuration directory '/home/rudolf/.wine'\n0024:warn:module:load_library Module not found\nwine: Unhandled page fault on read access to 00000000 at address 00A1B2C3 (thread 0024)\n0024:fixme:dbghelp:a\n0024:fixme:dbghelp:b\n" > $T/wfault.log
-$T/dr wf 'Dead Frontier' 'wine' '' 3 0.4 $T/wfault.log; f=$(ls $T/req/*.json | head -1)
+$T/dr wf 'Dead Frontier' 'wine' '' 3 0.4 $T/wfault.log; f=$(grep -l '"lines"' $T/req/*.json | head -1)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.lines.join('|'))" "$f" 2>&1)
 ok "...Wine's own word of a failure (wine: Unhandled page fault..., which it prints without a channel): first, not the line it says at a first launch" "$([ "$(echo "$j" | cut -d'|' -f1)" = 'wine: Unhandled page fault on read access to 00000000 at address 00A1B2C3 (thread 0024)' ] && echo 1)" "$j"
 rm -f $T/req/*; printf "0024:warn:module:load_library Module not found\n00d0:warn:d3d:swapchain_create Failed to create swap chain\nthe launcher: checking its files\nthe launcher: starting\nthe launcher: it did not start\n" > $T/wd3d.log
-$T/dr w3 'Starport GE' 'wine' '' 3 0.4 $T/wd3d.log; f=$(ls $T/req/*.json | head -1)
+$T/dr w3 'Starport GE' 'wine' '' 3 0.4 $T/wd3d.log; f=$(grep -l '"lines"' $T/req/*.json | head -1)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.lines.join('|'))" "$f" 2>&1)
 ok "...Direct3D's own line (warn:d3d: Failed to create swap chain): first, though three lines came after it" "$([ "$j" = '00d0:warn:d3d:swapchain_create Failed to create swap chain|the launcher: checking its files|the launcher: starting' ] && echo 1)" "$j"
 rm -f $T/req/*; printf '00b8:err:ntoskrnl:ZwLoadDriver failed to create driver L"winebth": c00000e5\n0034:fixme:service:scmdatabase_autostart_services Auto-start service L"winebth" failed to start: 1359\n' > $T/noise.log
-$T/dr nz 'Dead Frontier' 'wine' '' 3 0.2 $T/noise.log; f=$(ls $T/req/*.json | head -1)
+$T/dr nz 'Dead Frontier' 'wine' '' 3 0.2 $T/noise.log; f=$(grep -l '"lines"' $T/req/*.json | head -1)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.lines.join('|'))" "$f" 2>&1)
 ok "...a log of nothing but that setup: one line saying so, neither the setup nor \"its log is empty\"" "$(echo "$j" | grep -q 'harms nothing' && echo 1)$(echo "$j" | grep -q 'winebth' || echo 1)$(echo "$j" | grep -q '|' || echo 1)" "$j"
 rm -f $T/req/*; : > $T/wd.log
-$T/drd wg 'Starport GE' 'wine' '' 3 0.3 $T/wd.log; f=$(ls $T/req/*.json | head -1)
+$T/drd wg 'Starport GE' 'wine' '' 3 0.3 $T/wd.log; f=$(grep -l '"diag"' $T/req/*.json | head -1)   # (the readings' own request)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log((j.diag||[]).join('|')+'#'+j.diaglog+'#'+Object.keys(j).sort().join(','))" "$f" 2>&1)
 ok "...a Windows program that ended at once: what it runs with is read and kept beside its log (the box says it)" "$(echo "$j" | grep -q 'wine-10.0' && echo 1)$(echo "$j" | grep -q 'no /dev/dri in this test' && echo 1)$(echo "$j" | grep -q "$T/wd.diag.txt" && echo 1)$(grep -q 'no /dev/dri in this test' $T/wd.diag.txt 2>/dev/null && echo 1)" "$j"
 ok "...its own request says only what it read and whose box it fills: nothing the box has already" "$(echo "$j" | grep -q '#app,diag,diaglog,fill,kind,of$' && echo 1)" "$j"
-rm -f $T/req/*; $T/drd ng 'A Debian program' '/bin/false' '' 3 0.2 $T/wd.log; f=$(ls $T/req/*.json | head -1)
+rm -f $T/req/*; $T/drd ng 'A Debian program' '/bin/false' '' 3 0.2 $T/wd.log; f=$(grep -l '"lines"' $T/req/*.json | head -1)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(('diag' in j)+'#'+(j.diaglog===undefined))" "$f" 2>&1)
 ok "...not a Windows program: no check read, nothing kept" "$([ "$j" = 'false#true' ] && echo 1)" "$j"
 rm -f $T/req/*; printf 'line "one"\tq\\x\n' > $T/q.log
 $T/dr x 'A "quoted" app' 'prog' '' 0 0.5 $T/q.log; n0=$(ls $T/req | wc -l); $T/dr x 'Slow' 'prog' '' 1 30 $T/q.log; n1=$(ls $T/req | wc -l)
-$T/dr x 'A "quoted" app' 'prog' '' 137 0.2 $T/q.log; f=$(ls $T/req/*.json | head -1); j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.name+'|'+j.lines[0]+'|'+j.status+'|'+j.wine)" "$f" 2>&1)
+$T/dr x 'A "quoted" app' 'prog' '' 137 0.2 $T/q.log; f=$(grep -l '"lines"' $T/req/*.json | head -1); j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.name+'|'+j.lines[0]+'|'+j.status+'|'+j.wine)" "$f" 2>&1)
 ok "...one that ended well (0) or after a while (30 s): nothing; one stopped by a signal at once: said, quotes and tabs kept as JSON" "$([ $n0 = 0 ] && [ $n1 = 0 ] && echo 1)$([ "$j" = "$(printf 'A "quoted" app|line "one"\tq\\x|137|false')" ] && echo 1)" "$n0 $n1 $j"
 ok "...cmd_launch times the program and reports it after it ends" "$(grep -q 'launch_report(id, &k, WIFEXITED(st)' $HERE/../../sys/rudolf-debian.c && echo 1)"
 umount $T/m; rm -rf $T; echo "$((N-F))/$N passed"; [ $F = 0 ]
