@@ -50,6 +50,7 @@ static void zoom_to(int z); static void new_book(void); static void show_keys(vo
 static gint cmp_key(gconstpointer a, gconstpointer b);
 static int a1_parse(const char *t, int *r0, int *c0, int *r1, int *c1);
 static void nb_update(void); static void dlg_close(int i, void *d);
+static void sel_keys(GArray *out); static int view_r0(void); static int view_r1(void); static int view_c0(void); static int view_c1(void);
 static void title_update(void); static void mark_dirty(void); static void do_open(const char *path);
 static void do_save(int as); static void file_open_dlg(void);
 static void file_import_dlg(void); static void file_export_dlg(void);
@@ -94,7 +95,27 @@ static const char *cell_raw(int r, int c) { Cell *cl = cell_get(r, c); return cl
 typedef void (*StyleFn)(Cell *cl, void *d);
 static void style_sel(StyleFn fn, void *d)
 {
-	for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
+	long area = (long)(SEL_R1 - SEL_R0 + 1) * (long)(SEL_C1 - SEL_C0 + 1);
+	if (area > 200000 && fn) {
+		/* (the page's guard for a whole column or row: the cells that hold something, plus the ones on the screen -- a
+		   hundred thousand empty cells are not worth an entry each; spro45.js's styleSel) */
+		GArray *ks = g_array_new(FALSE, FALSE, sizeof(guint)); sel_keys(ks);
+		GHashTable *seen = g_hash_table_new(g_direct_hash, g_direct_equal);
+		for (guint i = 0; i < ks->len; i++) g_hash_table_add(seen, GUINT_TO_POINTER(g_array_index(ks, guint, i)));
+		for (int r = MAX(SEL_R0, view_r0()); r <= MIN(SEL_R1, view_r1()); r++)
+			for (int c = MAX(SEL_C0, view_c0()); c <= MIN(SEL_C1, view_c1()); c++) {
+				guint key = ckey(r, c);
+				if (g_hash_table_add(seen, GUINT_TO_POINTER(key))) g_array_append_val(ks, key);
+			}
+		g_hash_table_destroy(seen);
+		for (guint i = 0; i < ks->len; i++) {
+			guint key = g_array_index(ks, guint, i);
+			Cell *cl = g_hash_table_lookup(CELLS, GUINT_TO_POINTER(key));
+			if (!cl) { cl = g_new0(Cell, 1); g_hash_table_insert(CELLS, GUINT_TO_POINTER(key), cl); }
+			fn(cl, d);
+		}
+		g_array_free(ks, TRUE);
+	} else for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
 		Cell *cl = cell_get(r, c);
 		if (!cl) { if (!fn) continue; cl = g_new0(Cell, 1); g_hash_table_insert(CELLS, GUINT_TO_POINTER(ckey(r, c)), cl); }
 		if (fn) fn(cl, d);
@@ -1172,6 +1193,44 @@ static void sel_range(int r0, int c0, int r1, int c1)
 	SEL_AR = SEL_R0; SEL_AC = SEL_C0; CUR_R = SEL_R0; CUR_C = SEL_C0;
 	nb_update(); fx_update(); upd_tb(); status_update(); redraw();
 }
+/* ---- the heads, as the page's spro45.js has them: the corner takes the whole sheet, a column head its whole column and a
+   row head its whole row -- from the first row or column to the sheet's last, which is what the page selects and what its
+   name box calls "A1:A100000" -- and Shift grows the choice from where it started. The cursor goes to the top of the view
+   (the page puts it there too), so a head's press never throws the sheet to its last row. */
+static int view_r0(void) { double rh = DH * zf(); int r = rh > 0 ? (int)(SCY / rh) : 0; return MIN(MAX(r, 0), MAXR - 1); }
+static int view_c0(void) { double cw = DW * zf(); int c = cw > 0 ? (int)(SCX / cw) : 0; return MIN(MAX(c, 0), MAXC - 1); }
+static int view_r1(void) { double rh = DH * zf(); int h = AREA ? gtk_widget_get_allocated_height(AREA) : 0; int r = rh > 0 ? (int)((SCY + h) / rh) : 0; return MIN(MAX(r, 0), MAXR - 1); }
+static int view_c1(void) { double cw = DW * zf(); int w = AREA ? gtk_widget_get_allocated_width(AREA) : 0; int c = cw > 0 ? (int)((SCX + w) / cw) : 0; return MIN(MAX(c, 0), MAXC - 1); }
+/* (the cells of the sheet inside the choice, by their key: a whole column is 100 000 rows, and only the cells that hold
+   something are worth a look -- the page's eachIn does the same. The keys are collected first because a caller may take
+   the cells away.) */
+static void sel_keys(GArray *out)
+{
+	GHashTableIter it; gpointer k, v;
+	g_hash_table_iter_init(&it, CELLS);
+	while (g_hash_table_iter_next(&it, &k, &v)) {
+		guint key = GPOINTER_TO_UINT(k);
+		int r = (int)((key - 1u) / MAXC), c = (int)((key - 1u) % MAXC);
+		if (r >= SEL_R0 && r <= SEL_R1 && c >= SEL_C0 && c <= SEL_C1) g_array_append_val(out, key);
+	}
+}
+static void sel_rect(int r0, int c0, int r1, int c1, int ar, int ac)
+{
+	SEL_R0 = MIN(r0, r1); SEL_R1 = MAX(r0, r1); SEL_C0 = MIN(c0, c1); SEL_C1 = MAX(c0, c1);
+	SEL_AR = ar; SEL_AC = ac; TABFROM = -1;
+	nb_update(); fx_update(); upd_tb(); status_update(); redraw();
+}
+static void sel_head(int axis, int i, int shift)
+{
+	if (axis == 0) {
+		if (shift) { sel_rect(0, SEL_AC, MAXR - 1, i, 0, SEL_AC); return; }
+		CUR_C = i; CUR_R = view_r0(); sel_rect(0, i, MAXR - 1, i, 0, i);
+	} else {
+		if (shift) { sel_rect(SEL_AR, 0, i, MAXC - 1, SEL_AR, 0); return; }
+		CUR_R = i; CUR_C = view_c0(); sel_rect(i, 0, i, MAXC - 1, i, 0);
+	}
+}
+static void sel_all(void) { CUR_R = view_r0(); CUR_C = view_c0(); sel_rect(0, 0, MAXR - 1, MAXC - 1, 0, 0); }
 
 /* ------------------------------------------------------------------ editing a cell (the page's .sp-ed over the cell)
    Typing starts it with what was typed, F2 with what the cell holds; Enter puts it in and goes down (to the column the row
@@ -1247,16 +1306,19 @@ static void jump_move(int dr, int dc, int shift)
 /* (Clear contents: the page's Delete) */
 static void clear_cells(void)
 {
-	long area = (long)(SEL_R1 - SEL_R0 + 1) * (SEL_C1 - SEL_C0 + 1);
-	if (area > 20000) return;
-	for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) cell_set(r, c, NULL);
+	long area = (long)(SEL_R1 - SEL_R0 + 1) * (long)(SEL_C1 - SEL_C0 + 1);
+	if (area > 20000) {   /* (a whole column or row: the cells that hold something, as the page's eachIn has it) */
+		GArray *ks = g_array_new(FALSE, FALSE, sizeof(guint)); sel_keys(ks);
+		for (guint i = 0; i < ks->len; i++) g_hash_table_remove(CELLS, GUINT_TO_POINTER(g_array_index(ks, guint, i)));
+		g_array_free(ks, TRUE);
+	} else for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) cell_set(r, c, NULL);
 	hist_push();
 	layout_ranges(); status_update(); fx_update(); redraw();
 }
 static void clear_formats(void)
 {
 	for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
-		Cell *cl = cell_get(r, c); if (!cl) continue;
+		Cell *cl = cell_get(r, c); if (!cl) continue;   /* (only a cell that holds something has a format to take) */
 		cl->b = cl->i = cl->u = cl->s = 0; cl->ha = 0; cl->sz = 0;
 		g_free(cl->fc); cl->fc = NULL; g_free(cl->bg); cl->bg = NULL; g_free(cl->font); cl->font = NULL;
 	}
@@ -1370,10 +1432,13 @@ static gboolean area_click(GtkWidget *w, GdkEventButton *e, gpointer d)
 	gtk_widget_grab_focus(w);
 	if (e->button != 1) return TRUE;
 	double z = zf(), cw = DW * z, rh = DH * z;
-	int c = (int)((e->x - HW + SCX) / cw), r = (int)((e->y - HH + SCY) / rh);
-	if (e->x < HW || e->y < HH) return TRUE;   /* (a press on the head: choosing a whole row or column is a later step) */
+	int c = MIN(MAX((int)((e->x - HW + SCX) / cw), 0), MAXC - 1), r = MIN(MAX((int)((e->y - HH + SCY) / rh), 0), MAXR - 1);
+	int shift = (e->state & GDK_SHIFT_MASK) != 0;
+	if (e->x < HW && e->y < HH) { sel_all(); return TRUE; }        /* (the page's selAll) */
+	if (e->y < HH) { sel_head(0, c, shift); return TRUE; }         /* (a column head: its whole column) */
+	if (e->x < HW) { sel_head(1, r, shift); return TRUE; }         /* (a row head: its whole row) */
 	TABFROM = -1;
-	sel_set(r, c, (e->state & GDK_SHIFT_MASK) != 0);
+	sel_set(r, c, shift);
 	return TRUE;
 }
 static gboolean area_scroll(GtkWidget *w, GdkEventScroll *e, gpointer d)
@@ -1487,12 +1552,18 @@ static void status_update(void)
 	char agg[240] = "";
 	long area = (long)(SEL_R1 - SEL_R0 + 1) * (long)(SEL_C1 - SEL_C0 + 1);
 	int nums = 0, cnt = 0; double sum = 0, mn = 0, mx = 0;
-	if (area > 1 && area <= 20000)
-		for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
-			Val v = eval_cell(r, c);
+	if (area > 1) {
+		/* (the cells that hold something, as the page's own status line walks them: a chosen column is 100 000 rows, so the
+		   sheet's cells are read rather than every place in the choice) */
+		GArray *ks = g_array_new(FALSE, FALSE, sizeof(guint)); sel_keys(ks);
+		for (guint i = 0; i < ks->len; i++) {
+			guint key = g_array_index(ks, guint, i) - 1u;
+			Val v = eval_cell((int)(key / MAXC), (int)(key % MAXC));
 			if (v.k == V_NUM) { if (!nums) { mn = mx = v.n; } else { if (v.n < mn) mn = v.n; if (v.n > mx) mx = v.n; } nums++; sum += v.n; cnt++; }
 			else if (v.k == V_TEXT || v.k == V_BOOL || v.k == V_ERR) cnt++;
 		}
+		g_array_free(ks, TRUE);
+	}
 	/* (the figures once: as the page's status line writes them, and as plain numbers for the state the tests read) */
 	if (nums) {
 		char a[40], b[40], m1[40], m2[40];
@@ -1549,6 +1620,9 @@ static void state_write(void)
 				cl->ha, cl->fc ? cl->fc : "-", cl->bg ? cl->bg : "-");
 	}
 	g_array_free(ks, TRUE);
+	{ int ax = 0, ay = 0;   /* (where the grid is in the window: a head's press is at its corner, and a check cannot guess) */
+	  if (AREA && W && W->win) gtk_widget_translate_coordinates(AREA, W->win, 0, 0, &ax, &ay);
+	  g_string_append_printf(s, "area %d %d\n", ax, ay); }
 	g_string_append_printf(s, "zoom %d\nhist %d %d\nagg %s\nask %d\nanswer %d\nsay %s\n", ZOOM, UNDO_I, UNDO_N, AGGS, ASK, LAST_ANS, SAY);
 	char *tmp = g_strdup_printf("%s.t", f); g_file_set_contents(tmp, s->str, -1, NULL); rename(tmp, f); g_free(tmp);
 	g_string_free(s, TRUE);
