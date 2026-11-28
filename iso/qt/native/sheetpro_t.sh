@@ -5,8 +5,13 @@
 # Tab and Enter run along a row and come back to its first column, Ctrl+` shows the formulas, Ctrl+B marks a cell, undo and
 # redo walk the changes, the name box chooses a cell or a range, the status line adds up a choice, and Ctrl+Down goes to the
 # end of a filled run. The menus are the page's own (File's 15 rows and Data's 12) and the toolbar's lists are the page's
-# (mksheetpro.py). It reads RUDOLF_SP_STATE, so no screenshot is needed here; the page-by-page comparison against the web
-# SpreadsheetPro comes with the step that makes every one of its views.
+# (mksheetpro.py). A .RSHEET the page wrote opens with its cells, its formula and its styles, and the file's name in the
+# title; a change marks the book unsaved (the page's * in the title), and Ctrl+S writes it back as the page's own JSON. A
+# book of two sheets is not opened at all (this step shows one, and opening it would drop the other on the next save);
+# a CSV opens as the page reads one (quotes, a doubled quote, CRLF, the first line's own delimiter) and Ctrl+S writes it
+# back the way the page writes a CSV, and a CSV written without a chooser (RUDOLF_SP_EXPORT) is the page's own too.
+# It reads RUDOLF_SP_STATE, so no screenshot is needed here; the page-by-page comparison against the web SpreadsheetPro
+# comes with the step that makes every one of its views.
 #   sh sheetpro_t.sh [OUT]
 # Needs Xvfb, xdotool, node, gcc and GTK 3's headers. (display :89, port 8685)
 HERE=$(cd "$(dirname "$0")" && pwd); R=$(cd "$HERE/../../.." && pwd); T=$(mktemp -d /tmp/sp_t.XXXXXX)
@@ -111,6 +116,207 @@ for M in File Data; do
 done
 [ "$N_File" = 15 ] && [ "$N_Data" = 12 ]
 ok "13. File opens with the page's 15 rows and Data with its 12" "$([ $? = 0 ] && echo 1)" "File $N_File, Data $N_Data; $(grep '^menu' "$T/state_File.txt" 2>/dev/null) $(grep '^menu' "$T/state_Data.txt" 2>/dev/null)"
+# ---- 14. a .RSHEET the page wrote opens: its cells, its formula worked out, its style, and its name in the title
+# (the file is sprof45.js's own v2 JSON: a number, a formula, a bold cell and a centred one)
+kill $SPP 2>/dev/null; sleep 0.8
+F=$T/grid.RSHEET
+cat > "$F" <<'RS'
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[{"b":1},{"ha":"center"}],"sheets":[{"name":"Sheet1","color":"","cells":[[0,5],[1,null,"=A1*2"],[702,"x",null,0],[1404,"say \"hi\", \\o/"],[1405,0.333333333333333],[1406,7,null,1]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+RS
+ST3=$T/state_open; rm -f "$ST3"
+RUDOLF_SP_STATE=$ST3 DISPLAY=$DSP "$BIN" "$F" >"$T/sp_open.log" 2>&1 & SPP3=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^dirty ' "$ST3" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+grep -q '^title grid.RSHEET - SpreadsheetPro$' "$ST3" || RC=1
+grep -q '^file grid.RSHEET$' "$ST3" || RC=1
+grep -q '^dirty 0$' "$ST3" || RC=1
+grep -q '^cell A1 5$' "$ST3" || RC=1
+grep -q '^cell B1 =A1\*2$' "$ST3" || RC=1
+grep -q '^show B1 10$' "$ST3" || RC=1
+grep -q '^cell A2 x$' "$ST3" || RC=1
+grep -q '^fmt A2 b1 i0 u0 s0 ha0 ' "$ST3" || RC=1
+grep -q '^show C3 7$' "$ST3" || RC=1
+grep -q '^fmt C3 b0 i0 u0 s0 ha2 ' "$ST3" || RC=1
+ok "14. a .RSHEET the page wrote opens with its cells, its formula worked out and its styles, and its name in the title" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|file|dirty|cell|show|fmt) ' "$ST3" | tr '\n' ' '); $(cat "$T/sp_open.log")"
+# ---- 15. a change marks the book unsaved (the page's * in the title) and Ctrl+S writes it back as the page's own JSON
+# (the window of the book just opened, by its own title: the first copy's window may still be there, its shell killed
+#  rather than the program it started, and a key sent to that one would leave this book untouched)
+WIN3=$(DISPLAY=$DSP xdotool search --name '^grid\.RSHEET - SpreadsheetPro$' 2>/dev/null | head -1)
+[ -n "$WIN3" ] || WIN3=$(DISPLAY=$DSP xdotool search --name 'SpreadsheetPro$' 2>/dev/null | tail -1)
+i=0; while [ $i -lt 60 ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN3" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN3" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.5
+DISPLAY=$DSP xdotool type --delay 20 '9'; sleep 0.4; DISPLAY=$DSP xdotool key Return; sleep 1.2
+RC=0
+# (the window's own title says it at once, the page's * for changes; the state file follows a moment later)
+TITLE3=$(DISPLAY=$DSP xdotool getwindowname "$WIN3" 2>/dev/null)
+[ "$TITLE3" = "grid.RSHEET * - SpreadsheetPro" ] || RC=1
+grep -q '^dirty 1$' "$ST3" || RC=1
+DISPLAY=$DSP xdotool key ctrl+s; sleep 1.6
+TITLE3=$(DISPLAY=$DSP xdotool getwindowname "$WIN3" 2>/dev/null)
+[ "$TITLE3" = "grid.RSHEET - SpreadsheetPro" ] || RC=1
+grep -q '^dirty 0$' "$ST3" || RC=1
+grep -q '^say Saved grid.RSHEET$' "$ST3" || RC=1
+python3 - "$F" <<'PY' || RC=1
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d['v'] == 2 and d['app'] == 'SpreadsheetPro', d
+assert [s['name'] for s in d['sheets']] == ['Sheet1'], d['sheets']
+cells = {a[0]: a for a in d['sheets'][0]['cells']}
+assert sorted(cells) == [0, 1, 702, 1404, 1405, 1406], sorted(cells)
+assert cells[0] == [0, 9], cells[0]
+assert cells[1] == [1, None, '=A1*2'], cells[1]
+assert cells[702] == [702, 'x', None, 0], cells[702]
+assert cells[1404] == [1404, 'say "hi", \\o/'], cells[1404]     # (the escapes survive both ways)
+assert cells[1405] == [1405, 0.333333333333333], cells[1405]      # (15 significant digits, as the page keeps them)
+assert cells[1406] == [1406, 7, None, 1], cells[1406]
+assert d['styles'] == [{'b': 1}, {'ha': 'center'}], d['styles']
+assert d['sheets'][0]['name'] == 'Sheet1', d['sheets'][0]['name']
+PY
+ok "15. a change puts the page's * in the title, and Ctrl+S saves the page's own JSON (cells, formulas and styles)" \
+	"$([ $RC = 0 ] && echo 1)" "title '$TITLE3'; $(sed -n '1,12p' "$ST3" | tr '\n' ' '); $(tail -3 "$T/sp_open.log" 2>/dev/null); $(head -c 300 "$F" 2>/dev/null)"
+cp "$ST3" "$OUT/state_open.txt" 2>/dev/null
+kill $SPP3 2>/dev/null; sleep 0.4
+# ---- 17. a book of two sheets is refused, not opened and cut down to the first
+# (the step shows one sheet. opening such a book and saving it would drop every sheet but the first without a word, so the
+#  file is left exactly as it is and the status line says why)
+F2=$T/two.RSHEET
+cat > "$F2" <<'RS'
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"One","cells":[[0,5]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}},{"name":"Two","cells":[[0,6]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+RS
+SUM2=$(md5sum "$F2" | cut -d' ' -f1); ST5=$T/state_two; rm -f "$ST5"
+RUDOLF_SP_STATE=$ST5 DISPLAY=$DSP "$BIN" "$F2" >"$T/sp_two.log" 2>&1 & SPP5=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^dirty ' "$ST5" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+grep -q '^title Book1 - SpreadsheetPro$' "$ST5" || RC=1
+grep -q '^file -$' "$ST5" || RC=1
+grep -q '^cells 0$' "$ST5" || RC=1
+grep -q '^say two.RSHEET has 2 sheets' "$ST5" || RC=1
+[ "$(md5sum "$F2" | cut -d' ' -f1)" = "$SUM2" ] || RC=1
+ok "17. a book of two sheets is refused with the reason, and the file is left as it was" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|file|cells|say) ' "$ST5" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_two.log"); $F2"
+kill $SPP5 2>/dev/null; sleep 0.4
+# ---- 18. a CSV opens as the page reads one, and Ctrl+S writes it back the way the page writes it
+# (a quote inside a quoted field is doubled; the lines end CRLF; the first row is 5,7,a,b and the second a text with
+#  quotes of its own and 0.5, so the file that comes back is the file that went in)
+CS=$T/made.csv
+printf '5,7,"a,b"\r\n"say ""hi""",0.5,\r\n' > "$CS"
+ST6=$T/state_csv; rm -f "$ST6"
+RUDOLF_SP_STATE=$ST6 DISPLAY=$DSP "$BIN" "$CS" >"$T/sp_csv.log" 2>&1 & SPP6=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^dirty ' "$ST6" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+grep -q '^title made.csv - SpreadsheetPro$' "$ST6" || RC=1
+grep -q '^file made.csv$' "$ST6" || RC=1
+grep -q '^cell A1 5$' "$ST6" || RC=1
+grep -q '^show A1 5$' "$ST6" || RC=1
+grep -q '^cell B1 7$' "$ST6" || RC=1
+grep -q '^cell C1 a,b$' "$ST6" || RC=1
+grep -q '^cell A2 say "hi"$' "$ST6" || RC=1
+grep -q '^show B2 0.5$' "$ST6" || RC=1
+WIN6=$(DISPLAY=$DSP xdotool search --name '^made\.csv - SpreadsheetPro$' 2>/dev/null | head -1)
+[ -n "$WIN6" ] || RC=1
+i=0; while [ $i -lt 60 ] && [ -n "$WIN6" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN6" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN6" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$WIN6" ] && { DISPLAY=$DSP xdotool key ctrl+s; sleep 1.6; }
+grep -q '^say Saved made.csv$' "$ST6" || RC=1
+python3 - "$CS" <<'PY' || RC=1
+import sys
+b = open(sys.argv[1], 'rb').read()
+assert b == b'5,7,"a,b"\r\n"say ""hi""",0.5,\r\n', b
+PY
+ok "18. a CSV opens as the page reads one (quotes, a doubled quote, CRLF), and Ctrl+S writes the page's own CSV back" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|file|cell|show|say) ' "$ST6" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_csv.log"); $(head -c 200 "$CS")"
+kill $SPP6 2>/dev/null; sleep 0.4
+# ---- 19. the sheet is exported as the page writes it (what each cell shows, quoted where it must be, CRLF)
+# (RUDOLF_SP_EXPORT names the file, so the row's chooser is not needed. its own book, not case 14's: that one has been
+#  typed into and saved by case 15, and a case that reads another's leftovers is a test of the order, not of the export)
+F3=$T/ex.RSHEET
+cat > "$F3" <<'RS'
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[{"b":1},{"ha":"center"}],"sheets":[{"name":"Sheet1","color":"","cells":[[0,5],[1,null,"=A1*2"],[702,"x",null,0],[1406,7,null,1]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+RS
+EX=$T/out.csv; rm -f "$EX"; ST7=$T/state_export; rm -f "$ST7"
+RUDOLF_SP_STATE=$ST7 RUDOLF_SP_EXPORT=$EX DISPLAY=$DSP "$BIN" "$F3" >"$T/sp_ex.log" 2>&1 & SPP7=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^say Exported ' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+grep -q '^say Exported out.csv$' "$ST7" || RC=1
+python3 - "$EX" <<'PY' || RC=1
+import sys
+b = open(sys.argv[1], 'rb').read()
+assert b == b'5,10,\r\nx,,\r\n,,7\r\n', b      # (the formula's 10, not '=A1*2'; the empty cells still take their commas)
+PY
+ok "19. the sheet is exported as the page writes a CSV: what each cell shows, quoted where it must be, CRLF lines" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(say|file) ' "$ST7" 2>/dev/null | tr '\n' ' '); $(head -c 200 "$EX" 2>/dev/null); $(cat "$T/sp_ex.log")"
+kill $SPP7 2>/dev/null; sleep 0.4
+# ---- 20. a modified book is not thrown away: closing asks, and Cancel keeps it with nothing written
+# (RUDOLF_SP_DO=close is the check's hand on the window's own X: it waits for the first change, and asks again if the
+#  question is put off. the question is the page's own overlay in the window: Escape is Cancel, and Cancel keeps the book)
+F4=$T/ask.RSHEET
+cat > "$F4" <<'RS'
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"Sheet1","color":"","cells":[[0,1],[702,"keep"]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+RS
+ST8=$T/state_ask; rm -f "$ST8"
+RUDOLF_SP_STATE=$ST8 RUDOLF_SP_DO=close DISPLAY=$DSP "$BIN" "$F4" >"$T/sp_ask.log" 2>&1 & SPP8=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^dirty ' "$ST8" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+WIN8=$(DISPLAY=$DSP xdotool search --name '^ask\.RSHEET - SpreadsheetPro$' 2>/dev/null | head -1)
+i=0; while [ $i -lt 60 ] && [ -n "$WIN8" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN8" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN8" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.4
+DISPLAY=$DSP xdotool type --delay 20 '4'; sleep 0.4; DISPLAY=$DSP xdotool key Tab; sleep 0.8
+RC=0; WHY=""
+chk() { if eval "$1" >/dev/null 2>&1; then :; else RC=1; WHY="$WHY $2"; fi; }
+SUM4=$(md5sum "$F4" | cut -d' ' -f1)   # (the book as it was while the question waits)
+chk 'grep -q "^dirty 1$" "$ST8"' dirty
+i=0; while [ $i -lt 40 ] && ! grep -q '^ask 1$' "$ST8" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+chk 'grep -q "^ask 1$" "$ST8"' question          # (the question is up)
+chk '[ -d "/proc/$SPP8" ]' alive                 # (the window is still there)
+chk 'grep -q "^cells 2$" "$ST8"' cells           # (with both of its cells)
+chk 'grep -q "^cell A2 keep$" "$ST8"' a2
+chk 'case "$(sed -n "s/^say //p" "$ST8")" in *"has changes that are not saved"*) true ;; *) false ;; esac' say
+chk '[ "$(md5sum "$F4" | cut -d" " -f1)" = "$SUM4" ]' untouched   # (nothing is written while the question waits)
+DISPLAY=$DSP xdotool key Escape; sleep 0.9        # (Cancel: the book stays as it is)
+chk 'grep -q "^answer 0$" "$ST8"' cancel          # (Cancel: the question was answered, and the book stays)
+chk '[ -d "/proc/$SPP8" ]' alive2
+chk 'grep -q "^cells 2$" "$ST8"' cells2
+chk '[ "$(md5sum "$F4" | cut -d" " -f1)" = "$SUM4" ]' untouched2
+ok "20. closing a modified book asks first, and Cancel keeps it with nothing written" \
+	"$([ $RC = 0 ] && echo 1)" "failed:${WHY:-none} | $(grep -E '^(title|dirty|ask|answer|cells|say) ' "$ST8" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_ask.log")"
+kill $SPP8 2>/dev/null; sleep 0.4
+# ---- 21. ...and Save answers it: the change is written and the window goes
+# (RUDOLF_SP_ANSWER is the check's press on the overlay's Save, which it cannot aim; the way through is the one a click takes)
+ST12=$T/state_save; rm -f "$ST12"
+RUDOLF_SP_STATE=$ST12 RUDOLF_SP_DO=close RUDOLF_SP_ANSWER=save DISPLAY=$DSP "$BIN" "$F4" >"$T/sp_save.log" 2>&1 & SPP12=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^dirty ' "$ST12" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+WIN12=$(DISPLAY=$DSP xdotool search --name '^ask\.RSHEET - SpreadsheetPro$' 2>/dev/null | head -1)
+i=0; while [ $i -lt 60 ] && [ -n "$WIN12" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN12" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN12" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.4
+DISPLAY=$DSP xdotool type --delay 20 '7'; sleep 0.4; DISPLAY=$DSP xdotool key Tab; sleep 0.8
+i=0; while [ $i -lt 40 ] && [ -d "/proc/$SPP12" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0; WHY=""
+chk() { if eval "$1" >/dev/null 2>&1; then :; else RC=1; WHY="$WHY $2"; fi; }
+chk '[ ! -d "/proc/$SPP12" ]' alive                     # (the window is gone)
+python3 - "$F4" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))
+cells = {a[0]: a[1] for a in d['sheets'][0]['cells']}
+assert cells.get(0) == 7, cells          # (the change was saved, not thrown away)
+assert cells.get(702) == 'keep', cells
+PY
+[ $? = 0 ] || { RC=1; WHY="$WHY saved"; }
+ok "21. Save answers the question: the change is written and the window closes" \
+	"$([ $RC = 0 ] && echo 1)" "failed:${WHY:-none} | $(head -20 "$ST12" 2>/dev/null | tr '\n' ' '); $(head -c 200 "$F4" 2>/dev/null); $(cat "$T/sp_save.log")"
+kill $SPP12 2>/dev/null; sleep 0.4
+# ---- 22. a book with nothing to lose closes at once, with no question
+ST9=$T/state_clean; rm -f "$ST9"
+RUDOLF_SP_STATE=$ST9 RUDOLF_SP_DO=close DISPLAY=$DSP "$BIN" "$F4" >"$T/sp_clean.log" 2>&1 & SPP9=$!
+i=0; while [ $i -lt 60 ] && [ -d "/proc/$SPP9" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+[ -d "/proc/$SPP9" ] && RC=1
+grep -q '^ask 1$' "$ST9" 2>/dev/null && RC=1
+ok "22. a book with nothing to lose closes at once, without a question" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(dirty|ask|cells) ' "$ST9" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_clean.log")"
+kill $SPP9 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"
 sed 's/const OFF_FONTS=/const OFF_FONTS_GONE=/' "$R/desktop/office45.js" > "$T/page/desktop/office45.js"
@@ -118,9 +324,9 @@ cp "$R/desktop/spro45.js" "$T/page/desktop/spro45.js"
 cp "$R/iso/sys/apps/mksheetpro.py" "$T/page/iso/sys/apps/mksheetpro.py"
 python3 "$T/page/iso/sys/apps/mksheetpro.py" "$T/gone.h" >"$T/mk.log" 2>&1; RC=$?
 if [ $RC = 1 ] && grep -q 'OFF_FONTS' "$T/mk.log"; then
-	ok "14. mksheetpro.py refuses a page it cannot read (no quiet default)" 1
+	ok "23. mksheetpro.py refuses a page it cannot read (no quiet default)" 1
 else
-	ok "14. mksheetpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
+	ok "23. mksheetpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
 fi
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/sp.log" "$OUT/app.log" 2>/dev/null
 for f in "$T/state_File.txt" "$T/state_Data.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done

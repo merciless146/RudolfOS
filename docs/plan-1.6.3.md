@@ -90,6 +90,25 @@ accent colours), its memory at idle against the web version, built in the releas
   (its HTML with the page's stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
+#### Status (2026-11-28, session): SpreadsheetPro's functions check -- a changed book is not thrown away
+- **The fault a person hits:** File ▸ Close threw the book away without a word (a bare `gtk_widget_destroy`, no
+  `delete-event`), and New and Open replaced the cells outright. All four ways out now ask first -- the window's own X,
+  File ▸ Close, New and Open... -- in the page's own overlay inside the window, with the page's three answers: **Save**
+  writes the book (through the chooser when it has no file, and the act that was put off runs when that save finishes),
+  **Discard** goes ahead, **Cancel** stays where it was and writes nothing. The question names the book as the page's
+  does (`Book1`, or the file's name), and the status line says it too.
+- **Closing ends the program:** the window's destroy alone left the loop running with the book gone, so a closed
+  SpreadsheetPro stayed behind as a headless process; the window and the loop go together now.
+- **Its test (the same workflow): 22 passed, 0 failed, 339 320 bytes.** Three cases of the guard. Case 20 closes a book
+  of two cells with a change in it: the question is up, `dirty 1`, both cells still there, the file's bytes untouched,
+  and Escape (the Cancel answer) leaves the book, the cells and the bytes as they were. Case 21 answers Save and finds
+  the change written in the page's own JSON (`[[0,7],[702,"keep"]]`) with the window gone. Case 22 closes a book with
+  nothing to lose and no question is asked. The check's hand on the X is `RUDOLF_SP_DO=close` (it waits for the first
+  change and asks again while the question is put off) and its answer is `RUDOLF_SP_ANSWER=save|discard|cancel`, which
+  calls the same callback a press on the overlay's button does (the overlay cannot be aimed by the check); the state's
+  `answer` line (0 Cancel, 1 Discard, 2 Save) lets a case see which answer was given. Escape counts as Cancel, which is
+  what `rui_confirm` hands its callback as -1.
+
 #### Status (2026-11-27, scheduled task): SpreadsheetPro begun, step 1 (the window, the grid and its formulas)
 - **Branch `sheetpro-1`:** `iso/sys/apps/sheetpro.c` (`/usr/bin/rudolf-sheetpro`, with librudolf-ui) has the page's window
   (1000 x 660) as `desktop/spro45.js` draws it: the page's eight menus (File, Edit, View, Insert, Format, Data, Tools,
@@ -122,6 +141,49 @@ accent colours), its memory at idle against the web version, built in the releas
   sizes, frozen panes, more than one sheet, and the assistant -- steps 2 and 3. The screenshot comparison against the web
   SpreadsheetPro is **not** in it yet either: it comes with the step that makes every view of the window. The native
   desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is **not** in `NATIVE_APPS[]`.
+#### Status (2026-11-28, session): SpreadsheetPro step 2 begun (the .RSHEET file)
+- **Branch `sheetpro-2`:** a .RSHEET opens and saves exactly as `sprof45.js` writes it -- its v2 JSON: the book's styles
+  (each different one once, in the page's order) and its sheet's cells as `[spK(r,c), value, formula, style]`, the value
+  what the page parses (a number, TRUE or FALSE, or text -- with the page's `'` in front of a text that would read back
+  as something else), sorted by the cell's key. A file the page or Oracle saved opens here, and one saved here opens
+  there; the version 1 format of the old Spreadsheet is read too. The window's title is `NAME - SpreadsheetPro` with the
+  page's ` *` while there are changes, New (Ctrl+N) is a book with no file, Open... (Ctrl+O) and Save, Save as...
+  (Ctrl+S, Shift+Ctrl+S) are the page's own File rows and use the desktop's own file chooser, and the program takes a
+  path on its command line, which is how Files launches an app with a file.
+- **A book of several sheets is refused, not cut down:** this step shows one sheet. Opening a .RSHEET of two and
+  saving it kept the first and dropped the rest without a word, so the loader counts the sheets before it touches the
+  book and refuses one of more than a single sheet, naming the file, saying how many it has, and leaving the bytes as
+  they were; the reason is on the status line before the dialog opens (whose own loop runs the state's timer).
+- **CSV, read and written as the page does it:** a .CSV or .TSV opens with `sprof45.js`'s `spFromCSV` rules -- the
+  first line's own delimiter (tab, then semicolon, then comma), quotes with a doubled quote inside, CRLF and a BOM
+  skipped, each field a cell's text -- and the file's own name, without the extension, is the sheet's. Saving it back
+  (Ctrl+S on a CSV, as the page's `doSave` does, or a Save as to a .CSV) writes what each cell shows -- the formula's
+  value, not its text -- quoted where it holds a delimiter, a quote or a line break, a line each, CRLF. File's two
+  greyed rows are live: Import CSV asks by the page's own title and reads the file as this step's one sheet (the page
+  puts it in a new sheet; this step has one), and Export this sheet as CSV writes it wherever it is asked to without
+  becoming the book's file.
+- **Its test (the same workflow):** **19 passed, 0 failed, 338 896 bytes**, hardened (the app's budget is 1 MB). Case 14
+  opens a .RSHEET the page wrote -- a number, a formula worked out as 10, a bold cell and a centred one -- with its name
+  in the title and `dirty 0`; case 15 types into it (the page's ` *` in the window's own title, `dirty 1`) and presses
+  Ctrl+S, then reads the file back: v2, the page's `app`, the cells by key (`[0,9]`, `[1,null,"=A1*2"]`,
+  `[702,"x",null,0]`, `[1406,7,null,1]`), a text with a quote and a backslash, a number of 15 digits, `styles`
+  `[{"b":1},{"ha":"center"}]`, the sheet's own name, and the status line's `Saved grid.RSHEET` -- the name read
+  after the saver had taken the book's own away, which is how the freed path showed itself. The case caught that fault:
+  Ctrl+S hands the saver the path already held, which was freed and then copied, so the title and the status line read
+  freed memory; both places now take the new name first. The review of the section also made a number that is not
+  finite a JSON null instead of `inf`, kept the sheet's own name rather than always saving `Sheet1`, and cut a second
+  pass over the cells and a macro from the writer. Case 17 opens a two-sheet book: it is refused, `Book1` stays in the
+  title, `file -`, `cells 0`, `say two.RSHEET has 2 sheets`, and the file's bytes are the same afterwards. Case 18 opens
+  a CSV written with a quote inside a quoted field and CRLF, checks its cells (5, 7, `a,b`, `say "hi"`, 0.5), presses
+  Ctrl+S and gets the same bytes back. Case 19 exports a .RSHEET's sheet through `RUDOLF_SP_EXPORT` and asserts the
+  page's own text: `5,10,` / `x,,` / `,,7`, CRLF -- the formula's 10, and the empty cells' commas in place. (It opens
+  its own book: reading case 14's after case 15 has typed into and saved it would test the order, not the export.)
+- **Not in this slice, by the plan's own split:** .xlsx with its import and export rows, page setup, printing and the
+  PDFs, and more than one sheet (which is why a book of several is refused rather than cut down); the number formats, the sizes and hiding of rows and columns, the merges, the frozen panes, the charts,
+  the other sheets and the assistant are not carried through a save yet (the step that models each takes it on). The
+  screenshot comparison is still not in it: it comes with the step that makes every view of the window. The native
+  desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is still not in `NATIVE_APPS[]`.
+
 #### Status (2026-11-27, scheduled task): PresentPro begun, step 1 (the window, its slides and their places)
 - **Branch `presentpro-1`:** `iso/sys/apps/presentpro.c` (`/usr/bin/rudolf-presentpro`, with librudolf-ui) has the page's
   window with its eight menus and the page's own rows (File 18, Home 20, Insert 16, Design 4, Arrange 21, Slide Show 7,
