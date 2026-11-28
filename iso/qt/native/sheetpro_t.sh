@@ -325,14 +325,15 @@ F5=$T/heads.RSHEET
 cat > "$F5" <<'RS'
 {"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"Sheet1","color":"","cells":[[0,5],[702,10],[1404,15],[1,"x"],[2808,4],[2809,6],[2810,8]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
 RS
-ST24=$T/state_heads; rm -f "$ST24"
+ST24=$T/state_heads; rm -f "$ST24" "$T/heads.steps"
 RUDOLF_SP_STATE=$ST24 DISPLAY=$DSP "$BIN" "$F5" >"$T/sp_heads.log" 2>&1 & SPP24=$!
 i=0; while [ $i -lt 60 ] && ! grep -q '^area ' "$ST24" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 WIN24=$(DISPLAY=$DSP xdotool search --sync --name 'heads\.RSHEET - SpreadsheetPro$' 2>/dev/null | head -1)
 i=0; while [ $i -lt 60 ] && [ -n "$WIN24" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN24" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN24" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 AX=$(sed -n 's/^area \([0-9]*\) [0-9]*$/\1/p' "$ST24"); AY=$(sed -n 's/^area [0-9]* \([0-9]*\)$/\1/p' "$ST24")
-press() { DISPLAY=$DSP xdotool mousemove --window "$WIN24" "$1" "$2"; DISPLAY=$DSP xdotool click 1; sleep 0.8; }
+press() { DISPLAY=$DSP xdotool mousemove --window "$WIN24" "$1" "$2"; DISPLAY=$DSP xdotool click 1; sleep 0.8
+	grep -E '^(sel |selname|agg |cells )' "$ST24" 2>/dev/null | tr '\n' ' ' >> "$T/heads.steps"; echo >> "$T/heads.steps"; }
 RC=0; WHY=""
 chk() { if eval "$1" >/dev/null 2>&1; then :; else RC=1; WHY="$WHY $2"; fi; }
 press $((AX + 86)) $((AY + 11))                  # (column A's head)
@@ -358,7 +359,7 @@ chk 'grep -q "^cell B5 8$" "$ST24"' kept
 DISPLAY=$DSP xdotool key ctrl+z; sleep 1.0
 chk 'grep -q "^cells 7$" "$ST24"' undone
 ok "24. a head takes its whole column or row, the status line adds it up, and Delete takes only its cells" \
-	"$([ $RC = 0 ] && echo 1)" "failed:${WHY:-none} | $(grep -E '^(sel |selname|agg|cells) ' "$ST24" 2>/dev/null | tr '\n' ' '); $(head -4 "$T/sp_heads.log")"
+	"$([ $RC = 0 ] && echo 1)" "failed:${WHY:-none} | $(tr '\n' '|' < "$T/heads.steps" 2>/dev/null); $(head -4 "$T/sp_heads.log")"
 kill $SPP24 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"
