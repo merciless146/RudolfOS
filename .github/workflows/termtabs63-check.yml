@@ -1,0 +1,23 @@
+name: Terminal tabs (1.6.3)
+# The Command Prompt and the Linux terminal are one app: the way between them (＋, Ctrl+Shift+T), every way in coming to
+# the open window, the "Set up Linux…" row, and the stale "no Linux" answer that locked a window to the Command Prompt
+# (the owner, 2026-11-28): termtabs63_t.js.
+on:
+  workflow_dispatch:
+  push:
+    branches: ['terminal-tabs']
+  pull_request:
+    paths: ['desktop/term26.js', 'desktop/base_v24.html', 'desktop/linux26.js', 'iso/qt/shell2/termtabs63_t.js', '.github/workflows/termtabs63-check.yml']
+permissions: {contents: read}
+jobs:
+  tabs:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: termtabs63_t.js
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/termtabs63_t.js

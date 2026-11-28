@@ -24,6 +24,14 @@ Summary: In progress.
   from the page at build time, bold, italic, underline, strikethrough, the colour, the three alignments, bullets and
   numbering, undo and redo), its list of slides, its stage with the page's eight layouts and its notes are now a program
   of its own, `rudolf-presentpro`, so PresentPro is no longer only a web app.
+- Fixed: the Command Prompt and the Linux terminal are one Terminal again, and the way between them cannot be lost. A
+  window kept the answer it was born with: at sign-in the encrypted folder may not be open yet, its one check of Debian
+  failed then, and from that the tab bar's ＋ (Ctrl+Shift+T) gave another Command Prompt tab for the window's whole life —
+  nothing said, and no way to the Linux terminal — while on a Rudolf OS without Debian there was nothing to choose at all.
+  The answer is now asked whenever the ＋ opens its menu (a failed status call asked again once), and without Debian the
+  menu offers "Set up Linux (Debian)…" and opens that page. The Terminal is also one window: Ctrl+Alt+T, the Start menu's
+  Terminal, the taskbar, prompt() (a .BAT, a Lua program, rpk) and the desktop's Command Prompt come to the Terminal that
+  is open and add their tab there, instead of opening a second one whose tabs are somewhere else.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
   is how the camera went a release without a capture source; it now names every plug-in it cannot find.
