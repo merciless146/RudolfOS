@@ -38,7 +38,9 @@ ok() { if [ "$2" = 1 ]; then NP=$((NP+1)); echo "PASS $1"; else NF=$((NF+1)); ec
 i=0; while [ $i -lt 60 ] && [ ! -s "$ST" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 # (the title is the page's own: the file's name, or Untitled, and * while the writing is not in its file -- so the
 #  window is looked for by the end of its title, not by the whole of it)
-WIN=$(DISPLAY=$DSP xdotool search --sync --name 'WordPro$' 2>/dev/null | head -1)
+WIN=""; i=0; while [ $i -lt 80 ] && [ -z "$WIN" ]; do
+	WIN=$(DISPLAY=$DSP xdotool search --name 'WordPro$' 2>/dev/null | head -1)
+	[ -n "$WIN" ] && break; timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 ok "1. the window opens, called 'Untitled - WordPro'" "$([ -n "$WIN" ] && echo 1)" "no window; $(cat "$T/wp.log")"
 grep -q '^styles 9$' "$ST" && grep -q '^fonts 12$' "$ST"
 ok "2. the toolbar's lists are the page's: 9 styles, 12 fonts (mkwordpro.py)" "$([ $? = 0 ] && echo 1)" "$(head -20 "$ST")"
@@ -74,18 +76,6 @@ sleep 1
 grep -q '^words 2$' "$ST" && grep -q '^chars 6$' "$ST"
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
 ok "8. a second line is counted as text, its newline not a character" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(words|chars|text) ' "$ST")"
-# (New is a step of the history, as the page's own is: undo brings the page back, redo empties it again. There are
-#  unsaved changes on the page, so New asks first, and Don't save -- the answer the test would press -- throws it away)
-echo "Don't save" > "$ANS"
-DISPLAY=$DSP xdotool key ctrl+n; sleep 1.2
-: > "$ANS"
-A=$(grep -c '^words 0$' "$ST")
-DISPLAY=$DSP xdotool key ctrl+z; sleep 0.9
-B=$(grep -c '^words 2$' "$ST")
-DISPLAY=$DSP xdotool key ctrl+y; sleep 0.9
-C=$(grep -c '^words 0$' "$ST")
-[ "$A$B$C" = 111 ]
-ok "9. New is a step of the history: undo brings the page back, redo empties it again" "$([ $? = 0 ] && echo 1)" "after New $A, after undo $B, after redo $C (words: $(grep '^words' "$ST"))"
 # ---- 10. undo puts the writing back *with its marks*: the bold is still there, and the cursor is where it was
 # (a step is the writing and its tag set, so undoing a letter no longer takes every mark in the document with it)
 DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.5
@@ -104,9 +94,21 @@ DISPLAY=$DSP xdotool type --delay 12 'two'; DISPLAY=$DSP xdotool key Return; sle
 grep '^tags' "$ST" | grep -q 'find'
 ok "11. Ctrl+F marks the match (the find tag is on the writing, not only on the choice)" \
 	"$([ $? = 0 ] && echo 1)" "$(grep -E '^(tags|sel) ' "$ST" | tr '\n' ' ')"
+# (New is a step of the history, as the page's own is: undo brings the page back, redo empties it again. There are
+#  unsaved changes on the page, so New asks first, and Don't save -- the answer the test would press -- throws it away)
+echo "Don't save" > "$ANS"
+DISPLAY=$DSP xdotool key ctrl+n; sleep 1.2
+: > "$ANS"
+A=$(grep -c '^words 0$' "$ST")
+DISPLAY=$DSP xdotool key ctrl+z; sleep 0.9
+B=$(grep -c '^words 2$' "$ST")
+DISPLAY=$DSP xdotool key ctrl+y; sleep 0.9
+C=$(grep -c '^words 0$' "$ST")
+[ "$A$B$C" = 111 ]
+ok "11b. New is a step of the history: undo brings the page back, redo empties it again" "$([ $? = 0 ] && echo 1)" "after New $A, after undo $B, after redo $C (words: $(grep '^words' "$ST"))"
 kill $WPP 2>/dev/null; sleep 0.6
 # (the app of the first cases is put away by its window's own process: it was a child of this shell rather than the shell)
-for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
+for w in $(DISPLAY=$DSP xdotool search --name 'WordPro$' 2>/dev/null); do
 	p=$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; done
 sleep 1.5
 # (a fresh app of the same kind: the window takes the keys, the press puts the writing ready -- retried, because a press
@@ -115,7 +117,9 @@ start_bul() {
 	ST_B=$1; rm -f "$ST_B"
 	RUDOLF_WP_STATE=$ST_B RUDOLF_WP_DO=$2 DISPLAY=$DSP "$BIN" >"$T/wp_bul.log" 2>&1 & WPP_B=$!
 	i=0; while [ $i -lt 80 ] && [ ! -s "$ST_B" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-	WIN_B=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
+	WIN_B=""; i=0; while [ $i -lt 80 ] && [ -z "$WIN_B" ]; do
+		WIN_B=$(DISPLAY=$DSP xdotool search --name 'WordPro$' 2>/dev/null | head -1)
+		[ -n "$WIN_B" ] && break; timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 	i=0; while [ $i -lt 80 ] && [ -n "$WIN_B" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN_B" 2>/dev/null
 		[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN_B" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 	sleep 2; DISPLAY=$DSP xdotool mousemove --window "$WIN_B" 480 300 click 1; sleep 0.8
@@ -350,7 +354,7 @@ ok "20. a change in a table's cell is a step of the history: Ctrl+Z takes it bac
 ST10=$T/state10.txt; rm -f "$ST10"; A10=$T/ans10; : > "$A10"
 RUDOLF_WP_STATE=$ST10 RUDOLF_WP_ANSWER=$A10 DISPLAY=$DSP "$BIN" >"$T/wp10.log" 2>&1 & WPP10=$!
 i=0; while [ $i -lt 40 ] && [ ! -s "$ST10" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-W10=$(DISPLAY=$DSP xdotool search --sync --onlyvisible --pid "$WPP10" 2>/dev/null | tail -1)
+W10=$(timeout 20 xdotool search --sync --onlyvisible --pid "$WPP10" 2>/dev/null | tail -1)
 i=0; while [ $i -lt 60 ] && [ -n "$W10" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W10" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W10" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W10" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W10" 480 300 click 1; sleep 0.8; }
@@ -377,7 +381,7 @@ ok "21. the unsaved changes: the name and * in the title, and the page's questio
 ST11=$T/state11.txt; rm -f "$ST11"; A11=$T/ans11; : > "$A11"
 RUDOLF_WP_STATE=$ST11 RUDOLF_WP_ANSWER=$A11 RUDOLF_WP_CLOSE=1 DISPLAY=$DSP "$BIN" >"$T/wp11.log" 2>&1 & WPP11=$!
 i=0; while [ $i -lt 40 ] && [ ! -s "$ST11" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-W11=$(DISPLAY=$DSP xdotool search --sync --onlyvisible --pid "$WPP11" 2>/dev/null | tail -1)
+W11=$(timeout 20 xdotool search --sync --onlyvisible --pid "$WPP11" 2>/dev/null | tail -1)
 i=0; while [ $i -lt 60 ] && [ -n "$W11" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W11" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W11" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W11" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W11" 480 300 click 1; sleep 0.8; }
@@ -400,7 +404,7 @@ ok "22. ...and Close asks the same question: Cancel keeps the window, Don't save
 ST12=$T/state12.txt; rm -f "$ST12"
 RUDOLF_WP_STATE=$ST12 DISPLAY=$DSP "$BIN" >"$T/wp12.log" 2>&1 & WPP12=$!
 i=0; while [ $i -lt 40 ] && [ ! -s "$ST12" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-W12=$(DISPLAY=$DSP xdotool search --sync --onlyvisible --pid "$WPP12" 2>/dev/null | tail -1)
+W12=$(timeout 20 xdotool search --sync --onlyvisible --pid "$WPP12" 2>/dev/null | tail -1)
 i=0; while [ $i -lt 60 ] && [ -n "$W12" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W12" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W12" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W12" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W12" 480 300 click 1; sleep 0.8; }
