@@ -263,23 +263,23 @@ i=0; while [ $i -lt 60 ] && [ -n "$WIN8" ]; do DISPLAY=$DSP xdotool windowfocus 
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN8" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.4
 DISPLAY=$DSP xdotool type --delay 20 '4'; sleep 0.4; DISPLAY=$DSP xdotool key Tab; sleep 0.8
-RC=0
-grep -q '^dirty 1$' "$ST8" || RC=1
+RC=0; WHY=""
+chk() { if eval "$1" >/dev/null 2>&1; then :; else RC=1; WHY="$WHY $2"; fi; }
+chk 'grep -q "^dirty 1$" "$ST8"' dirty
 i=0; while [ $i -lt 40 ] && ! grep -q '^ask 1$' "$ST8" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-grep -q '^ask 1$' "$ST8" || RC=1                        # (the question is up)
-[ -d "/proc/$SPP8" ] || RC=1                           # (the window is still there)
-grep -q '^cells 2$' "$ST8" || RC=1                     # (with both of its cells)
-grep -q '^cell A2 keep$' "$ST8" || RC=1
-SUM4=$(md5sum "$F4" | cut -d' ' -f1)
-case "$(sed -n 's/^say //p' "$ST8")" in *"has changes that are not saved"*) ;; *) RC=1 ;; esac
-[ "$(md5sum "$F4" | cut -d' ' -f1)" = "$SUM4" ] || RC=1   # (nothing is written while the question waits)
-DISPLAY=$DSP xdotool key Escape; sleep 0.9                # (Cancel: the book stays as it is)
-grep -q '^answer 0$' "$ST8" || RC=1   # (Cancel: the question was answered, and the book stays as it is)
-[ -d "/proc/$SPP8" ] || RC=1
-grep -q '^cells 2$' "$ST8" || RC=1
-[ "$(md5sum "$F4" | cut -d' ' -f1)" = "$SUM4" ] || RC=1
+chk 'grep -q "^ask 1$" "$ST8"' question          # (the question is up)
+chk '[ -d "/proc/$SPP8" ]' alive                 # (the window is still there)
+chk 'grep -q "^cells 2$" "$ST8"' cells           # (with both of its cells)
+chk 'grep -q "^cell A2 keep$" "$ST8"' a2
+chk 'case "$(sed -n "s/^say //p" "$ST8")" in *"has changes that are not saved"*) true ;; *) false ;; esac' say
+chk '[ "$(md5sum "$F4" | cut -d" " -f1)" = "$SUM4" ]' untouched   # (nothing is written while the question waits)
+DISPLAY=$DSP xdotool key Escape; sleep 0.9        # (Cancel: the book stays as it is)
+chk 'grep -q "^answer 0$" "$ST8"' cancel          # (Cancel: the question was answered, and the book stays)
+chk '[ -d "/proc/$SPP8" ]' alive2
+chk 'grep -q "^cells 2$" "$ST8"' cells2
+chk '[ "$(md5sum "$F4" | cut -d" " -f1)" = "$SUM4" ]' untouched2
 ok "20. closing a modified book asks first, and Cancel keeps it with nothing written" \
-	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|dirty|ask|answer|cells|say) ' "$ST8" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_ask.log")"
+	"$([ $RC = 0 ] && echo 1)" "failed:${WHY:-none} | $(grep -E '^(title|dirty|ask|answer|cells|say) ' "$ST8" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_ask.log")"
 kill $SPP8 2>/dev/null; sleep 0.4
 # ---- 21. ...and Save answers it: the change is written and the window goes
 # (RUDOLF_SP_ANSWER is the check's press on the overlay's Save, which it cannot aim; the way through is the one a click takes)
