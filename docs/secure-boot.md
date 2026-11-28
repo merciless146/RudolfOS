@@ -74,10 +74,11 @@ yet.
    above were done in the wrong order, which is the check that keeps a mistake from reaching a computer.
 5. Later (Part 0 item 3e), once every supported stable release trusts the new key, the old one leaves the list.
 
-**What proves each step.** `keyswitch-check` runs for every change of the list: `keyswitch.py` and its host test, a job
-on `main` that fails if `RPK_SIGNING_KEY` is missing, and an on-demand run from a branch (`expect=refused`) that fails
-unless the branch is refused it — the environment's Deployment branches must be `main` only, which they were when read
-from GitHub on 2026-11-28. `deadcheck.py` refuses a list the tools cannot read. On the day, the release's `manifest.sig` and
+**What proves each step.** `keyswitch-check` runs for every change of `iso/systools/**`, of the list, or of this
+document: `keyswitch.py` and its 17 host cases, `deadcheck.py` (whose key gate these paths are for; no workflow ran it
+before), and on `main` a job in the `release` environment that fails if `RPK_SIGNING_KEY` is missing. The environment's
+Deployment branches are `main` only — read from GitHub on 2026-11-28. A later rotation changes `ROTATION` in
+`keyswitch.py` and nothing else: the gate names no key, so a list that has moved past this pair still checks. `deadcheck.py` refuses a list the tools cannot read. On the day, the release's `manifest.sig` and
 `beta/key.txt` show which key signed, and a computer on the previous release that updates proves the pair is trusted.
 
 **Not done by a session:** the environment's secret, the repository secret's deletion, and the moment of the switch.

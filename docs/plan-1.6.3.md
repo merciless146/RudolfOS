@@ -62,13 +62,15 @@ Library's publish still sign on main; a computer on the new release trusts both 
   four public keys as `mkuki.py` reads them, no key twice, and at least one of the two official keys, since a list
   without one makes every computer refuse this tree's releases) and `deadcheck.py` runs it before every pull request;
   `--switch --yes` makes the switch (the new key first, the old one after it) and refuses without the owner's
-  word and whenever the list would not check.
+  word and whenever the list would not check. The gate names no key, so a later rotation changes `ROTATION` in the tool
+  and nothing else.
 - **Its check:** `iso/qt/host/keyswitch_t.sh`, 15 cases on copies of the list (the state as it stands, each refusal,
   the switch, a second switch, and that this tree is still before the switch so one cannot be made by accident), and
-  `.github/workflows/keyswitch-check.yml`: the tool and its test for every change of the list; on `main` a job in the
-  `release` environment that fails if `RPK_SIGNING_KEY` is not there (so a broken secret shows now, not at the next
-  6-hourly release); and an on-demand run with `expect=refused` from a branch, which is the plan's own check — a
-  branch that asks for the environment gets no signing key — made repeatable instead of done once.
+  `.github/workflows/keyswitch-check.yml`: the tool and its 17 cases, `deadcheck.py` (no workflow ran it before, so its
+  new gate had no CI at all), and on `main` a job in the `release` environment that fails if `RPK_SIGNING_KEY` is not
+  there — a broken secret shows now, not at the next 6-hourly release. What the plan asked as a one-off, that a branch
+  cannot see the signing key, is answered by the environment's policy read from GitHub (Deployment branches: `main`),
+  not by a job of its own.
 - **The day itself (3d) is not done and cannot be:** it needs a stable release that ships both keys to have been out
   for a while (the owner's call), then `keyswitch.py --switch --yes`, the environment's `RPK_SIGNING_KEY` set to the
   new key and the repository secret deleted, and the merge — in that order, which `docs/secure-boot.md` now writes

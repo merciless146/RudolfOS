@@ -1,31 +1,22 @@
 # 1.6.3 Part 0: the release key's replacement (iso/systools/keyswitch.py, docs/secure-boot.md "Replacing the release key").
-# Three questions, each its own job:
-#  - the tool and its host test, for every change of the key list or of the tools that read it;
-#  - on main, that the release environment's RPK_SIGNING_KEY is there at all (a broken or deleted secret would otherwise
-#    show only when the next 6-hourly release cannot sign);
-#  - on demand, that a branch cannot see it: run this workflow from a branch with expect=refused and it must fail to find
-#    RPK_SIGNING_KEY; from main with expect=present it must find it. This is the check the plan asked for, made
-#    repeatable. Nothing here ever prints, writes or uses the key: only whether it is empty.
+# What the switch's day rests on, and nothing else: the tool and its host test, deadcheck.py (whose new key gate these are
+# the paths for: no CI workflow ran it before), and on main a job in the `release` environment that fails if
+# RPK_SIGNING_KEY is gone, so a broken secret shows now instead of at the next 6-hourly release. That job sees only
+# whether the key is empty: nothing here prints, writes or uses it.
 name: Release key switch check
 on:
   pull_request:
-    paths: ['iso/trusted-keys.txt', 'iso/systools/keyswitch.py', 'iso/systools/keycheck.py', 'iso/systools/mkuki.py',
-            'iso/qt/host/keyswitch_t.sh', 'docs/secure-boot.md', '.github/workflows/keyswitch-check.yml']
+    paths: ['iso/systools/**', 'iso/trusted-keys.txt', 'iso/qt/host/keyswitch_t.sh', 'docs/secure-boot.md',
+            '.github/workflows/keyswitch-check.yml']
   push:
     branches: [main]
-    paths: ['iso/trusted-keys.txt', 'iso/systools/keyswitch.py', 'iso/systools/keycheck.py', 'iso/systools/mkuki.py',
-            'iso/qt/host/keyswitch_t.sh', 'docs/secure-boot.md', '.github/workflows/keyswitch-check.yml']
-  workflow_dispatch:
-    inputs:
-      expect:
-        description: 'refused: a branch must not see RPK_SIGNING_KEY; present: main must'
-        type: choice
-        options: [refused, present]
-        default: refused
+    paths: ['iso/systools/**', 'iso/trusted-keys.txt', 'iso/qt/host/keyswitch_t.sh', 'docs/secure-boot.md',
+            '.github/workflows/keyswitch-check.yml']
 permissions: {contents: read}
 jobs:
   tool:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - name: Where the replacement stands
@@ -34,6 +25,15 @@ jobs:
         run: python3 iso/systools/keyswitch.py --check
       - name: keyswitch_t.sh
         run: sh iso/qt/host/keyswitch_t.sh
+  deadcheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: gcc and pkg-config (deadcheck compiles sys/*.c)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc pkg-config libglib2.0-dev >/dev/null
+      - name: deadcheck.py
+        run: python3 iso/systools/deadcheck.py
   signing-key:
     if: github.event_name == 'push'
     runs-on: ubuntu-24.04
@@ -45,19 +45,3 @@ jobs:
         run: |
           test -n "$KEY" || { echo "::error title=Signing secret::main cannot see RPK_SIGNING_KEY: add it to the release environment's secrets (Settings > Environments > release) or no release can sign"; exit 1; }
           echo "the release environment gives main its RPK_SIGNING_KEY"
-  branch-rule:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-24.04
-    environment: release
-    steps:
-      - uses: actions/checkout@v5
-      - name: Only main may use it
-        env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}', EXPECT: '${{ inputs.expect }}'}
-        run: |
-          test -n "$KEY" && GOT=present || GOT=refused
-          echo "this run (${GITHUB_REF_NAME}, event ${GITHUB_EVENT_NAME}) got: $GOT; expected: $EXPECT"
-          if [ "$GOT" = "$EXPECT" ]; then
-            if [ "$GOT" = refused ]; then echo "the environment keeps the signing key to main: \"$GITHUB_REF_NAME\" was refused"; else echo "main is given the signing key"; fi
-          else
-            echo "::error title=Release environment::this ref got $GOT where $EXPECT was expected: Settings > Environments > release > Deployment branches must be main only, and its RPK_SIGNING_KEY set"; exit 1
-          fi

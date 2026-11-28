@@ -13,11 +13,10 @@ Summary: In progress.
   hardware it does not reach, the system software only this project can add, and the files it cannot yet manage — each
   gap with the first pull request it needs.
 - Changed: the release key's replacement (plan 1.6.3 Part 0): `iso/systools/keyswitch.py` says where the replacement
-  stands, checks the key list the tools and recovery.efi read (run by `deadcheck.py` before every pull request), and
-  makes the switch itself when the owner says the moment has come; `keyswitch-check` runs for every change of that
-  list, and its on-demand run from a branch proves the "release" environment keeps the signing key to main. Nothing
-  is switched yet: the new key still waits behind the old one, and docs/secure-boot.md now says what the switch's day
-  is.
+  stands, checks the key list the tools and recovery.efi read (run by `deadcheck.py` before every pull request, and by
+  CI for every change of `iso/systools/**`), and makes the switch itself when the owner says the moment has come; the
+  gate names no key, so a later rotation passes it unchanged. Nothing is switched yet: the new key still waits behind
+  the old one, and docs/secure-boot.md now says what the switch's day is.
 - New: on the native desktop, Settings is the native Settings app: Privacy, Security, System health and Users join the
   pages built before it, so every page of Settings is native there (Chromium mode and Lite keep the web Settings, as the
   owner's rule says). The Users page's security keys and fingerprints are added, removed and required through the page's own
