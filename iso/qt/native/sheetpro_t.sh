@@ -144,13 +144,16 @@ WIN3=$(DISPLAY=$DSP xdotool search --name '^grid\.RSHEET - SpreadsheetPro$' 2>/d
 i=0; while [ $i -lt 60 ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN3" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN3" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.5
-DISPLAY=$DSP xdotool type --delay 20 '9'; sleep 0.4; DISPLAY=$DSP xdotool key Return; sleep 0.9
+DISPLAY=$DSP xdotool type --delay 20 '9'; sleep 0.4; DISPLAY=$DSP xdotool key Return; sleep 1.2
 RC=0
+# (the window's own title says it at once, the page's * for changes; the state file follows a moment later)
+TITLE3=$(DISPLAY=$DSP xdotool getwindowname "$WIN3" 2>/dev/null)
+[ "$TITLE3" = "grid.RSHEET * - SpreadsheetPro" ] || RC=1
 grep -q '^dirty 1$' "$ST3" || RC=1
-grep -q '^title grid.RSHEET \* - SpreadsheetPro$' "$ST3" || RC=1
-DISPLAY=$DSP xdotool key ctrl+s; sleep 1.4
+DISPLAY=$DSP xdotool key ctrl+s; sleep 1.6
+TITLE3=$(DISPLAY=$DSP xdotool getwindowname "$WIN3" 2>/dev/null)
+[ "$TITLE3" = "grid.RSHEET - SpreadsheetPro" ] || RC=1
 grep -q '^dirty 0$' "$ST3" || RC=1
-grep -q '^title grid.RSHEET - SpreadsheetPro$' "$ST3" || RC=1
 python3 - "$F" <<'PY' || RC=1
 import json, sys
 d = json.load(open(sys.argv[1]))
@@ -165,7 +168,8 @@ assert cells[1406] == [1406, 7, None, 1], cells[1406]
 assert d['styles'] == [{'b': 1}, {'ha': 'center'}], d['styles']
 PY
 ok "15. a change puts the page's * in the title, and Ctrl+S saves the page's own JSON (cells, formulas and styles)" \
-	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|dirty|file) ' "$ST3" | tr '\n' ' '); $(head -c 400 "$F" 2>/dev/null)"
+	"$([ $RC = 0 ] && echo 1)" "title '$TITLE3'; $(sed -n '1,12p' "$ST3" | tr '\n' ' '); $(tail -3 "$T/sp_open.log" 2>/dev/null); $(head -c 300 "$F" 2>/dev/null)"
+cp "$ST3" "$OUT/state_open.txt" 2>/dev/null
 kill $SPP3 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"
