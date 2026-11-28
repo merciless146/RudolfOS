@@ -51,26 +51,25 @@ printf '%s\n' "$K1" "$K2" "$(gen)" "$(gen)" > "$W/l"; o=$("$K" --check "$W/l" 2>
 ok "11. four keys (mkuki.py's bound) accepted, a stranger among them named but not refused" \
   "$([ $r = 0 ] && echo "$o" | grep -q 'keyswitch: OK' && echo 1)" "$o"
 
-# ---- 12. the switch itself
-cp "$ISO/trusted-keys.txt" "$W/t"; S0=$(cksum < "$W/t")
-o=$("$K" --switch "$W/t" 2>&1); r=$?
+# ---- 12. the switch itself, on two made-up keys so that no case depends on where this tree stands
+A=$(gen); B=$(gen); printf '%s\n' "$A" "$B" > "$W/t2"; S0=$(cksum < "$W/t2")
+o=$("$K" --switch --to "$B" "$W/t2" 2>&1); r=$?
 ok "12. without --yes it refuses and writes nothing" \
-  "$([ $r = 1 ] && echo "$o" | grep -q 'give --yes' && [ "$(cksum < "$W/t")" = "$S0" ] && echo 1)" "$o"
-o=$("$K" --switch --yes --to "$(gen)" "$W/t" 2>&1); r=$?
+  "$([ $r = 1 ] && echo "$o" | grep -q 'give --yes' && [ "$(cksum < "$W/t2")" = "$S0" ] && echo 1)" "$o"
+o=$("$K" --switch --yes --to "$(gen)" "$W/t2" 2>&1); r=$?
 ok "13. a key the list does not trust is refused, so a later rotation must say which key it means" \
-  "$([ $r = 1 ] && echo "$o" | grep -q 'does not trust the key to move first' && [ "$(cksum < "$W/t")" = "$S0" ] && echo 1)" "$o"
-o=$("$K" --switch --yes --to "$K2" "$W/t" 2>&1); r=$?
-ok "14. --yes puts the key it is given first and the one that signed after it, and the list still checks" \
-  "$([ $r = 0 ] && [ "$(grep -v '^#' "$W/t" | grep . | sed -n 1p)" = "$K2" ] \
-     && [ "$(grep -v '^#' "$W/t" | grep . | sed -n 2p)" = "$K1" ] \
-     && "$K" --check "$W/t" >/dev/null 2>&1 && echo 1)" "$o"
-S1=$(cksum < "$W/t"); o=$("$K" --status "$W/t" 2>&1)
-ok "15. after it the key given signs, and the one it replaced may leave the list later" \
-  "$(echo "$o" | grep -q "the first one signs: $K2" && echo "$o" | grep -q 'switched: the new key signs' \
-     && echo "$o" | grep -q 'item 3e' && echo 1)" "$o"
-o=$("$K" --switch --yes --to "$K2" "$W/t" 2>&1); r=$?
+  "$([ $r = 1 ] && echo "$o" | grep -q 'does not trust the key to move first' && [ "$(cksum < "$W/t2")" = "$S0" ] && echo 1)" "$o"
+o=$("$K" --switch --yes --to "$B" "$W/t2" 2>&1); r=$?
+ok "14. --yes puts the key it is given first and keeps the one that signed, and the list still checks" \
+  "$([ $r = 0 ] && [ "$(grep -v '^#' "$W/t2" | grep . | sed -n 1p)" = "$B" ] \
+     && [ "$(grep -v '^#' "$W/t2" | grep . | sed -n 2p)" = "$A" ] \
+     && "$K" --check "$W/t2" >/dev/null 2>&1 && echo 1)" "$o"
+S1=$(cksum < "$W/t2"); o=$("$K" --status "$W/t2" 2>&1)
+ok "15. after it the key given is the one that signs" \
+  "$(echo "$o" | grep -q "the first one signs: $B" && echo "$o" | grep -q 'another key\|the old key\|the new key' && echo 1)" "$o"
+o=$("$K" --switch --yes --to "$B" "$W/t2" 2>&1); r=$?
 ok "16. a second switch says it is already switched and changes nothing" \
-  "$([ $r = 0 ] && echo "$o" | grep -q 'already switched' && [ "$(cksum < "$W/t")" = "$S1" ] && echo 1)" "$o"
+  "$([ $r = 0 ] && echo "$o" | grep -q 'already switched' && [ "$(cksum < "$W/t2")" = "$S1" ] && echo 1)" "$o"
 
 # ---- 17. the tool and the tree's own list agree, whichever side of the switch it is on
 o=$("$K" --status "$ISO/trusted-keys.txt" 2>&1)
