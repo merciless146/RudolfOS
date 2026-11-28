@@ -56,7 +56,7 @@ const srv = http.createServer((q, s) => { const u = decodeURIComponent(q.url.spl
   await choose(0);   // Command Prompt (C:)
   s = await state();
   ok('the Command Prompt is a tab in that same window, shown and ready to type in', s && s.termWins == 1 && s.tabs.length == 2 && /dtcmd/.test(s.shown[0] || '') && s.keys == 'none', s);
-  await p.evaluate(() => document.querySelectorAll('.dterm .dttab')[1].click()); await wait(400);
+  await p.evaluate(() => [...document.querySelectorAll('.dterm .dttab')].find(t => /Debian/.test(t.textContent)).click()); await wait(400);
   s = await state();
   ok('and the Debian tab switches back to the Linux terminal', s && s.tabs.length == 2 && !/dtcmd/.test(s.shown[0] || '') && s.keys == 'flex', s);
 
@@ -71,7 +71,7 @@ const srv = http.createServer((q, s) => { const u = decodeURIComponent(q.url.spl
   ok('the Terminal opened again (Ctrl+Alt+T, the Start menu) focuses the one window', s && s.termWins == 1 && s.tabs.length == 3, s);
 
   // ---- 3. Debian not set up: the menu says so and offers to set it up, instead of another Command Prompt tab
-  await p.evaluate(() => { window.__st = null; window.__st = {installed: false} }); await wait(100);
+  await p.evaluate(() => { window.__st = {installed: false} }); await wait(8500);   // the remembered "yes" holds 8 s
   m = await menu();
   ok('without Debian, ＋ offers "Set up Linux (Debian)…" and not a Linux tab', m.length == 2 && /Command Prompt \(C:\)/.test(m[0].t) && /Set up Linux/.test(m[1].t) && !m[1].off, m);
   await choose(1);
@@ -93,7 +93,7 @@ const srv = http.createServer((q, s) => { const u = decodeURIComponent(q.url.spl
   ok('choosing it adds the Debian tab to that same window', s && s.termWins == 1 && s.tabs.length == 2 && /Debian/.test(s.tabs[1]), s);
 
   // ---- 5. Ctrl+Shift+T is the same menu
-  await p.evaluate(() => document.querySelector('.dterm .body').dispatchEvent(new KeyboardEvent('keydown', {key: 'T', ctrlKey: true, shiftKey: true, bubbles: true})));
+  await p.evaluate(() => { const u = termOpen(); (u ? u.W.body : document.body).dispatchEvent(new KeyboardEvent('keydown', {key: 'T', ctrlKey: true, shiftKey: true, bubbles: true})) });
   await wait(900);
   m = await p.evaluate(() => [...document.querySelectorAll('.cmenu .cmi')].map(d => d.textContent));
   ok('Ctrl+Shift+T opens the same two ways', m.length == 2 && /Command Prompt/.test(m[0]) && /Linux/.test(m[1]), m);
