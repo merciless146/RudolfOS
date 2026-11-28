@@ -392,10 +392,11 @@ WIN25=$(DISPLAY=$DSP xdotool search --sync --name 'drag\.RSHEET - SpreadsheetPro
 i=0; while [ $i -lt 60 ] && [ -n "$WIN25" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN25" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN25" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 AX5=$(sed -n 's/^area \([0-9]*\) [0-9]*$/\1/p' "$ST25"); AY5=$(sed -n 's/^area [0-9]* \([0-9]*\)$/\1/p' "$ST25")
+RC5=0; WHY5=""; [ -n "$AX5" ] && [ -n "$AY5" ] || { RC5=1; WHY5="no-area"; AX5=${AX5:-0}; AY5=${AY5:-0}; }
 ccx() { echo $((AX5 + 46 + $1 * 80 + 40)); }
-ccy() { echo $((AY5 + 22 + $2 * 20 + 10)); }
+ccy() { echo $((AY5 + 22 + $1 * 20 + 10)); }
 hhx() { echo $((AX5 + 46 + ($1 + 1) * 80)); }
-hhy() { echo $((AY5 + 22 + ($2 + 1) * 20)); }
+hhy() { echo $((AY5 + 22 + ($1 + 1) * 20)); }
 # (a press, the drag and its release, as a person's, with a motion part of the way so the drag is a drag and not a jump;
 #  tried again while what it should leave is missing, as a press sent to a window can be lost)
 pull() { i=0
@@ -410,7 +411,6 @@ pull() { i=0
 		i=$((i+1))
 	done
 	grep -E '^(sel |selname|cells )' "$ST25" 2>/dev/null | tr '\n' ' ' >> "$T/drag.steps"; echo >> "$T/drag.steps"; }
-RC5=0; WHY5=""
 chk5() { if eval "$1" >/dev/null 2>&1; then :; else RC5=1; WHY5="$WHY5 $2"; fi; }
 pull $(ccx 0) $(ccy 0) $(ccx 1) $(ccy 1) '^selname A1:B2$'        # (A1 dragged to B2)
 chk5 'grep -q "^sel 1 1 0 0 1 1$" "$ST25"' dragcell
