@@ -90,6 +90,25 @@ accent colours), its memory at idle against the web version, built in the releas
   (its HTML with the page's stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
+#### Status (2026-11-28, session): SpreadsheetPro's functions check -- a changed book is not thrown away
+- **The fault a person hits:** File ▸ Close threw the book away without a word (a bare `gtk_widget_destroy`, no
+  `delete-event`), and New and Open replaced the cells outright. All four ways out now ask first -- the window's own X,
+  File ▸ Close, New and Open... -- in the page's own overlay inside the window, with the page's three answers: **Save**
+  writes the book (through the chooser when it has no file, and the act that was put off runs when that save finishes),
+  **Discard** goes ahead, **Cancel** stays where it was and writes nothing. The question names the book as the page's
+  does (`Book1`, or the file's name), and the status line says it too.
+- **Closing ends the program:** the window's destroy alone left the loop running with the book gone, so a closed
+  SpreadsheetPro stayed behind as a headless process; the window and the loop go together now.
+- **Its test (the same workflow): 22 passed, 0 failed, 339 320 bytes.** Three cases of the guard. Case 20 closes a book
+  of two cells with a change in it: the question is up, `dirty 1`, both cells still there, the file's bytes untouched,
+  and Escape (the Cancel answer) leaves the book, the cells and the bytes as they were. Case 21 answers Save and finds
+  the change written in the page's own JSON (`[[0,7],[702,"keep"]]`) with the window gone. Case 22 closes a book with
+  nothing to lose and no question is asked. The check's hand on the X is `RUDOLF_SP_DO=close` (it waits for the first
+  change and asks again while the question is put off) and its answer is `RUDOLF_SP_ANSWER=save|discard|cancel`, which
+  calls the same callback a press on the overlay's button does (the overlay cannot be aimed by the check); the state's
+  `answer` line (0 Cancel, 1 Discard, 2 Save) lets a case see which answer was given. Escape counts as Cancel, which is
+  what `rui_confirm` hands its callback as -1.
+
 #### Status (2026-11-27, scheduled task): SpreadsheetPro begun, step 1 (the window, the grid and its formulas)
 - **Branch `sheetpro-1`:** `iso/sys/apps/sheetpro.c` (`/usr/bin/rudolf-sheetpro`, with librudolf-ui) has the page's window
   (1000 x 660) as `desktop/spro45.js` draws it: the page's eight menus (File, Edit, View, Insert, Format, Data, Tools,
