@@ -293,18 +293,19 @@ i=0; while [ $i -lt 60 ] && [ -n "$WIN12" ]; do DISPLAY=$DSP xdotool windowfocus
 DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.4
 DISPLAY=$DSP xdotool type --delay 20 '7'; sleep 0.4; DISPLAY=$DSP xdotool key Tab; sleep 0.8
 i=0; while [ $i -lt 40 ] && [ -d "/proc/$SPP12" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-RC=0
-[ -d "/proc/$SPP12" ] && RC=1                            # (the window is gone)
+RC=0; WHY=""
+chk() { if eval "$1" >/dev/null 2>&1; then :; else RC=1; WHY="$WHY $2"; fi; }
+chk '[ ! -d "/proc/$SPP12" ]' alive                     # (the window is gone)
 python3 - "$F4" <<'PY'
 import json, sys
 d = json.load(open(sys.argv[1]))
 cells = {a[0]: a[1] for a in d['sheets'][0]['cells']}
 assert cells.get(0) == 7, cells          # (the change was saved, not thrown away)
-assert cells.get(1407) == 'keep', cells
+assert cells.get(702) == 'keep', cells
 PY
-[ $? = 0 ] || RC=1
+[ $? = 0 ] || { RC=1; WHY="$WHY saved"; }
 ok "21. Save answers the question: the change is written and the window closes" \
-	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(dirty|ask|say) ' "$ST12" 2>/dev/null | tr '\n' ' '); $(head -c 200 "$F4" 2>/dev/null)"
+	"$([ $RC = 0 ] && echo 1)" "failed:${WHY:-none} | $(head -20 "$ST12" 2>/dev/null | tr '\n' ' '); $(head -c 200 "$F4" 2>/dev/null); $(cat "$T/sp_save.log")"
 kill $SPP12 2>/dev/null; sleep 0.4
 # ---- 22. a book with nothing to lose closes at once, with no question
 ST9=$T/state_clean; rm -f "$ST9"
