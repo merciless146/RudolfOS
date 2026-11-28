@@ -332,34 +332,44 @@ WIN24=$(DISPLAY=$DSP xdotool search --sync --name 'heads\.RSHEET - SpreadsheetPr
 i=0; while [ $i -lt 60 ] && [ -n "$WIN24" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN24" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN24" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 AX=$(sed -n 's/^area \([0-9]*\) [0-9]*$/\1/p' "$ST24"); AY=$(sed -n 's/^area [0-9]* \([0-9]*\)$/\1/p' "$ST24")
-press() { DISPLAY=$DSP xdotool mousemove --window "$WIN24" "$1" "$2"; DISPLAY=$DSP xdotool click 1; sleep 0.8
+# (a press is tried again, as a person would, while a press sent to a window can be lost; what it left is kept in
+#  heads.steps, so a failure says what every press saw)
+tap() { i=0
+	while [ $i -lt 4 ]; do
+		DISPLAY=$DSP xdotool mousemove --window "$WIN24" "$1" "$2"
+		if [ "${4:-}" = shift ]; then DISPLAY=$DSP xdotool keydown shift; DISPLAY=$DSP xdotool click 1; DISPLAY=$DSP xdotool keyup shift
+		else DISPLAY=$DSP xdotool click 1; fi
+		sleep 0.8
+		grep -q "$3" "$ST24" 2>/dev/null && break
+		i=$((i+1))
+	done
 	grep -E '^(sel |selname|agg |cells )' "$ST24" 2>/dev/null | tr '\n' ' ' >> "$T/heads.steps"; echo >> "$T/heads.steps"; }
 RC=0; WHY=""
 chk() { if eval "$1" >/dev/null 2>&1; then :; else RC=1; WHY="$WHY $2"; fi; }
-press $((AX + 86)) $((AY + 11))                  # (column A's head)
+tap $((AX + 86)) $((AY + 11)) '^selname A1:A100000$'           # (column A's head)
 chk 'grep -q "^sel 0 0 0 0 99999 0$" "$ST24"' col
 chk 'grep -q "^selname A1:A100000$" "$ST24"' colname
 chk 'grep -q "^agg 34|8.5|4|15|4$" "$ST24"' colsum   # (5, 10, 15 and 4: B1's text is not in column A)
-DISPLAY=$DSP xdotool mousemove --window "$WIN24" $((AX + 166)) $((AY + 11))   # (Shift: B's head grows it across)
-DISPLAY=$DSP xdotool keydown shift; DISPLAY=$DSP xdotool click 1; DISPLAY=$DSP xdotool keyup shift; sleep 0.8
+tap $((AX + 166)) $((AY + 11)) '^selname A1:B100000$' shift    # (Shift: B's head grows it across)
 chk 'grep -q "^selname A1:B100000$" "$ST24"' two
 chk 'grep -q "^agg 34|8.5|4|15|5$" "$ST24"' twoagg   # (and B1's text, which the page counts)
-press $((AX + 20)) $((AY + 112))                 # (row 5's head)
+tap $((AX + 20)) $((AY + 112)) '^selname A5:ZZ5$'              # (row 5's head)
 chk 'grep -q "^sel 4 0 4 0 4 701$" "$ST24"' row
 chk 'grep -q "^selname A5:ZZ5$" "$ST24"' rowname
 chk 'grep -q "^agg 18|6|4|8|3$" "$ST24"' rowsum
-press $((AX + 20)) $((AY + 11))                  # (the corner: the whole sheet)
+tap $((AX + 20)) $((AY + 11)) '^selname A1:ZZ100000$'          # (the corner: the whole sheet)
 chk 'grep -q "^selname A1:ZZ100000$" "$ST24"' all
 chk 'grep -q "^agg 48|8|4|15|7$" "$ST24"' allagg
-press $((AX + 86)) $((AY + 11))                  # (column A again: Delete takes its cells and nothing else)
+tap $((AX + 86)) $((AY + 11)) '^selname A1:A100000$'           # (column A again: Delete takes its cells and nothing else)
 DISPLAY=$DSP xdotool key Delete; sleep 0.9
 chk 'grep -q "^cells 3$" "$ST24"' cleared
 chk '! grep -q "^cell A2 " "$ST24"' cleareda
 chk 'grep -q "^cell B5 8$" "$ST24"' kept
 DISPLAY=$DSP xdotool key ctrl+z; sleep 1.0
 chk 'grep -q "^cells 7$" "$ST24"' undone
+kill -0 $SPP24 2>/dev/null; LIVE=$?
 ok "24. a head takes its whole column or row, the status line adds it up, and Delete takes only its cells" \
-	"$([ $RC = 0 ] && echo 1)" "failed:${WHY:-none} | $(tr '\n' '|' < "$T/heads.steps" 2>/dev/null); $(head -4 "$T/sp_heads.log")"
+	"$([ $RC = 0 ] && echo 1)" "failed:${WHY:-none} | $(tr '\n' '|' < "$T/heads.steps" 2>/dev/null) | app alive=$((1-LIVE)) $(DISPLAY=$DSP xdotool getwindowgeometry --shell "$WIN24" 2>/dev/null | tr '\n' ' ') grid=$AX,$AY | $(head -4 "$T/sp_heads.log")"
 kill $SPP24 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"
