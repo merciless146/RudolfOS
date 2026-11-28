@@ -817,6 +817,7 @@ static void ask_cb(int i, void *d)
 static gboolean answer_hook(gpointer d)
 {
 	const char *a = (const char *)d;
+	if (!ASK) return G_SOURCE_REMOVE;   /* (the question was answered or taken down already) */
 	ask_cb(!strcmp(a, "save") ? 2 : !strcmp(a, "discard") ? 1 : 0, NULL);
 	return G_SOURCE_REMOVE;
 }
