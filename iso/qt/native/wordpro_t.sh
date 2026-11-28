@@ -1,9 +1,10 @@
 #!/bin/sh
-# 1.6.3 (docs/plan-1.6.3.md Part 1): rudolf-wordpro's first step -- the editor and its toolbar -- built as the release
-# builds it (iso/sys/ui/build.sh, RUI_WERROR=1) and then used: the window opens, typing counts words and characters,
-# Ctrl+B tags what is chosen, Ctrl+F finds, and the toolbar's lists are the page's (mkwordpro.py). It reads
-# RUDOLF_WP_STATE, so no screenshot is needed here; the page-by-page comparison against the web WordPro comes with the
-# step that makes every one of its views.
+# 1.6.3 (docs/plan-1.6.3.md Part 1): rudolf-wordpro, built as the release builds it (iso/sys/ui/build.sh, RUI_WERROR=1)
+# and then used: the window opens, typing counts words and characters, Ctrl+B tags what is chosen, Ctrl+F finds, the
+# toolbar's lists are the page's (mkwordpro.py), the menu bar is the page's eight menus, and Insert ▸ Picture… puts a
+# picture in (scaled as the page scales it) which undo and redo keep as a step of their own. It reads RUDOLF_WP_STATE, so
+# no screenshot is needed here; the page-by-page comparison against the web WordPro comes with the step that makes every
+# one of its views.
 #   sh wordpro_t.sh [OUT]
 # Needs Xvfb, xdotool, gcc and GTK 3's headers. (display :88, port 8684)
 HERE=$(cd "$(dirname "$0")" && pwd); R=$(cd "$HERE/../../.." && pwd); T=$(mktemp -d /tmp/wp_t.XXXXXX)
@@ -159,10 +160,40 @@ fi
 #      moves a number here, so it cannot arrive as a silent greyed entry, and a wired one the page renames or drops stops
 #      the build by its id
 L18=1
-for pair in "File 10" "Edit 4" "View 6" "Insert 15" "Format 10" "Table 12" "Tools 4" "Help 1"; do
+for pair in "File 10" "Edit 4" "View 6" "Insert 14" "Format 10" "Table 12" "Tools 4" "Help 1"; do
 	grep -q "^later $pair$" "$ST" || L18=0
 done
 ok "18. the page's commands the app has not got are counted, menu by menu" "$L18" "$(grep '^later' "$ST" | tr '\n' ' ')"
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
+# ---- 19. Insert › Picture… puts a picture in as the page's readImg does: at most 1000 px, and no wider than the writing
+#      area (the sheet's 816 px inside its two 96 px margins), so a 900x300 picture shows at 624x208
+IMG=$T/pic.png
+if command -v convert >/dev/null 2>&1; then convert -size 900x300 "xc:#c81e1e" "$IMG" 2>/dev/null; fi
+[ -s "$IMG" ] || python3 -c "from PIL import Image; Image.new('RGB',(900,300),(200,30,30)).save('$IMG')" 2>/dev/null
+[ -s "$IMG" ] || { echo "FAIL no picture to insert (no ImageMagick, no PIL)"; exit 1; }
+start_bul "$T/state_pic" "pic:$IMG"
+wait_for 'grep -q "^pics 1$" "$ST_B"'
+if grep -q '^pics 1$' "$ST_B" && grep -q '^pic 0 624x208$' "$ST_B" && grep -q '^chars 5$' "$ST_B"; then P19=1; else P19=0; fi
+ok "19. Insert ▸ Picture… puts the picture in at the page's width (900x300 shows 624x208), and it is no character" \
+	"$P19" "$(head -22 "$ST_B" | tr '\n' ' '); $(head -4 "$T/wp_bul.log")"
+kill $WPP_B 2>/dev/null; sleep 0.5
+# ---- 20. the history keeps the picture: Ctrl+Z takes it back out (the writing stays), Ctrl+Y puts it back -- a picture is
+#      a step of its own, where before the whole writing was put back without it
+start_bul "$T/state_pic_undo" "pic:$IMG,undo"
+wait_for 'grep -q "^say $" "$ST_B" && grep -q "^chars 5$" "$ST_B"'
+if grep -q '^pics 0$' "$ST_B" && grep -q '^chars 5$' "$ST_B" && grep -q '^text Hello$' "$ST_B"; then P20=1; else P20=0; fi
+ok "20. Ctrl+Z takes the picture out and leaves the writing" "$P20" "$(head -22 "$ST_B" | tr '\n' ' ')"
+kill $WPP_B 2>/dev/null; sleep 0.4
+start_bul "$T/state_pic_redo" "pic:$IMG,undo,redo"
+wait_for 'grep -q "^pics 1$" "$ST_B"'
+ok "21. Ctrl+Y brings the picture back" "$([ $? = 0 ] && echo 1)" "$(head -22 "$ST_B" | tr '\n' ' ')"
+kill $WPP_B 2>/dev/null; sleep 0.4
+# ---- 22. a file that is not a picture is refused with the page's words, and nothing goes in
+printf 'not a picture\n' > "$T/notpic.txt"
+start_bul "$T/state_pic_bad" "pic:$T/notpic.txt"
+wait_for 'grep -q "^say .*not an image file" "$ST_B"'
+if grep -q '^pics 0$' "$ST_B" && grep -q '^say .*not an image file' "$ST_B"; then P22=1; else P22=0; fi
+ok "22. a file that is not a picture is refused, and nothing goes in" "$P22" "$(head -22 "$ST_B" | tr '\n' ' ')"
+kill $WPP_B 2>/dev/null; sleep 0.4
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 echo "$NP passed, $NF failed"; [ $NF = 0 ]

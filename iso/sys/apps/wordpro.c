@@ -6,7 +6,8 @@
  *      the line spacing, clear formatting, undo and redo, find and replace, and the status line's page, words,
  *      characters and zoom. The toolbar's lists (the styles and the fonts) are read from the page at build time
  *      (mkwordpro.py), so they never drift from it.
- *   2. styles, tables and pictures (with the page's insert dialogs).
+ *   2. styles, tables and pictures (with the page's insert dialogs): the paragraph styles and the pictures are in (the
+ *      toolbar's ▦ and the tables come next).
  *   3. print, open and save (the page's .DOC: its HTML with the page's own stylesheet), import and export.
  * Until every step is done the native desktop keeps opening the web WordPro (docs/plan-1.6.2.md Part 39: never a window
  * half native, half web); Chromium and Lite keep the web one always.
@@ -37,7 +38,7 @@ static char ON[40];   /* (the toggles the cursor's place has, as the page's updS
    item). What the app can do for an item is said here, by the item's id: an item with no op is drawn greyed and refuses,
    so the bar cannot promise a command the app has not got, and an item the page drops stops the build (its id is gone)
    instead of leaving a dead entry behind. */
-enum { M_CLOSE, M_UNDO, M_REDO, M_SELALL, M_FIND, M_FINDREP, M_ZOOM, M_TOGGLE, M_LIST, M_CLEAR, M_KEYS, M_ABOUT };
+enum { M_CLOSE, M_UNDO, M_REDO, M_SELALL, M_FIND, M_FINDREP, M_ZOOM, M_TOGGLE, M_LIST, M_CLEAR, M_KEYS, M_ABOUT, M_PICTURE };
 typedef struct { int id, op; const char *arg; } WpOp;
 static const WpOp OPS[] = {
 	{ WPI_FILE_CLOSE, M_CLOSE, NULL },
@@ -50,6 +51,7 @@ static const WpOp OPS[] = {
 	{ WPI_FORMAT_SUPERSCRIPT, M_TOGGLE, "sup" }, { WPI_FORMAT_CLEAR_FORMATTING, M_CLEAR, NULL },
 	{ WPI_FORMAT_BULLETED_LIST, M_LIST, "bul" }, { WPI_FORMAT_NUMBERED_LIST, M_LIST, "num" },
 	{ WPI_FORMAT_INCREASE_INDENT, M_LIST, "ind" }, { WPI_FORMAT_DECREASE_INDENT, M_LIST, "out" },
+	{ WPI_INSERT_PICTURE, M_PICTURE, NULL },
 	{ WPI_HELP_KEYBOARD_SHORTCUTS, M_KEYS, NULL }, { WPI_HELP_ABOUT_WORDPRO, M_ABOUT, NULL } };
 static const WpOp *op_of(int id) { for (guint i = 0; i < G_N_ELEMENTS(OPS); i++) if (OPS[i].id == id) return &OPS[i]; return NULL; }
 #define NMENUS WPMENUS_N
@@ -275,18 +277,65 @@ static void on_clear(GtkWidget *b, gpointer d)
    so undoing a letter no longer takes the bold, the colour, the size and the lists with it; and the cursor and the
    choice are kept with it, so an undo leaves a person where the change was, not at the top of the page. */
 #define HIST 120
+#define SEGMAX 512
 static GdkAtom HIST_ATOM;
-typedef struct { guint8 *d; gsize n; int cur, a, b, has; } Step;
+/* a step is the writing in order: the text a piece at a time (with its marks, GTK's own tag-set serialization) and, between
+   the pieces, the pictures it holds. GTK's tag-set serializer keeps text and tags and drops an embedded picture, so a step
+   that was the whole writing would put a picture-less page back: the step is cut around each picture instead, and the
+   pictures are put back where they were. (A picture is one character of the buffer, the replacement character; the counts
+   skip it, and a table, when it comes, is the same kind of thing with a widget at its anchor.) */
+typedef struct { int pic; guint8 *d; gsize n; GdkPixbuf *pb; } Seg;
+typedef struct { Seg *sg; int nseg; int cur, a, b, has; } Step;
 static Step HS[HIST]; static int HN, HI, SILENT;
-static void step_free(Step *s) { g_free(s->d); s->d = NULL; s->n = 0; }
+static void seg_add_text(Step *s, GtkTextIter *a, GtkTextIter *b)
+{
+	if (s->nseg >= SEGMAX) return;
+	Seg *g = &s->sg[s->nseg++]; g->pic = 0; g->pb = NULL;
+	g->d = gtk_text_buffer_serialize(BUF, BUF, HIST_ATOM, a, b, &g->n);
+}
+static void seg_add_pic(Step *s, GdkPixbuf *pb)
+{
+	if (s->nseg >= SEGMAX) return;
+	Seg *g = &s->sg[s->nseg++]; g->pic = 1; g->d = NULL; g->n = 0; g->pb = g_object_ref(pb);
+}
+static void step_free(Step *s)
+{
+	for (int i = 0; i < s->nseg; i++) { g_free(s->sg[i].d); if (s->sg[i].pb) g_object_unref(s->sg[i].pb); }
+	g_free(s->sg); s->sg = NULL; s->nseg = 0;
+}
+static int same_step(const Step *x, const Step *y)
+{
+	if (x->nseg != y->nseg) return 0;
+	for (int i = 0; i < x->nseg; i++) {
+		if (x->sg[i].pic != y->sg[i].pic) return 0;
+		if (x->sg[i].pic) { if (x->sg[i].pb != y->sg[i].pb) return 0; continue; }
+		if (x->sg[i].n != y->sg[i].n) return 0;
+		if (x->sg[i].n && memcmp(x->sg[i].d, y->sg[i].d, x->sg[i].n)) return 0;
+	}
+	return 1;
+}
 static void step_take(Step *s)
 {
 	step_free(s);
-	GtkTextIter a, b, i;
-	gtk_text_buffer_get_bounds(BUF, &a, &b);
-	s->d = gtk_text_buffer_serialize(BUF, BUF, HIST_ATOM, &a, &b, &s->n);
-	gtk_text_buffer_get_iter_at_mark(BUF, &i, gtk_text_buffer_get_insert(BUF));
-	s->cur = gtk_text_iter_get_offset(&i);
+	s->sg = g_new0(Seg, SEGMAX);
+	int len = gtk_text_buffer_get_char_count(BUF), i = 0;
+	while (i < len) {
+		GtkTextIter it; gtk_text_buffer_get_iter_at_offset(BUF, &it, i);
+		GdkPixbuf *pb = gtk_text_iter_get_pixbuf(&it);
+		if (pb) { seg_add_pic(s, pb); i++; continue; }
+		int j = i;
+		while (j < len) {
+			GtkTextIter jt; gtk_text_buffer_get_iter_at_offset(BUF, &jt, j);
+			if (gtk_text_iter_get_pixbuf(&jt)) break;
+			j++;
+		}
+		GtkTextIter a, b; gtk_text_buffer_get_iter_at_offset(BUF, &a, i); gtk_text_buffer_get_iter_at_offset(BUF, &b, j);
+		seg_add_text(s, &a, &b);
+		i = j;
+	}
+	GtkTextIter a, b, it;
+	gtk_text_buffer_get_iter_at_mark(BUF, &it, gtk_text_buffer_get_insert(BUF));
+	s->cur = gtk_text_iter_get_offset(&it);
 	s->has = gtk_text_buffer_get_selection_bounds(BUF, &a, &b);
 	if (s->has) { s->a = gtk_text_iter_get_offset(&a); s->b = gtk_text_iter_get_offset(&b); }
 }
@@ -294,9 +343,10 @@ static void step_apply(Step *s)
 {
 	SILENT = 1;
 	gtk_text_buffer_set_text(BUF, "", -1);   /* (the text and its marks go together; the step puts both back) */
-	if (s->d && s->n) {
-		GtkTextIter at; gtk_text_buffer_get_start_iter(BUF, &at);
-		gtk_text_buffer_deserialize(BUF, BUF, HIST_ATOM, &at, s->d, s->n, NULL);
+	for (int i = 0; i < s->nseg; i++) {
+		GtkTextIter at; gtk_text_buffer_get_end_iter(BUF, &at);
+		if (s->sg[i].pic) { gtk_text_buffer_insert_pixbuf(BUF, &at, s->sg[i].pb); continue; }
+		if (s->sg[i].d && s->sg[i].n) gtk_text_buffer_deserialize(BUF, BUF, HIST_ATOM, &at, s->sg[i].d, s->sg[i].n, NULL);
 	}
 	int len = gtk_text_buffer_get_char_count(BUF), cur = s->cur > len ? len : s->cur;
 	if (s->has) {
@@ -371,8 +421,21 @@ static void on_find_close(GtkWidget *b, gpointer d) { (void)b; (void)d; gtk_widg
 
 /* ------------------------------------------------------------------ the counts, and the state the tests read */
 static char *doc_text(void) { GtkTextIter s, e; gtk_text_buffer_get_start_iter(BUF, &s); gtk_text_buffer_get_end_iter(BUF, &e); return gtk_text_buffer_get_text(BUF, &s, &e, FALSE); }
-static int words_of(const char *t) { int n = 0, in = 0; for (const char *p = t; *p; p++) { if (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r') in = 0; else if (!in) { in = 1; n++; } } return n; }
-static int chars_of(const char *t) { int n = 0; for (const char *p = t; *p; p++) if (*p != '\n' && *p != '\r') n++; return n; }
+/* (the page's counts, from the writing itself: a picture is not a character of it, as the page's own textContent has
+   pictures contribute nothing, and it is not a word either) */
+static void count_now(int *words, int *chars)
+{
+	int w = 0, c = 0, in = 0;
+	GtkTextIter i, e; gtk_text_buffer_get_bounds(BUF, &i, &e);
+	for (; gtk_text_iter_compare(&i, &e) < 0; gtk_text_iter_forward_char(&i)) {
+		if (gtk_text_iter_get_pixbuf(&i)) { in = 0; continue; }
+		gunichar ch = gtk_text_iter_get_char(&i);
+		if (ch == '\n' || ch == '\r') { in = 0; continue; }
+		c++;
+		if (ch == ' ' || ch == '\t' || ch == 0xa0) in = 0; else if (!in) { in = 1; w++; }
+	}
+	*words = w; *chars = c;
+}
 /* ------------------------------------------------------------------ what the writing is, shown in the toolbar (updSel) */
 static void on_class(GtkWidget *b, int on)
 {
@@ -411,19 +474,27 @@ static void upd_sel(void)
 static void on_cursor(GtkTextBuffer *b, GParamSpec *p, gpointer d) { (void)b; (void)p; (void)d; upd_sel(); }
 static void counts(void)
 {
-	char *t = doc_text(); char b[96];
-	snprintf(b, sizeof b, "%d %s", words_of(t), rui_tr("words")); gtk_label_set_text(GTK_LABEL(STAT_W), b);
-	snprintf(b, sizeof b, "%d %s", chars_of(t), rui_tr("characters")); gtk_label_set_text(GTK_LABEL(STAT_C), b);
-	g_free(t);
+	int w, c; char b[96]; count_now(&w, &c);
+	snprintf(b, sizeof b, "%d %s", w, rui_tr("words")); gtk_label_set_text(GTK_LABEL(STAT_W), b);
+	snprintf(b, sizeof b, "%d %s", c, rui_tr("characters")); gtk_label_set_text(GTK_LABEL(STAT_C), b);
 }
 static void state_write(void)
 {
 	const char *f = getenv("RUDOLF_WP_STATE"); if (!f || !BUF) return;
 	GString *s = g_string_new(NULL); char *t = doc_text();
-	GtkTextIter a, b; int has = sel(&a, &b);
+	GtkTextIter a, b; int has = sel(&a, &b); int w, c; count_now(&w, &c);
 	g_string_append_printf(s, "font %s\nsize %.1f\nzoom %d\nwords %d\nchars %d\nsel %d\nsay %s\nstyles %d\nfonts %d\n",
-		FAMILY, PT, ZOOM, words_of(t), chars_of(t), has, SAY, NWPSTYLES, NWPFONTS);
+		FAMILY, PT, ZOOM, w, c, has, SAY, NWPSTYLES, NWPFONTS);
 	g_string_append_printf(s, "on %s\n", ON);
+	/* (the pictures the writing holds, and each one's size: how many a picture command put in, and that an undo took
+	   them with it) */
+	{ int np = 0; GtkTextIter pi, pe; GString *pl = g_string_new(NULL);
+	  gtk_text_buffer_get_bounds(BUF, &pi, &pe);
+	  for (; gtk_text_iter_compare(&pi, &pe) < 0; gtk_text_iter_forward_char(&pi)) {
+		GdkPixbuf *p = gtk_text_iter_get_pixbuf(&pi);
+		if (p) g_string_append_printf(pl, "pic %d %dx%d\n", np++, gdk_pixbuf_get_width(p), gdk_pixbuf_get_height(p));
+	  }
+	  g_string_append_printf(s, "pics %d\n%s", np, pl->str); g_string_free(pl, TRUE); }
 	gtk_text_buffer_get_start_iter(BUF, &a); gtk_text_buffer_get_end_iter(BUF, &b);
 	g_string_append(s, "tags");
 	char last[200] = "";
@@ -470,13 +541,60 @@ static void hist_push(void)
 	if (SILENT || !BUF) return;
 	Step s = { 0 };
 	step_take(&s);
-	if (HN && HS[HN - 1].d && s.n == HS[HN - 1].n && !memcmp(HS[HN - 1].d, s.d, s.n)) { step_free(&s); return; }
+	if (HN && same_step(&HS[HN - 1], &s)) { step_free(&s); return; }
 	if (HI < HN) { for (int i = HI; i < HN; i++) step_free(&HS[i]); HN = HI; }
 	if (HN == HIST) { step_free(&HS[0]); memmove(HS, HS + 1, sizeof(HS[0]) * (HIST - 1)); HN--; }
 	HS[HN++] = s; HI = HN;
 }
 static void on_text(GtkTextBuffer *b, gpointer d) { (void)b; (void)d; hist_push(); counts(); state_soon(); }
 static void on_mark(GtkTextBuffer *b, GtkTextIter *i, GtkTextMark *m, gpointer d) { (void)b; (void)i; (void)m; (void)d; counts(); upd_sel(); state_soon(); }
+
+/* ------------------------------------------------------------------ Insert › Picture… (the page's imgDialog and readImg:
+   a picture from the computer, at most 1000 px and no wider than the writing area, put in at the cursor). A picture is a
+   character of the buffer (the replacement character) and a run of its own in the history, so an undo takes it or leaves
+   it as one thing. */
+static void insert_picture(const char *path)
+{
+	if (!path || !*path) { say("Choose a picture first."); state_soon(); return; }
+	GError *e = NULL; GdkPixbuf *pb = gdk_pixbuf_new_from_file(path, &e);
+	if (!pb) {
+		char m[300]; snprintf(m, sizeof m, "That is not an image file (%s).", e ? e->message : "it could not be read");
+		if (e) g_error_free(e); say(m); state_soon(); return;
+	}
+	int w = gdk_pixbuf_get_width(pb), h = gdk_pixbuf_get_height(pb);
+	double k = 1.0;
+	if (w > 1000) k = 1000.0 / w;                        /* (the page's readImg: 1000 px at most before it is put in) */
+	double room = rui_px(816) - 2 * rui_px(96);          /* (the page's max-width:100% of its sheet, inside its margins) */
+	if (w * k > room) k = room / w;
+	int tw = (int)lround(w * k), th = (int)lround(h * k);
+	if (tw < 1) tw = 1; if (th < 1) th = 1;
+	GdkPixbuf *out = (tw == w && th == h) ? g_object_ref(pb) : gdk_pixbuf_scale_simple(pb, tw, th, GDK_INTERP_BILINEAR);
+	GtkTextIter at, s, e2;
+	if (gtk_text_buffer_get_selection_bounds(BUF, &s, &e2)) { gtk_text_buffer_delete(BUF, &s, &e2); at = s; }   /* (the choice goes, as the page's insertHTML takes it) */
+	else gtk_text_buffer_get_iter_at_mark(BUF, &at, gtk_text_buffer_get_insert(BUF));
+	gtk_text_buffer_insert_pixbuf(BUF, &at, out);
+	g_object_unref(out); g_object_unref(pb);
+	say(""); counts(); state_soon();
+}
+static void picture_dialog(void)
+{
+	GtkWidget *d = gtk_file_chooser_dialog_new(rui_tr("Insert picture"), GTK_WINDOW(W->win), GTK_FILE_CHOOSER_ACTION_OPEN,
+		rui_tr("Cancel"), GTK_RESPONSE_CANCEL, rui_tr("Insert"), GTK_RESPONSE_ACCEPT, NULL);
+	GtkFileFilter *f = gtk_file_filter_new(); gtk_file_filter_set_name(f, rui_tr("Pictures"));
+	gtk_file_filter_add_mime_type(f, "image/png"); gtk_file_filter_add_mime_type(f, "image/jpeg");
+	gtk_file_filter_add_mime_type(f, "image/gif"); gtk_file_filter_add_mime_type(f, "image/bmp");
+	gtk_file_filter_add_mime_type(f, "image/webp");
+	gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(d), f);
+	{ const char *pics = g_get_user_special_dir(G_USER_DIRECTORY_PICTURES);
+	  gtk_file_chooser_set_current_folder(GTK_FILE_CHOOSER(d), pics ? pics : g_get_home_dir()); }
+	if (gtk_dialog_run(GTK_DIALOG(d)) == GTK_RESPONSE_ACCEPT) {
+		char *fn = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d));
+		if (fn) { insert_picture(fn); g_free(fn); }
+	}
+	gtk_widget_destroy(d);
+	gtk_widget_grab_focus(ED);
+}
+static void on_picture(GtkWidget *b, gpointer d) { (void)b; (void)d; picture_dialog(); }
 
 /* ------------------------------------------------------------------ the toolbar, drawn as the page's .wp-tb */
 static GtkWidget *tb_button(const char *label, const char *tip, GCallback cb, const char *d)
@@ -566,6 +684,7 @@ static void build_toolbar(void)
 	  gtk_combo_box_set_active(GTK_COMBO_BOX(ls), 0); g_signal_connect(ls, "changed", G_CALLBACK(on_spacing), NULL);
 	  gtk_style_context_add_class(gtk_widget_get_style_context(ls), "wp-tb"); tb_add(TB, ls); }
 	tb_sep(TB);
+	tb_add(TB, tb_button("🖼", "Insert picture", G_CALLBACK(on_picture), NULL));
 	tb_add(TB, tb_button("⌧", "Clear formatting", G_CALLBACK(on_clear), NULL));
 	tb_add(TB, tb_button("↶", "Undo (Ctrl+Z)", G_CALLBACK(on_undo), NULL));
 	tb_add(TB, tb_button("↷", "Redo (Ctrl+Y)", G_CALLBACK(on_redo), NULL));
@@ -671,6 +790,11 @@ static gboolean do_hook(gpointer d)
 	if (!gtk_text_buffer_get_char_count(BUF) && ++DO_TICKS < 50) return G_SOURCE_CONTINUE;
 	char *copy = g_strdup((const char *)d), *sv = NULL;
 	for (char *tok = strtok_r(copy, ",", &sv); tok; tok = strtok_r(NULL, ",", &sv)) {
+		/* (a picture goes in at the cursor and an undo is not a command on a choice: these are taken before the whole
+		   writing is chosen for the toolbar's commands) */
+		if (!strncmp(tok, "pic:", 4)) { insert_picture(tok + 4); continue; }
+		if (!strcmp(tok, "undo")) { hist_undo(); continue; }
+		if (!strcmp(tok, "redo")) { hist_redo(); continue; }
 		GtkTextIter a, b;
 		gtk_text_buffer_get_bounds(BUF, &a, &b);
 		gtk_text_buffer_select_range(BUF, &a, &b);   /* (the page's commands act on the choice, so the whole writing is one) */
@@ -707,6 +831,7 @@ static void menu_do(int id)
 	case M_TOGGLE: toggle(NULL, (gpointer)o->arg); break;
 	case M_LIST: on_list(NULL, (gpointer)o->arg); break;
 	case M_CLEAR: on_clear(NULL, NULL); break;
+	case M_PICTURE: picture_dialog(); break;
 	case M_KEYS:
 		rui_about(W, rui_tr("Keyboard shortcuts"), rui_tr("Ctrl+B / I / U  Bold, italic, underline.\n"
 			"Ctrl+Z / Y  Undo, redo.\nCtrl+F / H  Find, find and replace.\nCtrl+Enter  Page break."

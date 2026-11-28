@@ -154,6 +154,27 @@ accent colours), its memory at idle against the web version, built in the releas
   the screenshot comparison against the web WordPro. `wordpro` is still **not** in `NATIVE_APPS[]`: the native desktop
   keeps opening the web WordPro until the whole app passes.
 
+#### Status (2026-11-28, session): WordPro's pictures -- Insert ▸ Picture…, and a history that keeps them
+- **The command was greyed** (one of Insert's 15) and the plan's step 2 names tables and pictures, so the pictures are in:
+  Insert ▸ Picture… and the toolbar's 🖼 (the page's own button) open a chooser of pictures (PNG, JPEG, GIF, BMP, WebP),
+  and `insert_picture` puts the choice in at the cursor as the page's `readImg` does — at most 1000 px, and no wider than
+  the writing area (the sheet's 816 px inside its two 96 px margins), so a 900×300 picture shows at 624×208.
+- **A picture is not a character of the writing:** the page's counts (words, characters) now walk the buffer and skip it, as
+  the page's own `textContent` has pictures contribute nothing. Before this, the replacement character a picture is stored
+  as counted as a letter, and it split a word.
+- **The history had to learn pictures.** A step was the whole writing serialised with GTK's tag-set format, which keeps
+  text and tags and drops an embedded picture, so the first Ctrl+Z after one would have put a picture-less page back. A
+  step is now the writing *in segments*: the text between pictures, serialised with its marks as before, and each picture a
+  segment of its own, put back where it was when the step is applied. Ctrl+Z takes the picture out and leaves the writing;
+  Ctrl+Y brings it back. The same shape takes a table when its step comes: an anchor is one character of the buffer, as a
+  picture is.
+- **Its check:** `wordpro-check.yml` — clean build with `RUI_WERROR=1`, then `wordpro_t.sh`'s 22 cases: a 900×300 picture
+  inserted from the check's own file at 624×208 with the counts unchanged, an undo taking it out and leaving the writing, a
+  redo putting it back, and a file that is not a picture refused with the page's words and nothing put in.
+- **Not in this step:** Insert's tables (▦), links, special characters, page breaks, dates, footnotes, the contents, headers
+  and page numbers; the file commands and the .DOC (step 3); the screenshot comparison against the web WordPro. `wordpro`
+  is **not** in `NATIVE_APPS[]` yet, so the native desktop keeps opening the web WordPro.
+
 #### Status (2026-11-28, session): SpreadsheetPro's mouse -- the drags, and the fill handle
 - **The app handled no motion at all** (the step before this one said so): only a press. The page's own mouse is now here
   (spro45.js's `mousedown` with its `drag`, `drag.col`, `drag.row` and `fillDrag`, its `mm` and `mu`, the handle's 7 px

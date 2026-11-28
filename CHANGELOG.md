@@ -53,8 +53,12 @@ Summary: In progress.
   owner's rule says). The Users page's security keys and fingerprints are added, removed and required through the page's own
   dialogs.
 - **WordPro, native** (Part 1, begun): its window, its toolbar (the page's styles and fonts read from the page at build
-  time, bold and italic and underline, the colours, the alignments, the lists, the spacing, undo and Find) and its
-  editing page are now a program of its own, `rudolf-wordpro`, so WordPro is no longer only a web app.
+  time, bold and italic and underline, the colours, the alignments, the lists, the spacing, undo and Find), its editing
+  page and its eight menus (File, Edit, View, Insert, Format, Table, Tools and Help, as the page's own, the commands whose
+  step has come wired and the rest greyed) are now a program of its own, `rudolf-wordpro`; Insert ▸ Picture… (and the
+  toolbar's 🖼) puts a picture in, scaled as the page scales it (at most 1000 px, and no wider than the writing), which
+  undo and redo keep as a step of their own and which is not counted as a character or a word. WordPro is no longer only
+  a web app.
 - **SpreadsheetPro, native** (Part 1, begun): its window, its toolbar (the fonts and sizes read from the page at build
   time, bold, italic, underline, strikethrough, the two colours, the three alignments, undo and redo), its name box
   and formula bar, its grid with values and formulas, its sheet tab and its status line are now a program of its own,
