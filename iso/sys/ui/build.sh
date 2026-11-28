@@ -6,6 +6,8 @@
 # NAME_PART.c (settings: settings_about.c...), and, when there is one, NAME's own generated header made by mkNAME.py in WORKDIR
 # (WORKDIR/NAME-gen.h: what the app reads from the page at build time, as mkui.py's). Extra flags (the
 # release's hardening, systools/hardflags.sh) are given to every gcc. Fails on any warning with RUI_WERROR=1.
+# A native program's FILE moves in 4 KB pages -- every load segment starts on one -- so a few dozen bytes of code can
+# show as 4 or 8 KB in its size: the program's .text (readelf -S) is the measure of the code, not the file's.
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd); W=$1; OUT=$2; SRC=$3; shift 3
 mkdir -p "$W"

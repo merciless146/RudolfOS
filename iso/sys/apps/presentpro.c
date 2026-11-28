@@ -159,20 +159,14 @@ static void deck_ensure(int n)
 	SL = g_renew(Slide, SL, SLC);
 	memset(SL + old, 0, sizeof(Slide) * (size_t)(SLC - old));
 }
-static void deck_insert(int at, const Slide *proto)
+/* (make room at `at` and hand back its place: a fresh slide is filled there, a duplicated one copied there, and both
+   fills clear the place first, so the element the move left behind is never copied or freed twice) */
+static Slide *deck_slot(int at)
 {
 	deck_ensure(SLN + 1);
 	if (at < SLN) memmove(SL + at + 1, SL + at, sizeof(Slide) * (size_t)(SLN - at));
-	slide_copy(&SL[at], proto);
 	SLN++;
-}
-/* (a fresh slide goes straight into the deck: the page's addSlide makes one, it is not handed over) */
-static void deck_add(int at, const char *lay)
-{
-	deck_ensure(SLN + 1);
-	if (at < SLN) memmove(SL + at + 1, SL + at, sizeof(Slide) * (size_t)(SLN - at));
-	slide_init(&SL[at], lay);
-	SLN++;
+	return &SL[at];
 }
 static void deck_remove(int at)
 {
@@ -465,15 +459,16 @@ static void goto_slide(int i)
 static void new_slide(void)
 {
 	/* (the page's addSlide: the slide before's layout, and a title slide is followed by a content one) */
-	const char *lay = strcmp(SL[CUR].layout, "title") ? SL[CUR].layout : "content";
-	deck_add(CUR + 1, lay);
+	char lay[16];   /* (its own words: making room can move the deck) */
+	g_strlcpy(lay, strcmp(SL[CUR].layout, "title") ? SL[CUR].layout : "content", sizeof lay);
+	slide_init(deck_slot(CUR + 1), lay);
 	goto_slide(CUR + 1);
 	slide_changed();
 }
 static void dup_slide(void)
 {
-	Slide tmp; slide_copy(&tmp, &SL[CUR]);
-	deck_insert(CUR + 1, &tmp);
+	Slide tmp; slide_copy(&tmp, &SL[CUR]);   /* (a copy: making room can move the deck) */
+	slide_copy(deck_slot(CUR + 1), &tmp);
 	slide_free(&tmp);
 	goto_slide(CUR + 1);
 	slide_changed();
@@ -923,7 +918,7 @@ static void menu_do(const Mi *it)
 	case OP_NEW: {
 		for (int i = 0; i < SLN; i++) slide_free(&SL[i]);
 		g_free(SL); SL = NULL; SLN = 0; SLC = 0;
-		deck_add(0, "title");
+		slide_init(deck_slot(0), "title");
 		CUR = 0;
 		goto_slide(0); slide_changed();
 		break; }
@@ -1369,9 +1364,8 @@ int main(int argc, char **argv)
 	rui_init(&argc, &argv, "presentpro");
 	css();
 	W = rui_window("presentpro", "PresentPro", 1060, 700);
-	deck_ensure(1);
-	slide_init(&SL[0], "title");
-	SLN = 1; CUR = 0; PHCUR = PH_TITLE;
+	slide_init(deck_slot(0), "title");
+	CUR = 0; PHCUR = PH_TITLE;
 	build_menubar(); build_toolbar(); build_panes(); build_status();
 	gtk_window_set_title(GTK_WINDOW(W->win), "Untitled presentation - PresentPro");
 	g_signal_connect(W->win, "key-press-event", G_CALLBACK(on_key), NULL);
