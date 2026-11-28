@@ -112,7 +112,7 @@ i=0; while [ $i -lt 3 ]; do
 	DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
 sleep 1.6
 grep -q '^text • Hello$' "$ST10"
-ok "12. Bullets puts a bullet on the writing" "$([ $? = 0 ] && echo 1)" "$(head -12 "$ST10" | tr '\n' ' '); $(head -3 "$T/wp_bul.log")"
+ok "12. Bullets puts a bullet on the writing" "$([ $? = 0 ] && echo 1)" "$(head -14 "$ST10" | tr '\n' ' '); $(head -3 "$T/wp_bul.log")"
 kill $WPP2 2>/dev/null; sleep 0.5
 # ---- 13. ...and a second press takes it off (before this, every press added another one)
 ST11=$T/state_bul2; rm -f "$ST11"

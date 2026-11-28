@@ -624,6 +624,7 @@ static int DO_TICKS;
 static gboolean do_hook(gpointer d)
 {
 	if (!gtk_text_buffer_get_char_count(BUF) && ++DO_TICKS < 50) return G_SOURCE_CONTINUE;
+	snprintf(SAY, sizeof SAY, "the check's hand: %s", (const char *)d); state_soon();   /* (the state says the hand ran) */
 	char *copy = g_strdup((const char *)d), *sv = NULL;
 	for (char *tok = strtok_r(copy, ",", &sv); tok; tok = strtok_r(NULL, ",", &sv)) {
 		GtkTextIter a, b;
