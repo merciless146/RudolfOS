@@ -122,6 +122,28 @@ accent colours), its memory at idle against the web version, built in the releas
   sizes, frozen panes, more than one sheet, and the assistant -- steps 2 and 3. The screenshot comparison against the web
   SpreadsheetPro is **not** in it yet either: it comes with the step that makes every view of the window. The native
   desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is **not** in `NATIVE_APPS[]`.
+#### Status (2026-11-28, session): SpreadsheetPro step 2 begun (the .RSHEET file)
+- **Branch `sheetpro-2`:** a .RSHEET opens and saves exactly as `sprof45.js` writes it -- its v2 JSON: the book's styles
+  (each different one once, in the page's order) and its sheet's cells as `[spK(r,c), value, formula, style]`, the value
+  what the page parses (a number, TRUE or FALSE, or text -- with the page's `'` in front of a text that would read back
+  as something else), sorted by the cell's key. A file the page or Oracle saved opens here, and one saved here opens
+  there; the version 1 format of the old Spreadsheet is read too. The window's title is `NAME - SpreadsheetPro` with the
+  page's ` *` while there are changes, New (Ctrl+N) is a book with no file, Open... (Ctrl+O) and Save, Save as...
+  (Ctrl+S, Shift+Ctrl+S) are the page's own File rows and use the desktop's own file chooser, and the program takes a
+  path on its command line, which is how Files launches an app with a file.
+- **Its test (the same workflow):** **16 passed, 0 failed, 330 520 bytes**, hardened (the app's budget is 1 MB). Case 14
+  opens a .RSHEET the page wrote -- a number, a formula worked out as 10, a bold cell and a centred one -- with its name
+  in the title and `dirty 0`; case 15 types into it (the page's ` *` in the window's own title, `dirty 1`) and presses
+  Ctrl+S, then reads the file back: v2, the page's `app`, the cells by key (`[0,9]`, `[1,null,"=A1*2"]`,
+  `[702,"x",null,0]`, `[1406,7,null,1]`) and `styles` `[{"b":1},{"ha":"center"}]`. The case caught a real fault on the
+  way: Ctrl+S hands the saver the path already held, which was freed and then copied, so the title read freed memory --
+  fixed by taking the new name before the old one goes.
+- **Not in this slice, by the plan's own split:** CSV and .xlsx with their import and export rows, page setup, printing
+  and the PDFs; the number formats, the sizes and hiding of rows and columns, the merges, the frozen panes, the charts,
+  the other sheets and the assistant are not carried through a save yet (the step that models each takes it on). The
+  screenshot comparison is still not in it: it comes with the step that makes every view of the window. The native
+  desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is still not in `NATIVE_APPS[]`.
+
 #### Status (2026-11-27, scheduled task): PresentPro begun, step 1 (the window, its slides and their places)
 - **Branch `presentpro-1`:** `iso/sys/apps/presentpro.c` (`/usr/bin/rudolf-presentpro`, with librudolf-ui) has the page's
   window with its eight menus and the page's own rows (File 18, Home 20, Insert 16, Design 4, Arrange 21, Slide Show 7,
