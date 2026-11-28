@@ -247,7 +247,7 @@ static void api_dl_zip(struct req *r, const char *what, int post)
 		}
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running, try again in a moment"); return; }
 		if (!dlzip_target(r, zp, sizeof zp, hd, sizeof hd, acct, sizeof acct, &mode)) return;
-		unlink(DLZIP_STOP); unlink(DLZIP_OUT); unlink(DLZIP_LIST);
+		unlink(DLZIP_STOP); unlink(DLZIP_OUT); unlink(DLZIP_LIST); unlink(DLZIP_DEST);   /* (a new extraction: no older folder is the antivirus's) */
 		int f = open(DLZIP_LIST, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
 		str l = {0}; sadd(&l, "%s\n%s\n%s\n", zp, hd, mode == DLZIP_BESIDE ? "beside" : "flat");
 		if (f < 0 || write(f, l.b, l.n) != (ssize_t)l.n) { if (f >= 0) close(f); free(l.b); reply_err(r->fd, 500, "could not write the request"); return; }
