@@ -69,6 +69,57 @@ sleep 1
 grep -q '^words 2$' "$ST" && grep -q '^chars 6$' "$ST"
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
 ok "8. a second line is counted as text, its newline not a character" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(words|chars|text) ' "$ST")"
+# ---- 10. undo puts the writing back *with its marks*: the bold is still there, and the cursor is where it was
+# (a step is the writing and its tag set, so undoing a letter no longer takes every mark in the document with it)
+DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.5
+DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key ctrl+b; sleep 0.8   # (bold all of it)
+DISPLAY=$DSP xdotool key Right; sleep 0.3; DISPLAY=$DSP xdotool type --delay 12 '!'; sleep 0.9
+grep -q '^chars 7$' "$ST"   # (the letter went in: 6 + 1, the newline not a character)
+DISPLAY=$DSP xdotool key ctrl+z; sleep 1.0
+RC=0
+grep -q '^chars 6$' "$ST" || RC=1
+grep '^tags' "$ST" | grep -q 'b' || RC=1     # (the undo did not take the bold with it)
+ok "10. Ctrl+Z takes the letter back and leaves the bold where it was" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(chars|tags|text) ' "$ST" | tr '\n' ' ')"
+# ---- 11. Find marks what it found (the page's highlight, not only the choice)
+DISPLAY=$DSP xdotool key ctrl+f; sleep 0.6
+DISPLAY=$DSP xdotool type --delay 12 'two'; DISPLAY=$DSP xdotool key Return; sleep 0.9
+grep '^tags' "$ST" | grep -q 'find'
+ok "11. Ctrl+F marks the match (the find tag is on the writing, not only on the choice)" \
+	"$([ $? = 0 ] && echo 1)" "$(grep -E '^(tags|sel) ' "$ST" | tr '\n' ' ')"
+kill $WPP 2>/dev/null; sleep 0.6
+# (the app of the first cases is put away by its window's own process: it was a child of this shell rather than the shell)
+for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
+	p=$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; done
+sleep 1.5
+# (a fresh app of the same kind: the window takes the keys, the press puts the writing ready -- retried, because a press
+#  into a window that has just appeared can be lost -- and RUDOLF_WP_DO is the check's hand on the toolbar's buttons)
+start_bul() {
+	ST_B=$1; rm -f "$ST_B"
+	RUDOLF_WP_STATE=$ST_B RUDOLF_WP_DO=$2 DISPLAY=$DSP "$BIN" >"$T/wp_bul.log" 2>&1 & WPP_B=$!
+	i=0; while [ $i -lt 80 ] && [ ! -s "$ST_B" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+	WIN_B=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
+	i=0; while [ $i -lt 80 ] && [ -n "$WIN_B" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN_B" 2>/dev/null
+		[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN_B" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+	sleep 2; DISPLAY=$DSP xdotool mousemove --window "$WIN_B" 480 300 click 1; sleep 0.8
+	i=0; while [ $i -lt 8 ]; do
+		DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1.2
+		grep -q '^chars 5$' "$ST_B" && break
+		DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
+}
+wait_for() { i=0; while [ $i -lt 60 ] && ! eval "$1" >/dev/null 2>&1; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done; }
+# ---- 12. a bullet goes on with one press and comes off with the next (the page's own toggle)
+start_bul "$T/state_bul" bul
+wait_for 'grep -q "^chars 7$" "$ST_B"'     # (the five letters and the bullet's two)
+ok "12. Bullets puts a bullet on the writing" "$([ $? = 0 ] && echo 1)" \
+	"$(head -14 "$ST_B" | tr '\n' ' '); $(head -6 "$T/wp_bul.log")"
+kill $WPP_B 2>/dev/null; sleep 0.6
+# ---- 13. ...and a second press takes it off again (before this, every press added another one)
+start_bul "$T/state_bul2" "bul,bul"
+wait_for 'grep -q "^chars 5$" "$ST_B" && grep -q "^text Hello$" "$ST_B"'
+ok "13. a second Bullets press takes the bullet off again" "$([ $? = 0 ] && echo 1)" \
+	"$(head -14 "$ST_B" | tr '\n' ' '); $(head -6 "$T/wp_bul.log")"
+kill $WPP_B 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/iso/sys/ui" "$T/page/desktop"
 sed 's/const WP_STYLES=/const WP_STYLES_GONE=/' "$R/desktop/base_v24.html" > "$T/page/desktop/base_v24.html"

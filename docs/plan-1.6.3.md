@@ -72,6 +72,26 @@ accent colours), its memory at idle against the web version, built in the releas
   three open together free roughly 200-350 MB.
 - **The owner's checklist:** each app on the Vivobook against Chromium mode's (every menu and toolbar button, a real
   document, spreadsheet and presentation of the owner's, printing), light and dark; the memory in Task Manager.
+#### Status (2026-11-28, session): WordPro's functions check -- what the page's own commands were doing to the writing
+- **Undo took the marks with it:** Ctrl+Z put the text back but not the bold, the italic or the find mark, because a
+  step was the characters alone. A step is now the writing *and* its tag set, taken before each change (serialised with
+  GTK's own tag set), so undoing a letter leaves the bold where it was, the choice and the cursor go back with the text,
+  and Ctrl+Shift+Z is the redo the page has.
+- **The block commands:** Bullets, Numbering, Indent and Outdent did nothing on a person's choice and could only add --
+  a second press added another bullet. They act on every line of the choice, a second press takes the bullet or the
+  number off (as the page's `wpBlock` does), the numbering counts up line by line, and the lines are taken by number so
+  an inserted prefix does not move the ones still to come.
+- **The formatting steps and Find:** a style, font, size, colour, alignment, spacing or list change is a step of the
+  history now (they were applied and forgotten); Ctrl+F puts the page's `find` tag on the match, not only the choice;
+  bold/italic/underline/strike are toggles of their own (a second Ctrl+B takes bold off and leaves italic), sub and sup
+  take each other off, and the styles do not stack.
+- **Its test (the same workflow): 13 passed, 0 failed, 278 856 bytes.** Cases 10-13: the undo that keeps the bold and
+  the find mark that is on the writing; a bullet on and the same press taking it off. The bullets cases open their own
+  app (`RUDOLF_WP_DO=bul`, the check's hand on the toolbar's buttons, which it cannot aim) and count the characters the
+  command put in.
+- **A claim that was wrong:** a "replace-all hang" I had listed is **not** real -- GTK's `gtk_text_buffer_insert`
+  advances the iterator past what it inserted, so the loop always moves on. Nothing was changed for it.
+
 #### Status (2026-11-27, scheduled task): WordPro begun, step 1 (the editor and its toolbar)
 - **Branch `wordpro-1`:** `iso/sys/apps/wordpro.c` (`/usr/bin/rudolf-wordpro`, with librudolf-ui) has the page's window
   (980 x 646), the toolbar of `.wp-tb` -- the paragraph styles, the fonts, the size with its - and +, bold, italic,
@@ -89,6 +109,25 @@ accent colours), its memory at idle against the web version, built in the releas
   characters, page setup, headers and footers, the table of contents, printing, and opening and saving the page's .DOC
   (its HTML with the page's stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
+
+#### Status (2026-11-28, session): SpreadsheetPro's functions check -- a changed book is not thrown away
+- **The fault a person hits:** File ▸ Close threw the book away without a word (a bare `gtk_widget_destroy`, no
+  `delete-event`), and New and Open replaced the cells outright. All four ways out now ask first -- the window's own X,
+  File ▸ Close, New and Open... -- in the page's own overlay inside the window, with the page's three answers: **Save**
+  writes the book (through the chooser when it has no file, and the act that was put off runs when that save finishes),
+  **Discard** goes ahead, **Cancel** stays where it was and writes nothing. The question names the book as the page's
+  does (`Book1`, or the file's name), and the status line says it too.
+- **Closing ends the program:** the window's destroy alone left the loop running with the book gone, so a closed
+  SpreadsheetPro stayed behind as a headless process; the window and the loop go together now.
+- **Its test (the same workflow): 22 passed, 0 failed, 339 320 bytes.** Three cases of the guard. Case 20 closes a book
+  of two cells with a change in it: the question is up, `dirty 1`, both cells still there, the file's bytes untouched,
+  and Escape (the Cancel answer) leaves the book, the cells and the bytes as they were. Case 21 answers Save and finds
+  the change written in the page's own JSON (`[[0,7],[702,"keep"]]`) with the window gone. Case 22 closes a book with
+  nothing to lose and no question is asked. The check's hand on the X is `RUDOLF_SP_DO=close` (it waits for the first
+  change and asks again while the question is put off) and its answer is `RUDOLF_SP_ANSWER=save|discard|cancel`, which
+  calls the same callback a press on the overlay's button does (the overlay cannot be aimed by the check); the state's
+  `answer` line (0 Cancel, 1 Discard, 2 Save) lets a case see which answer was given. Escape counts as Cancel, which is
+  what `rui_confirm` hands its callback as -1.
 
 #### Status (2026-11-27, scheduled task): SpreadsheetPro begun, step 1 (the window, the grid and its formulas)
 - **Branch `sheetpro-1`:** `iso/sys/apps/sheetpro.c` (`/usr/bin/rudolf-sheetpro`, with librudolf-ui) has the page's window
@@ -129,10 +168,52 @@ accent colours), its memory at idle against the web version, built in the releas
   from the notes puts the notes back and touches nothing else.
 - **A slide could only stay where it was typed:** Ctrl+Up and Ctrl+Down move the chosen slide up or down the deck (the
   choice goes with it, and it is one step of the history). The page's Slide menu has the same two rows.
-- **Its test (the same workflow): 17 passed, 0 failed.** Case 16 types a note (`notes:Speaker's line`), finds it on the
+- **Its test (the same workflow): 18 passed, 0 failed.** Case 17 types a note (`notes:Speaker's line`), finds it on the
   slide and sees the step it puts on the history (`hist 1 2`), then presses Ctrl+Z: the note is gone and the history
-  went back exactly one step (`hist 0 2` -- the history counts its first step as 0). Case 17 makes a slide and moves it
+  went back exactly one step (`hist 0 2` -- the history counts its first step as 0). Case 18 makes a slide and moves it
   up: `cur 0`, the new slide first, the title slide second.
+#### Status (2026-11-28, session): SpreadsheetPro step 2 begun (the .RSHEET file)
+- **Branch `sheetpro-2`:** a .RSHEET opens and saves exactly as `sprof45.js` writes it -- its v2 JSON: the book's styles
+  (each different one once, in the page's order) and its sheet's cells as `[spK(r,c), value, formula, style]`, the value
+  what the page parses (a number, TRUE or FALSE, or text -- with the page's `'` in front of a text that would read back
+  as something else), sorted by the cell's key. A file the page or Oracle saved opens here, and one saved here opens
+  there; the version 1 format of the old Spreadsheet is read too. The window's title is `NAME - SpreadsheetPro` with the
+  page's ` *` while there are changes, New (Ctrl+N) is a book with no file, Open... (Ctrl+O) and Save, Save as...
+  (Ctrl+S, Shift+Ctrl+S) are the page's own File rows and use the desktop's own file chooser, and the program takes a
+  path on its command line, which is how Files launches an app with a file.
+- **A book of several sheets is refused, not cut down:** this step shows one sheet. Opening a .RSHEET of two and
+  saving it kept the first and dropped the rest without a word, so the loader counts the sheets before it touches the
+  book and refuses one of more than a single sheet, naming the file, saying how many it has, and leaving the bytes as
+  they were; the reason is on the status line before the dialog opens (whose own loop runs the state's timer).
+- **CSV, read and written as the page does it:** a .CSV or .TSV opens with `sprof45.js`'s `spFromCSV` rules -- the
+  first line's own delimiter (tab, then semicolon, then comma), quotes with a doubled quote inside, CRLF and a BOM
+  skipped, each field a cell's text -- and the file's own name, without the extension, is the sheet's. Saving it back
+  (Ctrl+S on a CSV, as the page's `doSave` does, or a Save as to a .CSV) writes what each cell shows -- the formula's
+  value, not its text -- quoted where it holds a delimiter, a quote or a line break, a line each, CRLF. File's two
+  greyed rows are live: Import CSV asks by the page's own title and reads the file as this step's one sheet (the page
+  puts it in a new sheet; this step has one), and Export this sheet as CSV writes it wherever it is asked to without
+  becoming the book's file.
+- **Its test (the same workflow):** **19 passed, 0 failed, 338 896 bytes**, hardened (the app's budget is 1 MB). Case 14
+  opens a .RSHEET the page wrote -- a number, a formula worked out as 10, a bold cell and a centred one -- with its name
+  in the title and `dirty 0`; case 15 types into it (the page's ` *` in the window's own title, `dirty 1`) and presses
+  Ctrl+S, then reads the file back: v2, the page's `app`, the cells by key (`[0,9]`, `[1,null,"=A1*2"]`,
+  `[702,"x",null,0]`, `[1406,7,null,1]`), a text with a quote and a backslash, a number of 15 digits, `styles`
+  `[{"b":1},{"ha":"center"}]`, the sheet's own name, and the status line's `Saved grid.RSHEET` -- the name read
+  after the saver had taken the book's own away, which is how the freed path showed itself. The case caught that fault:
+  Ctrl+S hands the saver the path already held, which was freed and then copied, so the title and the status line read
+  freed memory; both places now take the new name first. The review of the section also made a number that is not
+  finite a JSON null instead of `inf`, kept the sheet's own name rather than always saving `Sheet1`, and cut a second
+  pass over the cells and a macro from the writer. Case 17 opens a two-sheet book: it is refused, `Book1` stays in the
+  title, `file -`, `cells 0`, `say two.RSHEET has 2 sheets`, and the file's bytes are the same afterwards. Case 18 opens
+  a CSV written with a quote inside a quoted field and CRLF, checks its cells (5, 7, `a,b`, `say "hi"`, 0.5), presses
+  Ctrl+S and gets the same bytes back. Case 19 exports a .RSHEET's sheet through `RUDOLF_SP_EXPORT` and asserts the
+  page's own text: `5,10,` / `x,,` / `,,7`, CRLF -- the formula's 10, and the empty cells' commas in place. (It opens
+  its own book: reading case 14's after case 15 has typed into and saved it would test the order, not the export.)
+- **Not in this slice, by the plan's own split:** .xlsx with its import and export rows, page setup, printing and the
+  PDFs, and more than one sheet (which is why a book of several is refused rather than cut down); the number formats, the sizes and hiding of rows and columns, the merges, the frozen panes, the charts,
+  the other sheets and the assistant are not carried through a save yet (the step that models each takes it on). The
+  screenshot comparison is still not in it: it comes with the step that makes every view of the window. The native
+  desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is still not in `NATIVE_APPS[]`.
 
 #### Status (2026-11-27, scheduled task): PresentPro begun, step 1 (the window, its slides and their places)
 - **Branch `presentpro-1`:** `iso/sys/apps/presentpro.c` (`/usr/bin/rudolf-presentpro`, with librudolf-ui) has the page's
@@ -152,11 +233,15 @@ accent colours), its memory at idle against the web version, built in the releas
   `iso/sys/apps/mkpresentpro.py` reads the page's themes (12), layouts (8), shapes (19), fonts (12) and sizes (17) at
   build time, so the window's lists are the page's and never drift from it.
 - **Its test:** `iso/qt/native/presentpro_t.sh` (`presentpro-check.yml`): built with `RUI_WERROR=1` and `hardcheck.py`
-  (304 160 bytes, hardened), then used under Xvfb with a stand-in rudolfd -- fifteen cases: the window and its eight
+  (295 656 bytes, hardened), then used under Xvfb with a stand-in rudolfd -- sixteen cases: the window and its eight
   menus, the lists against the page through `mkpresentpro.py`, a title typed into its place, the new slide's rule and its
   two lines, bold, the bullets and the numbering, undo, PageUp and PageDown, the two-content layout keeping the body it
   still has, a slide duplicated and another deleted, a hidden slide with the notes, the menus' own rows, and Tab and
-  Enter opening the next place. The screenshot comparison against the web PresentPro is **not** in it yet: it comes with
+  Enter opening the next place, and thirteen slides made so the deck outgrows the eight slots it starts with -- where
+  making room copies the deck and can move it, the place a pointer bug lived: the run fills every block as it is freed
+  (MALLOC_PERTURB_), so a layout read across that move comes back as the fill -- asked of the toolchain first, with a
+  guarded block grown so it has to move, and the case fails where the fill cannot be seen -- and the same walk is run
+  on the ASan build. The screenshot comparison against the web PresentPro is **not** in it yet: it comes with
   the step that makes every view of the window, so that no view can pass by being unfinished.
 - **Not in this step, by the plan's own split:** the files (.RDECK, .PPTX, the PDFs), the text boxes, shapes, pictures,
   tables, charts and icons, the transitions and animations, the presenter view, the slide sorter, the themes, the

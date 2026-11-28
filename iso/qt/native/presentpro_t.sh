@@ -5,7 +5,10 @@
 # release builds it (iso/sys/ui/build.sh) and then used: a title typed in the editor, a second slide made the page's way, a
 # body's two lines, bold and the lists, undo, the page's PageUp and PageDown, a layout that keeps what it still has, a
 # duplicated and a deleted slide, a hidden slide, the speaker's notes, the menus' own rows, and Enter opening the place the
-# stage has. It reads RUDOLF_PP_STATE, so no screenshot is needed here; the page-by-page comparison against the web
+# stage has, and thirteen slides made so the deck outgrows the eight slots it starts with -- where the copy that makes
+# room can move the deck, the place a pointer bug lived, with a probe first that the fill making a stale read visible is
+# there at all (the same walk is run on the ASan build). It reads
+# RUDOLF_PP_STATE, so no screenshot is needed here; the page-by-page comparison against the web
 # PresentPro comes with the step that makes every one of its views.
 #   sh presentpro_t.sh [OUT]
 # Needs Xvfb, xdotool, node, gcc and GTK 3's headers. (display :90, port 8686)
@@ -193,7 +196,58 @@ ok "15. Tab goes to the next place, Enter opens it, and what is typed goes on th
 	"$(grep -E '^(text|say) ' "$ST" | tr '\n' ' '); $(cat "$T/app.log")"
 stop
 
-# ---- 16. the notes are a step of the undo: typing one puts a step on the history, and Ctrl+Z takes it back
+# ---- 16. the deck outgrows the eight slots it starts with: the copy that makes room can move it, so nothing the
+# page's addSlide reads may point into the deck across that move (this is where the pointer bug was). The freed block is
+# filled as it is freed (MALLOC_PERTURB_, which glibc writes over a block on its way out), so a layout read from the old
+# block comes back as that fill rather than as the page's words: a pointer that outlived the move cannot pass here. That
+# only bites where the fill can be seen at all, so a probe is built and run first -- a guarded block grown so it has to
+# move, and the place it left read back -- and the case fails if the probe reads its own bytes back. The same walk is run
+# on the ASan build too.
+DO="layout:content"; i=0; while [ $i -lt 12 ]; do DO="$DO;new"; i=$((i+1)); done
+# the fill the walk relies on, asked of this toolchain the same way the deck meets it: a block with a guard after it so
+# growing has to move it, and the place it left read back -- "moved quiet 0x78" means nothing was written on the way out
+cat > "$T/fill_probe.c" <<'PROBE'
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+int main(void) {
+	size_t n = 4096;
+	char *p = malloc(n), *guard = malloc(64);
+	if (!p || !guard) return 2;
+	memset(p, 'x', n);
+	memset(guard, 'g', 64);
+	volatile char *left = p + 1024;
+	char *q = realloc(p, n * 4);
+	if (!q) return 2;
+	unsigned char c = (unsigned char)left[0];
+	printf("%s %s 0x%02x\n", q == p ? "nomove" : "moved", c == 'x' ? "quiet" : "live", c);
+	free(q); free(guard);
+	return 0;
+}
+PROBE
+FILL="no probe"
+cc -O1 -w -o "$T/fill_probe" "$T/fill_probe.c" 2>>"$T/app.log" && FILL=$(MALLOC_PERTURB_=165 "$T/fill_probe" 2>&1)
+start MALLOC_PERTURB_=165 RUDOLF_PP_DO="$DO"
+RC=0
+case $FILL in "moved live"*) ;; *) RC=1 ;; esac
+grep -q '^slides 13$' "$ST" || RC=1
+grep -q '^cur 12$' "$ST" || RC=1
+# every slide kept the page's rule -- the one before's layout -- so each new slide's layout was read from the deck
+[ "$(grep -c '^slide ' "$ST")" = 13 ] || RC=1
+[ "$(grep -c '^slide [0-9]* content $' "$ST")" = 13 ] || RC=1
+kill -0 "$APPP" 2>/dev/null || RC=1
+ASAN=skipped
+if [ -x "$T/rudolf-presentpro-debug" ]; then
+	rm -f "$T/asan"; ASAN=clean
+	ASAN_OPTIONS=detect_leaks=0 RUDOLF_PP_DO="$DO" RUDOLF_PP_STATE=$T/asan DISPLAY=$DSP timeout 12 "$T/rudolf-presentpro-debug" >"$T/asan.txt" 2>&1
+	grep -q '^slides 13$' "$T/asan" 2>/dev/null || ASAN="no state from the ASan build"
+	grep -Eq 'AddressSanitizer|SEGV|use-after-free' "$T/asan.txt" && ASAN="$(head -2 "$T/asan.txt" | tr '\n' ' ')"
+	[ "$ASAN" = clean ] || RC=1
+fi
+ok "16. thirteen slides outgrow the deck's first eight slots, every slide keeping the layout it was made with (fill: $FILL; asan: $ASAN)" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(slides|cur|slide) ' "$ST" | tr '\n' ' '); fill probe: $FILL; $(tail -3 "$T/asan.txt" 2>/dev/null)"
+stop
+# ---- 17. the notes are a step of the undo: typing one puts a step on the history, and Ctrl+Z takes it back
 # (before this, notes sat outside the history, so Ctrl+Z in the notes undid the last *slide* change while the typed note
 #  stayed. the step is taken when the typing pauses, so one keystroke is not a step.)
 start RUDOLF_PP_DO="notes:Speaker's line"
@@ -206,16 +260,16 @@ focus "$WIN"
 DISPLAY=$DSP xdotool key ctrl+z; sleep 1.0
 grep -q '^notes *$' "$ST" || RC=1           # (the note is gone)
 grep -q '^hist 0 2$' "$ST" || RC=1          # (and the history went back one step, not more)
-ok "16. typing notes is a step of the undo, and Ctrl+Z takes the note back" \
+ok "17. typing notes is a step of the undo, and Ctrl+Z takes the note back" \
 	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(notes|hist|text) ' "$ST" | tr '\n' ' '); $(cat "$T/app.log")"
 stop
-# ---- 17. a slide moves up the deck with Ctrl+Up, and the choice goes with it
+# ---- 18. a slide moves up the deck with Ctrl+Up, and the choice goes with it
 start RUDOLF_PP_DO="new;up"
 RC=0
 grep -q '^cur 0$' "$ST" || RC=1
 grep -q '^slide 0 content' "$ST" || RC=1     # (the new slide, now first)
 grep -q '^slide 1 title' "$ST" || RC=1       # (the title slide, now second)
-ok "17. Ctrl+Up moves the slide up the deck and the choice follows it" \
+ok "18. Ctrl+Up moves the slide up the deck and the choice follows it" \
 	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(cur|slide) ' "$ST" | tr '\n' ' ')"
 stop
 cp "$ST" "$OUT/state.txt" 2>/dev/null
