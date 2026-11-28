@@ -52,6 +52,30 @@ with a harmless job that only says whether RPK_SIGNING_KEY is set, never its val
 Library's publish still sign on main; a computer on the new release trusts both keys.
 **Later (not this part):** signing through a hardware key or a cloud key service, so the private key can't be copied at all.
 
+#### Status (2026-11-28, session): the replacement's machinery, before the switch's day
+- **Item 1, checked on the server (read-only, 2026-11-28):** the environment `release` exists, its one protection rule
+  is a branch policy, and the branches it allows are exactly `main` (`GET /repos/…/environments/release` and its
+  branch policies). Item 2: `rudolf-release.yml`, `extensions.yml` and `blitzen-model.yml` each name it, and the
+  signing step fails loudly when the secret is missing.
+- **Built here:** `iso/systools/keyswitch.py` — `--status` says where the replacement stands (which key signs, whether
+  both official keys are trusted, and what the switch still waits for), `--check` is the list's own invariant (one to
+  four public keys as `mkuki.py` reads them, no key twice, and at least one of the two official keys, since a list
+  without one makes every computer refuse this tree's releases) and `deadcheck.py` runs it before every pull request;
+  `--switch --yes` makes the switch (the new key first, the old one after it) and refuses without the owner's
+  word and whenever the list would not check.
+- **Its check:** `iso/qt/host/keyswitch_t.sh`, 15 cases on copies of the list (the state as it stands, each refusal,
+  the switch, a second switch, and that this tree is still before the switch so one cannot be made by accident), and
+  `.github/workflows/keyswitch-check.yml`: the tool and its test for every change of the list; on `main` a job in the
+  `release` environment that fails if `RPK_SIGNING_KEY` is not there (so a broken secret shows now, not at the next
+  6-hourly release); and an on-demand run with `expect=refused` from a branch, which is the plan's own check — a
+  branch that asks for the environment gets no signing key — made repeatable instead of done once.
+- **The day itself (3d) is not done and cannot be:** it needs a stable release that ships both keys to have been out
+  for a while (the owner's call), then `keyswitch.py --switch --yes`, the environment's `RPK_SIGNING_KEY` set to the
+  new key and the repository secret deleted, and the merge — in that order, which `docs/secure-boot.md` now writes
+  down under "Replacing the release key".
+- **Left:** the switch's day and item 3e (the old half leaving the list); item 4, two-factor with a hardware key on
+  the owner's GitHub account, which only the owner can do.
+
 ### Fixes
 - **Oracle's status line stays one line** (the owner, 2026-11-23 19:04 CST, with photos: a long "Goes To:" address wrapped
   onto a second line and the page above it jumped; 19:08 CST: "Add it as the first 1.6.3 fix"): PR #677.

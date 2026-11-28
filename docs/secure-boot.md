@@ -48,3 +48,37 @@ revocation list); a disc with a revoked shim no longer starts with Secure Boot o
 parts*, check the new versions in `sb-parts.txt` of that release, put the new hashes in `parts.txt`, and make a
 new disc. Rudolf OS's own SBAT line (`rudolf,1`, in `systools/mkuki.py`) is raised if a Rudolf OS kernel
 bundle must be withdrawn.
+
+## Replacing the release key (1.6.3 Part 0)
+
+Rudolf OS's releases are signed by one key, and computers trust the keys in `iso/trusted-keys.txt` (copied into the
+system as `/etc/rudolf/rpk-keys`): a computer that has not updated trusts only the keys it shipped with, so a release it
+cannot verify is refused. Replacing the key is therefore one change made in one order, never two.
+
+**Where it stands.** Since 2026-11-24 the list holds two keys: the key of 1.4.9 to 1.6.3
+(`UqTqXIW8…3mo=`) first, and the key the owner made offline beside it (`IcNJiy4z…cVg=`) second. Recovery mode's own
+start-up file carries both (`mkuki.py`), so a computer on a release that ships this list trusts either. Only the first
+key may sign: `keycheck.py` refuses a release signed by any other, because the computers that matter cannot verify it
+yet.
+
+**The switch, in this order:**
+
+1. Wait until a stable release that ships both keys has been out for a while — the owner decides, and a few weeks is
+   what lets computers that update rarely catch up.
+2. In this repository: `python3 iso/systools/keyswitch.py --status` (where it stands), then
+   `python3 iso/systools/keyswitch.py --switch --yes` (the new key first, the old one after it), then the pull request.
+3. In GitHub, at the same time: Settings › Environments › `release` › `RPK_SIGNING_KEY` = **the new key**, and the
+   repository secret `RPK_SIGNING_KEY` deleted. A secret can never be read back, so nothing can tell you afterwards
+   which key it holds — the release's own `key.txt` and its signature can.
+4. Merge the pull request. The next release is signed by the new key; `keycheck.py` refuses it only if the two steps
+   above were done in the wrong order, which is the check that keeps a mistake from reaching a computer.
+5. Later (Part 0 item 3e), once every supported stable release trusts the new key, the old one leaves the list.
+
+**What proves each step.** `keyswitch-check` runs for every change of the list: `keyswitch.py` and its host test, a job
+on `main` that fails if `RPK_SIGNING_KEY` is missing, and an on-demand run from a branch (`expect=refused`) that fails
+unless the branch is refused it — the environment's Deployment branches must be `main` only, which they were when read
+from GitHub on 2026-11-28. `deadcheck.py` refuses a list the tools cannot read. On the day, the release's `manifest.sig` and
+`beta/key.txt` show which key signed, and a computer on the previous release that updates proves the pair is trusted.
+
+**Not done by a session:** the environment's secret, the repository secret's deletion, and the moment of the switch.
+They are the owner's, and the sequence above is the whole of them.
