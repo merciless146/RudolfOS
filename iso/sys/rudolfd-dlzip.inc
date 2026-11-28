@@ -77,6 +77,15 @@ static int dlzip_at_path(struct req *r, const char *p, char *zp, size_t zn, char
 	memcpy(hd, rz, dl); hd[dl] = 0;
 	return 1;
 }
+/* a path inside the folder an extraction made: relative, nothing of it above that folder, no control characters */
+static int dlzip_rel_ok(const char *p)
+{
+	if (!p || !*p || *p == '/' || strlen(p) >= PATH_MAX) return 0;
+	size_t n = strlen(p);
+	if (!strcmp(p, "..") || !strncmp(p, "../", 3) || strstr(p, "/../") || (n > 3 && !strcmp(p + n - 3, "/.."))) return 0;
+	for (const unsigned char *c = (const unsigned char *)p; *c; c++) if (*c < 0x20 || *c == 0x7f) return 0;
+	return 1;
+}
 /* (the request's ZIP and the folder the job works in, and which way it ends: FLAT into the account's folder, or BESIDE into a
    free folder named after the ZIP) */
 enum { DLZIP_FLAT = 0, DLZIP_BESIDE = 1 };
@@ -172,7 +181,7 @@ static void api_dl_zip(struct req *r, const char *what, int post)
 			if (!strncmp(l, "dir ", 4)) { sadd(&dirs, "%s", nd++ ? "," : ""); sjson(&dirs, l + 4); }
 			else if (!strncmp(l, "file ", 5)) {
 				char *t1 = strchr(l + 5, '\t'), *t2 = t1 ? strchr(t1 + 1, '\t') : NULL; if (!t2) continue;
-				*t1 = 0; *t2 = 0; if (!dl_name_ok(t1 + 1)) continue;
+				*t1 = 0; *t2 = 0; if (!dlzip_rel_ok(t1 + 1)) continue;
 				sadd(&files, "%s{\"path\":", nf++ ? "," : ""); sjson(&files, l + 5); sadd(&files, ",\"disk\":"); sjson(&files, t1 + 1); sadd(&files, ",\"size\":%lld}", atoll(t2 + 1));
 			} else if (!strncmp(l, "dest ", 5)) dest = l + 5;
 			else if (!strncmp(l, "done ", 5) || !strncmp(l, "stopped ", 8) || !strncmp(l, "error ", 6)) end = l;
