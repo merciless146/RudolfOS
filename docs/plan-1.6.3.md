@@ -168,9 +168,11 @@ accent colours), its memory at idle against the web version, built in the releas
   segment of its own, put back where it was when the step is applied. Ctrl+Z takes the picture out and leaves the writing;
   Ctrl+Y brings it back. The same shape takes a table when its step comes: an anchor is one character of the buffer, as a
   picture is.
-- **Its check:** `wordpro-check.yml` — clean build with `RUI_WERROR=1`, then `wordpro_t.sh`'s 22 cases: a 900×300 picture
-  inserted from the check's own file at 624×208 with the counts unchanged, an undo taking it out and leaving the writing, a
-  redo putting it back, and a file that is not a picture refused with the page's words and nothing put in.
+- **Its test (the same workflow): 22 passed, 0 failed, 301 568 bytes**, hardened (a native app's budget is 1 MB): a 900×300
+  picture inserted from the check's own file at 624×208 with the counts unchanged, an undo taking it out and leaving the
+  writing, a redo putting it back, and a file that is not a picture refused with the page's words and nothing put in.
+  Two CI catches on the way: `-Werror=format-truncation` on the refusal's message (a 300-byte buffer handed to the 200-byte
+  status line, now cut to 120 characters), and the `later` count for Insert, which the test's own guard moved 15 → 14.
 - **Not in this step:** Insert's tables (▦), links, special characters, page breaks, dates, footnotes, the contents, headers
   and page numbers; the file commands and the .DOC (step 3); the screenshot comparison against the web WordPro. `wordpro`
   is **not** in `NATIVE_APPS[]` yet, so the native desktop keeps opening the web WordPro.
