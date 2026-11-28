@@ -120,6 +120,22 @@ wait_for 'grep -q "^chars 5$" "$ST_B" && grep -q "^text Hello$" "$ST_B"'
 ok "13. a second Bullets press takes the bullet off again" "$([ $? = 0 ] && echo 1)" \
 	"$(head -14 "$ST_B" | tr '\n' ' '); $(head -6 "$T/wp_bul.log")"
 kill $WPP_B 2>/dev/null; sleep 0.4
+# ---- 14. the menu bar is the page's own eight menus, in its order (base_v24.html's MENUS)
+grep -q '^mb 8 File,Edit,View,Insert,Format,Table,Tools,Help$' "$ST"
+ok "14. the menu bar has the page's eight menus, in its order" "$([ $? = 0 ] && echo 1)" "$(grep '^mb' "$ST")"
+# ---- 15. File opens with the page's items, and the ones whose step is later are greyed (and so refuse)
+start_bul "$T/state_menu" menu:0
+wait_for 'grep -q "^menuopen File 14$" "$ST_B"'
+if grep -q '^menuopen File 14$' "$ST_B" && grep -q '^grey .*Page setup…' "$ST_B" && grep -q '^grey .*Print…' "$ST_B" \
+   && ! grep -q '^grey .* Close$' "$ST_B"; then G=1; else G=0; fi
+ok "15. File's menu is the page's, with the later steps greyed" "$G" "$(grep -E '^(menuopen|grey)' "$ST_B")"
+kill $WPP_B 2>/dev/null; sleep 0.6
+# ---- 16. a command from a menu does what the toolbar's button does (Format > Bold)
+start_bul "$T/state_bold" mi:4:0
+wait_for 'grep -q "^chars 5$" "$ST_B"'
+grep -q 'tags b' "$ST_B"
+ok "16. Format > Bold bolds the writing, as the toolbar's B does" "$([ $? = 0 ] && echo 1)" "$(head -14 "$ST_B" | tr '\n' ' ')"
+kill $WPP_B 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/iso/sys/ui" "$T/page/desktop"
 sed 's/const WP_STYLES=/const WP_STYLES_GONE=/' "$R/desktop/base_v24.html" > "$T/page/desktop/base_v24.html"
