@@ -72,6 +72,35 @@ accent colours), its memory at idle against the web version, built in the releas
   three open together free roughly 200-350 MB.
 - **The owner's checklist:** each app on the Vivobook against Chromium mode's (every menu and toolbar button, a real
   document, spreadsheet and presentation of the owner's, printing), light and dark; the memory in Task Manager.
+#### Status (2026-11-28, session): SpreadsheetPro's mouse -- the drags, and the fill handle
+- **The app handled no motion at all** (the step before this one said so): only a press. The page's own mouse is now here
+  (spro45.js's `mousedown` with its `drag`, `drag.col`, `drag.row` and `fillDrag`, its `mm` and `mu`, the handle's 7 px
+  square in `drawSel`, and `doFill`):
+  - **From a cell**: a press chooses the cell and a drag grows the choice from where the press began (Shift still grows
+    it from the press before), the cursor following it and the grid scrolling it into view as the page's own does.
+  - **From a head**: a press takes the whole column or row, and a drag across the other heads grows it, as the page's
+    `drag.col`/`drag.row` do; the cursor goes to the top (or left) of the view, as before.
+  - **The fill handle**: the page's 7 px blue square (in white round it) now sits at the choice's bottom-right corner;
+    pressing it starts a fill drag, and a dashed rectangle shows what the release would fill, on the drag's longer axis
+    exactly as the page chooses it. The release fills: numbers go on by their line of best fit (1, 2 becomes 3, 4), a
+    single number is copied, weekdays and months continue (full names or their first three letters, the case kept), a
+    word with a number in it continues that number ("Item 1", and a leading zero's width), and a formula is copied with
+    its **references moved** (`=A1*2` in B1 becomes `=A2*2` in B2 and `=A3*2` in B3; `$A$1`, `$A1` and `A$1` stay as they
+    are; a sheet's name before `!` and a word in a string are not references). The filled cells keep the style of the ones
+    they came from, the whole drag is one step of the history, and the filled range is left chosen -- the page's own
+    results.
+- **Its test (the same workflow): case 25, new**, with the mouse as a person holds it (Xvfb and xdotool: a press, motion
+  part of the way and the release, tried again while what it should leave is missing): a book of 1 and 2 in A1:A2 with
+  `=A1*2` in B1; A1 dragged to B2 finds `sel 1 1 0 0 1 1` and `A1:B2`; A1 dragged to A2, then its handle down to row 4's
+  middle, finds A3 3, A4 4 and the choice `A1:A4`; B1's handle down to row 3's middle finds `=A2*2` (shown 4) and
+  `=A3*2` (shown 6); A's head dragged to C's finds `sel 0 2 0 0 99999 2` and `A1:C100000`; the book is marked unsaved and
+  the window still answers. A cell's middle is 46 + 80 c and 22 + 20 r from the grid's corner (the state's `area` line),
+  and a choice's handle is at its corner, so the check computes both.
+- **Not in this step, by the page's own split:** the page's scroll while the pointer is held past the edge, double-click
+  on the handle (its fill as far as the column beside), the comments' tooltip on rest, the borders' drag to resize, and
+  the rest of Part 1's steps; the native desktop keeps opening the web SpreadsheetPro until the whole app passes, and
+  `sheets` is still not in `NATIVE_APPS[]`.
+
 #### Status (2026-11-28, session): SpreadsheetPro's heads -- a press takes the whole column or row, and the status line adds it up
 - **The heads answered nothing:** a press on a column's letter, a row's number or the corner returned before it was
   handled ("choosing a whole row or column is a later step"), so a person had no way to choose a column -- and so no way

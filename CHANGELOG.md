@@ -45,6 +45,10 @@ Summary: In progress.
   setup, the wizard comes back at the step it was at with the name already typed, instead of Step 1 with an empty box. The
   password is never kept: a restart after it is typed comes back to the step that asks for it, both boxes empty, and the
   place goes away when the wizard ends.
+- New: the native SpreadsheetPro's mouse works as the page's: a press and a drag chooses the cells from where the press
+  began, a drag from a column's or a row's head takes that whole column or row and grows across the others, and the fill
+  handle at the choice's bottom-right corner continues its numbers (1, 2 becomes 3, 4), its weekdays, months and numbered
+  words, and copies a formula with its references moved.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
   is how the camera went a release without a capture source; it now names every plug-in it cannot find.
