@@ -193,6 +193,31 @@ ok "15. Tab goes to the next place, Enter opens it, and what is typed goes on th
 	"$(grep -E '^(text|say) ' "$ST" | tr '\n' ' '); $(cat "$T/app.log")"
 stop
 
+# ---- 16. the notes are a step of the undo: typing one puts a step on the history, and Ctrl+Z takes it back
+# (before this, notes sat outside the history, so Ctrl+Z in the notes undid the last *slide* change while the typed note
+#  stayed. the step is taken when the typing pauses, so one keystroke is not a step.)
+start RUDOLF_PP_DO="notes:Speaker's line"
+i=0; while [ $i -lt 40 ] && ! grep -q "^notes Speaker" "$ST" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+sleep 1.2   # (the pause the step is taken after)
+RC=0
+grep -q "^notes Speaker's line$" "$ST" || RC=1
+grep -q '^hist 2 2$' "$ST" || RC=1          # (the slide, and the notes as one more step)
+focus "$WIN"
+DISPLAY=$DSP xdotool key ctrl+z; sleep 1.0
+grep -q '^notes *$' "$ST" || RC=1           # (the note is gone)
+grep -q '^hist 1 2$' "$ST" || RC=1          # (and the history went back one step, not more)
+ok "16. typing notes is a step of the undo, and Ctrl+Z takes the note back" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(notes|hist|text) ' "$ST" | tr '\n' ' '); $(cat "$T/app.log")"
+stop
+# ---- 17. a slide moves up the deck with Ctrl+Up, and the choice goes with it
+start RUDOLF_PP_DO="new;up"
+RC=0
+grep -q '^cur 0$' "$ST" || RC=1
+grep -q '^slide 0 content' "$ST" || RC=1     # (the new slide, now first)
+grep -q '^slide 1 title' "$ST" || RC=1       # (the title slide, now second)
+ok "17. Ctrl+Up moves the slide up the deck and the choice follows it" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(cur|slide) ' "$ST" | tr '\n' ' ')"
+stop
 cp "$ST" "$OUT/state.txt" 2>/dev/null
 cat "$T/app.log" > "$OUT/app.log" 2>/dev/null
 echo
