@@ -133,7 +133,9 @@ static int dlz_in_dest(const char *real)
 	for (; d[i] && s[i]; i++) if (tolower((unsigned char)d[i]) != tolower((unsigned char)s[i])) break;
 	int ok = !d[i] && !s[i];
 	if (ok) {
-		const char *path = nl + 1; char want[PATH_MAX + 2]; snprintf(want, sizeof want, "%s/", path);
+		/* the writer ends the line, so the folder is what stands before the next new line */
+		char *path = nl + 1, *pe = path; while (*pe && *pe != '\n') pe++; *pe = 0;
+		char want[PATH_MAX + 2]; snprintf(want, sizeof want, "%s/", path);
 		size_t l = strlen(path) ? strlen(want) : 0;
 		ok = l && *path == '/' && !strncmp(real, want, l) && real[l];
 	}
