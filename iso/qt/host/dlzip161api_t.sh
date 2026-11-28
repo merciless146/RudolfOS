@@ -79,4 +79,9 @@ ok "25. ...while the guest's store and the shared one stay reachable: they are n
 rm -f /run/rudolf/home-session
 o=$(t 'GET home?acct=u-bob')
 ok "26. nobody signed in (the sign-in screen): as before, so its housekeeping and the checks still run" "$(echo "$o" | grep -q '^HTTP/1.1 200' && echo 1)" "$o"
+# (1.6.3 Part 10, item 1: by path, the antivirus and its quarantine only ever touch the folder the extraction made)
+o=$(t "GET read?path=$O/game (2)/Made Up Game/readme.txt" "POST file?path=$O/game (2)/Made Up Game/readme.txt&to=quar")
+ok "27. the antivirus reads a file inside the extraction's folder, and quarantines it there" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 200|' && echo "$o" | sed -n 1p | grep -q 'Read me' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 200' && echo "$o" | sed -n 2p | grep -q '"name":"readme.txt"' && [ ! -e "$O/game (2)/Made Up Game/readme.txt" ] && echo 1)" "$o $(ls $S)"
+o=$(t "GET read?path=$A/game.zip" "POST file?path=$A/game.zip&to=del" "GET read?path=$O/game/Made Up Game/readme.txt")
+ok "28. ...and nothing outside it: a file elsewhere (an older extraction's folder too) refused, and still there" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 3p | grep -q '^HTTP/1.1 403' && [ -f "$A/game.zip" ] && [ -f "$O/game/Made Up Game/readme.txt" ] && echo 1)" "$o"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

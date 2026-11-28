@@ -27,7 +27,8 @@ static char DLZIP_SH[200] = "/usr/lib/rudolf/dlzip.sh", DLZIP_OUT[200] = RUN "/d
    the sign-in screen's own housekeeping (and the checks, which run so) go on as before. */
 static void dlz_sess(char *o, size_t n)
 {
-	o[0] = 0; char *c = slurp(HOME_SESSION, NULL); if (!c) return; trim(c); snprintf(o, n, "%s", c); free(c);
+	/* rudolfd-home.inc's HOME_SESSION, written by home_bind and removed at sign-out (this include comes before it) */
+	o[0] = 0; char *c = slurp(RUN "/home-session", NULL); if (!c) return; trim(c); snprintf(o, n, "%s", c); free(c);
 }
 static int dlz_acct_mine(const char *acct)
 {
@@ -115,10 +116,25 @@ static int dlzip_at_path(struct req *r, const char *p, char *zp, size_t zn, char
    bad (POST dl/file?path=&to=quar|del). The same places a ZIP at a path may be in, the same off and len, and the same
    quarantine and deletion the page already asks for a Downloads file, so a folder beside a ZIP is checked exactly as one
    unpacked into Downloads. */
+/* the folder an extraction just made beside a ZIP ("dest" in its result, kept when dl/unzipped says where it is), while the
+   page still has its result (15 minutes, as dlzip_pending counts). A path may only name a file inside it: the antivirus
+   reads there, and its quarantine or deletion moves and removes there -- never another file of the computer, another
+   account's included, which is what naming any path the account may read would have allowed. */
+static int dlz_in_dest(const char *real)
+{
+	struct stat st;
+	if (stat(DLZIP_DEST, &st) || time(NULL) - st.st_mtime >= 900) return 0;
+	char *d = slurp(DLZIP_DEST, NULL); if (!d) return 0; trim(d);
+	char want[PATH_MAX + 2]; snprintf(want, sizeof want, "%s/", d);
+	size_t l = strlen(d) ? strlen(want) : 0;
+	int ok = l && *d == '/' && !strncmp(real, want, l) && real[l];
+	free(d); return ok;
+}
 static void api_dl_path(struct req *r, const char *what, int post)
 {
 	char fp[PATH_MAX]; struct stat st;
 	if (!dlzip_real(r, qparam(r->query, "path"), fp, sizeof fp, &st)) return;
+	if (!dlz_in_dest(fp)) { reply_err(r->fd, 403, "only a file inside the folder the extraction made"); return; }
 	if (!strcmp(what, "read")) {
 		const char *os = qparam(r->query, "off"), *ls = qparam(r->query, "len");
 		long long off = os ? atoll(os) : 0, len = ls ? atoll(ls) : 8 << 20;
@@ -243,7 +259,7 @@ static void api_dl_zip(struct req *r, const char *what, int post)
 		start_job("dl-unzip", cmd); reply_ok(r->fd, "started"); return;
 	}
 	if (!strcmp(what, "unzipped")) {
-		if (post) { unlink(DLZIP_OUT); unlink(DLZIP_ACCT); reply_ok(r->fd, "taken"); return; }
+		if (post) { unlink(DLZIP_OUT); unlink(DLZIP_ACCT); unlink(DLZIP_DEST); reply_ok(r->fd, "taken"); return; }
 		char *o = slurp(DLZIP_OUT, NULL), *a = slurp(DLZIP_ACCT, NULL); if (a) trim(a);
 		str s = {0}; sadd(&s, "{\"ok\":true,\"running\":%s,\"acct\":", dlzip_job_running() ? "true" : "false"); sjson(&s, a ? a : "");
 		str dirs = {0}, files = {0}; sadd(&dirs, "%s", ""); sadd(&files, "%s", ""); int nd = 0, nf = 0; char *end = NULL, *dest = NULL;
@@ -253,7 +269,11 @@ static void api_dl_zip(struct req *r, const char *what, int post)
 				char *t1 = strchr(l + 5, '\t'), *t2 = t1 ? strchr(t1 + 1, '\t') : NULL; if (!t2) continue;
 				*t1 = 0; *t2 = 0; if (!dlzip_rel_ok(t1 + 1)) continue;
 				sadd(&files, "%s{\"path\":", nf++ ? "," : ""); sjson(&files, l + 5); sadd(&files, ",\"disk\":"); sjson(&files, t1 + 1); sadd(&files, ",\"size\":%lld}", atoll(t2 + 1));
-			} else if (!strncmp(l, "dest ", 5)) dest = l + 5;
+			} else if (!strncmp(l, "dest ", 5)) {
+				dest = l + 5;
+				/* where the page will read, quarantine and delete its files by path: kept for its antivirus */
+				if (*dest == '/') { write_str(DLZIP_DEST, dest); chmod(DLZIP_DEST, 0600); }
+			}
 			else if (!strncmp(l, "done ", 5) || !strncmp(l, "stopped ", 8) || !strncmp(l, "error ", 6)) end = l;
 		}
 		sadd(&s, ",\"dest\":"); sjson(&s, dest ? dest : "");
