@@ -121,6 +121,9 @@ def main(argv):
         return 0
     args = [a for a in argv[1:] if not a.startswith('-')]
     to = argv[argv.index('--to') + 1] if '--to' in argv and argv.index('--to') + 1 < len(argv) else None
+    if '--to' in argv and to is None:
+        # on the day this would otherwise switch to the default key, not the one meant
+        print('keyswitch: --to needs the public key to move first'); print(USAGE); return 1
     path = next((a for a in args if a != to), PATH)
     if '--check' in argv:
         bad = problems(path)

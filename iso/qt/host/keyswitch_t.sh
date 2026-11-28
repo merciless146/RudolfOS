@@ -56,6 +56,9 @@ A=$(gen); B=$(gen); printf '%s\n' "$A" "$B" > "$W/t2"; S0=$(cksum < "$W/t2")
 o=$("$K" --switch --to "$B" "$W/t2" 2>&1); r=$?
 ok "12. without --yes it refuses and writes nothing" \
   "$([ $r = 1 ] && echo "$o" | grep -q 'give --yes' && [ "$(cksum < "$W/t2")" = "$S0" ] && echo 1)" "$o"
+o=$("$K" --switch --yes --to 2>&1); r=$?
+ok "13a. --to with no key after it refused, rather than switching to the default" \
+  "$([ $r = 1 ] && echo "$o" | grep -q -- '--to needs the public key to move first' && echo 1)" "$o"
 o=$("$K" --switch --yes --to "$(gen)" "$W/t2" 2>&1); r=$?
 ok "13. a key the list does not trust is refused, so a later rotation must say which key it means" \
   "$([ $r = 1 ] && echo "$o" | grep -q 'does not trust the key to move first' && [ "$(cksum < "$W/t2")" = "$S0" ] && echo 1)" "$o"
