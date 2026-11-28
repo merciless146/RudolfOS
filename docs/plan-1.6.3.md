@@ -314,7 +314,10 @@ accent colours), its memory at idle against the web version, built in the releas
   drawn as the page draws an item it cannot choose. The native desktop keeps opening the web PresentPro until the whole
   app passes, and `presentpro` is **not** in `NATIVE_APPS[]` yet.
 
-### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
+### Part 2. Fingerprint readers (from the owner's question of 2026-11-23; moved to `docs/plan-1.6.4.md`, Part 7)
+**Moved 2026-11-28:** every step of it is built (below, #750 for the native apps' administrator prompt); what is
+left is the owner's checklist with a real USB reader, which is `docs/plan-1.6.4.md` Part 7. Its text stays here as
+written.
 A dedicated fingerprint sensor is needed (in the power button, a corner of the touchpad, a pad beside the keyboard, or
 a USB reader): a touchscreen or touchpad senses at a few millimetres, far too coarse for a fingerprint's ridges.
 - **What it does:** a fingerprint unlocks the lock screen and answers administrator prompts; the password always still
@@ -748,7 +751,9 @@ Chromium in QEMU (sign in, a site's cookie kept, sign out, the drive read from o
 the owner's checklist: Chromium mode on the Vivobook, the setting on, Oracle's tabs in the page, signed-in sites kept after
 sign-out and back in.
 
-### Part 6. Installing beside Windows on the same drive (the owner, 2026-11-24 11:35 and 12:30 CST)
+### Part 6. Installing beside Windows on the same drive (the owner, 2026-11-24 11:35 and 12:30 CST; moved to `docs/plan-1.6.4.md`, Part 4)
+**Moved 2026-11-28:** the owner put installing beside Windows in 1.6.4, with gaps 1, 2, 4, 6, 7 and 8 of the gap
+analysis. Nothing of it is built, and its text stays here as written.
 The owner, installing on an ASUS desktop: "Is there a way to install it without formatting the hard drive or removing
 Windows?", then "Yes, add it to 1.6.3."
 **Today.** Settings > Update and recovery > Install here... writes Rudolf OS's whole disc image to the start of the
@@ -1288,7 +1293,11 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
 **Not this Part:** Oracle's WebRTC, which Native's WebKit does not have at all (docs/plan-1.5.9.md 7.1), and the camera in
 Linux apps, which use the Debian container's own stack.
 
-### Part 10. Archive Manager: unpacking and installing made easier (the owner's question, 2026-11-28)
+### Part 10. Archive Manager: unpacking and installing made easier (the owner's question, 2026-11-28; item 1 in the PRs
+below, items 2 to 8 moved to `docs/plan-1.6.4.md`, Part 5)
+
+**Moved 2026-11-28:** items 2 to 8 are 1.6.4's (gap 7 of the gap analysis); item 1 is the PRs of 2026-11-28, and its
+text stays here as written.
 
 **Asked:** "assess the archive manager application and determine the necessary changes to make unpacking and working with .zip
 files or installations easier and more intuitive." This part is that assessment and the list of changes; nothing of it is built
