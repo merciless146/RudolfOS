@@ -88,14 +88,20 @@ grep '^tags' "$ST" | grep -q 'find'
 ok "11. Ctrl+F marks the match (the find tag is on the writing, not only on the choice)" \
 	"$([ $? = 0 ] && echo 1)" "$(grep -E '^(tags|sel) ' "$ST" | tr '\n' ' ')"
 kill $WPP 2>/dev/null; sleep 0.6
-# (the app of the first cases is put away: two WordPro windows on one display take each other's presses)
-kill $WPP 2>/dev/null; sleep 1
+# (the app of the first cases is put away by its window's own process: it was a child of this shell rather than the shell,
+#  and two WordPro windows on one display take each other's presses)
+for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
+	p=$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; done
+sleep 1.5
 # ---- 12. a bullet goes on with one press and comes off with the next (the page's own toggle)
 # (RUDOLF_WP_DO is the check's hand on the toolbar's buttons, which it cannot aim; the command runs once there is writing)
 ST10=$T/state_bul; rm -f "$ST10"
 RUDOLF_WP_STATE=$ST10 RUDOLF_WP_DO=bul DISPLAY=$DSP "$BIN" >"$T/wp_bul.log" 2>&1 & WPP2=$!
 i=0; while [ $i -lt 60 ] && [ ! -s "$ST10" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-WIN2=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
+WIN2=""; i=0; while [ $i -lt 60 ] && [ -z "$WIN2" ]; do   # (this app's window, by its process)
+	for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
+		[ "$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null)" = "$WPP2" ] && WIN2=$w && break; done
+	[ -z "$WIN2" ] && timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 i=0; while [ $i -lt 60 ] && [ -n "$WIN2" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN2" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN2" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 sleep 2; DISPLAY=$DSP xdotool windowraise "$WIN2"; sleep 0.5   # (the first app's window is still on the display: this one is above it)
@@ -112,7 +118,10 @@ kill $WPP2 2>/dev/null; sleep 0.5
 ST11=$T/state_bul2; rm -f "$ST11"
 RUDOLF_WP_STATE=$ST11 RUDOLF_WP_DO=bul,bul DISPLAY=$DSP "$BIN" >"$T/wp_bul2.log" 2>&1 & WPP3=$!
 i=0; while [ $i -lt 60 ] && [ ! -s "$ST11" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-WIN3=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
+WIN3=""; i=0; while [ $i -lt 60 ] && [ -z "$WIN3" ]; do   # (this app's window, by its process)
+	for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
+		[ "$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null)" = "$WPP3" ] && WIN3=$w && break; done
+	[ -z "$WIN3" ] && timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 i=0; while [ $i -lt 60 ] && [ -n "$WIN3" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN3" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN3" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 sleep 2; DISPLAY=$DSP xdotool windowraise "$WIN3"; sleep 0.5
