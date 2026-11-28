@@ -1071,8 +1071,9 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    page. *Nothing in the native shell was touched, so no rebuild of `rudolf-native` is needed.*
    Tests: `termtabs63_t.js` (new — both shells in one window and switching, the ＋ menu when Debian is set up / not / after
    a failed status, `prompt()` and `terminalApp()` reusing the window, Ctrl+Shift+T; the test's rudolfd stands in for the
-   daemon) and `terminal56_t.js` 4 and 6, which asserted the old "another C: tab" and "a new Terminal" and now assert the
-   menu and the tab in the open window.
+   daemon) and `terminal56_t.js` (1.5.6's own check, run by the same workflow) 4, 6 and 7, which asserted the old "＋ opens another
+   C: tab", "prompt() opens a Terminal" and a read of the first tab only; they now assert the menu, the tab in the open
+   window and the text of whichever tab the file opened.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)
