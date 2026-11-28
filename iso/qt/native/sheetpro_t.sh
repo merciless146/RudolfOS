@@ -412,6 +412,7 @@ pull() { i=0
 	done
 	grep -E '^(sel |selname|cells )' "$ST25" 2>/dev/null | tr '\n' ' ' >> "$T/drag.steps"; echo >> "$T/drag.steps"; }
 chk5() { if eval "$1" >/dev/null 2>&1; then :; else RC5=1; WHY5="$WHY5 $2"; fi; }
+chk5 'grep -q "^cell B1 =A1\*2$" "$ST25"' loaded   # (the book's B1, as the file wrote it, before any drag touches it)
 pull $(ccx 0) $(ccy 0) $(ccx 1) $(ccy 1) '^selname A1:B2$'        # (A1 dragged to B2)
 chk5 'grep -q "^sel 1 1 0 0 1 1$" "$ST25"' dragcell
 chk5 'grep -q "^selname A1:B2$" "$ST25"' dragcellname
@@ -431,7 +432,7 @@ chk5 'grep -q "^sel 0 0 0 0 99999 2$" "$ST25"' headdrag
 chk5 'grep -q "^dirty 1$" "$ST25"' dirty
 kill -0 $SPP25 2>/dev/null; LIVE5=$?
 ok "25. the mouse: a drag from a cell makes the choice, a drag from a head takes the columns, and the fill handle continues 1, 2 as 3, 4 and carries a formula with its references moved" \
-	"$([ $RC5 = 0 ] && echo 1)" "failed:${WHY5:-none} | $(tr '\n' '|' < "$T/drag.steps" 2>/dev/null) | app alive=$((1-LIVE5)) | $(tr '\n' '/' < "$T/sp_drag.log" 2>/dev/null)"
+	"$([ $RC5 = 0 ] && echo 1)" "failed:${WHY5:-none} | $(tr '\n' '|' < "$T/drag.steps" 2>/dev/null) | cells:$(grep -E '^(cell|show) ' "$ST25" 2>/dev/null | tr '\n' ' ') | app alive=$((1-LIVE5)) | $(head -6 "$T/sp_drag.log" 2>/dev/null | tr '\n' '/')"
 kill $SPP25 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"

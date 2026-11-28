@@ -1574,8 +1574,10 @@ static char **word_series(Cell **src, int len, int n, int back)
 		for (const char *q = t; *q; q++) if (g_ascii_isdigit(*q)) { const char *e = q; while (g_ascii_isdigit(*e)) e++; dig = q; end = e; }
 		if (!dig || !*dig) { ok = 0; break; }
 		char *p_ = g_strndup(t, (gsize)(dig - t)), *s_ = g_strdup(end);
-		if (!i) { pre = p_; suf = s_; pad = (int)(end - dig); zero = pad > 1 && dig[0] == '0'; } else if (strcmp(pre, p_) || strcmp(suf, s_)) ok = 0;
-		g_free(p_); g_free(s_);
+		/* (the first cell's word and tail are the ones the series is made from, so they are kept, not freed; a later
+		   cell's are only compared and go) */
+		if (!i) { pre = p_; suf = s_; pad = (int)(end - dig); zero = pad > 1 && dig[0] == '0'; }
+		else { if (strcmp(pre, p_) || strcmp(suf, s_)) ok = 0; g_free(p_); g_free(s_); }
 		if (!ok) break;
 		nums[i] = atoi(dig);
 	}
@@ -1612,26 +1614,22 @@ static void style_to(Cell *dst, const Cell *src)
    moved, its style kept -- one step of the history for the whole drag, and the filled range left chosen) */
 static void fill_do(void)
 {
-	fprintf(stderr, "SPTRACE fill-entry\n"); fflush(stderr);
 	int vert = FILL.dir == 0 || FILL.dir == 1, back = FILL.dir == 1 || FILL.dir == 3;
 	int len = vert ? FILL.fr1 - FILL.fr0 + 1 : FILL.fc1 - FILL.fc0 + 1;
 	int n = vert ? FILL.tr1 - FILL.tr0 + 1 - len : FILL.tc1 - FILL.tc0 + 1 - len;
 	if (n <= 0) return;
 	if (len > 64) len = 64;   /* (a choice of more than 64 lines is copied, not given a series) */
 	int l0 = vert ? FILL.fc0 : FILL.fr0, l1 = vert ? FILL.fc1 : FILL.fr1;
-	fprintf(stderr, "SPTRACE fill-before-hist\n"); fflush(stderr);
 	hist_push();
-	fprintf(stderr, "SPTRACE fill-after-hist\n"); fflush(stderr);
 	for (int L = l0; L <= l1; L++) {
 		Cell *src[64]; double nums[64]; int allnum = 1, allstr = 1;
-		for (int i = 0; i < len; i++) {
+		for (int i = 0; i < len; i++) {   /* (the cells the fill came from, as they are: nothing frees them) */
 			int r = vert ? FILL.fr0 + i : L, c = vert ? L : FILL.fc0 + i;
-			Cell *cl = cell_get(r, c); src[i] = cl ? cell_copy(cl) : NULL;
+			src[i] = cell_get(r, c);
 			double d; int plain = src[i] && src[i]->t && *src[i]->t && src[i]->t[0] != '=';
 			if (!plain) { allnum = 0; allstr = 0; continue; }
 			if (as_num(src[i]->t, &d)) { nums[i] = d; allstr = 0; } else allnum = 0;
 		}
-		fprintf(stderr, "SPTRACE lane-src len=%d n=%d vert=%d back=%d allnum=%d allstr=%d\n", len, n, vert, back, allnum, allstr); fflush(stderr);
 		char **ser = allnum ? num_series(nums, len, n, back) : allstr ? word_series(src, len, n, back) : NULL;
 		for (int i = 0; i < n; i++) {
 			int si = back ? len - 1 - (i % len) : i % len;
@@ -1644,15 +1642,11 @@ static void fill_do(void)
 			else if (!cl || !cl->t) txt = NULL;
 			else if (cl->t[0] == '=') txt = f_shift(cl->t, r - sr, c - sc);
 			else txt = g_strdup(cl->t);
-			fprintf(stderr, "SPTRACE write %d r=%d c=%d txt=%s\n", i, r, c, txt ? txt : "(none)"); fflush(stderr);
 			cell_set(r, c, txt);
-			if (txt && cl) { Cell *dst = cell_get(r, c); if (dst) style_to(dst, cl); }
-			fprintf(stderr, "SPTRACE pre-free %d\n", i); fflush(stderr);
+			if (txt && cl) { Cell *dst = cell_get(r, c); if (dst && dst != cl) style_to(dst, cl); }
 			g_free(txt);
-			fprintf(stderr, "SPTRACE post-free %d\n", i); fflush(stderr);
 		}
 		if (ser) { for (int i = 0; i < n; i++) g_free(ser[i]); g_free(ser); }
-		for (int i = 0; i < len; i++) { fprintf(stderr, "SPTRACE src-free %d %p\n", i, (void*)src[i]); fflush(stderr); if (src[i]) cell_free(src[i]); }
 	}
 	SEL_R0 = FILL.tr0; SEL_R1 = FILL.tr1; SEL_C0 = FILL.tc0; SEL_C1 = FILL.tc1;
 	SEL_AR = FILL.tr0; SEL_AC = FILL.tc0; CUR_R = FILL.tr0; CUR_C = FILL.tc0;
@@ -1670,11 +1664,10 @@ static gboolean area_click(GtkWidget *w, GdkEventButton *e, gpointer d)
 	if (e->x < HW && e->y < HH) { sel_all(); return TRUE; }        /* (the page's selAll) */
 	if (e->y < HH) { sel_head(0, c, shift); DRAG = DRAG_COL; DRAG_I = c; return TRUE; }         /* (a column head: its whole column, and a drag across the others) */
 	if (e->x < HW) { sel_head(1, r, shift); DRAG = DRAG_ROW; DRAG_I = r; return TRUE; }         /* (a row head: its whole row) */
-	fprintf(stderr, "SPTRACE press over_handle=%d\n", over_handle(e->x, e->y)); fflush(stderr);
 	if (over_handle(e->x, e->y)) {   /* (the fill handle: the choice that a drag carries on) */
 		FILL.fr0 = SEL_R0; FILL.fc0 = SEL_C0; FILL.fr1 = SEL_R1; FILL.fc1 = SEL_C1;
 		FILL.tr0 = SEL_R0; FILL.tc0 = SEL_C0; FILL.tr1 = SEL_R1; FILL.tc1 = SEL_C1;
-		FILL.dir = 0; FILL.on = 0; DRAG = DRAG_FILL; fprintf(stderr, "SPTRACE press-fill\n"); fflush(stderr); redraw(); fprintf(stderr, "SPTRACE press-fill-redrawn\n"); fflush(stderr); return TRUE; }
+		FILL.dir = 0; FILL.on = 0; DRAG = DRAG_FILL; redraw(); return TRUE; }
 	TABFROM = -1;
 	sel_set(r, c, shift);
 	DRAG = DRAG_CELL;
@@ -1697,8 +1690,7 @@ static gboolean area_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
 		else { if (dc > 0) { tc1 = c; dir = 2; } else { tc0 = c; dir = 3; } }
 		if (on != FILL.on || tr0 != FILL.tr0 || tr1 != FILL.tr1 || tc0 != FILL.tc0 || tc1 != FILL.tc1) {
 			FILL.tr0 = tr0; FILL.tr1 = tr1; FILL.tc0 = tc0; FILL.tc1 = tc1; FILL.dir = dir; FILL.on = on;
-			fprintf(stderr, "SPTRACE motion tr%dx%d tc%dx%d dir=%d on=%d\n", tr0, tr1, tc0, tc1, dir, on); fflush(stderr);
-			redraw(); fprintf(stderr, "SPTRACE motion-redrawn\n"); fflush(stderr); }
+			redraw(); }
 	}
 	return TRUE;
 }
@@ -1707,9 +1699,7 @@ static gboolean area_release(GtkWidget *w, GdkEventButton *e, gpointer d)
 	(void)w; (void)d;
 	if (e->button != 1) return FALSE;
 	int was = DRAG; DRAG = DRAG_NONE;
-	fprintf(stderr, "SPTRACE release was=%d on=%d\n", was, FILL.on); fflush(stderr);
 	if (was == DRAG_FILL) { int on = FILL.on; FILL.on = 0; if (on) fill_do(); else redraw(); }
-	fprintf(stderr, "SPTRACE release-done\n"); fflush(stderr);
 	return TRUE;
 }
 static gboolean area_scroll(GtkWidget *w, GdkEventScroll *e, gpointer d)
