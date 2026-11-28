@@ -88,6 +88,8 @@ grep '^tags' "$ST" | grep -q 'find'
 ok "11. Ctrl+F marks the match (the find tag is on the writing, not only on the choice)" \
 	"$([ $? = 0 ] && echo 1)" "$(grep -E '^(tags|sel) ' "$ST" | tr '\n' ' ')"
 kill $WPP 2>/dev/null; sleep 0.6
+# (the app of the first cases is put away: two WordPro windows on one display take each other's presses)
+kill $WPP 2>/dev/null; sleep 1
 # ---- 12. a bullet goes on with one press and comes off with the next (the page's own toggle)
 # (RUDOLF_WP_DO is the check's hand on the toolbar's buttons, which it cannot aim; the command runs once there is writing)
 ST10=$T/state_bul; rm -f "$ST10"
