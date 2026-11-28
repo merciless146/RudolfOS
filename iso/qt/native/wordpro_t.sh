@@ -96,10 +96,14 @@ i=0; while [ $i -lt 60 ] && [ ! -s "$ST10" ]; do timeout 0.25 tail -f /dev/null;
 WIN2=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
 i=0; while [ $i -lt 60 ] && [ -n "$WIN2" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN2" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN2" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
-sleep 1; DISPLAY=$DSP xdotool mousemove --window "$WIN2" 480 300 click 1; sleep 0.8
-DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1.6
+sleep 2; DISPLAY=$DSP xdotool mousemove --window "$WIN2" 480 300 click 1; sleep 0.8
+i=0; while [ $i -lt 3 ]; do
+	DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1
+	grep -q '^chars 5$' "$ST10" && break
+	DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
+sleep 1.6
 grep -q '^text • Hello$' "$ST10"
-ok "12. Bullets puts a bullet on the writing" "$([ $? = 0 ] && echo 1)" "$(grep '^text' "$ST10")"
+ok "12. Bullets puts a bullet on the writing" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(text|chars|tags) ' "$ST10" | tr '\n' ' ')"
 kill $WPP2 2>/dev/null; sleep 0.5
 # ---- 13. ...and a second press takes it off (before this, every press added another one)
 ST11=$T/state_bul2; rm -f "$ST11"
@@ -108,10 +112,14 @@ i=0; while [ $i -lt 60 ] && [ ! -s "$ST11" ]; do timeout 0.25 tail -f /dev/null;
 WIN3=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
 i=0; while [ $i -lt 60 ] && [ -n "$WIN3" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN3" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN3" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
-sleep 1; DISPLAY=$DSP xdotool mousemove --window "$WIN3" 480 300 click 1; sleep 0.8
-DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1.8
+sleep 2; DISPLAY=$DSP xdotool mousemove --window "$WIN3" 480 300 click 1; sleep 0.8
+i=0; while [ $i -lt 3 ]; do
+	DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1
+	grep -q '^chars 5$' "$ST11" && break
+	DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
+sleep 1.8
 grep -q '^text Hello$' "$ST11"
-ok "13. a second Bullets press takes the bullet off again" "$([ $? = 0 ] && echo 1)" "$(grep '^text' "$ST11")"
+ok "13. a second Bullets press takes the bullet off again" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(text|chars|tags) ' "$ST11" | tr '\n' ' ')"
 kill $WPP3 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/iso/sys/ui" "$T/page/desktop"
