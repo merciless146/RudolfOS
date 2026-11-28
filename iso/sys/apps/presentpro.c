@@ -120,10 +120,10 @@ static void edit_begin(int ph); static void edit_commit(void); static void upd_t
 static void menu_do(const Mi *it); static int menus_n(void);
 static void redraw(void) { if (STAGE) { gtk_widget_queue_draw(STAGE); } if (LIST) gtk_widget_queue_draw(LIST); }
 
-static void slide_init(Slide *s)
+static void slide_init(Slide *s, const char *lay)
 {
 	memset(s, 0, sizeof *s);
-	g_strlcpy(s->layout, "title", sizeof s->layout);
+	g_strlcpy(s->layout, lay, sizeof s->layout);
 	for (int i = 0; i < PH_N; i++) { s->ph[i].ha = -1; s->ph[i].bl = -1; }
 }
 static void slide_free(Slide *s)
@@ -163,7 +163,15 @@ static void deck_insert(int at, const Slide *proto)
 {
 	deck_ensure(SLN + 1);
 	if (at < SLN) memmove(SL + at + 1, SL + at, sizeof(Slide) * (size_t)(SLN - at));
-	if (proto) slide_copy(&SL[at], proto); else slide_init(&SL[at]);
+	slide_copy(&SL[at], proto);
+	SLN++;
+}
+/* (a fresh slide goes straight into the deck: the page's addSlide makes one, it is not handed over) */
+static void deck_add(int at, const char *lay)
+{
+	deck_ensure(SLN + 1);
+	if (at < SLN) memmove(SL + at + 1, SL + at, sizeof(Slide) * (size_t)(SLN - at));
+	slide_init(&SL[at], lay);
 	SLN++;
 }
 static void deck_remove(int at)
@@ -458,10 +466,7 @@ static void new_slide(void)
 {
 	/* (the page's addSlide: the slide before's layout, and a title slide is followed by a content one) */
 	const char *lay = strcmp(SL[CUR].layout, "title") ? SL[CUR].layout : "content";
-	Slide s;
-	slide_init(&s);
-	g_strlcpy(s.layout, lay, sizeof s.layout);
-	deck_insert(CUR + 1, &s);
+	deck_add(CUR + 1, lay);
 	goto_slide(CUR + 1);
 	slide_changed();
 }
@@ -916,11 +921,9 @@ static void menu_do(const Mi *it)
 {
 	switch (it->op) {
 	case OP_NEW: {
-		Slide s;
-		slide_init(&s);
 		for (int i = 0; i < SLN; i++) slide_free(&SL[i]);
 		g_free(SL); SL = NULL; SLN = 0; SLC = 0;
-		deck_insert(0, &s);
+		deck_add(0, "title");
 		CUR = 0;
 		goto_slide(0); slide_changed();
 		break; }
@@ -1367,7 +1370,7 @@ int main(int argc, char **argv)
 	css();
 	W = rui_window("presentpro", "PresentPro", 1060, 700);
 	deck_ensure(1);
-	slide_init(&SL[0]);
+	slide_init(&SL[0], "title");
 	SLN = 1; CUR = 0; PHCUR = PH_TITLE;
 	build_menubar(); build_toolbar(); build_panes(); build_status();
 	gtk_window_set_title(GTK_WINDOW(W->win), "Untitled presentation - PresentPro");
