@@ -53,6 +53,11 @@ Library's publish still sign on main; a computer on the new release trusts both 
 **Later (not this part):** signing through a hardware key or a cloud key service, so the private key can't be copied at all.
 
 ### Fixes
+- **A Windows program's failure box says the real error** (the owner, 2026-11-28, with three photos: Starport: GE and
+  Dead Frontier, started through Wine from a USB stick, both end at once (exit 3) and the box showed only Wine's
+  `winebth` line, which is harmless and on every launch): `launch_report` now shows the earliest `err:` line of the log
+  first and then its last lines, leaving out `fixme:` and Wine's driver-service setup (`winebth`, `wineusb`, the
+  `scmdatabase_autostart_services` line after them); a log of nothing else says so. `wineold162_t.sh` holds both. PR #762.
 - **Oracle's status line stays one line** (the owner, 2026-11-23 19:04 CST, with photos: a long "Goes To:" address wrapped
   onto a second line and the page above it jumped; 19:08 CST: "Add it as the first 1.6.3 fix"): PR #677.
 
