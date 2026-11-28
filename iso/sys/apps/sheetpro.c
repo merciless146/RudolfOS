@@ -594,7 +594,7 @@ static int sheet_load(const char *path, char **err)
 			if (rui_jtype(a) != 4 || rui_jlen(a) < 2) continue;
 			double kd = rui_jval(rui_jat(a, 0));
 			if (kd < 0 || kd >= (double)MAXC * (double)MAXR) continue;
-			guint key = (guint)kd; int r = (int)(key / MAXC), c = (int)(key % MAXC);
+			guint key = (guint)kd;
 			RuiJ *fv = rui_jlen(a) > 2 ? rui_jat(a, 2) : NULL;
 			const char *f = fv && rui_jtype(fv) == 3 ? rui_jsval(fv) : NULL;
 			char *t = NULL;
