@@ -748,6 +748,36 @@ each account in its own partition of the desktop's one shared browser profile (e
 Part 20). With "Keep my websites encrypted with my account" on (1.6.0 Part 22, oraenc60.js; #583), Oracle runs instead in a
 Chromium of its own whose profile is the account's encrypted folder (/persist/oracle/ID, the home folder's key, locked at
 sign-out), as a separate window (1.6.2 Part 29 frames it). Turning the setting off brings the tabs back into the page.
+#### Status (2026-11-28, session): what is already here, and where this part starts
+- **Nothing of Part 5 itself is built:** no bind mount, no forced close of a partition at sign-out, and no test that says
+  where a Controlled Frame partition's files live. The part is the three proofs above, then the mount, then the tests and
+  the owner's checklist.
+- **Its ground is all shipped,** though, and this is what a start builds on rather than reworks:
+  - **The setting and its meaning** (1.6.0 Part 22, #583; `desktop/oraenc60.js`): per account, off on Standard and on in
+    Native and Lite; kept inside the account's encrypted home (`desktop/owenc`), so the drive alone cannot change it;
+    turning it off asks for the account's password and is noted in System health. With it on, Oracle's websites --
+    sign-ins, site data, cache and saved site passwords -- live in `/persist/oracle/ID`, the home folder's key, locked at
+    sign-out (1.6.1 Part 20), and Oracle runs in a Chromium of its own (framed as a separate window, 1.6.2 Part 29).
+  - **The in-page tabs it has to keep** (1.6.0-1.6.1, `desktop/tabs26.js`): Oracle's tabs are real tabs of the desktop page
+    as Controlled Frames, each account in its own `persist:` partition of the desktop's one profile (that profile
+    encrypted by the computer's TPM key, 1.6.1 Part 20). The setting off already uses this path; Part 5 would use it with
+    the setting on.
+  - **The harness a proof can borrow** (`iso/qt/native/oramem63_t.js`, Part 4): a real Chromium, an Isolated Web App of its
+    own holding `<controlledframe>` tabs in an account's `persist:` partition, real or stand-in sites, and a measurement
+    taken from outside the page. Part 5's first proof is the same harness with a different question asked of it.
+- **Where to start, and why there:** the **first** proof -- where a partition's files are -- because the other two depend
+  on its answer: the mount point it names is what gets mounted (proof 2), and the password store it finds decides the
+  third. It needs no privileged code and no QEMU: one test, `iso/qt/native/oraencpart63_t.js`, in oramem63_t.js's shape,
+  which has a site write a cookie, a `localStorage` key, an IndexedDB record and a service worker, saves a password, and
+  then reads the profile's tree before and after: every one of them listed, each under one folder per partition or named
+  where it is not, and the profile's shared files (`Network/Cookies`, `HTTP Cache`, `History`, `Login Data`, `Preferences`,
+  Safe Browsing's folder) compared byte for byte. **Pass:** all of a site's data under one `Partitions/<key>` folder with
+  the shared files unchanged, and the password store named; **fail:** this part is written up as not possible, with what
+  was found instead, and the setting keeps its meaning today.
+- **Then**, in that order: proof 2 (the mount and unmount at sign-in and sign-out, with a crash in between, on a fake
+  profile), the build on Chromium, the QEMU test (sign in, a site's cookie kept, sign out, the drive read from outside),
+  and the owner's checklist on the Vivobook.
+
 **The way to have both** (to be proven first): while the account is signed in, rudolfd mounts the account's encrypted Oracle
 folder over that account's partition's storage folder inside the desktop's Chromium profile (bind mount, as Documents are
 mounted over /home/rudolf for Linux apps); at sign-out the partition's tabs are closed, Chromium is made to let go of the
