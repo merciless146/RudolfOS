@@ -34,6 +34,7 @@ static char ON[40];   /* (the toggles the cursor's place has, as the page's updS
 
 /* ------------------------------------------------------------------ tags, and the page's "select some text first" */
 static void state_soon(void);
+static void hist_push(void); static void hist_undo(void); static void hist_redo(void);
 static void counts(void);
 static void upd_sel(void);
 /* the page's own values for the parts of WordPro GTK does not draw as it (base_v24.html's .wp-tb, .wp-area, .wp-paper, .wp-sb) */
@@ -246,7 +247,7 @@ static void on_clear(GtkWidget *b, gpointer d)
    so undoing a letter no longer takes the bold, the colour, the size and the lists with it; and the cursor and the
    choice are kept with it, so an undo leaves a person where the change was, not at the top of the page. */
 #define HIST 120
-static const char *HIST_FMT = "application/x-rudolf-wordpro";
+static GdkAtom HIST_ATOM;
 typedef struct { guint8 *d; gsize n; int cur, a, b, has; } Step;
 static Step HS[HIST]; static int HN, HI, SILENT;
 static void step_free(Step *s) { g_free(s->d); s->d = NULL; s->n = 0; }
@@ -255,7 +256,7 @@ static void step_take(Step *s)
 	step_free(s);
 	GtkTextIter a, b, i;
 	gtk_text_buffer_get_bounds(BUF, &a, &b);
-	s->d = gtk_text_buffer_serialize(BUF, BUF, HIST_FMT, &a, &b, &s->n);
+	s->d = gtk_text_buffer_serialize(BUF, BUF, HIST_ATOM, &a, &b, &s->n);
 	gtk_text_buffer_get_iter_at_mark(BUF, &i, gtk_text_buffer_get_insert(BUF));
 	s->cur = gtk_text_iter_get_offset(&i);
 	s->has = gtk_text_buffer_get_selection_bounds(BUF, &a, &b);
@@ -267,7 +268,7 @@ static void step_apply(Step *s)
 	gtk_text_buffer_set_text(BUF, "", -1);   /* (the text and its marks go together; the step puts both back) */
 	if (s->d && s->n) {
 		GtkTextIter at; gtk_text_buffer_get_start_iter(BUF, &at);
-		gtk_text_buffer_deserialize(BUF, BUF, HIST_FMT, &at, s->d, s->n, NULL);
+		gtk_text_buffer_deserialize(BUF, BUF, HIST_ATOM, &at, s->d, s->n, NULL);
 	}
 	int len = gtk_text_buffer_get_char_count(BUF), cur = s->cur > len ? len : s->cur;
 	if (s->has) {
@@ -564,9 +565,9 @@ static void build_editor(void)
 	gtk_text_buffer_create_tag(BUF, "sub", "rise", -4000, "size-points", 9.0, NULL);
 	gtk_text_buffer_create_tag(BUF, "sup", "rise", 6000, "size-points", 9.0, NULL);
 	gtk_text_buffer_create_tag(BUF, "find", "background", "#fde68a", NULL);
-	gtk_text_buffer_register_serialize_tagset(BUF, HIST_FMT);
-	gtk_text_buffer_register_deserialize_tagset(BUF, HIST_FMT);
-	gtk_text_buffer_deserialize_set_can_create_tags(BUF, HIST_FMT, TRUE);
+	HIST_ATOM = gtk_text_buffer_register_serialize_tagset(BUF, "application/x-rudolf-wordpro");
+	gtk_text_buffer_register_deserialize_tagset(BUF, "application/x-rudolf-wordpro");
+	gtk_text_buffer_deserialize_set_can_create_tags(BUF, HIST_ATOM, TRUE);
 	hist_push();   /* (the empty page is the step undo comes back to) */
 	set_editor_font();
 	gtk_container_add(GTK_CONTAINER(paper), ED);
