@@ -196,10 +196,12 @@ ok "15. Tab goes to the next place, Enter opens it, and what is typed goes on th
 stop
 
 # ---- 16. the deck outgrows the eight slots it starts with: the copy that makes room can move it, so nothing the
-# page's addSlide reads may point into the deck across that move (this is where the pointer bug was; the ASan build
-# is walked the same way, where a read of the moved-from block is reported rather than passing silently)
+# page's addSlide reads may point into the deck across that move (this is where the pointer bug was). The freed block is
+# filled as it is freed (MALLOC_PERTURB_, which glibc writes over a block on its way out), so a layout read from the old
+# block comes back as that fill rather than as the page's words: a pointer that outlived the move cannot pass here. The
+# same walk is run on the ASan build too.
 DO="layout:content"; i=0; while [ $i -lt 12 ]; do DO="$DO;new"; i=$((i+1)); done
-start RUDOLF_PP_DO="$DO"
+start MALLOC_PERTURB_=165 RUDOLF_PP_DO="$DO"
 RC=0
 grep -q '^slides 13$' "$ST" || RC=1
 grep -q '^cur 12$' "$ST" || RC=1
@@ -215,7 +217,7 @@ if [ -x "$T/rudolf-presentpro-debug" ]; then
 	grep -Eq 'AddressSanitizer|SEGV|use-after-free' "$T/asan.txt" && ASAN="$(head -2 "$T/asan.txt" | tr '\n' ' ')"
 	[ "$ASAN" = clean ] || RC=1
 fi
-ok "16. thirteen slides outgrow the deck's first eight slots, every slide keeping the layout it was made with (asan: $ASAN)" \
+ok "16. thirteen slides outgrow the deck's first eight slots, every slide keeping the layout it was made with (freed blocks filled; asan: $ASAN)" \
 	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(slides|cur|slide) ' "$ST" | tr '\n' ' '); $(tail -3 "$T/asan.txt" 2>/dev/null)"
 stop
 

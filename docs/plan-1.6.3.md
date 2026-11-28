@@ -145,8 +145,9 @@ accent colours), its memory at idle against the web version, built in the releas
   two lines, bold, the bullets and the numbering, undo, PageUp and PageDown, the two-content layout keeping the body it
   still has, a slide duplicated and another deleted, a hidden slide with the notes, the menus' own rows, and Tab and
   Enter opening the next place, and thirteen slides made so the deck outgrows the eight slots it starts with -- where
-  making room copies the deck and can move it, the place a pointer bug lived (the same walk is run on the ASan
-  build). The screenshot comparison against the web PresentPro is **not** in it yet: it comes with
+  making room copies the deck and can move it, the place a pointer bug lived: the run fills every block as it is freed
+  (MALLOC_PERTURB_), so a layout read across that move comes back as the fill, and the same walk is run on the ASan
+  build. The screenshot comparison against the web PresentPro is **not** in it yet: it comes with
   the step that makes every view of the window, so that no view can pass by being unfinished.
 - **Not in this step, by the plan's own split:** the files (.RDECK, .PPTX, the PDFs), the text boxes, shapes, pictures,
   tables, charts and icons, the transitions and animations, the presenter view, the slide sorter, the themes, the
