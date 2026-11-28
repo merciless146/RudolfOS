@@ -50,6 +50,12 @@ static void zoom_to(int z); static void new_book(void); static void show_keys(vo
 static gint cmp_key(gconstpointer a, gconstpointer b);
 static int a1_parse(const char *t, int *r0, int *c0, int *r1, int *c1);
 static void nb_update(void); static void dlg_close(int i, void *d);
+/* (1.6.3: the mouse -- the drag that is going, and the fill it would make; draw() needs the handle's place and the choice
+   a fill would take, and they are defined with the mouse below) */
+enum { DRAG_NONE = 0, DRAG_CELL, DRAG_COL, DRAG_ROW, DRAG_FILL };
+static int DRAG, DRAG_I;
+static struct { int fr0, fc0, fr1, fc1, tr0, tc0, tr1, tc1, dir, on; } FILL;   /* (fr*: the choice; tr*: where a drag would fill; dir 0 down 1 up 2 right 3 left) */
+static void handle_xy(double *x, double *y);
 static void sel_keys(GArray *out); static int view_r0(void); static int view_r1(void); static int view_c0(void); static int view_c1(void);
 static void title_update(void); static void mark_dirty(void); static void do_open(const char *path);
 static void do_save(int as); static void file_open_dlg(void);
@@ -1109,6 +1115,19 @@ static void draw(GtkWidget *widget, cairo_t *cr, gpointer d)
 	{ double x, y, w, h; cell_box(CUR_R, CUR_C, &x, &y, &w, &h);
 	  cairo_set_source_rgb(cr, 26 / 255.0, 115 / 255.0, 232 / 255.0); cairo_set_line_width(cr, 2);
 	  cairo_rectangle(cr, x + 1, y + 1, w - 2, h - 2); cairo_stroke(cr); }
+	/* (the fill handle: the page's 7 px square at the choice's bottom-right corner, in white round it, and the choice a
+	   drag from it would fill, dashed) */
+	{ double hx, hy; handle_xy(&hx, &hy);
+	  if (hx > HW && hy > HH && hx < Wd && hy < Ht) {
+		cairo_set_source_rgb(cr, 26 / 255.0, 115 / 255.0, 232 / 255.0); cairo_rectangle(cr, hx - 4, hy - 4, 7, 7); cairo_fill(cr);
+		cairo_set_source_rgb(cr, 1, 1, 1); cairo_set_line_width(cr, 1); cairo_rectangle(cr, hx - 4.5, hy - 4.5, 8, 8); cairo_stroke(cr); } }
+	if (DRAG == DRAG_FILL && FILL.on) {
+		double x = HW + FILL.tc0 * cw - SCX, y = HH + FILL.tr0 * rh - SCY;
+		double w2 = (FILL.tc1 - FILL.tc0 + 1) * cw, h2 = (FILL.tr1 - FILL.tr0 + 1) * rh;
+		double dash[2] = { 4, 3 };
+		cairo_set_dash(cr, dash, 2, 0); cairo_set_source_rgb(cr, 0.33, 0.33, 0.33); cairo_set_line_width(cr, 1);
+		cairo_rectangle(cr, x + 0.5, y + 0.5, w2 - 1, h2 - 1); cairo_stroke(cr); cairo_set_dash(cr, NULL, 0, 0);
+	}
 	cairo_restore(cr);
 	/* the head, over the cells as the page draws it */
 	cairo_set_source_rgb(cr, 0.953, 0.957, 0.965);
@@ -1444,19 +1463,241 @@ static gboolean area_key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	}
 	return FALSE;
 }
+/* ------------------------------------------------------------------ 1.6.3 (docs/plan-1.6.3.md Part 1): the mouse --
+   a drag from a cell or a range, from a column's or a row's head, and from the fill handle at the choice's bottom-right
+   corner, as the page has them (spro45.js: its mousedown's drag, drag.col, drag.row and fillDrag, mm and mu; the handle's
+   7 px square in drawSel; doFill's series and its formulas copied with their references moved). A drag from a head grows
+   that whole column or row as the pointer goes, as the page's does, and a drag from a cell grows the choice from where the
+   press began (Shift still grows it from the press before, as it does). The fill lane is the drag's own axis, the longer
+   one, exactly as the page chooses it. Not in this step: the page's scroll while the pointer is held past the edge
+   (it comes with the grid's own scrolling of a drag). The drag and fill state is at the top of the file, with the other
+   declarations, because draw() shows the handle and the choice a fill would take. */
+static void handle_xy(double *x, double *y)
+{
+	double z = zf();
+	if (x) *x = HW + (SEL_C1 + 1) * DW * z - SCX;
+	if (y) *y = HH + (SEL_R1 + 1) * DH * z - SCY;
+}
+static int over_handle(double x, double y)
+{
+	double hx, hy; handle_xy(&hx, &hy);
+	return x > HW && y > HH && fabs(x - hx) <= 4 && fabs(y - hy) <= 4;
+}
+static void at_point(double x, double y, int *r, int *c)
+{
+	double z = zf(), cw = DW * z, rh = DH * z;
+	*r = MIN(MAX((int)((y - HH + SCY) / rh), 0), MAXR - 1);
+	*c = MIN(MAX((int)((x - HW + SCX) / cw), 0), MAXC - 1);
+}
+/* (the page's copyFormula: a relative reference moves by dr and dc, an absolute one -- $A$1, $A1, A$1 -- stays, and a
+   sheet's name before ! or a word in a string is not a reference) */
+static char *f_shift(const char *f, int dr, int dc)
+{
+	if (!f) return NULL;
+	GString *o = g_string_new(NULL);
+	const char *p = f;
+	while (*p) {
+		if (*p == '"') { g_string_append_c(o, *p++);
+			while (*p) { if (*p == '"') { if (p[1] == '"') { g_string_append(o, "\"\""); p += 2; continue; } g_string_append_c(o, *p++); break; } g_string_append_c(o, *p++); }
+			continue; }
+		int lead = *p == '$' && p[1] && g_ascii_isalpha(p[1]) && (p == f || !(g_ascii_isalnum(p[-1]) || p[-1] == '_' || p[-1] == '.' || p[-1] == '$'));
+		int start = lead || (g_ascii_isalpha(*p) && (p == f || !(g_ascii_isalnum(p[-1]) || p[-1] == '_' || p[-1] == '.' || p[-1] == '$')));
+		if (start) {
+			const char *s = p + (lead ? 1 : 0), *q = s; int n = 0;
+			while (g_ascii_isalpha(*q) && n < 4) { q++; n++; }
+			if (n >= 1 && n <= 3 && !g_ascii_isalpha(*q) && *q != '!') {
+				const char *a = q; int rabs = 0;
+				if (*a == '$') { rabs = 1; a++; }
+				if (g_ascii_isdigit(*a)) {
+					const char *d = a; int row = 0, k = 0;
+					while (g_ascii_isdigit(*d) && k < 7) { row = row * 10 + (*d - '0'); d++; k++; }
+					if (!g_ascii_isalnum(*d) && *d != '_' && *d != '.') {
+						int col = 0; for (const char *t = s; t < q; t++) col = col * 26 + (g_ascii_toupper(*t) - 'A' + 1);
+						col--; row--;
+						if (!lead) col += dc; if (!rabs) row += dr;
+						if (col < 0) col = 0; if (col > MAXC - 1) col = MAXC - 1;
+						if (row < 0) row = 0; if (row > MAXR - 1) row = MAXR - 1;
+						if (lead) g_string_append_c(o, '$');
+						g_string_append(o, col_name(col));
+						if (rabs) g_string_append_c(o, '$');
+						g_string_append_printf(o, "%d", row + 1);
+						p = d; continue;
+					}
+				}
+			}
+			while (p < q) g_string_append_c(o, *p++);
+			continue;
+		}
+		g_string_append_c(o, *p++);
+	}
+	char *r = g_strdup(o->str); g_string_free(o, TRUE); return r;
+}
+static const char *const SP_DAYS[] = { "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", NULL };
+static const char *const SP_MONTHS[] = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December", NULL };
+static int list_idx(const char *const *L, const char *v, int *s3)
+{
+	char u[32]; size_t n = strlen(v); if (n >= sizeof u) return -1;
+	for (size_t i = 0; i < n; i++) u[i] = (char)g_ascii_tolower(v[i]); u[n] = 0;
+	for (int i = 0; L[i]; i++) {
+		char l[32]; size_t m = strlen(L[i]);
+		for (size_t j = 0; j < m && j < sizeof l - 1; j++) l[j] = (char)g_ascii_tolower(L[i][j]); l[m < sizeof l ? m : sizeof l - 1] = 0;
+		if (!strcmp(u, l)) { *s3 = 0; return i; }
+		l[3] = 0; if (n == 3 && !strcmp(u, l)) { *s3 = 1; return i; }
+	}
+	return -1;
+}
+/* (the page's seriesOf for words: weekdays and months continue, and so does a word with a number in it, "Item 1", "run 01a") */
+static char **word_series(Cell **src, int len, int n, int back)
+{
+	const char *const *LISTS[2] = { SP_DAYS, SP_MONTHS };
+	for (int L = 0; L < 2; L++) {
+		int idx[64], s3[64], ok = 1, total = 0;
+		for (int i = 0; i < len && ok; i++) { int s = 0; idx[i] = list_idx(LISTS[L], src[i]->t, &s); s3[i] = s; if (idx[i] < 0) ok = 0; }
+		if (!ok) continue;
+		while (LISTS[L][total]) total++;
+		int step = len > 1 ? ((idx[1] - idx[0]) + total) % total : 1; if (!step) step = 1;
+		int last = back ? idx[0] : idx[len - 1], upper = 1, lower = 1;
+		char **o = g_new0(char *, n + 1);
+		for (const char *t = src[0]->t; *t; t++) { if (g_ascii_islower(*t)) upper = 0; if (g_ascii_isupper(*t)) lower = 0; }
+		for (int i = 0; i < n; i++) {
+			int k = (((last + (back ? -1 : 1) * step * (i + 1)) % total) + total) % total;
+			char b[32]; snprintf(b, sizeof b, "%s", LISTS[L][k]); if (s3[0]) b[3] = 0;
+			if (upper) for (char *t = b; *t; t++) *t = (char)g_ascii_toupper(*t); else if (lower) for (char *t = b; *t; t++) *t = (char)g_ascii_tolower(*t);
+			o[i] = g_strdup(b);
+		}
+		return o;
+	}
+	char *pre = NULL, *suf = NULL; int nums[64], pad = 0, zero = 0, ok = 1;
+	for (int i = 0; i < len && ok; i++) {
+		const char *t = src[i] && src[i]->t ? src[i]->t : "";
+		const char *dig = NULL, *end = NULL;
+		for (const char *q = t; *q; q++) if (g_ascii_isdigit(*q)) { const char *e = q; while (g_ascii_isdigit(*e)) e++; dig = q; end = e; }
+		if (!dig || !*dig) { ok = 0; break; }
+		char *p_ = g_strndup(t, (gsize)(dig - t)), *s_ = g_strdup(end);
+		if (!i) { pre = p_; suf = s_; pad = (int)(end - dig); zero = pad > 1 && dig[0] == '0'; } else if (strcmp(pre, p_) || strcmp(suf, s_)) ok = 0;
+		g_free(p_); g_free(s_);
+		if (!ok) break;
+		nums[i] = atoi(dig);
+	}
+	if (!ok || !pre) { g_free(pre); g_free(suf); return NULL; }
+	{ int step = len > 1 ? nums[1] - nums[0] : 1, last = back ? nums[0] : nums[len - 1];
+	  char **o = g_new0(char *, n + 1);
+	  for (int i = 0; i < n; i++) { int v = last + (back ? -1 : 1) * step * (i + 1); char nb[32];
+		if (zero) snprintf(nb, sizeof nb, "%s%0*d", v < 0 ? "-" : "", pad, abs(v)); else snprintf(nb, sizeof nb, "%d", v);
+		o[i] = g_strdup_printf("%s%s%s", pre, nb, suf); }
+	  g_free(pre); g_free(suf); return o; }
+}
+/* (the page's seriesOf for numbers: two or more continue by their line of best fit, so 1, 2 goes on 3, 4; one number is
+   copied, as the page copies it) */
+static char **num_series(const double *v, int len, int n, int back)
+{
+	if (len < 2) return NULL;
+	double mx = (len - 1) / 2.0, my = 0, sxy = 0, sxx = 0;
+	for (int i = 0; i < len; i++) my += v[i];
+	my /= len;
+	for (int i = 0; i < len; i++) { double dx = i - mx; sxy += dx * (v[i] - my); sxx += dx * dx; }
+	double sl = sxx > 0 ? sxy / sxx : 0, b0 = my - sl * mx;
+	char **o = g_new0(char *, n + 1);
+	for (int i = 0; i < n; i++) { double x = back ? -1.0 - i : len + i; char b[40]; num_text(b, sizeof b, b0 + sl * x); o[i] = g_strdup(b); }
+	return o;
+}
+static void style_to(Cell *dst, const Cell *src)
+{
+	dst->b = src->b; dst->i = src->i; dst->u = src->u; dst->s = src->s; dst->ha = src->ha; dst->sz = src->sz;
+	g_free(dst->fc); dst->fc = g_strdup(src->fc);
+	g_free(dst->bg); dst->bg = g_strdup(src->bg);
+	g_free(dst->font); dst->font = g_strdup(src->font);
+}
+/* (the page's doFill: every lane of the choice is carried on -- its values on, its formulas copied with their references
+   moved, its style kept -- one step of the history for the whole drag, and the filled range left chosen) */
+static void fill_do(void)
+{
+	int vert = FILL.dir == 0 || FILL.dir == 1, back = FILL.dir == 1 || FILL.dir == 3;
+	int len = vert ? FILL.fr1 - FILL.fr0 + 1 : FILL.fc1 - FILL.fc0 + 1;
+	int n = vert ? FILL.tr1 - FILL.tr0 + 1 - len : FILL.tc1 - FILL.tc0 + 1 - len;
+	if (n <= 0) return;
+	if (len > 64) len = 64;   /* (a choice of more than 64 lines is copied, not given a series) */
+	int l0 = vert ? FILL.fc0 : FILL.fr0, l1 = vert ? FILL.fc1 : FILL.fr1;
+	hist_push();
+	for (int L = l0; L <= l1; L++) {
+		Cell *src[64]; double nums[64]; int allnum = 1, allstr = 1;
+		for (int i = 0; i < len; i++) {
+			int r = vert ? FILL.fr0 + i : L, c = vert ? L : FILL.fc0 + i;
+			Cell *cl = cell_get(r, c); src[i] = cl ? cell_copy(cl) : NULL;
+			double d; int plain = src[i] && src[i]->t && *src[i]->t && src[i]->t[0] != '=';
+			if (!plain) { allnum = 0; allstr = 0; continue; }
+			if (as_num(src[i]->t, &d)) { nums[i] = d; allstr = 0; } else allnum = 0;
+		}
+		char **ser = allnum ? num_series(nums, len, n, back) : allstr ? word_series(src, len, n, back) : NULL;
+		for (int i = 0; i < n; i++) {
+			int si = back ? len - 1 - (i % len) : i % len;
+			int sr = vert ? FILL.fr0 + si : L, sc = vert ? L : FILL.fc0 + si;
+			int r = vert ? (back ? FILL.fr0 - 1 - i : FILL.fr1 + 1 + i) : L;
+			int c = vert ? L : (back ? FILL.fc0 - 1 - i : FILL.fc1 + 1 + i);
+			if (r < 0 || c < 0 || r >= MAXR || c >= MAXC) continue;
+			Cell *cl = src[si]; char *txt = NULL;
+			if (ser) txt = g_strdup(ser[i]);
+			else if (!cl || !cl->t) txt = NULL;
+			else if (cl->t[0] == '=') txt = f_shift(cl->t, r - sr, c - sc);
+			else txt = g_strdup(cl->t);
+			cell_set(r, c, txt);
+			if (txt && cl) { Cell *dst = cell_get(r, c); if (dst) style_to(dst, cl); }
+			g_free(txt);
+		}
+		if (ser) { for (int i = 0; i < n; i++) g_free(ser[i]); g_free(ser); }
+		for (int i = 0; i < len; i++) if (src[i]) cell_free(src[i]);
+	}
+	SEL_R0 = FILL.tr0; SEL_R1 = FILL.tr1; SEL_C0 = FILL.tc0; SEL_C1 = FILL.tc1;
+	SEL_AR = FILL.tr0; SEL_AC = FILL.tc0; CUR_R = FILL.tr0; CUR_C = FILL.tc0;
+	layout_ranges(); fx_update(); upd_tb(); status_update(); redraw();
+}
 static gboolean area_click(GtkWidget *w, GdkEventButton *e, gpointer d)
 {
 	(void)d;
 	gtk_widget_grab_focus(w);
 	if (e->button != 1) return TRUE;
+	DRAG = DRAG_NONE;
 	double z = zf(), cw = DW * z, rh = DH * z;
 	int c = MIN(MAX((int)((e->x - HW + SCX) / cw), 0), MAXC - 1), r = MIN(MAX((int)((e->y - HH + SCY) / rh), 0), MAXR - 1);
 	int shift = (e->state & GDK_SHIFT_MASK) != 0;
 	if (e->x < HW && e->y < HH) { sel_all(); return TRUE; }        /* (the page's selAll) */
-	if (e->y < HH) { sel_head(0, c, shift); return TRUE; }         /* (a column head: its whole column) */
-	if (e->x < HW) { sel_head(1, r, shift); return TRUE; }         /* (a row head: its whole row) */
+	if (e->y < HH) { sel_head(0, c, shift); DRAG = DRAG_COL; DRAG_I = c; return TRUE; }         /* (a column head: its whole column, and a drag across the others) */
+	if (e->x < HW) { sel_head(1, r, shift); DRAG = DRAG_ROW; DRAG_I = r; return TRUE; }         /* (a row head: its whole row) */
+	if (over_handle(e->x, e->y)) {   /* (the fill handle: the choice that a drag carries on) */
+		FILL.fr0 = SEL_R0; FILL.fc0 = SEL_C0; FILL.fr1 = SEL_R1; FILL.fc1 = SEL_C1;
+		FILL.tr0 = SEL_R0; FILL.tc0 = SEL_C0; FILL.tr1 = SEL_R1; FILL.tc1 = SEL_C1;
+		FILL.dir = 0; FILL.on = 0; DRAG = DRAG_FILL; redraw(); return TRUE; }
 	TABFROM = -1;
 	sel_set(r, c, shift);
+	DRAG = DRAG_CELL;
+	return TRUE;
+}
+static gboolean area_motion(GtkWidget *w, GdkEventMotion *e, gpointer d)
+{
+	(void)w; (void)d;
+	if (DRAG == DRAG_NONE) return FALSE;
+	int r, c; at_point(e->x, e->y, &r, &c);
+	if (DRAG == DRAG_CELL) { sel_set(r, c, 1); return TRUE; }
+	if (DRAG == DRAG_COL) { sel_rect(0, MIN(DRAG_I, c), MAXR - 1, MAX(DRAG_I, c), 0, DRAG_I); CUR_C = c; CUR_R = view_r0(); return TRUE; }
+	if (DRAG == DRAG_ROW) { sel_rect(MIN(DRAG_I, r), 0, MAX(DRAG_I, r), MAXC - 1, DRAG_I, 0); CUR_R = r; CUR_C = view_c0(); return TRUE; }
+	{   /* (the fill handle: the drag's own axis, the longer one, as the page chooses it) */
+		int tr0 = FILL.fr0, tr1 = FILL.fr1, tc0 = FILL.fc0, tc1 = FILL.fc1, dir = FILL.dir, on = 1;
+		int dr = r > FILL.fr1 ? r - FILL.fr1 : r < FILL.fr0 ? r - FILL.fr0 : 0;
+		int dc = c > FILL.fc1 ? c - FILL.fc1 : c < FILL.fc0 ? c - FILL.fc0 : 0;
+		if (!dr && !dc) on = 0;
+		else if ((dr < 0 ? -dr : dr) >= (dc < 0 ? -dc : dc)) { if (dr > 0) { tr1 = r; dir = 0; } else { tr0 = r; dir = 1; } }
+		else { if (dc > 0) { tc1 = c; dir = 2; } else { tc0 = c; dir = 3; } }
+		if (on != FILL.on || tr0 != FILL.tr0 || tr1 != FILL.tr1 || tc0 != FILL.tc0 || tc1 != FILL.tc1) {
+			FILL.tr0 = tr0; FILL.tr1 = tr1; FILL.tc0 = tc0; FILL.tc1 = tc1; FILL.dir = dir; FILL.on = on; redraw(); }
+	}
+	return TRUE;
+}
+static gboolean area_release(GtkWidget *w, GdkEventButton *e, gpointer d)
+{
+	(void)w; (void)d;
+	if (e->button != 1) return FALSE;
+	int was = DRAG; DRAG = DRAG_NONE;
+	if (was == DRAG_FILL) { int on = FILL.on; FILL.on = 0; if (on) fill_do(); else redraw(); }
 	return TRUE;
 }
 static gboolean area_scroll(GtkWidget *w, GdkEventScroll *e, gpointer d)
@@ -2077,11 +2318,13 @@ static void build_grid(void)
 	AREAOV = gtk_overlay_new();
 	AREA = gtk_drawing_area_new();
 	gtk_widget_set_hexpand(AREA, TRUE); gtk_widget_set_vexpand(AREA, TRUE);
-	gtk_widget_add_events(AREA, GDK_BUTTON_PRESS_MASK | GDK_SCROLL_MASK | GDK_KEY_PRESS_MASK);
+	gtk_widget_add_events(AREA, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK | GDK_POINTER_MOTION_MASK | GDK_SCROLL_MASK | GDK_KEY_PRESS_MASK);
 	gtk_widget_set_can_focus(AREA, TRUE);
 	g_signal_connect(AREA, "draw", G_CALLBACK(draw), NULL);
 	g_signal_connect(AREA, "key-press-event", G_CALLBACK(area_key), NULL);
 	g_signal_connect(AREA, "button-press-event", G_CALLBACK(area_click), NULL);
+	g_signal_connect(AREA, "button-release-event", G_CALLBACK(area_release), NULL);
+	g_signal_connect(AREA, "motion-notify-event", G_CALLBACK(area_motion), NULL);
 	g_signal_connect(AREA, "scroll-event", G_CALLBACK(area_scroll), NULL);
 	g_signal_connect(AREA, "size-allocate", G_CALLBACK(on_area_size), NULL);
 	gtk_container_add(GTK_CONTAINER(AREAOV), AREA);

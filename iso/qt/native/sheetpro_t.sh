@@ -377,6 +377,62 @@ kill -0 $SPP24 2>/dev/null; LIVE=$?
 ok "24. a head takes its whole column or row, the status line adds it up, and Delete takes only its cells" \
 	"$([ $RC = 0 ] && echo 1)" "failed:${WHY:-none} | $(tr '\n' '|' < "$T/heads.steps" 2>/dev/null) | app alive=$((1-LIVE)) $(DISPLAY=$DSP xdotool getwindowgeometry --shell "$WIN24" 2>/dev/null | tr '\n' ' ') grid=$AX,$AY | $(head -4 "$T/sp_heads.log")"
 kill $SPP24 2>/dev/null; sleep 0.4
+# (1.6.3: the mouse -- a drag from a cell, from a column's head, and from the fill handle at the choice's corner (the page's
+#  drag, drag.col and fillDrag in spro45.js), a book of 1 and 2 in A1:A2 and a formula in B1 so the series and the copied
+#  formula with its references moved can be seen. A cell's middle is 46 + 80 c and 22 + 20 r from the grid's corner, as the
+#  page's own sizes are at 100 %; a choice's handle sits at its bottom-right corner.)
+F6=$T/drag.RSHEET
+cat > "$F6" <<'RS'
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"Sheet1","color":"","cells":[[0,1],[702,2],[1,"=A1*2"]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+RS
+ST25=$T/state_drag; rm -f "$ST25" "$T/drag.steps"
+RUDOLF_SP_STATE=$ST25 DISPLAY=$DSP "$BIN" "$F6" >"$T/sp_drag.log" 2>&1 & SPP25=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^area ' "$ST25" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+WIN25=$(DISPLAY=$DSP xdotool search --sync --name 'drag\.RSHEET - SpreadsheetPro$' 2>/dev/null | head -1)
+i=0; while [ $i -lt 60 ] && [ -n "$WIN25" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN25" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN25" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+AX5=$(sed -n 's/^area \([0-9]*\) [0-9]*$/\1/p' "$ST25"); AY5=$(sed -n 's/^area [0-9]* \([0-9]*\)$/\1/p' "$ST25")
+ccx() { echo $((AX5 + 46 + $1 * 80 + 40)); }
+ccy() { echo $((AY5 + 22 + $2 * 20 + 10)); }
+hhx() { echo $((AX5 + 46 + ($1 + 1) * 80)); }
+hhy() { echo $((AY5 + 22 + ($2 + 1) * 20)); }
+# (a press, the drag and its release, as a person's, with a motion part of the way so the drag is a drag and not a jump;
+#  tried again while what it should leave is missing, as a press sent to a window can be lost)
+pull() { i=0
+	while [ $i -lt 3 ]; do
+		DISPLAY=$DSP xdotool mousemove --window "$WIN25" "$1" "$2"; timeout 0.2 tail -f /dev/null
+		DISPLAY=$DSP xdotool mousedown 1; timeout 0.25 tail -f /dev/null
+		DISPLAY=$DSP xdotool mousemove --window "$WIN25" $(( ($1 + $3) / 2 )) $(( ($2 + $4) / 2 )); timeout 0.2 tail -f /dev/null
+		DISPLAY=$DSP xdotool mousemove --window "$WIN25" "$3" "$4"; timeout 0.2 tail -f /dev/null
+		DISPLAY=$DSP xdotool mousemove --window "$WIN25" "$3" "$4"; timeout 0.15 tail -f /dev/null
+		DISPLAY=$DSP xdotool mouseup 1; sleep 0.8
+		grep -q "$5" "$ST25" 2>/dev/null && break
+		i=$((i+1))
+	done
+	grep -E '^(sel |selname|cells )' "$ST25" 2>/dev/null | tr '\n' ' ' >> "$T/drag.steps"; echo >> "$T/drag.steps"; }
+RC5=0; WHY5=""
+chk5() { if eval "$1" >/dev/null 2>&1; then :; else RC5=1; WHY5="$WHY5 $2"; fi; }
+pull $(ccx 0) $(ccy 0) $(ccx 1) $(ccy 1) '^selname A1:B2$'        # (A1 dragged to B2)
+chk5 'grep -q "^sel 1 1 0 0 1 1$" "$ST25"' dragcell
+chk5 'grep -q "^selname A1:B2$" "$ST25"' dragcellname
+pull $(ccx 0) $(ccy 0) $(ccx 0) $(ccy 1) '^sel 1 0 0 0 1 0$'     # (A1 to A2: the choice the series is made from)
+pull $(hhx 0) $(hhy 1) $(ccx 0) $(ccy 3) '^cell A4 4$'             # (the handle, down to row 4's middle: 1 and 2 continue 3 and 4)
+chk5 'grep -q "^cell A3 3$" "$ST25"' ser3
+chk5 'grep -q "^cell A4 4$" "$ST25"' ser4
+chk5 'grep -q "^selname A1:A4$" "$ST25"' serchosen
+pull $(ccx 1) $(ccy 0) $(ccx 1) $(ccy 0) '^selname B1$'          # (B1, the formula)
+pull $(hhx 1) $(hhy 0) $(ccx 1) $(ccy 2) '^cell B3 '              # (its handle, down to row 3's middle)
+chk5 'grep -q "^cell B2 =A2\*2$" "$ST25"' formula2
+chk5 'grep -q "^show B2 4$" "$ST25"' formula2v
+chk5 'grep -q "^cell B3 =A3\*2$" "$ST25"' formula3
+chk5 'grep -q "^show B3 6$" "$ST25"' formula3v
+pull $(( AX5 + 86 )) $(( AY5 + 11 )) $(( AX5 + 246 )) $(( AY5 + 11 )) '^selname A1:C100000$'   # (A's head dragged to C's)
+chk5 'grep -q "^sel 0 0 0 0 99999 2$" "$ST25"' headdrag
+chk5 'grep -q "^dirty 1$" "$ST25"' dirty
+kill -0 $SPP25 2>/dev/null; LIVE5=$?
+ok "25. the mouse: a drag from a cell makes the choice, a drag from a head takes the columns, and the fill handle continues 1, 2 as 3, 4 and carries a formula with its references moved" \
+	"$([ $RC5 = 0 ] && echo 1)" "failed:${WHY5:-none} | $(tr '\n' '|' < "$T/drag.steps" 2>/dev/null) | app alive=$((1-LIVE5)) | $(head -4 "$T/sp_drag.log")"
+kill $SPP25 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"
 sed 's/const OFF_FONTS=/const OFF_FONTS_GONE=/' "$R/desktop/office45.js" > "$T/page/desktop/office45.js"

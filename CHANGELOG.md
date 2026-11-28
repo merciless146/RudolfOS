@@ -32,6 +32,10 @@ Summary: In progress.
   menu offers "Set up Linux (Debian)…" and opens that page. The Terminal is also one window: Ctrl+Alt+T, the Start menu's
   Terminal, the taskbar, prompt() (a .BAT, a Lua program, rpk) and the desktop's Command Prompt come to the Terminal that
   is open and add their tab there, instead of opening a second one whose tabs are somewhere else.
+- New: the native SpreadsheetPro's mouse works as the page's: a press and a drag chooses the cells from where the press
+  began, a drag from a column's or a row's head takes that whole column or row and grows across the others, and the fill
+  handle at the choice's bottom-right corner continues its numbers (1, 2 becomes 3, 4), its weekdays, months and numbered
+  words, and copies a formula with its references moved.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
   is how the camera went a release without a capture source; it now names every plug-in it cannot find.
