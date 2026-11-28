@@ -558,7 +558,8 @@ static void insert_picture(const char *path)
 	if (!path || !*path) { say("Choose a picture first."); state_soon(); return; }
 	GError *e = NULL; GdkPixbuf *pb = gdk_pixbuf_new_from_file(path, &e);
 	if (!pb) {
-		char m[300]; snprintf(m, sizeof m, "That is not an image file (%s).", e ? e->message : "it could not be read");
+		char m[160];   /* (shorter than the status line itself, so a truncated reason is known to fit it) */
+		snprintf(m, sizeof m, "That is not an image file (%.120s).", e ? e->message : "it could not be read");
 		if (e) g_error_free(e); say(m); state_soon(); return;
 	}
 	int w = gdk_pixbuf_get_width(pb), h = gdk_pixbuf_get_height(pb);
