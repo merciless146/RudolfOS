@@ -229,9 +229,14 @@ ok "18. a CSV opens as the page reads one (quotes, a doubled quote, CRLF), and C
 	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|file|cell|show|say) ' "$ST6" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_csv.log"); $(head -c 200 "$CS")"
 kill $SPP6 2>/dev/null; sleep 0.4
 # ---- 19. the sheet is exported as the page writes it (what each cell shows, quoted where it must be, CRLF)
-# (RUDOLF_SP_EXPORT names the file, so the row's chooser is not needed; the book is case 14's: 5, =A1*2 shown, a text, 7)
+# (RUDOLF_SP_EXPORT names the file, so the row's chooser is not needed. its own book, not case 14's: that one has been
+#  typed into and saved by case 15, and a case that reads another's leftovers is a test of the order, not of the export)
+F3=$T/ex.RSHEET
+cat > "$F3" <<'RS'
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[{"b":1},{"ha":"center"}],"sheets":[{"name":"Sheet1","color":"","cells":[[0,5],[1,null,"=A1*2"],[702,"x",null,0],[1406,7,null,1]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+RS
 EX=$T/out.csv; rm -f "$EX"; ST7=$T/state_export; rm -f "$ST7"
-RUDOLF_SP_STATE=$ST7 RUDOLF_SP_EXPORT=$EX DISPLAY=$DSP "$BIN" "$F" >"$T/sp_ex.log" 2>&1 & SPP7=$!
+RUDOLF_SP_STATE=$ST7 RUDOLF_SP_EXPORT=$EX DISPLAY=$DSP "$BIN" "$F3" >"$T/sp_ex.log" 2>&1 & SPP7=$!
 i=0; while [ $i -lt 60 ] && ! grep -q '^say Exported ' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 RC=0
 grep -q '^say Exported out.csv$' "$ST7" || RC=1
