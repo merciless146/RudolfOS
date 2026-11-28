@@ -92,12 +92,15 @@ accent colours), its memory at idle against the web version, built in the releas
   pictures, links, page breaks, dates, footnotes, the contents, headers and page numbers; Table's rows and columns;
   Tools' Notey and page colour; View's layouts, outline, marks, spell check and Notey -- they are listed so a person can
   see what is coming, and no greyed item acts.
-- **Its test (the same workflow): 17 passed, 0 failed.** Case 14 reads the bar from the state: `mb 8 File,Edit,View,Insert,
+- **Its test (the same workflow): 18 passed, 0 failed.** Case 14 reads the bar from the state: `mb 8 File,Edit,View,Insert,
   Format,Table,Tools,Help`. Case 15 opens File (`RUDOLF_WP_DO=menu:0`, the check's hand on a bar it cannot aim) and finds
   `menuopen File 14` with Page setup… and Print… in the greyed list and Close not in it. Case 16 runs Format ▸ Bold
   through the menu's own dispatch (`mi:4:0`) and finds the writing tagged `b`, which is what the toolbar's B leaves.
   Case 17 does what case 9 does for the styles: a copy of the page with `MENUS` taken out, and `mkwordpro.py` refuses it
-  by name rather than writing a bar of its own.
+  by name rather than writing a bar of its own. Case 18 pins, menu by menu, how many of the page's commands the app has
+  not got (File 10, Edit 4, View 6, Insert 15, Format 10, Table 12, Tools 4, Help 1 -- 62): a command the page adds moves
+  a number and the test fails, so nothing joins the bar as a silent greyed entry, while a wired one the page renames or
+  drops stops the build by its id.
 - **Not in this step:** the commands behind the greyed items (their steps), the keyboard's Alt+letter paths to a menu, and
   the screenshot comparison against the web WordPro. `wordpro` is still **not** in `NATIVE_APPS[]`: the native desktop
   keeps opening the web WordPro until the whole app passes.
