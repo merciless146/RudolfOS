@@ -6,8 +6,13 @@
  *                                 20,000 entries ("more": there are others); read as the desktop user, never as root
  *   POST dl/unzip?name=&acct=     Extract here: a job (dl-unzip) that unpacks it as the desktop user and moves each file
  *                                 flat into the account's folder (dlzip.sh says how); POST dl/unzip?stop=1: Cancel
+ *   1.6.3 Part 10, item 1: either request takes path=/an/absolute/file.zip instead of name= and acct= -- any ZIP at a path
+ *   the account may read (its home, a drive's, /tmp: dlzip_path_ok), and then the job unpacks it as the desktop user into a
+ *   free folder beside it, named after it ("game", "game (2)"), with nothing moved anywhere else. The listing is the same
+ *   answer; the result says where the folder is ("dest"). No account is marked as unzipping then, as nothing of a Downloads
+ *   folder changes.
  *   GET  dl/unzipped              the last extraction's result, all of it (the job's log the page reads is only its end):
- *                                 {"ok","running","acct","dirs":[...],"files":[{"path","disk","size"}],"end"}
+ *                                 {"ok","running","acct","dest","dirs":[...],"files":[{"path","disk","size"}],"end"}
  *   POST dl/unzipped              the page has taken it (its references are saved): forgotten
  * While an extraction is running, or its result has not been taken (for at most 15 minutes), dl/home says "unzip" for that
  * account, so the page does not take the files it moves there in as downloads of their own (dl27.js dlAdopt).
@@ -34,6 +39,62 @@ static int dlzip_file(struct req *r, char *zp, size_t zn, char *hd, size_t hn, c
 	int f = open(zp, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC); struct stat st;
 	if (f < 0 || fstat(f, &st) || !S_ISREG(st.st_mode)) { if (f >= 0) close(f); reply_err(r->fd, 404, "the file is not there any more"); return 0; }
 	close(f); return 1;
+}
+/* (1.6.3 Part 10, item 1) the path a request may name: where the desktop user's own files are, where drives are mounted, and
+   /tmp -- and whatever DLZIP_ROOTS names (a colon list, for the checks). The real path is what is tested, so a link cannot
+   lead out of them; what the file's own permissions then allow is the desktop user's business, as the reading is done as
+   that user. */
+static int dlzip_under(const char *p, const char *r, size_t rl)
+{
+	if (strncmp(p, r, rl)) return 0;
+	return rl && r[rl - 1] == '/' ? 1 : (p[rl] == 0 || p[rl] == '/');
+}
+static int dlzip_path_ok(const char *real)
+{
+	static const char *const R[] = { "/home", "/media", "/run/media", "/mnt", "/tmp", "/var/tmp", "/srv", NULL };
+	for (int i = 0; R[i]; i++) if (dlzip_under(real, R[i], strlen(R[i]))) return 1;
+	const char *e = getenv("DLZIP_ROOTS"); if (!e || !*e) return 0;
+	char *c = strdup(e); if (!c) return 0;
+	int ok = 0;
+	for (char *sv, *t = strtok_r(c, ":", &sv); t && !ok; t = strtok_r(NULL, ":", &sv)) if (*t) ok = dlzip_under(real, t, strlen(t));
+	free(c); return ok;
+}
+/* a ZIP at an absolute path the account may read: its real path (no link, a plain file) and the folder it is in */
+static int dlzip_at_path(struct req *r, const char *p, char *zp, size_t zn, char *hd, size_t hn)
+{
+	if (*p != '/') { reply_err(r->fd, 400, "an absolute path, please"); return 0; }
+	if (strlen(p) >= PATH_MAX) { reply_err(r->fd, 400, "that path is too long"); return 0; }
+	for (const unsigned char *c = (const unsigned char *)p; *c; c++) if (*c < 0x20 || *c == 0x7f) { reply_err(r->fd, 400, "a path, please"); return 0; }
+	char rz[PATH_MAX];
+	if (!realpath(p, rz)) { reply_err(r->fd, 404, "the file is not there any more"); return 0; }
+	if (!dlzip_path_ok(rz)) { reply_err(r->fd, 403, "only a ZIP in your home, on a drive, or in /tmp"); return 0; }
+	int f = open(rz, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC); struct stat st;
+	if (f < 0 || fstat(f, &st) || !S_ISREG(st.st_mode)) { if (f >= 0) close(f); reply_err(r->fd, 404, "the file is not there any more"); return 0; }
+	close(f);
+	if ((size_t)snprintf(zp, zn, "%s", rz) >= zn) { reply_err(r->fd, 400, "that path is too long"); return 0; }
+	char *sl = strrchr(rz, '/'); size_t dl = sl == rz ? 1 : (size_t)(sl - rz);
+	if (dl >= hn) { reply_err(r->fd, 400, "that path is too long"); return 0; }
+	memcpy(hd, rz, dl); hd[dl] = 0;
+	return 1;
+}
+/* a path inside the folder an extraction made: relative, nothing of it above that folder, no control characters */
+static int dlzip_rel_ok(const char *p)
+{
+	if (!p || !*p || *p == '/' || strlen(p) >= PATH_MAX) return 0;
+	size_t n = strlen(p);
+	if (!strcmp(p, "..") || !strncmp(p, "../", 3) || strstr(p, "/../") || (n > 3 && !strcmp(p + n - 3, "/.."))) return 0;
+	for (const unsigned char *c = (const unsigned char *)p; *c; c++) if (*c < 0x20 || *c == 0x7f) return 0;
+	return 1;
+}
+/* (the request's ZIP and the folder the job works in, and which way it ends: FLAT into the account's folder, or BESIDE into a
+   free folder named after the ZIP) */
+enum { DLZIP_FLAT = 0, DLZIP_BESIDE = 1 };
+static int dlzip_target(struct req *r, char *zp, size_t zn, char *hd, size_t hn, char *acct, size_t an, int *mode)
+{
+	*mode = DLZIP_FLAT; acct[0] = 0;
+	const char *p = qparam(r->query, "path");
+	if (p && *p) { *mode = DLZIP_BESIDE; return dlzip_at_path(r, p, zp, zn, hd, hn); }
+	return dlzip_file(r, zp, zn, hd, hn, acct, an);
 }
 /* dlzip.sh list ZIP, its output (at most 16 MB, 120 s) */
 static char *dlzip_list_out(const char *zp, int *st)
@@ -73,9 +134,9 @@ static int dlzip_pending(const char *acct)
 }
 static void api_dl_zip(struct req *r, const char *what, int post)
 {
-	char zp[600], hd[300], acct[80];
+	char zp[600], hd[300], acct[80]; int mode = DLZIP_FLAT;
 	if (!strcmp(what, "zip")) {
-		if (!dlzip_file(r, zp, sizeof zp, hd, sizeof hd, acct, sizeof acct)) return;
+		if (!dlzip_target(r, zp, sizeof zp, hd, sizeof hd, acct, sizeof acct, &mode)) return;
 		int st; char *o = dlzip_list_out(zp, &st);
 		if (!o || st == -1) { free(o); reply_err(r->fd, 504, "reading the archive took too long"); return; }
 		if (!strncmp(o, "error ", 6) || strstr(o, "\nerror ")) { free(o); reply_err(r->fd, 422, "This file is not a ZIP archive, or it is damaged."); return; }
@@ -99,12 +160,15 @@ static void api_dl_zip(struct req *r, const char *what, int post)
 			write_str(DLZIP_STOP, "1"); chmod(DLZIP_STOP, 0644); reply_ok(r->fd, "stopping"); return;
 		}
 		if (job_running()) { reply_err(r->fd, 409, "another task is still running, try again in a moment"); return; }
-		if (!dlzip_file(r, zp, sizeof zp, hd, sizeof hd, acct, sizeof acct)) return;
+		if (!dlzip_target(r, zp, sizeof zp, hd, sizeof hd, acct, sizeof acct, &mode)) return;
 		unlink(DLZIP_STOP); unlink(DLZIP_OUT); unlink(DLZIP_LIST);
 		int f = open(DLZIP_LIST, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC | O_NOFOLLOW, 0600);
-		str l = {0}; sadd(&l, "%s\n%s\n", zp, hd);
+		str l = {0}; sadd(&l, "%s\n%s\n%s\n", zp, hd, mode == DLZIP_BESIDE ? "beside" : "flat");
 		if (f < 0 || write(f, l.b, l.n) != (ssize_t)l.n) { if (f >= 0) close(f); free(l.b); reply_err(r->fd, 500, "could not write the request"); return; }
-		close(f); free(l.b); write_str(DLZIP_ACCT, acct);
+		close(f); free(l.b);
+		/* (only an account's Downloads folder changes in the flat way: dl/home's "unzip" is for that one -- a ZIP beside itself
+		   leaves whatever result the page has not taken yet alone) */
+		if (mode == DLZIP_FLAT) write_str(DLZIP_ACCT, acct);
 		char cmd[700]; snprintf(cmd, sizeof cmd, "/bin/sh %s extract %s", DLZIP_SH, DLZIP_LIST);   /* (fixed paths, no names) */
 		start_job("dl-unzip", cmd); reply_ok(r->fd, "started"); return;
 	}
@@ -112,15 +176,17 @@ static void api_dl_zip(struct req *r, const char *what, int post)
 		if (post) { unlink(DLZIP_OUT); unlink(DLZIP_ACCT); reply_ok(r->fd, "taken"); return; }
 		char *o = slurp(DLZIP_OUT, NULL), *a = slurp(DLZIP_ACCT, NULL); if (a) trim(a);
 		str s = {0}; sadd(&s, "{\"ok\":true,\"running\":%s,\"acct\":", dlzip_job_running() ? "true" : "false"); sjson(&s, a ? a : "");
-		str dirs = {0}, files = {0}; sadd(&dirs, "%s", ""); sadd(&files, "%s", ""); int nd = 0, nf = 0; char *end = NULL;
+		str dirs = {0}, files = {0}; sadd(&dirs, "%s", ""); sadd(&files, "%s", ""); int nd = 0, nf = 0; char *end = NULL, *dest = NULL;
 		for (char *sv, *l = o ? strtok_r(o, "\n", &sv) : NULL; l; l = strtok_r(NULL, "\n", &sv)) {
 			if (!strncmp(l, "dir ", 4)) { sadd(&dirs, "%s", nd++ ? "," : ""); sjson(&dirs, l + 4); }
 			else if (!strncmp(l, "file ", 5)) {
 				char *t1 = strchr(l + 5, '\t'), *t2 = t1 ? strchr(t1 + 1, '\t') : NULL; if (!t2) continue;
-				*t1 = 0; *t2 = 0; if (!dl_name_ok(t1 + 1)) continue;
+				*t1 = 0; *t2 = 0; if (!dlzip_rel_ok(t1 + 1)) continue;
 				sadd(&files, "%s{\"path\":", nf++ ? "," : ""); sjson(&files, l + 5); sadd(&files, ",\"disk\":"); sjson(&files, t1 + 1); sadd(&files, ",\"size\":%lld}", atoll(t2 + 1));
-			} else if (!strncmp(l, "done ", 5) || !strncmp(l, "stopped ", 8) || !strncmp(l, "error ", 6)) end = l;
+			} else if (!strncmp(l, "dest ", 5)) dest = l + 5;
+			else if (!strncmp(l, "done ", 5) || !strncmp(l, "stopped ", 8) || !strncmp(l, "error ", 6)) end = l;
 		}
+		sadd(&s, ",\"dest\":"); sjson(&s, dest ? dest : "");
 		sadd(&s, ",\"dirs\":[%s],\"files\":[%s],\"end\":", dirs.b, files.b); sjson(&s, end ? end : ""); sadd(&s, "}");
 		free(dirs.b); free(files.b); free(o); free(a); reply_json(r->fd, &s); return;
 	}
