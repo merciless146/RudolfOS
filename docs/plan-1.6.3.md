@@ -140,11 +140,13 @@ accent colours), its memory at idle against the web version, built in the releas
   `iso/sys/apps/mkpresentpro.py` reads the page's themes (12), layouts (8), shapes (19), fonts (12) and sizes (17) at
   build time, so the window's lists are the page's and never drift from it.
 - **Its test:** `iso/qt/native/presentpro_t.sh` (`presentpro-check.yml`): built with `RUI_WERROR=1` and `hardcheck.py`
-  (304 160 bytes, hardened), then used under Xvfb with a stand-in rudolfd -- fifteen cases: the window and its eight
+  (295 656 bytes, hardened), then used under Xvfb with a stand-in rudolfd -- sixteen cases: the window and its eight
   menus, the lists against the page through `mkpresentpro.py`, a title typed into its place, the new slide's rule and its
   two lines, bold, the bullets and the numbering, undo, PageUp and PageDown, the two-content layout keeping the body it
   still has, a slide duplicated and another deleted, a hidden slide with the notes, the menus' own rows, and Tab and
-  Enter opening the next place. The screenshot comparison against the web PresentPro is **not** in it yet: it comes with
+  Enter opening the next place, and thirteen slides made so the deck outgrows the eight slots it starts with -- where
+  making room copies the deck and can move it, the place a pointer bug lived, walked again on the ASan build so a read
+  of the moved-from block is reported rather than passing quietly. The screenshot comparison against the web PresentPro is **not** in it yet: it comes with
   the step that makes every view of the window, so that no view can pass by being unfinished.
 - **Not in this step, by the plan's own split:** the files (.RDECK, .PPTX, the PDFs), the text boxes, shapes, pictures,
   tables, charts and icons, the transitions and animations, the presenter view, the slide sorter, the themes, the
