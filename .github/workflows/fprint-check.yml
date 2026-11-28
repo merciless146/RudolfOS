@@ -5,6 +5,8 @@
 #          removing, an account removed
 #   page:  User Settings › Sign-in options › Fingerprints (desktop/fprint63.js, iso/qt/shell2/fprint63_t.js; a stand-in rudolfd)
 #   native: Native's lock screen with a finger (iso/qt/host/nativefp163_t.sh, a stand-in rudolfd)
+#   prompt: the native apps' administrator prompt with a finger (iso/qt/host/fpuiprompt63_t.sh: librudolf-ui's rui_elevate,
+#           a stand-in rudolfd)
 #   size:  what libfprint adds to the newest beta's base layer (systools/mkfprint.sh against it: its 3 MB budget), and the
 #          helper built as the release builds it (hardened, its libraries all in that base layer)
 name: Fingerprint readers check
@@ -15,7 +17,8 @@ on:
       'iso/systools/ci_release.sh', 'iso/qt/host/fprint163_t.sh', 'iso/qt/host/fixtures/fpapi.c', 'iso/qt/host/fixtures/vfinger.py',
       'iso/qt/host/fixtures/deskls.js', 'desktop/fprint63.js', 'desktop/fido61.js', 'desktop/build19.py', 'iso/qt/shell2/fprint63_t.js', 'desktop/core25.js',
       'iso/sys/rudolf-native.c', 'iso/qt/host/nativefp163_t.sh', 'iso/qt/host/fixtures/native_rd.py',
-      '.github/workflows/fprint-check.yml']
+      'iso/sys/ui/rudolf-ui.c', 'iso/sys/ui/mkui.py', 'iso/qt/host/fpuiprompt63_t.c', 'iso/qt/host/fpuiprompt63_t.sh',
+      'iso/qt/host/fixtures/fpui_rd.py', '.github/workflows/fprint-check.yml']
   workflow_dispatch:
 permissions: {contents: read}
 jobs:
@@ -46,6 +49,15 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq libwebkit2gtk-4.1-dev xvfb xdotool >/dev/null
       - name: Native's lock screen with a finger (a stand-in rudolfd)
         run: sh iso/qt/host/nativefp163_t.sh
+  prompt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Packages
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libgtk-3-dev xvfb >/dev/null
+      - name: The native apps' administrator prompt with a finger (a stand-in rudolfd)
+        run: sh iso/qt/host/fpuiprompt63_t.sh
   size:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
