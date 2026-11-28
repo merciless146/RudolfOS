@@ -92,44 +92,34 @@ kill $WPP 2>/dev/null; sleep 0.6
 for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
 	p=$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; done
 sleep 1.5
+# (a fresh app of the same kind: the window takes the keys, the press puts the writing ready -- retried, because a press
+#  into a window that has just appeared can be lost -- and RUDOLF_WP_DO is the check's hand on the toolbar's buttons)
+start_bul() {
+	ST_B=$1; rm -f "$ST_B"
+	RUDOLF_WP_STATE=$ST_B RUDOLF_WP_DO=$2 DISPLAY=$DSP "$BIN" >"$T/wp_bul.log" 2>&1 & WPP_B=$!
+	i=0; while [ $i -lt 80 ] && [ ! -s "$ST_B" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+	WIN_B=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
+	i=0; while [ $i -lt 80 ] && [ -n "$WIN_B" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN_B" 2>/dev/null
+		[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN_B" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+	sleep 2; DISPLAY=$DSP xdotool mousemove --window "$WIN_B" 480 300 click 1; sleep 0.8
+	i=0; while [ $i -lt 8 ]; do
+		DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1.2
+		grep -q '^chars 5$' "$ST_B" && break
+		DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
+}
+wait_for() { i=0; while [ $i -lt 60 ] && ! eval "$1" >/dev/null 2>&1; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done; }
 # ---- 12. a bullet goes on with one press and comes off with the next (the page's own toggle)
-# (RUDOLF_WP_DO is the check's hand on the toolbar's buttons, which it cannot aim; the command runs once there is writing.
-#  the app runs under gdb as the first one does, so a stop leaves the reason in the log)
-ST10=$T/state_bul; rm -f "$ST10"
-RUDOLF_WP_STATE=$ST10 RUDOLF_WP_DO=bul DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/app2.exit"' sh $RUN "$BIN" >"$T/wp_bul.log" 2>&1 & WPP2=$!
-i=0; while [ $i -lt 60 ] && [ ! -s "$ST10" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-WIN2=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
-i=0; while [ $i -lt 60 ] && [ -n "$WIN2" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN2" 2>/dev/null
-	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN2" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
-sleep 2; DISPLAY=$DSP xdotool windowraise "$WIN2"; sleep 0.5
-DISPLAY=$DSP xdotool mousemove --window "$WIN2" 480 300 click 1; sleep 0.8
-i=0; while [ $i -lt 3 ]; do
-	DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1
-	grep -q '^chars 5$' "$ST10" && break
-	DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
-sleep 2.2
-grep -q '^chars 7$' "$ST10"     # (the five letters and the bullet's two)
+start_bul "$T/state_bul" bul
+wait_for 'grep -q "^chars 7$" "$ST_B"'     # (the five letters and the bullet's two)
 ok "12. Bullets puts a bullet on the writing" "$([ $? = 0 ] && echo 1)" \
-	"$(head -14 "$ST10" | tr '\n' ' '); $(head -40 "$T/wp_bul.log"); $(cat "$T/app2.exit" 2>/dev/null)"
-kill $WPP2 2>/dev/null; sleep 0.5
+	"$(head -14 "$ST_B" | tr '\n' ' '); $(head -6 "$T/wp_bul.log")"
+kill $WPP_B 2>/dev/null; sleep 0.6
 # ---- 13. ...and a second press takes it off again (before this, every press added another one)
-ST11=$T/state_bul2; rm -f "$ST11"
-RUDOLF_WP_STATE=$ST11 RUDOLF_WP_DO=bul,bul DISPLAY=$DSP sh -c '"$@"; echo "app exit $?" >> "'"$T"'/app3.exit"' sh $RUN "$BIN" >"$T/wp_bul2.log" 2>&1 & WPP3=$!
-i=0; while [ $i -lt 60 ] && [ ! -s "$ST11" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-WIN3=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
-i=0; while [ $i -lt 60 ] && [ -n "$WIN3" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN3" 2>/dev/null
-	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN3" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
-sleep 2; DISPLAY=$DSP xdotool windowraise "$WIN3"; sleep 0.5
-DISPLAY=$DSP xdotool mousemove --window "$WIN3" 480 300 click 1; sleep 0.8
-i=0; while [ $i -lt 3 ]; do
-	DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1
-	grep -q '^chars 5$' "$ST11" && break
-	DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
-sleep 2.4
-grep -q '^chars 5$' "$ST11" && grep -q '^text Hello$' "$ST11"
+start_bul "$T/state_bul2" "bul,bul"
+wait_for 'grep -q "^chars 5$" "$ST_B" && grep -q "^text Hello$" "$ST_B"'
 ok "13. a second Bullets press takes the bullet off again" "$([ $? = 0 ] && echo 1)" \
-	"$(head -14 "$ST11" | tr '\n' ' '); $(head -40 "$T/wp_bul2.log"); $(cat "$T/app3.exit" 2>/dev/null)"
-kill $WPP3 2>/dev/null; sleep 0.4
+	"$(head -14 "$ST_B" | tr '\n' ' '); $(head -6 "$T/wp_bul.log")"
+kill $WPP_B 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/iso/sys/ui" "$T/page/desktop"
 sed 's/const WP_STYLES=/const WP_STYLES_GONE=/' "$R/desktop/base_v24.html" > "$T/page/desktop/base_v24.html"
