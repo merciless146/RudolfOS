@@ -8,8 +8,9 @@ Gap numbers 3, 5, and 9 will be addressed as part of the 2.0 WendigOS project."*
 **Where the six come from.** Three are new work (gap 1, gap 2, gap 4), two are parts already written for 1.6.3 that
 nothing of was built (gap 6 is 1.6.3's Part 6, gap 7 is 1.6.3's Part 10, items 2 to 8), and one is a piece of 2.0's
 wave 2 pulled forward because it is the desktop's most-used window (gap 8, File Explorer, step 1). **A seventh part has
-no gap of its own:** the fingerprint readers (1.6.3's Part 2) are three steps built and two small pieces left, and the
-owner moved them here on 2026-11-28 so that both sign-in's parts are finished together. This plan is the
+no gap of its own:** the fingerprint readers (1.6.3's Part 2) are built, its last code step (#750) merged the day the
+owner moved them here; what is left is the owner's checklist with a real reader, and it is Part 7 so that whatever that
+checklist finds is fixed in one place. This plan is the
 whole of them: the parts below are their items, and 1.6.3's plan keeps what was written there with a line saying where
 it went, as `plan-1.6.3.md` does for the parts it took from 1.6.2.
 
@@ -184,27 +185,24 @@ wave 2 (`docs/plan-2.0.md`, "The order"), and 2.0 keeps the rest of the wave.
   a folder of photos, and Task Manager's memory for both.
 
 ### Part 7. Fingerprint readers, finished (no gap of the nine; 1.6.3's Part 2, moved here)
-Three of 1.6.3's Part 2 steps are built and in main: the root helper `fprint` (libfprint, no daemon, no service to ask,
+**All of 1.6.3's Part 2 is built and in main**, including its last code step: #750 (merged 2026-11-28) gave the
+native apps' administrator prompt a finger (`librudolf-ui`'s `rui_elevate`, so every native app that asks for an
+administrator has it at once: the reader's line, the finger's one-time answer in place of the password, never for a
+standard user, the password always still working; `iso/qt/host/fpuiprompt63_t.sh` and `fprint-check.yml`'s `prompt`
+job). The rest is the same three steps as before: the root helper `fprint` (libfprint, no daemon, no service to ask,
 CAP_DAC_READ_SEARCH only, Landlock), each account's prints in PERSIST/fprint/ACCOUNT **encrypted under the account's own
-file key** so that signing out locks them, rudolfd's `fp/*` requests, Settings › Users' Sign-in options, the page's lock
-screen and administrator prompts, and Native's lock screen, unlock and authenticator step (every touch checked against a
-new random challenge; five fingers not recognised, the password; never the first sign-in after a restart; never instead
-of two-step sign-in's code; Guest none). Its size, 972 KB in the base layer, is already in the images. What is left is
-small and needs the owner's own hands:
-- **1. The native apps' administrator prompt takes a finger too.** `librudolf-ui`'s own prompt
-  (`iso/sys/ui/rudolf-ui.c`), used by the native apps while the native Settings is switched on, asks for the
-  administrator's password today. It gains the reader's line, and its answer goes in place of the password by the same
-  one-time answer rudolfd already gives (`fp/verify`'s `"t"`, 60 s, once, an administrator's finger only), as the
-  page's prompt and Native's own do. Never for a standard user; never for an account whose files are not open; the
-  password always still works.
-- **2. The owner's checklist with a real reader.** The Vivobook has no fingerprint reader (checked read-only,
+file key** so that signing out locks them, rudolfd's `fp/*`, Settings › Users' Sign-in options, the page's lock screen
+and prompts, and Native's lock screen, unlock and authenticator step. Its 972 KB in the base layer is already in the
+images. What is left is the owner's own hardware, and it is this part's one item:
+- **1. The owner's checklist with a real reader.** The Vivobook has no fingerprint reader (checked read-only,
   2026-11-23: its USB and I2C devices are a hub, the Bluetooth radio, the webcam, the touchpad and the system's buses;
-  nothing on SPI), so this needs a supported USB reader from libfprint's list. On the Vivobook: enrol a finger in
-  Settings › Users; unlock the lock screen with it; answer an administrator's prompt with it; five wrong fingers and
-  then the password; after a restart the password is asked; a reader libfprint does not support named plainly.
-- **The tests:** `iso/qt/host/fprint163_t.sh` (already 50/50, libfprint's virtual reader with made-up fingerprints) gains
-  the native prompt's case; `iso/qt/native/` gets the prompt's own check under Xvfb with a stand-in rudolfd, as
-  `nativefp163_t.sh` has Native's lock screen.
+  nothing on SPI), so this needs a supported USB reader from libfprint's list. On the Vivobook, Native and Chromium
+  mode both: enrol a finger in Settings › Users; unlock the lock screen with it; answer an administrator's prompt with
+  it (a native app's own prompt too, which is #750's); five wrong fingers and then the password; after a restart the
+  password is asked; a reader libfprint does not support named plainly; Guest offered none.
+- **If the checklist finds anything,** it is fixed here rather than in 1.6.3: that is what the part is for now, and the
+  tests it would start from are `iso/qt/host/fprint163_t.sh` (50/50, libfprint's virtual reader with made-up
+  fingerprints), `iso/qt/shell2/fprint63_t.js`, `iso/qt/native/nativefp163_t.sh` and `iso/qt/host/fpuiprompt63_t.sh`.
 - **Not here:** a fingerprint as the first sign-in after a restart (it would need the file key kept where a finger
   opens it: the TPM, a part of its own if ever), a finger instead of two-step sign-in's code, and Android's own
   fingerprint use.
