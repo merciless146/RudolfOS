@@ -15,7 +15,7 @@
       the person's choice), in Settings › Apps › Linux beside Wine, and in System health while it is pending.
    Everything here is the page's own, so the three engines show it alike (the owner's rule). */
 window.__wineold62=1;
-const WO62={st:null,dlg:null,poll:0,said:0};
+const WO62={st:null,dlg:null,poll:0,said:0,seen:{},fill:{}};
 function woSize(b){b=+b||0;return b>=1e9?(b/1e9).toFixed(1)+' GB':Math.max(1,Math.round(b/1e6))+' MB'}
 async function woGet(dir){if(!RD)return null;try{const j=await rd('wine/old'+(dir?'?dir='+encodeURIComponent(dir):''));WO62.st=j;return j}catch(e){return null}}
 function woProgress(j){if(!j)return'';if(j.phase=='finish')return'Putting the copy in its place…';if(j.phase=='launchers')return'Bringing their Start menu entries and icons…';
@@ -62,6 +62,8 @@ function woWatch(on){const tick=async()=>{const s=await woGet();const j=s&&s.job
 async function woFail(id,r){try{await lxAnswer(id,{})}catch(e){}
  /* (one left from more than 10 minutes ago, when no desktop was there to say it: not said now) */
  const at=+(String(id).split('-')[1]||0);if(at&&Date.now()/1000-at>600)return;
+ if(WO62.seen[id]){const f=WO62.fill[id];if(f)f(r);return}   /* (the same box, its readings in now: filled in, never shown twice) */
+ WO62.seen[id]=1;
  const name=String(r.name||'A program'),st=+r.status||0,secs=+r.secs||0;
  const how=st>=128?'it was stopped (signal '+(st-128)+')':st==127?'its program could not be found':'exit status '+st;
  const s=r.wine?await woGet(String(r.dir||'')):null;const offer=s&&s.on&&(s.inOld||(s.offer&&s.count));
@@ -72,14 +74,16 @@ async function woFail(id,r){try{await lxAnswer(id,{})}catch(e){}
 <p class='wo62fo'></p><p class='wo62fg' style='font-size:12px;opacity:.75'></p><div class='rmrow'><button class='wo62fc'>Close</button><button class='wo62fb pri' hidden>Bring them in…</button></div></div>`;
  const q=c=>o.querySelector(c);q('h3').textContent=name+' did not start';
  q('.wo62fa').textContent='It ended '+(secs<1?'at once':'after '+Math.round(secs)+' s')+' ('+how+') without opening a window. The last lines of its log:';
- const L=(r.lines||[]).map(String).filter(Boolean);q('.wo62fl').textContent=L.length?L.join('\n'):'(its log is empty)';
- const D=(r.diag||[]).map(String).filter(Boolean);   /* (what it runs with: rudolf-debian read it when the program ended) */
- if(D.length){const d=q('.wo62fd');d.hidden=false;d.textContent='What it runs with (Wine, its 32- and 64-bit GL and Vulkan, the renderer, the GPU, room):\n'+D.join('\n')}
- q('.wo62fg').textContent=(r.log?'Its whole log: '+r.log:'')+(r.diaglog?' · its whole check: '+r.diaglog:'');
+ const fill=r2=>{   /* (what it ended with; then, a moment later, what it runs with) */
+  const L=(r2.lines||[]).map(String).filter(Boolean);q('.wo62fl').textContent=L.length?L.join('\n'):'(its log is empty)';
+  const D=(r2.diag||[]).map(String).filter(Boolean);
+  if(D.length){const d=q('.wo62fd');d.hidden=false;d.textContent='What it runs with (Wine, its 32- and 64-bit GL and Vulkan, the renderer, the GPU, room):\n'+D.join('\n')}
+  q('.wo62fg').textContent=(r2.log?'Its whole log: '+r2.log:'')+(r2.diaglog?' · its whole check: '+r2.diaglog:'')};
+ WO62.fill[id]=fill;fill(r);
  if(offer){const f=String(r.dir||'').split('/').filter(Boolean).pop();
   q('.wo62fo').textContent=(s.inOld&&f?'Its folder ('+f+') is among the Windows programs from before Rudolf OS 1.5.9, which are not in your account yet.':'Your account does not have the Windows programs from before Rudolf OS 1.5.9 yet: it may be one of them.')+' They can be brought in: a copy, owned by your account.';
   const b=q('.wo62fb');b.hidden=false;b.onclick=()=>{o.remove();woOffer('fail')}}
- const done=()=>o.remove();q('.wo62fc').onclick=done;o.addEventListener('keydown',e=>{if(e.key=='Escape')done()});
+ const done=()=>{o.remove();delete WO62.fill[id]};q('.wo62fc').onclick=done;o.addEventListener('keydown',e=>{if(e.key=='Escape')done()});
  document.body.appendChild(o);setTimeout(()=>{(offer?q('.wo62fb'):q('.wo62fc')).focus()},30)}
 if(typeof lxPortal=='function'){const _p=lxPortal;lxPortal=async function(id,r){if(r&&r.kind=='lxfail')return woFail(id,r);return _p.apply(this,arguments)}}
 /* Settings › Apps › Linux: beside Wine */

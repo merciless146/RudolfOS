@@ -852,9 +852,9 @@ static void titlebar_ask(const char *id)
 }
 /* 1.6.3 (the owner's Asus desktop, 2026-11-28: Starport: GE and Dead Frontier started through Wine both ended at once,
    exit 3, and nothing said what the container had to run them with): what a Windows program runs with, read when one ends
-   at once, kept beside its log (RUND/ID.diag.txt) and said with the box: Wine's version, its 64- and 32-bit GL and Vulkan
-   packages, the renderer, Vulkan's device, /dev/dri, the room left, and the newest logs. A game that ends at once is nearly
-   always one of these. (LR_DIAG_CMD is a test's.) */
+   at once, kept beside its log (RUND/ID.diag.txt) and said with the box once it is shown: Wine's version, its 64- and 32-bit
+   GL and Vulkan packages, the renderer, Vulkan's device, /dev/dri, the room left, and this account's newest logs (never
+   another account's). A game that ends at once is nearly always one of these. (LR_DIAG_CMD is a test's.) */
 #ifndef LR_DIAG_CMD
 #define LR_DIAG_CMD \
 	"echo '# Wine'; wine --version 2>&1 | head -1; " \
@@ -866,7 +866,7 @@ static void titlebar_ask(const char *id)
 	"echo '# Vulkan'; if command -v vulkaninfo >/dev/null; then timeout 3 vulkaninfo --summary 2>&1 | grep -Ei 'apiVersion|driverName|deviceName|deviceType' | head -8; else echo '(vulkaninfo is not installed: apt install vulkan-tools)'; fi; " \
 	"echo '# /dev/dri'; ls -l /dev/dri 2>&1 | head -6; " \
 	"echo '# room'; df -h /home /tmp 2>&1 | head -4; " \
-	"echo '# the newest logs'; for f in $(ls -t " RUND "/*.log 2>/dev/null | head -3); do echo \"--- $f\"; tail -12 \"$f\"; done"
+	"echo '# the newest logs'; find " RUND " -maxdepth 1 -name '*.log' -uid $(id -u) -printf '%T@ %p\\n' 2>/dev/null | sort -rn | head -3 | cut -d' ' -f2- | while read -r f; do echo \"--- $f\"; tail -12 \"$f\"; done"
 #endif
 #define LR_DIAG_MAX 100   /* (the box says them all; the file, every line) */
 static char lr_diag[LR_DIAG_MAX][300]; static int lr_diag_n;
@@ -893,14 +893,42 @@ static void lr_read_diag(const char *keep_at)
    first real error in its log and the last lines (RUND/ID.log; Wine's "fixme:" lines left out, and its driver-service setup
    -- winebth and wineusb, and the scmdatabase line after them -- which fails on every launch of every Windows program and
    once filled this message alone, hiding the cause above it), whether it is a Windows program, what it runs with (Wine's
-   version, its 64- and 32-bit GL and Vulkan packages, the renderer, /dev/dri, the room left, the newest logs; kept in
-   RUND/ID.diag.txt), and a folder of the Wine prefix it names (its launcher's Path=, or the first /home/rudolf/.wine/...
-   in those lines), which rudolfd checks against the prefix from before 1.5.9 (rudolfd-wineold.inc). One that runs longer,
-   or ends with 0, is not said. */
+   version, its 64- and 32-bit GL and Vulkan packages, the renderer, /dev/dri, the room left, this account's newest logs; read
+   after the request is written, so the box never waits for them, kept in RUND/ID.diag.txt, and sent again for the box to fill
+   in), and a folder of the Wine prefix it names (its launcher's Path=, or the first /home/rudolf/.wine/... in those lines),
+   which rudolfd checks against the prefix from before 1.5.9 (rudolfd-wineold.inc). One that runs longer, or ends with 0, is
+   not said. */
 #ifndef LR_DIR
 #define LR_DIR "/run/rudolf/portal/req"
 #endif
 #define LR_QUICK 10
+/* the request as rudolfd lists it (whole: only *.json): written first without what it runs with -- the box is shown at
+   once -- and again with it, once the readings are in (glxinfo and vulkaninfo can each take seconds), which the page fills
+   into the box it already shows (wineold62.js). */
+static void lr_request(FILE *f, const char *id, const desk *k, int status, double secs, int wine, const char *dir,
+	const char *log, int nl, char (*lines)[300], const char *diaglog)
+{
+	fprintf(f, "{\"kind\":\"lxfail\",\"app\":"); jstr(f, id); fprintf(f, ",\"name\":"); jstr(f, k->name);
+	fprintf(f, ",\"status\":%d,\"secs\":%.1f,\"wine\":%s,\"dir\":", status, secs, wine ? "true" : "false"); jstr(f, dir);
+	fprintf(f, ",\"log\":"); jstr(f, log); fprintf(f, ",\"lines\":[");
+	for (int i = 0; i < nl; i++) { jstr(f, lines[i]); if (i + 1 < nl) fputc(',', f); }
+	fputc(']', f);
+	if (diaglog && *diaglog && lr_diag_n) {
+		fprintf(f, ",\"diag\":[");
+		for (int i = 0; i < lr_diag_n; i++) { jstr(f, lr_diag[i]); if (i + 1 < lr_diag_n) fputc(',', f); }
+		fprintf(f, "],\"diaglog\":"); jstr(f, diaglog);
+	}
+	fprintf(f, "}\n");
+}
+static int lr_send(const char *p, const char *tp, const char *id, const desk *k, int status, double secs, int wine,
+	const char *dir, const char *log, int nl, char (*lines)[300], const char *diaglog)
+{
+	FILE *f = fopen(tp, "w"); if (!f) return 1;
+	lr_request(f, id, k, status, secs, wine, dir, log, nl, lines, diaglog);
+	int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); return 1; }
+	if (rename(tp, p)) { unlink(tp); return 1; }
+	return 0;
+}
 static void launch_report(const char *id, const desk *k, int status, double secs, const char *log)
 {
 	if (!status || secs > LR_QUICK) return;
@@ -939,31 +967,19 @@ static void launch_report(const char *id, const desk *k, int status, double secs
 	if (!strncmp(k->path, "/home/rudolf/.wine/", 19)) wdir = k->path;
 	for (int i = nl - 1; i >= 0 && !wdir; i--) { char *w = strstr(lines[i], "/home/rudolf/.wine/"); if (w) wdir = w; }
 	if (wdir) { snprintf(dir, sizeof dir, "%s", wdir); dir[strcspn(dir, "\"':\n")] = 0; size_t l = strlen(dir); while (l && (dir[l - 1] == ' ' || dir[l - 1] == '/')) dir[--l] = 0; if (strstr(dir, "..")) dir[0] = 0; }
-	/* what it runs with, kept beside its log and said with the box */
-	char diaglog[420] = "";
-	if (wine) {
-		size_t l = strlen(log);
-		if (l > 4 && !strcmp(log + l - 4, ".log")) snprintf(diaglog, sizeof diaglog, "%.*s.diag.txt", (int)(l - 4), log);
-		else snprintf(diaglog, sizeof diaglog, "%s.diag.txt", log);
-		if (strstr(diaglog, "..")) diaglog[0] = 0;
-		lr_read_diag(diaglog);
-	}
 	mkdirs("/run/rudolf/portal", 0755); if (!mkdir(LR_DIR, 01733)) chmod(LR_DIR, 01733);   /* (as rudolfd makes it: anyone may add, only the owner changes) */
 	char p[300], tp[320]; snprintf(p, sizeof p, LR_DIR "/lxfail-%ld-%d.json", (long)time(NULL), (int)getpid()); snprintf(tp, sizeof tp, "%s.tmp", p);
-	FILE *f = fopen(tp, "w"); if (!f) { free(t); return; }
-	fprintf(f, "{\"kind\":\"lxfail\",\"app\":"); jstr(f, id); fprintf(f, ",\"name\":"); jstr(f, k->name);
-	fprintf(f, ",\"status\":%d,\"secs\":%.1f,\"wine\":%s,\"dir\":", status, secs, wine ? "true" : "false"); jstr(f, dir);
-	fprintf(f, ",\"log\":"); jstr(f, log); fprintf(f, ",\"lines\":[");
-	for (int i = 0; i < nl; i++) { jstr(f, lines[i]); if (i + 1 < nl) fputc(',', f); }
-	fputc(']', f);
-	if (lr_diag_n) {   /* (what it runs with: what the box shows of it, its file beside the log) */
-		fprintf(f, ",\"diag\":[");
-		for (int i = 0; i < lr_diag_n; i++) { jstr(f, lr_diag[i]); if (i + 1 < lr_diag_n) fputc(',', f); }
-		fprintf(f, "],\"diaglog\":"); jstr(f, diaglog);
+	/* the box first: what it ended with and where its log is, said now */
+	if (lr_send(p, tp, id, k, status, secs, wine, dir, log, nl, lines, NULL)) { free(t); return; }
+	/* then what it runs with (a Windows program): read, kept beside the log, and into the same request, which the
+	   page fills into the box it shows */
+	if (wine) {
+		char diaglog[420] = ""; size_t l = strlen(log);
+		if (l > 4 && !strcmp(log + l - 4, ".log")) snprintf(diaglog, sizeof diaglog, "%.*s.diag.txt", (int)(l - 4), log);
+		else snprintf(diaglog, sizeof diaglog, "%s.diag.txt", log);
+		if (!strstr(diaglog, "..")) lr_read_diag(diaglog);
+		if (lr_diag_n) lr_send(p, tp, id, k, status, secs, wine, dir, log, nl, lines, diaglog);
 	}
-	fprintf(f, "}\n"); int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); free(t); return; }
-	/* (the request file appears whole: rudolfd lists only *.json) */
-	if (rename(tp, p)) unlink(tp);
 	free(t);
 }
 static int cmd_launch(const char *id, const char *file)
