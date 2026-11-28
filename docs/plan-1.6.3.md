@@ -72,6 +72,39 @@ accent colours), its memory at idle against the web version, built in the releas
   three open together free roughly 200-350 MB.
 - **The owner's checklist:** each app on the Vivobook against Chromium mode's (every menu and toolbar button, a real
   document, spreadsheet and presentation of the owner's, printing), light and dark; the memory in Task Manager.
+#### Status (2026-11-28, session): WordPro's menu bar -- the page's eight menus, and what they hold today
+- **The app had no menus at all** (its step 1 ended at the toolbar, and the plan's step 2 begins with the menu bar), so
+  nothing the page puts behind a menu existed: Undo, Find, the zooms, the alignments, About. `wordpro.c` now has the
+  page's own `MENUS` (base_v24.html): **File, Edit, View, Insert, Format, Table, Tools, Help**, in the page's order, each
+  item with the page's label and its key (Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+P, Ctrl+K, Ctrl+H, Ctrl+Enter...), and its
+  separators where the page has them -- **generated, not copied**: `mkwordpro.py` reads the menu bar at build time, as it
+  already read the styles and the fonts, and writes each item with an id (`WPI_FORMAT_BOLD`, `WPI_VIEW_ZOOM_50`); the app
+  says which command it has by that id, so a label the page renames follows the page, and an item or a whole menu bar the
+  page loses stops the build (`a page without MENUS was not read`) instead of leaving hand-copied text behind. The one
+  shape it must work to read -- the page builds View's six zooms with a `.map` -- is expanded from the page's own list,
+  and any other computed item is refused by name.
+- **An item is wired where its command exists:** Edit's Undo, Redo, Select all, Find… and Find and replace…; View's six
+  zooms (50-200 %); Format's bold, italic, underline, strikethrough, sub- and superscript, Clear formatting, Bulleted
+  list, Numbered list, Increase and Decrease indent; Help's Keyboard shortcuts and About WordPro; File's Close. They call
+  the same functions the toolbar's buttons do, so a menu and a button cannot disagree.
+- **The rest is greyed and refuses**, as SpreadsheetPro's are until their step: the file commands (New, Open…, Save,
+  Save As…, the two exports, Page setup…, Print…, Document statistics…) with the .DOC format in step 3; Insert's tables,
+  pictures, links, page breaks, dates, footnotes, the contents, headers and page numbers; Table's rows and columns;
+  Tools' Notey and page colour; View's layouts, outline, marks, spell check and Notey -- they are listed so a person can
+  see what is coming, and no greyed item acts.
+- **Its test (the same workflow): 18 passed, 0 failed.** Case 14 reads the bar from the state: `mb 8 File,Edit,View,Insert,
+  Format,Table,Tools,Help`. Case 15 opens File (`RUDOLF_WP_DO=menu:0`, the check's hand on a bar it cannot aim) and finds
+  `menuopen File 14` with Page setup… and Print… in the greyed list and Close not in it. Case 16 runs Format ▸ Bold
+  through the menu's own dispatch (`mi:4:0`) and finds the writing tagged `b`, which is what the toolbar's B leaves.
+  Case 17 does what case 9 does for the styles: a copy of the page with `MENUS` taken out, and `mkwordpro.py` refuses it
+  by name rather than writing a bar of its own. Case 18 pins, menu by menu, how many of the page's commands the app has
+  not got (File 10, Edit 4, View 6, Insert 15, Format 10, Table 12, Tools 4, Help 1 -- 62): a command the page adds moves
+  a number and the test fails, so nothing joins the bar as a silent greyed entry, while a wired one the page renames or
+  drops stops the build by its id.
+- **Not in this step:** the commands behind the greyed items (their steps), the keyboard's Alt+letter paths to a menu, and
+  the screenshot comparison against the web WordPro. `wordpro` is still **not** in `NATIVE_APPS[]`: the native desktop
+  keeps opening the web WordPro until the whole app passes.
+
 #### Status (2026-11-28, session): SpreadsheetPro's mouse -- the drags, and the fill handle
 - **The app handled no motion at all** (the step before this one said so): only a press. The page's own mouse is now here
   (spro45.js's `mousedown` with its `drag`, `drag.col`, `drag.row` and `fillDrag`, its `mm` and `mu`, the handle's 7 px
