@@ -1111,6 +1111,17 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    placeholder account alone, other data: Standard; `bd95setup`: Native; and the wizard's rule is the same one), both in
    `setuprun63-check.yml`; `engine57_t.js` case 7 (the Chromium desktop's move) sets up first, as its WebKit page already
    did.
+   - **Follow-up (the owner, 2026-11-28): the wizard keeps its place.** "Make the wizard keep its place if the desktop
+     restarts or the computer is switched off mid-setup, so the step and the name already typed come back instead of step
+     1, with a check for it." The wizard's place is kept in `bd95oobe`, `{step, name}`, written as the wizard is drawn,
+     the name is typed and every step is left; `firstRun` starts from it (and no longer draws a second wizard over one
+     already on the screen). The password is never kept: a restart after it is typed comes back to the step that asks for
+     it — the two last steps come after it — with the name still in its box and both password boxes empty, which is also
+     why a saved place is capped there. The key is removed when the wizard ends, so nothing is left behind on a computer
+     that is set up. Test: `setupkeep63_t.js` (new, in `setuprun63-check.yml`): step 1 at a new installation, the place as
+     the name is typed, a restart back at the account step with the name, the passwords empty, the password step's restart
+     back at the account step (not step 1 and never the last one), Back kept, Finish making the account (`Ann`) and
+     clearing the place, and no wizard on the next start.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)

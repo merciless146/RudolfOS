@@ -8,7 +8,7 @@ on:
   push:
     branches: ['setup-first-run']
   pull_request:
-    paths: ['desktop/shell26.js', 'desktop/a11y25.js', 'desktop/base_v24.html', 'iso/sys/root/usr/lib/rudolf/session', 'iso/qt/shell2/setuprun63_t.js', 'iso/qt/host/setupnative63_t.sh', '.github/workflows/setuprun63-check.yml']
+    paths: ['desktop/shell26.js', 'desktop/a11y25.js', 'desktop/base_v24.html', 'iso/sys/root/usr/lib/rudolf/session', 'iso/qt/shell2/setuprun63_t.js', 'iso/qt/shell2/setupkeep63_t.js', 'iso/qt/host/setupnative63_t.sh', '.github/workflows/setuprun63-check.yml']
 permissions: {contents: read}
 jobs:
   wizard:
@@ -22,6 +22,8 @@ jobs:
         run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
       - name: setuprun63_t.js
         run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/setuprun63_t.js
+      - name: setupkeep63_t.js
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/setupkeep63_t.js
   session:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

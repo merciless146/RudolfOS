@@ -41,6 +41,10 @@ Summary: In progress.
   placeholder account as "set up", so the Native desktop started then, and it has no setup wizard of its own — now only the
   wizard's last step counts, as it does for the wizard itself, so an unfinished setup starts on Standard and its wizard
   again.
+- New: the setup wizard keeps its place. If the desktop starts again, or the computer is switched off, in the middle of
+  setup, the wizard comes back at the step it was at with the name already typed, instead of Step 1 with an empty box. The
+  password is never kept: a restart after it is typed comes back to the step that asks for it, both boxes empty, and the
+  place goes away when the wizard ends.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
   is how the camera went a release without a capture source; it now names every plug-in it cannot find.
