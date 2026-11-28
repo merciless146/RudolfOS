@@ -146,6 +146,15 @@ if [ $RC = 1 ] && grep -q 'WP_STYLES' "$T/mk.log"; then
 else
 	ok "9. mkwordpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
 fi
+# ---- 17. the menu bar is the page's: a page without MENUS stops the build instead of leaving a hand-copied bar
+cp "$R/desktop/base_v24.html" "$T/page/desktop/base_v24.html"
+sed -i 's/const MENUS=/const MENUS_GONE=/' "$T/page/desktop/base_v24.html"
+python3 "$T/page/iso/sys/apps/mkwordpro.py" "$T/gone2.h" >"$T/mk2.log" 2>&1; RC=$?
+if [ $RC = 1 ] && grep -q 'MENUS' "$T/mk2.log"; then
+	ok "17. mkwordpro.py refuses a page without the menu bar (no hand-copied labels)" 1
+else
+	ok "17. mkwordpro.py refuses a page without the menu bar (no hand-copied labels)" 0 "rc=$RC $(cat "$T/mk2.log")"
+fi
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 echo "$NP passed, $NF failed"; [ $NF = 0 ]
