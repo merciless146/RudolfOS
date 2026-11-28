@@ -12,6 +12,10 @@ Each version's first line after "Summary:" is what Settings shows before an upda
   setup (`winebth`, `wineusb`, and the `scmdatabase_autostart_services` line after them) — a failure on every launch that
   harms nothing — but the first real error in the log, then the last lines; a log of nothing else says so (the owner's
   Asus desktop, Starport: GE and Dead Frontier, 2026-11-28).
+- New: **when a Windows program ends at once, what it runs with is read and shown** (every Windows program, from 1.6.3
+  on): Wine's version, its 64- and 32-bit GL and Vulkan packages and which of them is not installed cleanly, the OpenGL
+  renderer, Vulkan's device, `/dev/dri`, the room left, and the newest logs — in that box, and kept beside the program's
+  log as `…/ID.diag.txt`. A game that ends at once is nearly always one of these; before, nothing said which.
 Summary: In progress.
 - Developers: `docs/gap-analysis-1.6.3.md` ranks what Rudolf OS still lacks beside other operating systems — the
   hardware it does not reach, the system software only this project can add, and the files it cannot yet manage — each

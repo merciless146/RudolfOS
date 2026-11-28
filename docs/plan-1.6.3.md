@@ -57,7 +57,13 @@ Library's publish still sign on main; a computer on the new release trusts both 
   Dead Frontier, started through Wine from a USB stick, both end at once (exit 3) and the box showed only Wine's
   `winebth` line, which is harmless and on every launch): `launch_report` now shows the earliest `err:` line of the log
   first and then its last lines, leaving out `fixme:` and Wine's driver-service setup (`winebth`, `wineusb`, the
-  `scmdatabase_autostart_services` line after them); a log of nothing else says so. `wineold162_t.sh` holds both. PR #762.
+  `scmdatabase_autostart_services` line after them); a log of nothing else says so. **And what it runs with** is read
+  when a Windows program ends at once and shown in it: Wine's version, its 64- and 32-bit GL and Vulkan packages and any
+  that is not installed cleanly, the OpenGL renderer, Vulkan's device, `/dev/dri`, the room left, and the newest logs —
+  kept beside the program's log as `…/ID.diag.txt` (`LR_DIAG_CMD`, a fixed command; a test's own in `debreport.c`'s
+  build). The owner's block of commands did not have to be typed on the stick: it is what the box now says by itself, in
+  1.6.3 and after. `wineold162_t.sh` holds the error-first, the noise-only, the check read and the Debian-program
+  (nothing read) cases; `wineold162_t.js` the box that shows the check. PR #762.
 - **Oracle's status line stays one line** (the owner, 2026-11-23 19:04 CST, with photos: a long "Goes To:" address wrapped
   onto a second line and the page above it jumped; 19:08 CST: "Add it as the first 1.6.3 fix"): PR #677.
 

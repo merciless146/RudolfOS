@@ -850,6 +850,41 @@ static void titlebar_ask(const char *id)
 	}
 	int st; waitpid(c, &st, 0);
 }
+/* 1.6.3 (the owner's Asus desktop, 2026-11-28: Starport: GE and Dead Frontier started through Wine both ended at once,
+   exit 3, and nothing said what the container had to run them with): what a Windows program runs with, read when one ends
+   at once, kept beside its log (RUND/ID.diag.txt) and said with the box: Wine's version, its 64- and 32-bit GL and Vulkan
+   packages, the renderer, Vulkan's device, /dev/dri, the room left, and the newest logs. A game that ends at once is nearly
+   always one of these. (LR_DIAG_CMD is a test's.) */
+#ifndef LR_DIAG_CMD
+#define LR_DIAG_CMD \
+	"echo '# Wine'; wine --version 2>&1 | head -1; " \
+	"echo '# Wine, GL and Vulkan, 64- and 32-bit'; " \
+	"dpkg-query -W -f='${Package} ${Version} ${Architecture}\\n' 'wine*' 'libgl1*' 'libglx*' 'libegl*' 'mesa-vulkan-drivers*' 'libvulkan1*' 2>/dev/null | sort | head -20; " \
+	"echo '# not installed cleanly'; dpkg --audit 2>&1 | head -5; " \
+	"dpkg-query -W -f='${Package}: ${Status}\\n' 'wine32*' 'wine64*' 'libgl1-mesa-dri:i386' 'libglx-mesa0:i386' 'mesa-vulkan-drivers:i386' 2>/dev/null | grep -v 'install ok installed' | head -5; " \
+	"echo '# the renderer'; if command -v glxinfo >/dev/null; then timeout 3 glxinfo -B 2>&1 | grep -Ei 'vendor string|renderer string|OpenGL version|OpenGL core profile version|Device:|Video memory' | head -8; else echo '(glxinfo is not installed: apt install mesa-utils)'; fi; " \
+	"echo '# Vulkan'; if command -v vulkaninfo >/dev/null; then timeout 3 vulkaninfo --summary 2>&1 | grep -Ei 'apiVersion|driverName|deviceName|deviceType' | head -8; else echo '(vulkaninfo is not installed: apt install vulkan-tools)'; fi; " \
+	"echo '# /dev/dri'; ls -l /dev/dri 2>&1 | head -6; " \
+	"echo '# room'; df -h /home /tmp 2>&1 | head -4; " \
+	"echo '# the newest logs'; for f in $(ls -t RUND "/*.log" 2>/dev/null | head -3); do echo \"--- $f\"; tail -12 \"$f\"; done"
+#endif
+#define LR_DIAG_MAX 100   /* (the box says them all; the file, every line) */
+static char lr_diag[LR_DIAG_MAX][300]; static int lr_diag_n;
+static void lr_read_diag(const char *keep_at)
+{
+	lr_diag_n = 0;
+	FILE *p = popen(LR_DIAG_CMD, "r"); if (!p) return;
+	FILE *k = keep_at && *keep_at ? fopen(keep_at, "w") : NULL;   /* (best effort: a check that cannot be kept is still said) */
+	char l[400];
+	while (fgets(l, sizeof l, p)) {
+		size_t n = strlen(l); while (n && (l[n - 1] == '\n' || l[n - 1] == '\r')) l[--n] = 0;
+		if (!*l) continue;
+		if (k) fprintf(k, "%s\n", l);
+		if (lr_diag_n < LR_DIAG_MAX) snprintf(lr_diag[lr_diag_n++], sizeof lr_diag[0], "%s", l);
+	}
+	if (k) fclose(k);
+	pclose(p);
+}
 /* 1.6.2 (docs/plan-1.6.2.md Part 40, the owner's Vivobook on 2026-11-23: Starport GE's launcher could not find its folder, which
    was in the Wine prefix from before 1.5.9, and nothing at all was shown): a program that ends within LR_QUICK seconds of starting
    with an error (an exit status other than 0, or a signal) is said, as a request of the desktop portal's that waits for no
@@ -857,9 +892,11 @@ static void titlebar_ask(const char *id)
    native desktop's hidden page, which shows the message, linux26.js and wineold62.js): the program's name, how it ended, the
    first real error in its log and the last lines (RUND/ID.log; Wine's "fixme:" lines left out, and its driver-service setup
    -- winebth and wineusb, and the scmdatabase line after them -- which fails on every launch of every Windows program and
-   once filled this message alone, hiding the cause above it), whether it is a Windows program, and a folder of the
-   Wine prefix it names (its launcher's Path=, or the first /home/rudolf/.wine/... in those lines), which rudolfd checks against
-   the prefix from before 1.5.9 (rudolfd-wineold.inc). One that runs longer, or ends with 0, is not said. */
+   once filled this message alone, hiding the cause above it), whether it is a Windows program, what it runs with (Wine's
+   version, its 64- and 32-bit GL and Vulkan packages, the renderer, /dev/dri, the room left, the newest logs; kept in
+   RUND/ID.diag.txt), and a folder of the Wine prefix it names (its launcher's Path=, or the first /home/rudolf/.wine/...
+   in those lines), which rudolfd checks against the prefix from before 1.5.9 (rudolfd-wineold.inc). One that runs longer,
+   or ends with 0, is not said. */
 #ifndef LR_DIR
 #define LR_DIR "/run/rudolf/portal/req"
 #endif
@@ -902,6 +939,15 @@ static void launch_report(const char *id, const desk *k, int status, double secs
 	if (!strncmp(k->path, "/home/rudolf/.wine/", 19)) wdir = k->path;
 	for (int i = nl - 1; i >= 0 && !wdir; i--) { char *w = strstr(lines[i], "/home/rudolf/.wine/"); if (w) wdir = w; }
 	if (wdir) { snprintf(dir, sizeof dir, "%s", wdir); dir[strcspn(dir, "\"':\n")] = 0; size_t l = strlen(dir); while (l && (dir[l - 1] == ' ' || dir[l - 1] == '/')) dir[--l] = 0; if (strstr(dir, "..")) dir[0] = 0; }
+	/* what it runs with, kept beside its log and said with the box */
+	char diaglog[420] = "";
+	if (wine) {
+		size_t l = strlen(log);
+		if (l > 4 && !strcmp(log + l - 4, ".log")) snprintf(diaglog, sizeof diaglog, "%.*s.diag.txt", (int)(l - 4), log);
+		else snprintf(diaglog, sizeof diaglog, "%s.diag.txt", log);
+		if (strstr(diaglog, "..")) diaglog[0] = 0;
+		lr_read_diag(diaglog);
+	}
 	mkdirs("/run/rudolf/portal", 0755); if (!mkdir(LR_DIR, 01733)) chmod(LR_DIR, 01733);   /* (as rudolfd makes it: anyone may add, only the owner changes) */
 	char p[300], tp[320]; snprintf(p, sizeof p, LR_DIR "/lxfail-%ld-%d.json", (long)time(NULL), (int)getpid()); snprintf(tp, sizeof tp, "%s.tmp", p);
 	FILE *f = fopen(tp, "w"); if (!f) { free(t); return; }
@@ -909,7 +955,13 @@ static void launch_report(const char *id, const desk *k, int status, double secs
 	fprintf(f, ",\"status\":%d,\"secs\":%.1f,\"wine\":%s,\"dir\":", status, secs, wine ? "true" : "false"); jstr(f, dir);
 	fprintf(f, ",\"log\":"); jstr(f, log); fprintf(f, ",\"lines\":[");
 	for (int i = 0; i < nl; i++) { jstr(f, lines[i]); if (i + 1 < nl) fputc(',', f); }
-	fprintf(f, "]}\n"); int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); free(t); return; }
+	fputc(']', f);
+	if (lr_diag_n) {   /* (what it runs with: what the box shows of it, its file beside the log) */
+		fprintf(f, ",\"diag\":[");
+		for (int i = 0; i < lr_diag_n; i++) { jstr(f, lr_diag[i]); if (i + 1 < lr_diag_n) fputc(',', f); }
+		fprintf(f, "],\"diaglog\":"); jstr(f, diaglog);
+	}
+	fprintf(f, "}\n"); int bad = ferror(f); if (fclose(f) || bad) { unlink(tp); free(t); return; }
 	/* (the request file appears whole: rudolfd lists only *.json) */
 	if (rename(tp, p)) unlink(tp);
 	free(t);

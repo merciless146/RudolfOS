@@ -14,6 +14,7 @@ HERE=$(cd "$(dirname "$0")" && pwd); T=$(mktemp -d /tmp/wineold162.XXXXXX); chmo
 mount -t tmpfs none /run; mkdir -p /run/rudolf
 gcc -O1 -w -o $T/t $HERE/fixtures/wineoldapi.c -lz 2>$T/cc || { cat $T/cc; echo "FAIL build"; exit 1; }
 gcc -O1 -w -DLR_DIR="\"$T/req\"" -o $T/dr $HERE/fixtures/debreport.c -lcrypto 2>$T/cc || { cat $T/cc; echo "FAIL build debreport"; exit 1; }
+gcc -O1 -w -DLR_DIR="\"$T/req\"" -DLR_DIAG_CMD="\"echo '# Wine'; echo 'wine-10.0'; echo '# /dev/dri'; echo 'no /dev/dri in this test'\"" -o $T/drd $HERE/fixtures/debreport.c -lcrypto 2>$T/cc || { cat $T/cc; echo "FAIL build debreport (diag)"; exit 1; }
 node $HERE/fixtures/deskls.js $T/ls.json $T/keys.json || { echo "FAIL node"; exit 1; }
 truncate -s 512M $T/img; mkfs.ext4 -q -F $T/img; mkdir $T/m; mount -o loop $T/img $T/m || { echo "SKIP: no loop device"; exit 0; }
 N=0; F=0; ok() { N=$((N+1)); case "$2" in *[!1]*|'') r=0;; *) r=1;; esac; if [ $r = 1 ]; then echo "PASS $1"; else echo "FAIL $1 - $(echo "$3" | head -c 900)"; F=$((F+1)); fi; }
@@ -119,6 +120,13 @@ rm -f $T/req/*; printf '00b8:err:ntoskrnl:ZwLoadDriver failed to create driver L
 $T/dr nz 'Dead Frontier' 'wine' '' 3 0.2 $T/noise.log; f=$(ls $T/req/*.json | head -1)
 j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.lines.join('|'))" "$f" 2>&1)
 ok "...a log of nothing but that setup: one line saying so, neither the setup nor \"its log is empty\"" "$(echo "$j" | grep -q 'harms nothing' && echo 1)$(echo "$j" | grep -q 'winebth' || echo 1)$(echo "$j" | grep -q '|' || echo 1)" "$j"
+rm -f $T/req/*; : > $T/wd.log
+$T/drd wg 'Starport GE' 'wine' '' 3 0.3 $T/wd.log; f=$(ls $T/req/*.json | head -1)
+j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log((j.diag||[]).join('|')+'#'+j.diaglog)" "$f" 2>&1)
+ok "...a Windows program that ended at once: what it runs with is read and kept beside its log (the box says it)" "$(echo "$j" | grep -q 'wine-10.0' && echo 1)$(echo "$j" | grep -q 'no /dev/dri in this test' && echo 1)$(echo "$j" | grep -q "$T/wd.diag.txt" && echo 1)$(grep -q 'no /dev/dri in this test' $T/wd.diag.txt 2>/dev/null && echo 1)" "$j"
+rm -f $T/req/*; $T/drd ng 'A Debian program' '/bin/false' '' 3 0.2 $T/wd.log; f=$(ls $T/req/*.json | head -1)
+j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(('diag' in j)+'#'+(j.diaglog===undefined))" "$f" 2>&1)
+ok "...not a Windows program: no check read, nothing kept" "$([ "$j" = 'false#true' ] && echo 1)" "$j"
 rm -f $T/req/*; printf 'line "one"\tq\\x\n' > $T/q.log
 $T/dr x 'A "quoted" app' 'prog' '' 0 0.5 $T/q.log; n0=$(ls $T/req | wc -l); $T/dr x 'Slow' 'prog' '' 1 30 $T/q.log; n1=$(ls $T/req | wc -l)
 $T/dr x 'A "quoted" app' 'prog' '' 137 0.2 $T/q.log; f=$(ls $T/req/*.json | head -1); j=$(node -e "const j=JSON.parse(require('fs').readFileSync(process.argv[1],'utf8'));console.log(j.name+'|'+j.lines[0]+'|'+j.status+'|'+j.wine)" "$f" 2>&1)

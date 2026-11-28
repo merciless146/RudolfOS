@@ -5,8 +5,10 @@
    1. Never a silent failure: a Debian or Windows program that ends within a few seconds with an error is said by rudolf-debian
       as a portal request of its own kind ("lxfail"), which the desktop collects as every other (Chromium's and Lite's desktop
       page: lxPortalPoll; the native desktop: its hidden page, oneapp59.js oaPortalRun, the same lxPortal): a message with the
-      program's name, how it ended and the last lines of its log; for a Windows program whose folder is only in the old prefix,
-      the offer below with it.
+      program's name, how it ended, the first real error and the last lines of its log, and, for a Windows program, what it runs
+      with (Wine's version, its 64- and 32-bit GL and Vulkan packages, the renderer, /dev/dri, the room left, the newest logs; a
+      game that ends at once is nearly always one of these); for a Windows program whose folder is only in the old prefix, the
+      offer below with it.
    2. The offer (rudolfd-wineold.inc, wine/old and wine/bring): the Windows programs from before, copied into the account,
       owned by it, the old prefix untouched, room checked first, in the background with its progress; an administrator decides
       when the computer has several accounts (the old prefix was all of theirs). Shown once after sign-in (never copied without
@@ -66,10 +68,14 @@ async function woFail(id,r){try{await lxAnswer(id,{})}catch(e){}
  const o=document.createElement('div');o.className='rmodal wo62f';
  o.innerHTML=`<div class='rmbox' role='alertdialog' aria-modal='true' aria-labelledby='wo62ft' style='max-width:600px'><h3 id='wo62ft'></h3><p class='wo62fa'></p>
 <pre class='wo62fl' style='white-space:pre-wrap;word-break:break-word;max-height:9em;overflow:auto;font-size:12px;background:rgba(128,128,128,.12);padding:6px;border-radius:4px'></pre>
+<pre class='wo62fd' hidden style='white-space:pre-wrap;word-break:break-word;max-height:12em;overflow:auto;font-size:11px;background:rgba(128,128,128,.12);padding:6px;border-radius:4px;margin-top:6px'></pre>
 <p class='wo62fo'></p><p class='wo62fg' style='font-size:12px;opacity:.75'></p><div class='rmrow'><button class='wo62fc'>Close</button><button class='wo62fb pri' hidden>Bring them in…</button></div></div>`;
  const q=c=>o.querySelector(c);q('h3').textContent=name+' did not start';
  q('.wo62fa').textContent='It ended '+(secs<1?'at once':'after '+Math.round(secs)+' s')+' ('+how+') without opening a window. The last lines of its log:';
- const L=(r.lines||[]).map(String).filter(Boolean);q('.wo62fl').textContent=L.length?L.join('\n'):'(its log is empty)';q('.wo62fg').textContent=r.log?'Its whole log: '+r.log:'';
+ const L=(r.lines||[]).map(String).filter(Boolean);q('.wo62fl').textContent=L.length?L.join('\n'):'(its log is empty)';
+ const D=(r.diag||[]).map(String).filter(Boolean);   /* (what it runs with: rudolf-debian read it when the program ended) */
+ if(D.length){const d=q('.wo62fd');d.hidden=false;d.textContent='What it runs with (Wine, its 32- and 64-bit GL and Vulkan, the renderer, the GPU, room):\n'+D.join('\n')}
+ q('.wo62fg').textContent=(r.log?'Its whole log: '+r.log:'')+(r.diaglog?' · its whole check: '+r.diaglog:'');
  if(offer){const f=String(r.dir||'').split('/').filter(Boolean).pop();
   q('.wo62fo').textContent=(s.inOld&&f?'Its folder ('+f+') is among the Windows programs from before Rudolf OS 1.5.9, which are not in your account yet.':'Your account does not have the Windows programs from before Rudolf OS 1.5.9 yet: it may be one of them.')+' They can be brought in: a copy, owned by your account.';
   const b=q('.wo62fb');b.hidden=false;b.onclick=()=>{o.remove();woOffer('fail')}}
