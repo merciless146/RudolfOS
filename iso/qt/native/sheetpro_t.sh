@@ -5,8 +5,10 @@
 # Tab and Enter run along a row and come back to its first column, Ctrl+` shows the formulas, Ctrl+B marks a cell, undo and
 # redo walk the changes, the name box chooses a cell or a range, the status line adds up a choice, and Ctrl+Down goes to the
 # end of a filled run. The menus are the page's own (File's 15 rows and Data's 12) and the toolbar's lists are the page's
-# (mksheetpro.py). It reads RUDOLF_SP_STATE, so no screenshot is needed here; the page-by-page comparison against the web
-# SpreadsheetPro comes with the step that makes every one of its views.
+# (mksheetpro.py). A .RSHEET the page wrote opens with its cells, its formula and its styles, and the file's name in the
+# title; a change marks the book unsaved (the page's * in the title), and Ctrl+S writes it back as the page's own JSON.
+# It reads RUDOLF_SP_STATE, so no screenshot is needed here; the page-by-page comparison against the web SpreadsheetPro
+# comes with the step that makes every one of its views.
 #   sh sheetpro_t.sh [OUT]
 # Needs Xvfb, xdotool, node, gcc and GTK 3's headers. (display :89, port 8685)
 HERE=$(cd "$(dirname "$0")" && pwd); R=$(cd "$HERE/../../.." && pwd); T=$(mktemp -d /tmp/sp_t.XXXXXX)
@@ -111,6 +113,57 @@ for M in File Data; do
 done
 [ "$N_File" = 15 ] && [ "$N_Data" = 12 ]
 ok "13. File opens with the page's 15 rows and Data with its 12" "$([ $? = 0 ] && echo 1)" "File $N_File, Data $N_Data; $(grep '^menu' "$T/state_File.txt" 2>/dev/null) $(grep '^menu' "$T/state_Data.txt" 2>/dev/null)"
+# ---- 14. a .RSHEET the page wrote opens: its cells, its formula worked out, its style, and its name in the title
+# (the file is sprof45.js's own v2 JSON: a number, a formula, a bold cell and a centred one)
+kill $SPP 2>/dev/null; sleep 0.8
+F=$T/grid.RSHEET
+cat > "$F" <<'RS'
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[{"b":1},{"ha":"center"}],"sheets":[{"name":"Sheet1","color":"","cells":[[0,5],[1,null,"=A1*2"],[702,"x",null,0],[1406,7,null,1]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+RS
+ST3=$T/state_open; rm -f "$ST3"
+RUDOLF_SP_STATE=$ST3 DISPLAY=$DSP "$BIN" "$F" >"$T/sp_open.log" 2>&1 & SPP3=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^dirty ' "$ST3" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+grep -q '^title grid.RSHEET - SpreadsheetPro$' "$ST3" || RC=1
+grep -q '^file grid.RSHEET$' "$ST3" || RC=1
+grep -q '^dirty 0$' "$ST3" || RC=1
+grep -q '^cell A1 5$' "$ST3" || RC=1
+grep -q '^cell B1 =A1\*2$' "$ST3" || RC=1
+grep -q '^show B1 10$' "$ST3" || RC=1
+grep -q '^cell A2 x$' "$ST3" || RC=1
+grep -q '^fmt A2 b1 i0 u0 s0 ha0 ' "$ST3" || RC=1
+grep -q '^show C3 7$' "$ST3" || RC=1
+grep -q '^fmt C3 b0 i0 u0 s0 ha2 ' "$ST3" || RC=1
+ok "14. a .RSHEET the page wrote opens with its cells, its formula worked out and its styles, and its name in the title" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|file|dirty|cell|show|fmt) ' "$ST3" | tr '\n' ' '); $(cat "$T/sp_open.log")"
+# ---- 15. a change marks the book unsaved (the page's * in the title) and Ctrl+S writes it back as the page's own JSON
+WIN3=$(DISPLAY=$DSP xdotool search --name 'SpreadsheetPro$' 2>/dev/null | head -1)
+i=0; while [ $i -lt 60 ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN3" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN3" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.5
+DISPLAY=$DSP xdotool type --delay 20 '9'; sleep 0.4; DISPLAY=$DSP xdotool key Return; sleep 0.9
+RC=0
+grep -q '^dirty 1$' "$ST3" || RC=1
+grep -q '^title grid.RSHEET \* - SpreadsheetPro$' "$ST3" || RC=1
+DISPLAY=$DSP xdotool key ctrl+s; sleep 1.4
+grep -q '^dirty 0$' "$ST3" || RC=1
+grep -q '^title grid.RSHEET - SpreadsheetPro$' "$ST3" || RC=1
+python3 - "$F" <<'PY' || RC=1
+import json, sys
+d = json.load(open(sys.argv[1]))
+assert d['v'] == 2 and d['app'] == 'SpreadsheetPro', d
+assert [s['name'] for s in d['sheets']] == ['Sheet1'], d['sheets']
+cells = {a[0]: a for a in d['sheets'][0]['cells']}
+assert sorted(cells) == [0, 1, 702, 1406], sorted(cells)
+assert cells[0] == [0, 9], cells[0]
+assert cells[1] == [1, None, '=A1*2'], cells[1]
+assert cells[702] == [702, 'x', None, 0], cells[702]
+assert cells[1406] == [1406, 7, None, 1], cells[1406]
+assert d['styles'] == [{'b': 1}, {'ha': 'center'}], d['styles']
+PY
+ok "15. a change puts the page's * in the title, and Ctrl+S saves the page's own JSON (cells, formulas and styles)" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|dirty|file) ' "$ST3" | tr '\n' ' '); $(head -c 400 "$F" 2>/dev/null)"
+kill $SPP3 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"
 sed 's/const OFF_FONTS=/const OFF_FONTS_GONE=/' "$R/desktop/office45.js" > "$T/page/desktop/office45.js"
@@ -118,9 +171,9 @@ cp "$R/desktop/spro45.js" "$T/page/desktop/spro45.js"
 cp "$R/iso/sys/apps/mksheetpro.py" "$T/page/iso/sys/apps/mksheetpro.py"
 python3 "$T/page/iso/sys/apps/mksheetpro.py" "$T/gone.h" >"$T/mk.log" 2>&1; RC=$?
 if [ $RC = 1 ] && grep -q 'OFF_FONTS' "$T/mk.log"; then
-	ok "14. mksheetpro.py refuses a page it cannot read (no quiet default)" 1
+	ok "16. mksheetpro.py refuses a page it cannot read (no quiet default)" 1
 else
-	ok "14. mksheetpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
+	ok "16. mksheetpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
 fi
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/sp.log" "$OUT/app.log" 2>/dev/null
 for f in "$T/state_File.txt" "$T/state_Data.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done
