@@ -1085,6 +1085,32 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    daemon) and `terminal56_t.js` (1.5.6's own check, run by the same workflow) 4, 6 and 7, which asserted the old "＋ opens another
    C: tab", "prompt() opens a Terminal" and a read of the first tab only; they now assert the menu, the tab in the open
    window and the text of whichever tab the file opened.
+12. **A new installation from a stick: its setup wizard is not restarted under the person's hands** (the owner,
+   2026-11-28: "New installs using USB drives produced in Rudolf's update and recovery \"make a USB stick\" function are
+   buggy — they'll boot normally but the startup window force-resets quickly and puts the user at the sign-in screen
+   without having allowed them to make their first account (which is supposed to be their admin account). This causes
+   them to be locked out of a computer which has no account that they can use"), **done:** two causes, each enough on its
+   own. **A: the one-time move to the browser shell restarted the browser over the wizard.** `shell26.js`'s `shellOffer`
+   moves a plain desktop page to the shell by itself right after start-up (within two minutes and with no window open:
+   "Real browser tabs are ready" then `shell/switch` 600 ms later), and it asked only about the engine — on a new
+   installation the page is the plain one (Standard, the only engine before setup), the mirror is ready at once
+   (`idbm/ready`), and Chromium has installed the shell a few seconds in, so it fired about 6 s after the start, while the
+   wizard (up at 1.2 s) had the screen. Now `shellOffer` returns unless Rudolf OS is set up (`bd95setup`, the wizard's
+   last step) and while `#oobe` is on the screen: the move waits for a start after setup, or Settings › Oracle sign-in ›
+   "Restart the desktop now". **B: the next start treated the placeholder account as setup.** The page keeps a placeholder
+   account (`admin`, the hash of "admin") under `bd95user` at its very first start, before the wizard runs, and the
+   session's `native_setup_done()` counted `bd95user` — so from the second start the Native desktop came up (install.sh
+   writes it for new installations), whose sign-in screen has no setup wizard and whose only account was one nobody had
+   chosen a password for. `native_setup_done()` now reads `bd95setup` alone, as the wizard's own `firstRun` does, so an
+   unfinished setup starts on Standard with its wizard again (and an update repairs a computer already caught by this).
+   The daemon's `setup` flag (`desktop/accounts`, Native's "not set up yet" line) is unchanged: with A and B, Native is
+   never started before setup. *Nothing in the native shell was touched, so no rebuild of `rudolf-native` is needed.*
+   Tests: `setuprun63_t.js` (new — a new installation: the wizard stays at step 1 while the automatic move would fire and
+   when `shellOffer()` is called by hand, no `shell/switch`, no box; set up: the move still happens by itself with its
+   box) and `setupnative63_t.sh` (new — the session's `native_setup_done` read from the session itself: nothing, the
+   placeholder account alone, other data: Standard; `bd95setup`: Native; and the wizard's rule is the same one), both in
+   `setuprun63-check.yml`; `engine57_t.js` case 7 (the Chromium desktop's move) sets up first, as its WebKit page already
+   did.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)
