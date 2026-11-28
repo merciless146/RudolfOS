@@ -189,7 +189,7 @@ kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2
 # (the shortcuts the bar advertises: Ctrl+H is the Find bar's replace box, as the page's)
 DISPLAY=$DSP xdotool key ctrl+h; sleep 0.8
 DISPLAY=$DSP xdotool type --delay 12 'TWO'; sleep 0.8
-grep -q '^findbar 1$' "$ST" && grep -q '^repl TWO$' "$ST" && grep -q '^find world$' "$ST"
+grep -q '^findbar 1$' "$ST" && grep -q '^repl TWO$' "$ST" && grep -q '^find two$' "$ST"
 ok "13. Ctrl+H opens the Find bar on its replace box, not its find box" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(findbar|find|repl) ' "$ST")"
 # (a picture and a table are places in the writing, with their own data, not characters or words of it)
 python3 - "$T/pic.png" <<'PY'
