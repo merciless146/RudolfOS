@@ -7,7 +7,8 @@ on:
   push:
     branches: ['terminal-tabs']
   pull_request:
-    paths: ['desktop/term26.js', 'desktop/base_v24.html', 'desktop/linux26.js', 'iso/qt/shell2/termtabs63_t.js', '.github/workflows/termtabs63-check.yml']
+    paths: ['desktop/term26.js', 'desktop/base_v24.html', 'desktop/linux26.js', 'iso/qt/shell2/termtabs63_t.js',
+            'iso/qt/shell2/terminal56_t.js', '.github/workflows/termtabs63-check.yml']
 permissions: {contents: read}
 jobs:
   tabs:
@@ -21,3 +22,5 @@ jobs:
         run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
       - name: termtabs63_t.js
         run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/termtabs63_t.js
+      - name: terminal56_t.js (1.5.6's own check, whose ＋ and prompt() cases follow the new rule)
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/terminal56_t.js
