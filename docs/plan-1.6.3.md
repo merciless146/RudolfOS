@@ -356,9 +356,23 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   - **Tests:** fprint163_t.sh 50/50 (adds Native's unlock with a finger, the code after it, one-time answers, an
     administrator's finger for desktop/admin once and only in its own name); fprint63_t.js 25/25 (the lock screen and
     the prompt); nativefp163_t.sh 11/11 (Xvfb, a stand-in rudolfd).
-- **Left:** the native apps' own administrator prompt (librudolf-ui, iso/sys/ui/rudolf-ui.c, used by the native apps that
-  are still switched off with the native Settings, Part 3): a finger there too, by the same one-time answer, when the
-  native Settings is switched on; the owner's checklist with a real reader.
+- **Left:** the owner's checklist with a real reader.
+#### Status (2026-11-28, session): the native apps' administrator prompt takes a finger (Part 2's last code step)
+- **The prompt** (librudolf-ui's `rui_elevate`, so every native app that asks for an administrator has it at once, the
+  native Settings included when it is switched on): the account signed in, an administrator whose sign-in needs no
+  security key, and rudolfd saying a finger is taken now (`fp/status`'s `ready`) — "☝️ Or NAME puts a finger on the
+  reader.", or, with another administrator chosen in the prompt, "A finger answers for the account signed in only" —
+  while the password works as ever. A finger not recognised is said with the tries left and the reader asked again; a
+  match answers the prompt with the finger's one-time answer where the password goes (`"fp:"` and `fp/verify`'s `"t"`),
+  in the account signed in's own name, which rudolfd's own check takes once (`fp_admin_pass`: desk_admin_check,
+  desktop/admin). The reader is given up (`fp/cancel`) when the dialog goes, as the page's dialog does; a wrong password
+  leaves the wait going, as the page's does.
+- **Test** (`iso/qt/host/fpuiprompt63_t.sh`, a new `prompt` job in fprint-check.yml): the prompt as the release builds it
+  (mkui.py's header and GTK 3), on Xvfb with a stand-in rudolfd (`iso/qt/host/fixtures/fpui_rd.py`) — the reader offered;
+  a finger not recognised with the tries left and the reader asked again; the match's own answer in Ann's name, allowed
+  once and refused the second time; the password still answering the prompt while a finger waits; `fp/cancel` sent when
+  the dialog goes.
+- **Left:** the owner's checklist with a real reader (Part 2's), on the Vivobook with a supported USB reader.
 
 ### Part 3. Native Settings, finished (moved from 1.6.2 Part 39, item 3)
 `/usr/bin/rudolf-settings` (iso/sys/apps/settings*.c), one PR per group of pages, as begun in 1.6.2 and kept there switched off:
