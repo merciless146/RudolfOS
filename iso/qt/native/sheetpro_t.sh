@@ -6,7 +6,10 @@
 # redo walk the changes, the name box chooses a cell or a range, the status line adds up a choice, and Ctrl+Down goes to the
 # end of a filled run. The menus are the page's own (File's 15 rows and Data's 12) and the toolbar's lists are the page's
 # (mksheetpro.py). A .RSHEET the page wrote opens with its cells, its formula and its styles, and the file's name in the
-# title; a change marks the book unsaved (the page's * in the title), and Ctrl+S writes it back as the page's own JSON.
+# title; a change marks the book unsaved (the page's * in the title), and Ctrl+S writes it back as the page's own JSON. A
+# book of two sheets is not opened at all (this step shows one, and opening it would drop the other on the next save);
+# a CSV opens as the page reads one (quotes, a doubled quote, CRLF, the first line's own delimiter) and Ctrl+S writes it
+# back the way the page writes a CSV, and a CSV written without a chooser (RUDOLF_SP_EXPORT) is the page's own too.
 # It reads RUDOLF_SP_STATE, so no screenshot is needed here; the page-by-page comparison against the web SpreadsheetPro
 # comes with the step that makes every one of its views.
 #   sh sheetpro_t.sh [OUT]
@@ -175,6 +178,71 @@ ok "15. a change puts the page's * in the title, and Ctrl+S saves the page's own
 	"$([ $RC = 0 ] && echo 1)" "title '$TITLE3'; $(sed -n '1,12p' "$ST3" | tr '\n' ' '); $(tail -3 "$T/sp_open.log" 2>/dev/null); $(head -c 300 "$F" 2>/dev/null)"
 cp "$ST3" "$OUT/state_open.txt" 2>/dev/null
 kill $SPP3 2>/dev/null; sleep 0.4
+# ---- 17. a book of two sheets is refused, not opened and cut down to the first
+# (the step shows one sheet. opening such a book and saving it would drop every sheet but the first without a word, so the
+#  file is left exactly as it is and the status line says why)
+F2=$T/two.RSHEET
+cat > "$F2" <<'RS'
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"One","cells":[[0,5]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}},{"name":"Two","cells":[[0,6]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+RS
+SUM2=$(md5sum "$F2" | cut -d' ' -f1); ST5=$T/state_two; rm -f "$ST5"
+RUDOLF_SP_STATE=$ST5 DISPLAY=$DSP "$BIN" "$F2" >"$T/sp_two.log" 2>&1 & SPP5=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^dirty ' "$ST5" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+grep -q '^title Book1 - SpreadsheetPro$' "$ST5" || RC=1
+grep -q '^file -$' "$ST5" || RC=1
+grep -q '^cells 0$' "$ST5" || RC=1
+grep -q '^say two.RSHEET has 2 sheets' "$ST5" || RC=1
+[ "$(md5sum "$F2" | cut -d' ' -f1)" = "$SUM2" ] || RC=1
+ok "17. a book of two sheets is refused with the reason, and the file is left as it was" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|file|cells|say) ' "$ST5" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_two.log"); $F2"
+kill $SPP5 2>/dev/null; sleep 0.4
+# ---- 18. a CSV opens as the page reads one, and Ctrl+S writes it back the way the page writes it
+# (a quote inside a quoted field is doubled; the lines end CRLF; the first row is 5,7,a,b and the second a text with
+#  quotes of its own and 0.5, so the file that comes back is the file that went in)
+CS=$T/made.csv
+printf '5,7,"a,b"\r\n"say ""hi""",0.5,\r\n' > "$CS"
+ST6=$T/state_csv; rm -f "$ST6"
+RUDOLF_SP_STATE=$ST6 DISPLAY=$DSP "$BIN" "$CS" >"$T/sp_csv.log" 2>&1 & SPP6=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^dirty ' "$ST6" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+grep -q '^title made.csv - SpreadsheetPro$' "$ST6" || RC=1
+grep -q '^file made.csv$' "$ST6" || RC=1
+grep -q '^cell A1 5$' "$ST6" || RC=1
+grep -q '^show A1 5$' "$ST6" || RC=1
+grep -q '^cell B1 7$' "$ST6" || RC=1
+grep -q '^cell C1 a,b$' "$ST6" || RC=1
+grep -q '^cell A2 say "hi"$' "$ST6" || RC=1
+grep -q '^show B2 0.5$' "$ST6" || RC=1
+WIN6=$(DISPLAY=$DSP xdotool search --name '^made\.csv - SpreadsheetPro$' 2>/dev/null | head -1)
+[ -n "$WIN6" ] || RC=1
+i=0; while [ $i -lt 60 ] && [ -n "$WIN6" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN6" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN6" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+[ -n "$WIN6" ] && { DISPLAY=$DSP xdotool key ctrl+s; sleep 1.6; }
+grep -q '^say Saved made.csv$' "$ST6" || RC=1
+python3 - "$CS" <<'PY' || RC=1
+import sys
+b = open(sys.argv[1], 'rb').read()
+assert b == b'5,7,"a,b"\r\n"say ""hi""",0.5,\r\n', b
+PY
+ok "18. a CSV opens as the page reads one (quotes, a doubled quote, CRLF), and Ctrl+S writes the page's own CSV back" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|file|cell|show|say) ' "$ST6" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_csv.log"); $(head -c 200 "$CS")"
+kill $SPP6 2>/dev/null; sleep 0.4
+# ---- 19. the sheet is exported as the page writes it (what each cell shows, quoted where it must be, CRLF)
+# (RUDOLF_SP_EXPORT names the file, so the row's chooser is not needed; the book is case 14's: 5, =A1*2 shown, a text, 7)
+EX=$T/out.csv; rm -f "$EX"; ST7=$T/state_export; rm -f "$ST7"
+RUDOLF_SP_STATE=$ST7 RUDOLF_SP_EXPORT=$EX DISPLAY=$DSP "$BIN" "$F" >"$T/sp_ex.log" 2>&1 & SPP7=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^say Exported ' "$ST7" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+grep -q '^say Exported out.csv$' "$ST7" || RC=1
+python3 - "$EX" <<'PY' || RC=1
+import sys
+b = open(sys.argv[1], 'rb').read()
+assert b == b'5,10,\r\nx,,\r\n,,7\r\n', b      # (the formula's 10, not '=A1*2'; the empty cells still take their commas)
+PY
+ok "19. the sheet is exported as the page writes a CSV: what each cell shows, quoted where it must be, CRLF lines" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(say|file) ' "$ST7" 2>/dev/null | tr '\n' ' '); $(head -c 200 "$EX" 2>/dev/null); $(cat "$T/sp_ex.log")"
+kill $SPP7 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"
 sed 's/const OFF_FONTS=/const OFF_FONTS_GONE=/' "$R/desktop/office45.js" > "$T/page/desktop/office45.js"

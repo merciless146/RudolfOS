@@ -52,6 +52,10 @@ static int a1_parse(const char *t, int *r0, int *c0, int *r1, int *c1);
 static void nb_update(void); static void dlg_close(int i, void *d);
 static void title_update(void); static void mark_dirty(void); static void do_open(const char *path);
 static void do_save(int as); static void file_open_dlg(void);
+static void file_import_dlg(void); static void file_export_dlg(void);
+static char *cell_show(int r, int c);
+static int csv_ext(const char *p); static void csv_read(const char *text, GHashTable *h);
+static void export_quiet(const char *path);
 static void check_errors(void); static int menus_n(void);
 static void on_clear_btn(GtkWidget *b, gpointer d);
 static void redraw(void) { if (AREA) gtk_widget_queue_draw(AREA); }
@@ -608,10 +612,40 @@ static int sheet_load(const char *path, char **err)
 		g_free(base);
 		return 0;
 	}
+	if (csv_ext(path)) {
+		GHashTable *hc = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, cell_free);
+		char *nm = g_strdup(base ? base : "Sheet1");
+		char *dot = nm ? strrchr(nm, '.') : NULL;
+		if (dot) *dot = 0;
+		csv_read(text, hc);
+		g_free(text);
+		snprintf(SHEET_NAME, sizeof SHEET_NAME, "%s", nm && *nm ? nm : "Sheet1");
+		g_free(nm);
+		{ GHashTable *old = CELLS; CELLS = hc; g_hash_table_destroy(old); }
+		UNDO_N = UNDO_I = 0; SUSPEND = 1; hist_push(); SUSPEND = 0;
+		CUR_R = CUR_C = SEL_R0 = SEL_C0 = SEL_R1 = SEL_C1 = SEL_AR = SEL_AC = 0;
+		SCX = SCY = 0; TABFROM = -1; SHOWF = 0;
+		DIRTY = 0;
+		{ char *keep = g_strdup(path); g_free(FILE_PATH); FILE_PATH = keep; }
+		title_update();
+		nb_update(); fx_update(); upd_tb(); layout_ranges();
+		snprintf(SAY, sizeof SAY, "%s %s", rui_tr("Imported"), base);
+		status_update(); redraw();
+		g_free(base);
+		return 1;
+	}
 	RuiJ *o = rui_jparse(text); g_free(text);
 	if (!o) { if (err) *err = g_strdup("not a spreadsheet"); g_free(base); return 0; }
-	GHashTable *h = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, cell_free);
 	RuiJ *sheets = rui_jprop(o, "sheets"), *sty = rui_jprop(o, "styles");
+	/* (this step shows one sheet: a book of more is not opened, because opening it and saving one sheet would
+	   drop the rest without a word) */
+	if (sheets && rui_jlen(sheets) > 1) {
+		if (err) *err = g_strdup_printf("%s has %d sheets; this step shows one sheet at a time, so nothing was opened",
+			base, rui_jlen(sheets));
+		rui_jfree(o); g_free(base);
+		return 0;
+	}
+	GHashTable *h = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, cell_free);
 	snprintf(SHEET_NAME, sizeof SHEET_NAME, "Sheet1");
 	if (sheets && rui_jlen(sheets)) {
 		RuiJ *sh = rui_jat(sheets, 0), *cells = rui_jprop(sh, "cells");
@@ -667,6 +701,88 @@ static int sheet_load(const char *path, char **err)
 	return 1;
 }
 
+
+/* ---- CSV (sprof45.js's spToCSV and spFromCSV) ---- */
+/* (a file's own delimiter by its name, or 0 when it is not a CSV: .CSV and .TXT with commas, .TSV with tabs) */
+static int csv_ext(const char *p)
+{
+	const char *e = p ? strrchr(p, '.') : NULL;
+	if (!e) return 0;
+	if (!g_ascii_strcasecmp(e, ".csv") || !g_ascii_strcasecmp(e, ".txt")) return ',';
+	if (!g_ascii_strcasecmp(e, ".tsv")) return '\t';
+	return 0;
+}
+static void csv_field(GString *o, const char *s, int delim)
+{
+	if (strchr(s, (char)delim) || strchr(s, '"') || strchr(s, '\n') || strchr(s, '\r')) {
+		g_string_append_c(o, '"');
+		for (const char *p = s; *p; p++) { if (*p == '"') g_string_append_c(o, '"'); g_string_append_c(o, *p); }
+		g_string_append_c(o, '"');
+	} else g_string_append(o, s);
+}
+/* (the sheet as the page writes it: what each cell shows, quoted where it must be, a line each, CRLF) */
+static int csv_write_to(const char *path, char **err)
+{
+	GString *o = g_string_new(NULL);
+	int r1 = used_r(), c1 = used_c(), delim = csv_ext(path) ? csv_ext(path) : ',';
+	for (int r = 0; r <= r1; r++) {
+		for (int c = 0; c <= c1; c++) {
+			char *t = cell_show(r, c);
+			if (c) g_string_append_c(o, (char)delim);
+			csv_field(o, t ? t : "", delim);
+			g_free(t);
+		}
+		g_string_append(o, "\r\n");
+	}
+	GError *ge = NULL;
+	int ok = g_file_set_contents(path, o->str, (gssize)o->len, &ge);
+	if (!ok && err) *err = g_strdup(ge ? ge->message : "could not be written");
+	if (ge) g_error_free(ge);
+	g_string_free(o, TRUE);
+	return ok;
+}
+/* (the file is what the book is saved to: the path and the clean title that go with it) */
+static int csv_save(const char *path, char **err)
+{
+	if (!csv_write_to(path, err)) return 0;
+	{ char *keep = g_strdup(path); g_free(FILE_PATH); FILE_PATH = keep; }
+	DIRTY = 0; title_update();
+	return 1;
+}
+/* (a row's field in the book: what a person would have typed in it) */
+static void csv_cell(GHashTable *h, int r, int c, GString *f)
+{
+	if (!f->len || r >= MAXR || c >= MAXC) return;
+	Cell *cl = g_new0(Cell, 1); cl->t = g_strdup(f->str);
+	g_hash_table_insert(h, GUINT_TO_POINTER(ckey(r, c)), cl);
+}
+/* (a CSV as spCSVRows reads it: the first line's own delimiter, quotes with a doubled quote inside, CRLF) */
+static void csv_read(const char *text, GHashTable *h)
+{
+	const char *p = text;
+	int delim, r = 0, c = 0, q = 0;
+	GString *f = g_string_new(NULL);
+	if (!strncmp(p, "\xef\xbb\xbf", 3)) p += 3;
+	{ int nc = 0, ns = 0, nt = 0;
+	  for (const char *s = p; *s && *s != '\n'; s++) {
+		  if (*s == ',') nc++; else if (*s == ';') ns++; else if (*s == '\t') nt++;
+	  }
+	  delim = (nt > nc && nt > ns) ? '\t' : (ns > nc ? ';' : ','); }
+	for (; *p; p++) {
+		char ch = *p;
+		if (q) {
+			if (ch == '"' && p[1] == '"') { g_string_append_c(f, '"'); p++; }
+			else if (ch == '"') q = 0;
+			else g_string_append_c(f, ch);
+		} else if (ch == '"') q = 1;
+		else if (ch == delim) { csv_cell(h, r, c, f); c++; g_string_truncate(f, 0); }
+		else if (ch == '\n') { csv_cell(h, r, c, f); r++; c = 0; g_string_truncate(f, 0); }
+		else if (ch != '\r') g_string_append_c(f, ch);
+	}
+	if (f->len || c) csv_cell(h, r, c, f);
+	g_string_free(f, TRUE);
+}
+
 /* ---- what File's rows and the page's keys do ---- */
 static void file_note(const char *title, const char *msg)
 {
@@ -676,7 +792,13 @@ static void file_note(const char *title, const char *msg)
 static void do_open(const char *path)
 {
 	char *err = NULL;
-	if (!sheet_load(path, &err)) { file_note("Open", err); g_free(err); return; }
+	if (!sheet_load(path, &err)) {
+		snprintf(SAY, sizeof SAY, "%s", err ? err : "");   /* (the state is written before the dialog blocks) */
+		status_update(); state_soon();
+		file_note("Open", err);
+		g_free(err);
+		return;
+	}
 	state_soon();
 }
 static void open_done(GtkNativeDialog *d, gint resp, gpointer u)
@@ -699,10 +821,15 @@ static void file_open_dlg(void)
 	g_signal_connect(ch, "response", G_CALLBACK(open_done), NULL);
 	gtk_native_dialog_show(GTK_NATIVE_DIALOG(ch));
 }
+/* (the file's own kind: a .CSV is written as the page writes it, anything else as the book's JSON) */
+static int file_save(const char *path, char **err)
+{
+	return csv_ext(path) ? csv_save(path, err) : sheet_save(path, err);
+}
 static void save_to(const char *path)
 {
 	char *err = NULL, *nm = g_strdup(path_base(path));   /* (the saver may take the book's own name away) */
-	if (!sheet_save(path, &err)) { file_note("Save", err); g_free(err); g_free(nm); return; }
+	if (!file_save(path, &err)) { file_note("Save", err); g_free(err); g_free(nm); return; }
 	snprintf(SAY, sizeof SAY, "%s %s", rui_tr("Saved"), nm);
 	g_free(nm);
 	status_update(); state_soon();
@@ -732,6 +859,67 @@ static void file_save_as(void)
 	gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(ch), TRUE);
 	g_signal_connect(ch, "response", G_CALLBACK(save_done), NULL);
 	gtk_native_dialog_show(GTK_NATIVE_DIALOG(ch));
+}
+/* (Import asks for a CSV by the page's own title and reads it as this step's one sheet) */
+static void import_done(GtkNativeDialog *d, gint resp, gpointer u)
+{
+	(void)u;
+	if (resp == GTK_RESPONSE_ACCEPT) {
+		char *f = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d));
+		if (f) { do_open(f); g_free(f); }
+	}
+	g_object_unref(d);
+}
+static void file_import_dlg(void)
+{
+	GtkFileChooserNative *ch = gtk_file_chooser_native_new(rui_tr("Import a CSV file into a new sheet"), GTK_WINDOW(W->win),
+		GTK_FILE_CHOOSER_ACTION_OPEN, rui_tr("Import"), rui_tr("Cancel"));
+	GtkFileFilter *ff = gtk_file_filter_new();
+	gtk_file_filter_add_pattern(ff, "*.CSV"); gtk_file_filter_add_pattern(ff, "*.csv");
+	gtk_file_filter_add_pattern(ff, "*.TSV"); gtk_file_filter_add_pattern(ff, "*.tsv");
+	gtk_file_filter_add_pattern(ff, "*.txt");
+	gtk_file_filter_set_name(ff, "CSV (.CSV, .TSV)");
+	gtk_file_chooser_add_filter(GTK_FILE_CHOOSER(ch), ff);
+	g_signal_connect(ch, "response", G_CALLBACK(import_done), NULL);
+	gtk_native_dialog_show(GTK_NATIVE_DIALOG(ch));
+}
+static void export_done(GtkNativeDialog *d, gint resp, gpointer u)
+{
+	(void)u;
+	if (resp == GTK_RESPONSE_ACCEPT) {
+		char *f = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d));
+		if (f) {
+			char *err = NULL, *nm = g_strdup(path_base(f));
+			if (!csv_write_to(f, &err)) { file_note("Export", err); g_free(err); }
+			else { snprintf(SAY, sizeof SAY, "%s %s", rui_tr("Exported"), nm); status_update(); state_soon(); }
+			g_free(nm); g_free(f);
+		}
+	}
+	g_object_unref(d);
+}
+static void file_export_dlg(void)
+{
+	GtkFileChooserNative *ch = gtk_file_chooser_native_new(rui_tr("Export this sheet as CSV"), GTK_WINDOW(W->win),
+		GTK_FILE_CHOOSER_ACTION_SAVE, rui_tr("Export"), rui_tr("Cancel"));
+	const char *b = path_base(FILE_PATH);
+	char *stem = g_strdup(b && *b ? b : "Book1");
+	char *dot = strrchr(stem, '.');
+	if (dot) *dot = 0;
+	char *def = g_strconcat(stem, ".csv", NULL);
+	gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(ch), def);
+	gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(ch), TRUE);
+	g_free(def); g_free(stem);
+	g_signal_connect(ch, "response", G_CALLBACK(export_done), NULL);
+	gtk_native_dialog_show(GTK_NATIVE_DIALOG(ch));
+}
+/* (the check writes one without a chooser: RUDOLF_SP_EXPORT names the file) */
+static void export_quiet(const char *path)
+{
+	char *err = NULL, *nm = g_strdup(path_base(path));
+	if (!csv_write_to(path, &err)) snprintf(SAY, sizeof SAY, "%s", err ? err : "");
+	else snprintf(SAY, sizeof SAY, "%s %s", rui_tr("Exported"), nm);
+	g_free(err); g_free(nm);
+	status_update();
 }
 /* (Save writes where the book came from; without one, or on Save as, the page's own chooser asks where) */
 static void do_save(int as)
@@ -1348,7 +1536,7 @@ static void dlg_close(int i, void *d) { (void)i; (void)d; }
 
 /* ------------------------------------------------------------------ the eight menus: the page's own items, in its own
    order, each of them either working here or drawn as the page draws one it cannot choose (greyed out) */
-enum { OP_NONE = 0, OP_NEW, OP_CLOSE, OP_FOPEN, OP_FSAVE, OP_FSAVEAS, OP_UNDO, OP_REDO, OP_CUT, OP_COPY, OP_PASTE, OP_SELALL, OP_CLEAR, OP_CLEARF, OP_CLEARA,
+enum { OP_NONE = 0, OP_NEW, OP_CLOSE, OP_FOPEN, OP_FSAVE, OP_FSAVEAS, OP_FIMPORT, OP_FEXPORT, OP_UNDO, OP_REDO, OP_CUT, OP_COPY, OP_PASTE, OP_SELALL, OP_CLEAR, OP_CLEARF, OP_CLEARA,
 	OP_ZOOM, OP_FBAR, OP_GRID, OP_SHOWF, OP_BOLD, OP_ITAL, OP_UNDER, OP_STRIKE, OP_AL, OP_RECALC, OP_ABOUT, OP_KEYS, OP_STATS,
 	OP_ERRORS, OP_GOTO, OP_WHEN };
 typedef struct { const char *label, *key; int off; int op; const char *arg; } Mi;
@@ -1357,7 +1545,7 @@ static const Mi FILE_I[] = {
 	{ "New", "Ctrl+N", 0, OP_NEW, NULL }, { "New from template...", "", 1, OP_NONE, NULL },
 	{ "Open...", "Ctrl+O", 0, OP_FOPEN, NULL }, { "Save", "Ctrl+S", 0, OP_FSAVE, NULL },
 	{ "Save as... (.RSHEET, .XLSX, .CSV)", "", 0, OP_FSAVEAS, NULL }, WPS,
-	{ "Import CSV into a new sheet...", "", 1, OP_NONE, NULL }, { "Export this sheet as CSV...", "", 1, OP_NONE, NULL },
+	{ "Import CSV into a new sheet...", "", 0, OP_FIMPORT, NULL }, { "Export this sheet as CSV...", "", 0, OP_FEXPORT, NULL },
 	{ "Export as Excel workbook (.xlsx)...", "", 1, OP_NONE, NULL }, WPS,
 	{ "Page setup...", "", 1, OP_NONE, NULL }, { "Print...", "Ctrl+P", 1, OP_NONE, NULL },
 	{ "Save as PDF...", "", 1, OP_NONE, NULL }, WPS, { "Close", "", 0, OP_CLOSE, NULL } };
@@ -1494,6 +1682,8 @@ static void menu_do(const Mi *s)
 	case OP_CLOSE: gtk_widget_destroy(W->win); break;
 	case OP_FOPEN: file_open_dlg(); break;
 	case OP_FSAVE: do_save(0); break;
+	case OP_FIMPORT: file_import_dlg(); break;
+	case OP_FEXPORT: file_export_dlg(); break;
 	case OP_FSAVEAS: do_save(1); break;
 	case OP_UNDO: hist_undo(); break;
 	case OP_REDO: hist_redo(); break;
@@ -1817,6 +2007,7 @@ static void build_status(void)
 	gtk_box_pack_start(GTK_BOX(W->body), sb, FALSE, FALSE, 0);
 }
 static void on_clear_btn(GtkWidget *b, gpointer d) { (void)b; (void)d; clear_cells(); }
+static gboolean export_hook(gpointer d) { export_quiet((const char *)d); state_soon(); return G_SOURCE_REMOVE; }
 static gboolean goto_hook(gpointer d)
 {
 	int r0, c0, r1, c1;
@@ -1844,6 +2035,7 @@ int main(int argc, char **argv)
 	{ const char *mo = getenv("RUDOLF_SP_MENU");
 	  if (mo && *mo) for (int i = 0; i < NMENUS; i++) if (!strcmp(MENUS[i].title, mo)) { g_timeout_add(400, menu_hook, (gpointer)(intptr_t)i); break; } }
 	{ const char *go = getenv("RUDOLF_SP_GOTO"); if (go && *go) g_timeout_add(900, goto_hook, (gpointer)go); }
+	{ const char *x = getenv("RUDOLF_SP_EXPORT"); if (x && *x) g_timeout_add(900, export_hook, (gpointer)x); }
 	state_soon();
 	gtk_main();
 	return 0;
