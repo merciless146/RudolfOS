@@ -131,7 +131,19 @@ accent colours), its memory at idle against the web version, built in the releas
   page's ` *` while there are changes, New (Ctrl+N) is a book with no file, Open... (Ctrl+O) and Save, Save as...
   (Ctrl+S, Shift+Ctrl+S) are the page's own File rows and use the desktop's own file chooser, and the program takes a
   path on its command line, which is how Files launches an app with a file.
-- **Its test (the same workflow):** **16 passed, 0 failed, 330 512 bytes**, hardened (the app's budget is 1 MB). Case 14
+- **A book of several sheets is refused, not cut down:** this step shows one sheet. Opening a .RSHEET of two and
+  saving it kept the first and dropped the rest without a word, so the loader counts the sheets before it touches the
+  book and refuses one of more than a single sheet, naming the file, saying how many it has, and leaving the bytes as
+  they were; the reason is on the status line before the dialog opens (whose own loop runs the state's timer).
+- **CSV, read and written as the page does it:** a .CSV or .TSV opens with `sprof45.js`'s `spFromCSV` rules -- the
+  first line's own delimiter (tab, then semicolon, then comma), quotes with a doubled quote inside, CRLF and a BOM
+  skipped, each field a cell's text -- and the file's own name, without the extension, is the sheet's. Saving it back
+  (Ctrl+S on a CSV, as the page's `doSave` does, or a Save as to a .CSV) writes what each cell shows -- the formula's
+  value, not its text -- quoted where it holds a delimiter, a quote or a line break, a line each, CRLF. File's two
+  greyed rows are live: Import CSV asks by the page's own title and reads the file as this step's one sheet (the page
+  puts it in a new sheet; this step has one), and Export this sheet as CSV writes it wherever it is asked to without
+  becoming the book's file.
+- **Its test (the same workflow):** **19 passed, 0 failed, 338 896 bytes**, hardened (the app's budget is 1 MB). Case 14
   opens a .RSHEET the page wrote -- a number, a formula worked out as 10, a bold cell and a centred one -- with its name
   in the title and `dirty 0`; case 15 types into it (the page's ` *` in the window's own title, `dirty 1`) and presses
   Ctrl+S, then reads the file back: v2, the page's `app`, the cells by key (`[0,9]`, `[1,null,"=A1*2"]`,
@@ -141,9 +153,14 @@ accent colours), its memory at idle against the web version, built in the releas
   Ctrl+S hands the saver the path already held, which was freed and then copied, so the title and the status line read
   freed memory; both places now take the new name first. The review of the section also made a number that is not
   finite a JSON null instead of `inf`, kept the sheet's own name rather than always saving `Sheet1`, and cut a second
-  pass over the cells and a macro from the writer.
-- **Not in this slice, by the plan's own split:** CSV and .xlsx with their import and export rows, page setup, printing
-  and the PDFs; the number formats, the sizes and hiding of rows and columns, the merges, the frozen panes, the charts,
+  pass over the cells and a macro from the writer. Case 17 opens a two-sheet book: it is refused, `Book1` stays in the
+  title, `file -`, `cells 0`, `say two.RSHEET has 2 sheets`, and the file's bytes are the same afterwards. Case 18 opens
+  a CSV written with a quote inside a quoted field and CRLF, checks its cells (5, 7, `a,b`, `say "hi"`, 0.5), presses
+  Ctrl+S and gets the same bytes back. Case 19 exports a .RSHEET's sheet through `RUDOLF_SP_EXPORT` and asserts the
+  page's own text: `5,10,` / `x,,` / `,,7`, CRLF -- the formula's 10, and the empty cells' commas in place. (It opens
+  its own book: reading case 14's after case 15 has typed into and saved it would test the order, not the export.)
+- **Not in this slice, by the plan's own split:** .xlsx with its import and export rows, page setup, printing and the
+  PDFs, and more than one sheet (which is why a book of several is refused rather than cut down); the number formats, the sizes and hiding of rows and columns, the merges, the frozen panes, the charts,
   the other sheets and the assistant are not carried through a save yet (the step that models each takes it on). The
   screenshot comparison is still not in it: it comes with the step that makes every view of the window. The native
   desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is still not in `NATIVE_APPS[]`.
