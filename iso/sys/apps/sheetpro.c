@@ -548,7 +548,8 @@ static int sheet_save(const char *path, char **err)
 	g_hash_table_destroy(seen);
 	g_array_free(ks, TRUE);
 	if (!ok) return 0;
-	g_free(FILE_PATH); FILE_PATH = g_strdup(path); DIRTY = 0; title_update();
+	{ char *keep = g_strdup(path); g_free(FILE_PATH); FILE_PATH = keep; }
+	DIRTY = 0; title_update();
 	return 1;
 }
 /* ---- reading it back (the page's spFromJSON) ---- */
@@ -635,7 +636,8 @@ static int sheet_load(const char *path, char **err)
 	UNDO_N = UNDO_I = 0; hist_push();
 	CUR_R = CUR_C = SEL_R0 = SEL_C0 = SEL_R1 = SEL_C1 = SEL_AR = SEL_AC = 0;
 	SCX = SCY = 0; TABFROM = -1; SHOWF = 0;
-	g_free(FILE_PATH); FILE_PATH = g_strdup(path); DIRTY = 0;
+	{ char *keep = g_strdup(path); g_free(FILE_PATH); FILE_PATH = keep; }
+	DIRTY = 0;
 	SUSPEND = 0;
 	title_update();
 	nb_update(); fx_update(); upd_tb(); layout_ranges(); status_update(); redraw();
