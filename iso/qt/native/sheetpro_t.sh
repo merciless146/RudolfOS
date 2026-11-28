@@ -383,7 +383,7 @@ kill $SPP24 2>/dev/null; sleep 0.4
 #  page's own sizes are at 100 %; a choice's handle sits at its bottom-right corner.)
 F6=$T/drag.RSHEET
 cat > "$F6" <<'RS'
-{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"Sheet1","color":"","cells":[[0,1],[702,2],[1,"=A1*2"]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"Sheet1","color":"","cells":[[0,1],[702,2],[1,2,"=A1*2"]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
 RS
 ST25=$T/state_drag; rm -f "$ST25" "$T/drag.steps"
 RUDOLF_SP_STATE=$ST25 DISPLAY=$DSP "$BIN" "$F6" >"$T/sp_drag.log" 2>&1 & SPP25=$!
