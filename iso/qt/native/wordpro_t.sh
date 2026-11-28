@@ -108,6 +108,11 @@ DISPLAY=$DSP xdotool key ctrl+y; sleep 0.9
 C=$(grep -c '^words 0$' "$ST")
 [ "$A$B$C" = 111 ]
 ok "11b. New is a step of the history: undo brings the page back, redo empties it again" "$([ $? = 0 ] && echo 1)" "after New $A, after undo $B, after redo $C (words: $(grep '^words' "$ST"))"
+# (the shortcuts the bar advertises: Ctrl+H is the Find bar's replace box, as the page's)
+DISPLAY=$DSP xdotool key ctrl+h; sleep 0.8
+DISPLAY=$DSP xdotool type --delay 12 'TWO'; sleep 0.8
+grep -q '^findbar 1$' "$ST" && grep -q '^repl TWO$' "$ST" && grep -q '^find two$' "$ST"
+ok "11c. Ctrl+H opens the Find bar on its replace box, not its find box" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(findbar|find|repl) ' "$ST")"
 kill $WPP 2>/dev/null; sleep 0.6
 # (the app of the first cases is put away by its window's own process: it was a child of this shell rather than the shell)
 for w in $(DISPLAY=$DSP xdotool search --name 'WordPro$' 2>/dev/null); do
@@ -186,11 +191,6 @@ for pair in "File 5" "Edit 0" "View 6" "Insert 8" "Format 5" "Table 11" "Tools 3
 done
 ok "18. the page's commands the app has not got are counted, menu by menu" "$L18" "$(grep '^later' "$ST" | tr '\n' ' ')"
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
-# (the shortcuts the bar advertises: Ctrl+H is the Find bar's replace box, as the page's)
-DISPLAY=$DSP xdotool key ctrl+h; sleep 0.8
-DISPLAY=$DSP xdotool type --delay 12 'TWO'; sleep 0.8
-grep -q '^findbar 1$' "$ST" && grep -q '^repl TWO$' "$ST" && grep -q '^find two$' "$ST"
-ok "13. Ctrl+H opens the Find bar on its replace box, not its find box" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(findbar|find|repl) ' "$ST")"
 # (a picture and a table are places in the writing, with their own data, not characters or words of it)
 python3 - "$T/pic.png" <<'PY'
 import sys, zlib, struct
