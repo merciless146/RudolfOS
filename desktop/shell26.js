@@ -129,6 +129,11 @@ async function shellOffer() {
      ("Real browser tabs are ready", with the bell marked), though Oracle there is Rudolf's Chromium with its real tabs already;
      and its "restart the desktop" restarted the native desktop as Standard's browser with the shell. Nor in a page of one app */
   if (!RD || SHELL || RD.engine == 'webkit' || RD.engine == 'native' || (typeof ONEAPP != 'undefined' && ONEAPP)) return;
+  /* 1.6.3 (the owner, 2026-11-28: a new installation from a stick made in Make a USB stick booted, its setup wizard came up
+     and the browser started again at once over it, so the first account was never made and the person was left at the sign-in
+     screen with the placeholder account alone): not before Rudolf OS is set up (the wizard's last step keeps "bd95setup"),
+     and never with the wizard on the screen. The move waits for a start after setup, or Settings' "Restart the desktop now" */
+  if (!ld('bd95setup', 0) || document.getElementById('oobe')) return;
   let st; try { st = await rd('shell') } catch (e) { return }
   if (!st.id || !st.on || st.failed || st.active || !st.ready) return;
   if (!st.installed) { if ((shellOffer.n = (shellOffer.n || 0) + 1) < 20) setTimeout(shellOffer, 10000); return }   // still installing

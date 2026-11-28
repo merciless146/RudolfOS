@@ -72,6 +72,35 @@ accent colours), its memory at idle against the web version, built in the releas
   three open together free roughly 200-350 MB.
 - **The owner's checklist:** each app on the Vivobook against Chromium mode's (every menu and toolbar button, a real
   document, spreadsheet and presentation of the owner's, printing), light and dark; the memory in Task Manager.
+#### Status (2026-11-28, session): SpreadsheetPro's mouse -- the drags, and the fill handle
+- **The app handled no motion at all** (the step before this one said so): only a press. The page's own mouse is now here
+  (spro45.js's `mousedown` with its `drag`, `drag.col`, `drag.row` and `fillDrag`, its `mm` and `mu`, the handle's 7 px
+  square in `drawSel`, and `doFill`):
+  - **From a cell**: a press chooses the cell and a drag grows the choice from where the press began (Shift still grows
+    it from the press before), the cursor following it and the grid scrolling it into view as the page's own does.
+  - **From a head**: a press takes the whole column or row, and a drag across the other heads grows it, as the page's
+    `drag.col`/`drag.row` do; the cursor goes to the top (or left) of the view, as before.
+  - **The fill handle**: the page's 7 px blue square (in white round it) now sits at the choice's bottom-right corner;
+    pressing it starts a fill drag, and a dashed rectangle shows what the release would fill, on the drag's longer axis
+    exactly as the page chooses it. The release fills: numbers go on by their line of best fit (1, 2 becomes 3, 4), a
+    single number is copied, weekdays and months continue (full names or their first three letters, the case kept), a
+    word with a number in it continues that number ("Item 1", and a leading zero's width), and a formula is copied with
+    its **references moved** (`=A1*2` in B1 becomes `=A2*2` in B2 and `=A3*2` in B3; `$A$1`, `$A1` and `A$1` stay as they
+    are; a sheet's name before `!` and a word in a string are not references). The filled cells keep the style of the ones
+    they came from, the whole drag is one step of the history, and the filled range is left chosen -- the page's own
+    results.
+- **Its test (the same workflow): case 25, new**, with the mouse as a person holds it (Xvfb and xdotool: a press, motion
+  part of the way and the release, tried again while what it should leave is missing): a book of 1 and 2 in A1:A2 with
+  `=A1*2` in B1; A1 dragged to B2 finds `sel 1 1 0 0 1 1` and `A1:B2`; A1 dragged to A2, then its handle down to row 4's
+  middle, finds A3 3, A4 4 and the choice `A1:A4`; B1's handle down to row 3's middle finds `=A2*2` (shown 4) and
+  `=A3*2` (shown 6); A's head dragged to C's finds `sel 0 2 0 0 99999 2` and `A1:C100000`; the book is marked unsaved and
+  the window still answers. A cell's middle is 46 + 80 c and 22 + 20 r from the grid's corner (the state's `area` line),
+  and a choice's handle is at its corner, so the check computes both.
+- **Not in this step, by the page's own split:** the page's scroll while the pointer is held past the edge, double-click
+  on the handle (its fill as far as the column beside), the comments' tooltip on rest, the borders' drag to resize, and
+  the rest of Part 1's steps; the native desktop keeps opening the web SpreadsheetPro until the whole app passes, and
+  `sheets` is still not in `NATIVE_APPS[]`.
+
 #### Status (2026-11-28, session): SpreadsheetPro's heads -- a press takes the whole column or row, and the status line adds it up
 - **The heads answered nothing:** a press on a column's letter, a row's number or the corner returned before it was
   handled ("choosing a whole row or column is a later step"), so a person had no way to choose a column -- and so no way
@@ -750,6 +779,34 @@ Windows today means another disk (an internal second drive, an external SSD, or 
 6. **Removing it:** Settings > Update and recovery > "Remove Rudolf OS from this drive" (from a stick or from Windows'
    side: a guide) deletes RUDOLFDATA, \EFI\rudolf\ and the boot entry, and leaves the space unallocated for Windows to
    take back (Disk Management > Extend Volume).
+7. **The computer's other systems, each a bootable choice** (the owner, 2026-11-28: "Part 6 will be expanded in scope so
+   that the OS will recognize the license or fetch of whatever other operating system is installed as a bootable choice
+   on the device (if possible, this might be done or assisted by referring to the options in the BIOS boot menu)").
+   Windows above is the first of them; the same reading is made of the whole computer, and each system found is offered
+   by name at start-up:
+   - **What is read, read-only:** every EFI system partition's own folders under \EFI\ -- a vendor's folder and the
+     start-up file in it (\EFI\Microsoft\Boot\bootmgfw.efi, \EFI\ubuntu\shimx64.efi, \EFI\fedora\...,
+     \EFI\refind\..., \EFI\Manjaro\...) -- and the firmware's own boot entries (efibootmgr: each one's name, the disk and
+     partition it is on, whether it is enabled and its place in the order). A system is named as the firmware and the
+     loader's own folder name it (**Windows**, **Ubuntu**, **Fedora**...), never by reading its files; a folder whose
+     name is not one known is shown by that name, with its date and size.
+   - **The licence is the other system's own:** nothing here reads, checks, activates or changes it. What is recognised
+     is that a system is installed and can be started, as a bootable choice -- no disk of another system is written to,
+     mounted read-write, moved, or made the default by Rudolf OS.
+   - **At start-up and in Settings:** Rudolf OS's menu lists them after its own entries (Rudolf OS first, the short wait
+     kept), each starting the loader that was found; Settings > Update and recovery lists them with what was found, where
+     it is and whether the firmware knows it, with "Start this system now" (one restart) and "Refresh". A system whose
+     firmware entry has gone (a Windows update, a disk moved, a reset NVRAM) is found again from its loader's folder, so
+     its entry is put back at Rudolf OS's next start, as Windows' own is.
+   - **The firmware's own boot menu as the way through** (the BIOS boot menu, as the owner put it): where a loader is
+     not offered by the firmware at all (a hidden or missing entry, a system on a disk the firmware does not list),
+     Settings says so plainly and offers "Restart into the firmware's boot menu" (UEFI's OsIndications, else a restart
+     into the firmware's setup), with the key each maker uses for its one-time boot menu (ASUS F8 or Esc, Dell F12,
+     Lenovo F12, HP F9, Acer F12) and the fact that a choice made there starts that system whether or not Rudolf OS's
+     menu knows it. Nothing about another system's licence is asked for or needed.
+   - **Never:** the other system's files read as its own (no reading a registry, a ``/boot`` or a licence store), its
+     boot loader replaced or its folder renamed, its firmware entry deleted, or its disk written to at all -- every one of
+     these is read-only, and a system found is only ever started.
 **Never:** a Windows partition written, resized or formatted; anything in \EFI\Microsoft\; the firmware's Secure Boot
 keys changed; an install that goes on when the free area, the EFI system partition or the disk's partition table is not
 what was shown.
@@ -759,6 +816,11 @@ partition with files, a recovery partition, free space; no Windows files or imag
 partition's checksum unchanged and \EFI\Microsoft\ unchanged; Rudolf OS starts, updates, rolls back, Recovery mode;
 the menu's Windows entry starts the stand-in; the boot order put back; too little free space, a full EFI system
 partition, an MBR disk and a BIOS computer refused with plain words; removal leaves the disk as before (unallocated).
+For the other systems of item 7, the same QEMU disk carries a stand-in second system in its own \EFI\ folder (a loader
+that only prints a mark) and a firmware entry for it, and a third folder whose name is not one known: each listed by
+name at start-up and in Settings and started, the one without a firmware entry found again from its folder, the unknown
+one shown by its own name, every byte of both left as it was (checksums), and "Restart into the firmware's boot menu"
+offered where the firmware lists no entry at all.
 **The owner's checklist** (the ASUS desktop): back up and note the BitLocker key; shrink in Disk Management; install
 beside; Rudolf OS and Windows each start from the menu and from F8; a Windows update, then Rudolf OS's next start; an
 update of Rudolf OS; removal and Extend Volume back.
@@ -1099,6 +1161,43 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    daemon) and `terminal56_t.js` (1.5.6's own check, run by the same workflow) 4, 6 and 7, which asserted the old "＋ opens another
    C: tab", "prompt() opens a Terminal" and a read of the first tab only; they now assert the menu, the tab in the open
    window and the text of whichever tab the file opened.
+12. **A new installation from a stick: its setup wizard is not restarted under the person's hands** (the owner,
+   2026-11-28: "New installs using USB drives produced in Rudolf's update and recovery \"make a USB stick\" function are
+   buggy — they'll boot normally but the startup window force-resets quickly and puts the user at the sign-in screen
+   without having allowed them to make their first account (which is supposed to be their admin account). This causes
+   them to be locked out of a computer which has no account that they can use"), **done:** two causes, each enough on its
+   own. **A: the one-time move to the browser shell restarted the browser over the wizard.** `shell26.js`'s `shellOffer`
+   moves a plain desktop page to the shell by itself right after start-up (within two minutes and with no window open:
+   "Real browser tabs are ready" then `shell/switch` 600 ms later), and it asked only about the engine — on a new
+   installation the page is the plain one (Standard, the only engine before setup), the mirror is ready at once
+   (`idbm/ready`), and Chromium has installed the shell a few seconds in, so it fired about 6 s after the start, while the
+   wizard (up at 1.2 s) had the screen. Now `shellOffer` returns unless Rudolf OS is set up (`bd95setup`, the wizard's
+   last step) and while `#oobe` is on the screen: the move waits for a start after setup, or Settings › Oracle sign-in ›
+   "Restart the desktop now". **B: the next start treated the placeholder account as setup.** The page keeps a placeholder
+   account (`admin`, the hash of "admin") under `bd95user` at its very first start, before the wizard runs, and the
+   session's `native_setup_done()` counted `bd95user` — so from the second start the Native desktop came up (install.sh
+   writes it for new installations), whose sign-in screen has no setup wizard and whose only account was one nobody had
+   chosen a password for. `native_setup_done()` now reads `bd95setup` alone, as the wizard's own `firstRun` does, so an
+   unfinished setup starts on Standard with its wizard again (and an update repairs a computer already caught by this).
+   The daemon's `setup` flag (`desktop/accounts`, Native's "not set up yet" line) is unchanged: with A and B, Native is
+   never started before setup. *Nothing in the native shell was touched, so no rebuild of `rudolf-native` is needed.*
+   Tests: `setuprun63_t.js` (new — a new installation: the wizard stays at step 1 while the automatic move would fire and
+   when `shellOffer()` is called by hand, no `shell/switch`, no box; set up: the move still happens by itself with its
+   box) and `setupnative63_t.sh` (new — the session's `native_setup_done` read from the session itself: nothing, the
+   placeholder account alone, other data: Standard; `bd95setup`: Native; and the wizard's rule is the same one), both in
+   `setuprun63-check.yml`; `engine57_t.js` case 7 (the Chromium desktop's move) sets up first, as its WebKit page already
+   did.
+   - **Follow-up (the owner, 2026-11-28): the wizard keeps its place.** "Make the wizard keep its place if the desktop
+     restarts or the computer is switched off mid-setup, so the step and the name already typed come back instead of step
+     1, with a check for it." The wizard's place is kept in `bd95oobe`, `{step, name}`, written as the wizard is drawn,
+     the name is typed and every step is left; `firstRun` starts from it (and no longer draws a second wizard over one
+     already on the screen). The password is never kept: a restart after it is typed comes back to the step that asks for
+     it — the two last steps come after it — with the name still in its box and both password boxes empty, which is also
+     why a saved place is capped there. The key is removed when the wizard ends, so nothing is left behind on a computer
+     that is set up. Test: `setupkeep63_t.js` (new, in `setuprun63-check.yml`): step 1 at a new installation, the place as
+     the name is typed, a restart back at the account step with the name, the passwords empty, the password step's restart
+     back at the account step (not step 1 and never the last one), Back kept, Finish making the account (`Ann`) and
+     clearing the place, and no wizard on the next start.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)
@@ -1189,6 +1288,106 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
 **Not this Part:** Oracle's WebRTC, which Native's WebKit does not have at all (docs/plan-1.5.9.md 7.1), and the camera in
 Linux apps, which use the Debian container's own stack.
 
+### Part 10. Archive Manager: unpacking and installing made easier (the owner's question, 2026-11-28)
+
+**Asked:** "assess the archive manager application and determine the necessary changes to make unpacking and working with .zip
+files or installations easier and more intuitive." This part is that assessment and the list of changes; nothing of it is built
+yet, and the owner chooses which items to take.
+
+**What it is today (the two halves).** One app, `Archive Manager`, made of two pieces of code that share a name and a window and
+little else:
+- `apps25a.js` (the window, `regApp('archive', …)`, `archiveApp`, `tarEntries`) handles an archive **in the account's own files**
+  (C:\ and everything in it): a ZIP through JSZip, a TAR by hand, listed in a table with a tick per entry, `Extract all`, `Extract
+  selected`, `Add a file…`, `New archive from files…`, and `Open…` picking a file from those same files.
+- `dlzip61.js` (1.6.1) handles a ZIP **kept on the disk** as a download larger than 1.5 MB (a reference into
+  `/home/rudolf/Downloads/.accounts/<id>/`): `dlZipWin` lists it through rudolfd's `dl/zip` (`unzip -l`, at most 20,000 entries),
+  and `Extract here` runs rudolfd's `dl/unzip` job (root writes nothing; `dlzip.sh` unpacks as the desktop user into a hidden
+  folder, then moves every file flat into the account's folder), with a progress window, Cancel, the antivirus on each file, and
+  then a folder of references beside the ZIP.
+- File Explorer adds `Extract here` (its own, `doUnzip` → `zipToVfs`), `Compress to ZIP` (`doZip` → `vfsToZip`, folders
+  included), and Open with › Archive Manager for ZIP and TAR (`files25.js`).
+
+**Where it is hard, in the order a person meets it.**
+- **The same ZIP behaves differently by where it lives, and nothing says so.** A ZIP from Oracle in Downloads gets the good path
+  (read on the disk, 20,000 entries, progress, Cancel, antivirus, no size limit); the same ZIP copied anywhere else gets the
+  in-memory path, and a TAR on the disk gets "Rudolf OS has no app that opens this kind of file from the disk". A person holding
+  a ZIP on a USB stick cannot tell which they will get or why.
+- **The in-memory path's real ceiling is the account's storage, and it fails late.** Every file is stored as a base64 `data:`
+  URL in the account's own record (`fsFlush`, one IndexedDB/localStorage record), and extraction writes each member back the same
+  way: about 2.4 times the archive's size, twice over. A 3–4 MB ZIP of binaries can pass `Open…` and then fill the storage
+  half-way through `Extract all`, leaving a half-filled folder and `storageFull()`'s "Storage is full" with no word about what
+  is in it.
+- **There is no destination choice and no merging.** `Extract all` always makes a new folder (`uniq`) — extracting an update
+  a second time gives "Game (2)" beside "Game" — and `dlZipExtract` always writes beside the ZIP (`dlUniq`). No "Extract to…",
+  no "into this folder", no overwrite question.
+- **Names are changed silently.** `dlzC` and `doUnzip` upper-case every name, replace `\ / : * ? " < > |` with `_` and cut it to
+  60 characters, and `dlUniq`/`uniq` add " (2)" when two collide; nothing tells the person, and the 60-character cut can make two
+  different names collide in the first place.
+- **A ZIP kept on the disk can only be list-and-extract-all.** `dl/zip` lists names, sizes and folders but returns no entry's
+  contents, so `Extract selected` (and a peek at one file) is impossible for exactly the big archives where it matters; a TAR or
+  TAR.GZ from the disk has no path at all (`dlzOf` asks for `.ZIP`).
+- **Formats.** ZIP (with no password field, though JSZip can decrypt) and TAR by hand, whose reader ignores GNU long names, pax
+  headers, symlinks and hard links; `.7z`, `.rar`, `.gz`, `.tgz`, `.xz` and `.bz2` appear in File Explorer's search types and in
+  Open with's Archive Manager entry is offered for them nowhere; a damaged ZIP is answered with one flat "could not be read".
+- **Nothing turns an archive into an installation.** Rudolf OS already knows what to do with a `.RAPP` (`rappInstall`), a `.DEB`,
+  `.EXE`/`.MSI` (Wine), an AppImage or a `.bin`/`.run` (`install56.js`'s `installWizard`, opened by a double-click); but the
+  Archive Manager hands the person a folder of files and leaves them to find `setup.exe` among thirty others. That is the gap
+  the question is really about.
+- **The window offers little for a big archive:** no sort, no filter by name, no "Select all"/"Select none", no total of the
+  ticked files, `Extract selected` always live (it answers in the status line instead), no keyboard route (Enter) to the ticked
+  files, and no "Open" on one entry. `Add a file…` can only add single files (not a folder) and rewrites the whole ZIP in memory;
+  nothing can be renamed or removed inside one.
+- **Two doors into a damaged or blocked archive's folder:** the antivirus run on the disk path's files can block or quarantine
+  them, and the in-memory path checks nothing at all — the same ZIP is scanned or not depending on where it came from.
+
+**What to change** (each item its own PR; item 1 is the one that makes the rest possible):
+1. **One path for every archive, on the disk, whatever its size.** rudolfd's `dl/zip` and `dl/unzip` take any ZIP at a path the
+   account may read (not only Downloads) — a USB stick, `/home/rudolf`, a folder inside the account's own files written out to a
+   temporary file first — and the window always uses them, so listing, the 20,000-entry cap, the progress window, Cancel and the
+   antivirus are the same everywhere, and the in-memory path stays only as the fallback the native desktop's `/bin/sh` will not
+   always be there for. **Test:** opening a 200 MB ZIP from a USB stick lists it and extracts it with progress; opening a 3 MB ZIP
+   from C:\ does not touch storage.
+2. **Choose where it goes, and merge when asked.** `Extract here` (a new folder, as now), `Extract to…` (a folder picker over the
+   account's files and the drives), and "Extract into this folder" with a question when a name is already there (Replace, Keep
+   both, Cancel for all); a second extraction into the same folder then updates instead of making "Game (2)". `dlzip.sh` takes
+   the destination as a line of its request file (never a command line, as now). **Test:** extract twice into one folder → one
+   folder; a name that is there → the question, and each answer.
+3. **Say what was changed.** A summary line after extraction: "12 names were changed (Windows' \ : * ? are not allowed here)", and
+   keep names as they are otherwise (drop the upper-casing and the 60-character cut; cut only what the filesystem refuses).
+   **Test:** a ZIP of long and oddly named files extracts under its own names, and the changed ones are said.
+4. **One file, and the ones you ticked, from a big archive too.** `dl/zip` gains entry contents (one entry on request, a range of
+   bytes for a preview) and `dl/unzip` takes a list of names to extract, so `Extract selected` and a preview of one member work on
+   the disk path as they do in memory. **Test:** tick two of 5,000 entries, `Extract selected` extracts exactly those; a text
+   member previews without extracting.
+5. **Install from the archive.** When an archive holds an installer — `.RAPP` (one or more), `.DEB`, `.EXE`, `.MSI`, `.AppImage`,
+   `.bin`, `.run`, an `install.sh`, a folder with a `.desktop` file — the window names them above the list and offers `Install…`,
+   which hands the file to what already exists (`rappInstall`, `installWizard`, with the same administrator prompt they use when
+   opened from Explorer) — a zip of a game or a program then becomes two clicks instead of a hunt. When there are several, a
+   short list; when the archive is an app's own update (a `.RAPP` with a higher version of one that is installed), say so.
+   **Test:** a ZIP holding one `.RAPP` and one `setup.exe` offers both, and each installs as a double-click would; a ZIP holding a
+   `.DESKTOP` folder offers its app.
+6. **Read more, and say what is not read.** TAR.GZ, and whatever Info-ZIP already does (a password field for an encrypted ZIP,
+   fed to `unzip -P` through the request file so it never appears in a command line); then `7z` through a Linux app if one is
+   there, or a plain "Rudolf OS cannot read .7z; unpack it in a Linux app from Open with" for the formats it cannot. The TAR
+   reader learns GNU long names and pax, and drops links rather than following them, as `dlzip.sh` already does. **Test:** a
+   TAR.GZ with long names lists and extracts; an encrypted ZIP asks once and extracts; `.7z` says what it cannot do.
+7. **A damaged archive is named as damaged, before anything is written.** `unzip -t` (or `unzip -l`'s rc when it fails) in the
+   list step; the window says "This ZIP is damaged: 3 files fail their checksum" and `Extract` then warns instead of half-writing,
+   and extraction into a new folder stays all-or-nothing (it already unpacks into a hidden folder; it must remove it when it
+   stops). **Test:** a ZIP with one byte flipped is named damaged, and its folder is not left behind.
+8. **The window's small things:** sort and a filter box for the list, Select all/Select none, the ticked files' count and size in
+   the status line, `Extract selected` disabled until something is ticked, Enter extracting, `Add a folder…` and `Remove` inside
+   the ZIP, and the archive's own total (packed and unpacked) in its title. Same for the native Settings-independent shapes it
+   already has. **Test:** `iso/qt/shell2/dlzip61_t.js` gains the keyboard route, the disabled button and the sizes; a 5,000-entry
+   list filters and sorts.
+
+**Not this Part:** the antivirus, the sandbox and the administrator prompts (they stay as they are and are used, never widened);
+Wine, `dpkg` and AppImage handling (`install56.js`'s own parts) and the Oracle downloads' disk references (`dl27.js`); and any
+compression the desktop does not already do — no new archive format of Rudolf OS's own.
+
+**Both editions:** all of it is the page's own code and rudolfd's helpers, so Standard, Native and Lite get it the same; the
+native desktop's window is a page of its own and shows the same dialogs.
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
@@ -1200,3 +1399,5 @@ Linux apps, which use the Debian container's own stack.
 - Part 7 (option C): step 1 (Oracle's own password manager) early; step 2 (extensions in a Chromium window opened from
   Oracle, with about:safety) after it.
 - Part 8: alongside the others; each item its own PR.
+- Part 10: any time after 1.6.2 is stable, when the owner wants it; item 1 first, then 5 (install from an archive) if that is the
+  one that matters most; each item its own PR.
