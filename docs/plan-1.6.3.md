@@ -93,7 +93,7 @@ accent colours), its memory at idle against the web version, built in the releas
   part of the way and the release, tried again while what it should leave is missing): a book of 1 and 2 in A1:A2 with
   `=A1*2` in B1; A1 dragged to B2 finds `sel 1 1 0 0 1 1` and `A1:B2`; A1 dragged to A2, then its handle down to row 4's
   middle, finds A3 3, A4 4 and the choice `A1:A4`; B1's handle down to row 3's middle finds `=A2*2` (shown 4) and
-  `=A3*2` (shown 6); A's head dragged to C's finds `sel 0 0 0 0 99999 2` and `A1:C100000`; the book is marked unsaved and
+  `=A3*2` (shown 6); A's head dragged to C's finds `sel 0 2 0 0 99999 2` and `A1:C100000`; the book is marked unsaved and
   the window still answers. A cell's middle is 46 + 80 c and 22 + 20 r from the grid's corner (the state's `area` line),
   and a choice's handle is at its corner, so the check computes both.
 - **Not in this step, by the page's own split:** the page's scroll while the pointer is held past the edge, double-click

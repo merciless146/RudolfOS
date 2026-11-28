@@ -428,7 +428,7 @@ chk5 'grep -q "^show B2 4$" "$ST25"' formula2v
 chk5 'grep -q "^cell B3 =A3\*2$" "$ST25"' formula3
 chk5 'grep -q "^show B3 6$" "$ST25"' formula3v
 pull $(( AX5 + 86 )) $(( AY5 + 11 )) $(( AX5 + 246 )) $(( AY5 + 11 )) '^selname A1:C100000$'   # (A's head dragged to C's)
-chk5 'grep -q "^sel 0 0 0 0 99999 2$" "$ST25"' headdrag
+chk5 'grep -q "^sel 0 2 0 0 99999 2$" "$ST25"' headdrag   # (the cursor in C, the choice A to C)
 chk5 'grep -q "^dirty 1$" "$ST25"' dirty
 kill -0 $SPP25 2>/dev/null; LIVE5=$?
 ok "25. the mouse: a drag from a cell makes the choice, a drag from a head takes the columns, and the fill handle continues 1, 2 as 3, 4 and carries a formula with its references moved" \
