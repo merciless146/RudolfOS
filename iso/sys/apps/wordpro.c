@@ -106,6 +106,7 @@ static int MENU_OPEN_I = -1;   /* (the menu open now: the tests read it, and a s
 /* ------------------------------------------------------------------ tags, and the page's "select some text first" */
 static void state_soon(void);
 static gboolean menu_hook(gpointer d);
+static void menu_do(const WpMi *s);
 static void hist_push(void); static void hist_undo(void); static void hist_redo(void);
 static void counts(void);
 static void upd_sel(void);
