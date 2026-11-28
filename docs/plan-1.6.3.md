@@ -252,11 +252,119 @@ accent colours), its memory at idle against the web version, built in the releas
   second line counted the page's way (its newline is not a character). The screenshot comparison against the web WordPro
   is **not** in it yet: it comes with the step that makes every view of the window, so that no view can pass by being
   unfinished.
-- **Not in this step, by the plan's own split:** the menu bar and its dialogs, tables, pictures, links, the special
-  characters, page setup, headers and footers, the table of contents, printing, and opening and saving the page's .DOC
-  (its HTML with the page's stylesheet) -- steps 2 and 3. The native desktop keeps opening the web WordPro until the
+- **Branch `wordpro-3`: the page's menu bar** (`.wp-mb`): File, Edit, View, Insert, Format, Table, Tools and Help, each
+  menu the page's own items in the page's order and with its shortcuts. What the editor can already do acts -- New,
+  undo, redo, cut, copy, paste, select all, find and find-and-replace, the page's six zooms, the six toggles, the four
+  case changes, clear formatting, bullets, numbering, the indent, block quote, the date and time insertions, document
+  statistics, the keyboard shortcuts and About -- and what needs a later step is drawn unavailable, as the page draws an
+  item that cannot be chosen. A toggle that is on, and the zoom in use, carry the page's check mark. The dropdowns are
+  `rui_menu`, the desktop's menus in the page's look.
+- **Branch `wordpro-4`: the bar's shortcuts, and step 2 begun** (tables and pictures): Ctrl+H opens the Find bar on its
+  replace box and Shift+Ctrl+V pastes the clipboard's text alone, as the bar advertises; the document model is decided
+  below; pictures and tables are places in the writing with their own data (a picture's bytes and size, a table's cells),
+  the page's default 3 x 3 table, and a picture chosen through GTK's own file chooser until the page's dialog comes.
+- **Branch `wordpro-5`: saving and opening the page's .DOC** (step 2's file half): the document is written as the page
+  writes it -- `<!--wp:{meta}-->`, `<style data-wp>` with the page's stylesheet (read from `base_v24.html` at build time,
+  so it cannot drift), the blocks as its HTML (paragraphs, the inline tags, the colour and font spans, `<table>` with
+  `<th>`/`<td>`, `<img src="data:...">`) -- and opened by parsing that same subset back into the model, refusing nothing
+  silently. `File > Open...`, `Save` and `Save As...` are live in the bar (GTK's own choosers until the page's dialogs
+  come), with Ctrl+O and Ctrl+S; a document remembers its file. The check opens a document in the page's exact shape,
+  saves it, and opens and saves that again: the same bytes, which is the round trip the model promises.
+- **Branch `wordpro-8`: the unsaved changes, and format changes as steps of the history**: the title is the page's --
+  the file's name, or Untitled, and `*` while the writing is not in its file -- and New, Open and Close ask the page's own
+  question first (`Save changes to NAME?`, Cancel / Don't save / Save), the window's own close included, so nothing is
+  thrown away unanswered; saving or opening puts the `*` away. Format changes (bold, italic, underline, strikethrough,
+  size, colour, font, style, alignment, spacing, clear) are steps of the history as typed text is: an entry keeps the
+  writing's runs of tags beside its text, so Ctrl+Z takes a bold away and leaves the writing, and Ctrl+Y puts it back.
+- **Branch `wordpro-9`: the page's Insert table dialog, and a table's heading row and borders** (the dialogs step begun):
+  `rui_form` in librudolf-ui is the page's `dialog()` with fields -- a label and its input on a row, a text, a number or
+  a check, the page's primary as the last button, Escape as Cancel -- and it keeps its own copy of the fields, since the
+  press comes long after the action that opened the dialog returned (a bug the check caught as `free(): invalid pointer`,
+  the dialog's case now running under gdb so a crash says where it was). The Table menu's *Insert table...* and the Insert
+  menu's *Table...* open the page's dialog -- Rows 3 (1 to 50), Columns 3 (1 to 20), *Header row* and *Borders* on,
+  Cancel / Insert -- and Insert makes the table it asks for. A table keeps the two choices: `<th>` in its first row only
+  when it has a heading row, and the page's `wp-t nb` class (a table whose borders are not drawn) when it has none -- in
+  the model, in every history entry (so an undo or a redo brings them back), in what the page says (`tbl hdr 1 nb 0`) and
+  in its .DOC -- and the parser reads both back, so the web WordPro's `wp-t nb` opens and saves unchanged. The check opens
+  the dialog as its menu opens it and presses Insert through the answer file (3 x 3, `hdr 1`, `nb 0`, nine cells), and
+  opens and saves a `.wp-t nb` table with no heading row (`hdr 0`, `nb 1`, the same class and no `<th>` in the file that
+  comes back). 25 cases, all green (340640 bytes).
+- **Branch `wordpro-10`: the page's Insert picture dialog and its picture tools** (item 1's next dialogs): the page's
+  `imgDialog` -- *From computer*, *Web address*, *Description*, Cancel / Insert -- and its `imgTools` -- *Width* (Original,
+  25, 50, 75, 100 % of the sheet), *Align* (In line, Left, Right, Centered), *Description*, and Delete picture / Cancel /
+  OK -- which opens as the page's opens, on a click on the picture. `rui_form` gains the two fields those dialogs need: a
+  **choice** (the page's `<select>`: its options' own words kept as ids and shown translated, so no callback compares
+  translated words) and a **file** (the path, with the button that chooses one), plus `rui_form_field` and
+  `rui_form_value`, the way a test reaches into a form: the check's answer file now fills a dialog's fields before it
+  presses its button. A picture keeps `alt`, `wpct` (a share of the sheet's 816 px) and `walign` beside its bytes and its
+  size, so an undo or a redo brings them back, the page says them (`pic alt 'Deer' w 50 align 3`) and its .DOC carries
+  them as `alt="..."` and the style imgTools writes (`max-width:100%`, `width:NN%`, the float with its margin, or
+  `display:block` for centred) -- and the parser reads them back, so the web WordPro's picture opens here as it was and
+  saves as it was. A **web address is not read yet**: the page asks the firewall first and reads the image the browser's
+  way, and both are a step of their own, so that field says so out loud. The check's cases 26-28 are the dialog filled by
+  name (a file and a description), the tools set as one step of the history, and a .DOC whose picture carries
+  `alt="Deer &amp; fir"` with a 75 % left-floated style, read as `w 75 align 1` and written back byte for byte. 28 cases,
+  all green (349800 bytes); the check found the width tool's style read as max-width's 100 %, which is fixed.
+- **Branch `wordpro-11`: the page's Hyperlink and Special characters dialogs, and a link in the model** (item 1's next
+  dialogs): `linkDialog` -- *Text* and *Address*, Cancel / OK, and *Remove link* when a link stands at the cursor, on
+  Ctrl+K as on its Insert item -- with the page's own rules: an address that starts with a scheme (`http:`, `https:`,
+  `mailto:`, `file:` or `#`) is used as typed and anything else gets `https://`, the words are the typed ones or the
+  address itself, an empty one or a bare `https://` is refused, and the words replace what was chosen, as its
+  `insertHTML` does. A link is now part of the model: a run of the writing carrying its address in its own tag
+  (`a:<address>`), which is what the history carries with the words, what the state says (`link <address>`), and what the
+  .DOC writes as `<a href="...">` and reads back -- so the web WordPro's link opens here as it was and saves as it was. A
+  run's tags are held apart by the ASCII unit separator instead of a comma, so an address holding a comma comes back
+  whole. The **Special characters** dialog (`specialDlg`) is the page's own `WP_CHARS`, now read at build time by
+  `mkwordpro.py` like its styles and fonts, in its 12-column grid: a press puts the character in and leaves the dialog
+  standing (as a click on the page's dialog body does) and *Close* ends it -- `librudolf-ui` gains `rui_pick` for a dialog
+  of small buttons, and `rui_pick_click` for a check to press one by its own character. The check's cases 29-31 are the
+  dialog filled by name (an address without its scheme becomes `https://example.com`), the same dialog opened on that
+  link by Ctrl+K with its Cancel keeping it, a .DOC's `<a href>` read and written back byte for byte, and `©` and `—` put
+  in by the character dialog with it still standing until Close. 31 cases, all green (363256 bytes). The check found
+  three things, all fixed: a tag that ends at a place is not one of the tags at that place (so the caret just after a
+  link's words was said to be outside it, and is inside it now, as a browser's caret at an anchor's end is), the
+  characters count was counting bytes (an em dash was 3), and the case's window search by pid finds nothing under the
+  debugger, so it looks for the window by its name.
+- **Not in this step, by the plan's own split:** the dialogs of those items that are still to come (open, save, import,
+  export, page setup, print, header and footer), the Table menu's other items (insert and delete a row or a column, merge,
+  shade, toggle borders and header row), the picture's web address and the way a floated picture wraps the writing round
+  it, following a link (the page's Ctrl+click and Oracle's browser), its *Bookmark* and *Links in this document* items,
+  page setup, headers and footers, the table of contents, printing, and the rest of the page's HTML (lists, the paragraph
+  classes' other blocks, a nested table) -- steps 1 to 3. The native desktop keeps opening the web WordPro until the
   whole app passes, and `wordpro` is **not** in `NATIVE_APPS[]` yet.
 
+#### The document model (decided 2026-11-27, step 2 begins: tables and pictures)
+The native document is the page's document, not a text buffer that happens to look like one.
+- **What a document is:** a sequence of blocks. A block is a paragraph -- text with its inline tags (bold, italic,
+  underline, strikethrough, sub- and superscript, the colours, the font and size, the paragraph styles and alignments) --
+  or an object: a picture or a table. Text lives in the text view's buffer; an object is a place in that same buffer (a
+  child anchor, which the page itself keeps as its placeholder character U+FFFC) whose data is held beside it, so the
+  cursor, the counts and the undo still move through one writing in order.
+- **A picture** is its image, its pixel size and its alt text. **A table** is a grid of cells, each cell an ordered list
+  of blocks (the page's `<td>` holds paragraphs, lists and nested tables too); the first cut gives each cell one
+  paragraph -- the page's default 3 x 3 with a header row and borders -- and its cells' words are part of the page's
+  word count.
+- **What it means for the page's .DOC** (exactly the file the web WordPro writes, its `serialize()`): saving writes that
+  file -- `<!--wp:{meta}-->`, `<style data-wp>` carrying the page's own stylesheet, then the blocks as the page's HTML: a
+  paragraph as `<p>`/`<h1>`-`<h4>` with the page's classes and its inline tags as `<b>`, `<i>`, `<u>`, `<s>`, `<sub>`,
+  `<sup>`, `<span style="color:...">`, `<span style="font-family:...;font-size:...">`; a table as `<table>` with `<th>`
+  and `<td>`; a picture as `<img src="data:image/png;base64,...">` with its width and height. Opening parses that same
+  subset back into blocks, and refuses out loud a file it cannot read rather than dropping silently what it does not
+  understand (the page's own rule). The test the save must pass: a document the web WordPro saved opens here unchanged,
+  and one saved here opens there unchanged.
+- **What it costs, and what the first cut leaves out:** an entry of the history is the text with its places and, at each
+  place, the object itself -- a picture's bytes (one copy shared by the writing and every entry that has it, so an
+  unchanged picture costs nothing per step) and a table's cells -- so undo and redo take an object away and put the object
+  back, never a place with nothing behind it. Two things that follow, and that the first cut had to learn: an entry keeps
+  its own text, the places included (what a save reads leaves them out, which is right for the page's words and would lose
+  where an object stands), and the page's objects are taken away before the text that holds their places is written again
+  -- a widget destroyed in the middle of the buffer's own change stops the window (undo, New and an opened document) -- and
+  typing in a table's cell is a step of the history as typing on the page is, since a cell's words are part of the page
+  (Ctrl+Z standing in the cell is the page's undo, and the entry keeps the cells' text). A cell holds one paragraph, with no inline spans inside it yet; the page's
+  insert dialogs (rows, columns, header row, borders; a picture's size and text) come with the dialogs step, so the menu
+  inserts the page's default table and asks for a picture's file through GTK's own chooser.
+
+### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
 #### Status (2026-11-28, session): SpreadsheetPro's functions check -- a changed book is not thrown away
 - **The fault a person hits:** File ▸ Close threw the book away without a word (a bare `gtk_widget_destroy`, no
   `delete-event`), and New and Open replaced the cells outright. All four ways out now ask first -- the window's own X,

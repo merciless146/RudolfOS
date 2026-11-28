@@ -52,10 +52,12 @@ Summary: In progress.
   pages built before it, so every page of Settings is native there (Chromium mode and Lite keep the web Settings, as the
   owner's rule says). The Users page's security keys and fingerprints are added, removed and required through the page's own
   dialogs.
-- **WordPro, native** (Part 1, begun): its window, its toolbar (the page's styles and fonts read from the page at build
-  time, bold and italic and underline, the colours, the alignments, the lists, the spacing, undo and Find) and its
-  editing page are now a program of its own, `rudolf-wordpro`, so WordPro is no longer only a web app.
-- **SpreadsheetPro, native** (Part 1, begun): its window, its toolbar (the fonts and sizes read from the page at build
+- **WordPro, native** (Part 1, begun): its window, its menu bar (the page's eight menus with the page's items and
+  shortcuts, the ones the editor can already do acting and the rest drawn unavailable), its toolbar (the page's styles
+  and fonts read from the page at build time, bold and italic and underline, the colours, the alignments, the lists, the
+  spacing, undo and Find) and its editing page are now a program of its own, `rudolf-wordpro`, so WordPro is no longer
+  only a web app. Its documents are the page's own `.DOC` files: Open, Save and Save As write and read that HTML, so a
+  file written natively opens unchanged in the web WordPro, and back.- **SpreadsheetPro, native** (Part 1, begun): its window, its toolbar (the fonts and sizes read from the page at build
   time, bold, italic, underline, strikethrough, the two colours, the three alignments, undo and redo), its name box
   and formula bar, its grid with values and formulas, its sheet tab and its status line are now a program of its own,
   `rudolf-sheetpro`, so SpreadsheetPro is no longer only a web app.
@@ -73,8 +75,7 @@ Summary: In progress.
   is open and add their tab there, instead of opening a second one whose tabs are somewhere else.
 - New: a fingerprint answers the native apps' administrator prompts too, as it answers the page's: the account signed in
   puts a finger on the reader instead of typing its password (the password always still works), the one-time answer goes
-  where the password goes, and the reader is given up when the prompt closes.
-- Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
+  where the password goes, and the reader is given up when the prompt closes.- Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
   is how the camera went a release without a capture source; it now names every plug-in it cannot find.
 - Better: addwebkit.sh also copies the interleave plug-in: AudioSourceProviderGStreamer needs its `deinterleave` for a
