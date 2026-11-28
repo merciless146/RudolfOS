@@ -6,12 +6,12 @@ ranks each gap by how much it blocks Rudolf OS from being as capable as a mainst
 request each gap would need — the smallest change that moves it, not the whole gap. Written from the repository's own
 record: `CHANGELOG.md` (what shipped, 1.4.9 to 1.6.3) and the plans (`docs/plan-1.6.0.md` to `docs/plan-2.0.md`).
 
-**How to read a rank.** 1 is a hole that can be used against a person today; 2 to 4 are the things that most often
+**How to read a rank.** 1 is the security gap still open (its `dl/*` half is fixed in the open PRs); 2 to 4 are the things that most often
 make someone keep another operating system on a second machine; 5 and on are capability gaps with a known route.
 
 | # | Gap | Why it matters | The first pull request it needs |
 |---|---|---|---|
-| 1 | One account can reach another account's files through the desktop's own API | A signed-in account is not separated from the others in `dl/*` and `home/*`; the vault (fscrypt) is the only wall, and Downloads is outside it | The guard in the Archive Manager's PRs (a path may only touch the folder the extraction made) and, after it, the session check on every `acct=` request |
+| 1 | `home/*` still trusts the account name it is given | `dl/*` now checks its `acct=` against the signed-in account (open PRs #754/#755); `home/*?acct=` is still only as strong as the vault, and there is no administrator's route for deliberate cross-account access | Compare `home/*`'s account with the session, and add the one administrator-approved way in |
 | 2 | No way for anyone but this project to add a driver or a system part | A printer, GPU or device vendor cannot ship support here; it takes a project-built signed extension or a release | Signed system extensions installed from a file (Settings › Update and recovery › System extensions), with the same checks the published ones get |
 | 3 | New hardware waits for a kernel release | 6.18 long-term is steady but lags new chipsets; the fix (7.x) is 2.0's and lives on `kryptonite` | The kernel-track switch: a "next" channel built from `main` with the newer kernel, X11 unchanged, 1.6.x untouched |
 | 4 | Device firmware cannot be seen or updated | Most firmware is a manual, out-of-band job; a mainstream OS lists versions and updates them | `fwupd` read-only: the devices, their firmware versions and what can be updated, in Settings › Devices and the system report; no flashing |
@@ -21,29 +21,41 @@ make someone keep another operating system on a second machine; 5 and on are cap
 | 8 | The big apps are still web pages on the native desktop | File Explorer and the Archive Manager cost about 100 MB a window instead of 15 to 40 MB | 2.0 wave 2: File Explorer as a native program, step 1 (the window, the folders, the drives) |
 | 9 | No Android apps, and Windows only as far as Wine goes | A phone's apps do not run here; a program Wine cannot run is out of reach | Waydroid measured on the Vivobook with Lite, before it is offered (the plan's own gate) |
 
-## 1. Another account's files through the desktop's API
+## 1. Whose folders the desktop API may name
 
 The vault is good: each account's files are real files on the disk, encrypted with its own fscrypt key, and unreadable
-while it is signed out. What is not good is what the API trusts:
+while it is signed out. What was not good was what the API trusted. This is the state after the audit of 2026-11-28.
 
-- `GET dl/home?acct=`, `GET dl/read?acct=`, `GET dl/zip?acct=` and `POST dl/unzip?acct=` take an account name and only
-  check its shape (`dl_acct_ok`), never that it is the account signed in. Downloads is kept unencrypted at
-  `/home/rudolf/Downloads/.accounts/<id>` and owned by the desktop's user, so one account's page can list, read,
-  extract from and write into another's (and Guest's) store.
-- `GET home/*?acct=` takes an account name too, and only the vault stands in the way: any account whose folder is open
-  is readable, whoever is signed in.
-- The Archive Manager's new path mode (Part 10, item 1) added `dl/read?path=`, `POST dl/file?path=&to=quar|del` and
-  `dl/zip?path=`/`dl/unzip?path=` for "a ZIP anywhere the account may read" — every real path under `/home`, `/tmp`,
-  `/srv` and the mounted drives. `/home` holds each account's Linux home (`/home/<account>`), the downloads store above,
-  and the shared quarantine; so the same requests read, quarantine (take) and delete another account's files, without
-  an administrator's permission.
+**Already shipped, in the Archive Manager's two open PRs (#754, #755).**
+- **Path requests are scoped to the extraction.** `dl/read?path=` and `POST dl/file?path=&to=quar|del` may only name a
+  file inside the folder the extraction just made beside a ZIP, recorded with the account that made it (15 minutes,
+  cleared when the page takes the result or a new extraction starts). A folder another account unpacked is not this
+  account's to read, quarantine or delete.
+- **No hidden part of a path, and not `/home` as a whole.** `dl/zip?path=`/`dl/unzip?path=` take `/home/rudolf` and the
+  mounted drives, never another account's Linux home, and refuse any hidden component — where the accounts'
+  unencrypted downloads store (`/home/rudolf/Downloads/.accounts/<id>`) and the quarantine live.
+- **`dl/*`'s `acct=` is the signed-in account's.** `dl/home`, `dl/read`, `dl/file`, `dl/clear`, `dl/zip` and `dl/unzip`
+  compare it with the session (`/run/rudolf/home-session`), except the guest and shared stores — nobody's own — and with
+  nobody signed in, where nothing is refused (the sign-in screen's housekeeping, and the checks).
 
-**The first PR:** the path guard, in the same PRs that added the path mode: `dl/read?path=` and `dl/file?path=` may
-only touch a file inside the folder the extraction just made beside the ZIP (recorded when `dl/unzipped` says where it
-is), a path with a hidden folder in it is refused, and a ZIP is only taken from the signed-in account's own places.
-**Then** the session check on `acct=` in `dl/*` and `home/*`: the account signed in, or the guest and shared stores,
-nothing else. **The test:** a host case for each refusal, and a page case that the antivirus still reads, quarantines
-and deletes inside its own extraction.
+**What is left, and the first PR it needs.**
+- **`home/*?acct=` still trusts the name.** `home/list`, `home/read`, `home/tree`, `home/write`, `home/delete`,
+  `home/copy` and the rest check only that the account's shape is right; the vault is the only wall. Not exploitable
+  today (one session at a time, and signing out locks the folder), but it is the same mistake the `dl/*` requests had.
+  **The first PR:** the same comparison with the session, with one administrator-approved way in (the one-time answer
+  `desk_admin_check` already gives the native apps, so an administrator can open another account's folder on purpose),
+  and `home` — the list the sign-in screen needs — left as it is.
+- **No administrator's route at all for another account's downloads.** The new check refuses them outright because
+  nothing needs one; a deliberate route is a design of its own, with its own prompt and record.
+- **The downloads store keys accounts in lower case** (`dlAcct()` lower-cases the id, `dl_acct_ok` takes lower case
+  only), so two account ids differing only in case would share one folder. Worth refusing when an account is made.
+- **`home/list` names every account and which folders are open** to any page of the desktop. The sign-in screen needs
+  it; it could be narrowed to that window.
+
+**The tests:** the host cases in `iso/qt/host/dlzip161api_t.sh` 23–30 (another account's list, ZIP and bytes refused;
+by path, only inside its own extraction and only for the account that made it), and — for what is left — a host case for
+`home/list?acct=`, `home/read?acct=` and `home/write?acct=`, one for the administrator's answer letting it through, and
+the existing sign-in cases unchanged.
 
 ## 2. A way to add a driver or a system part without a new release
 
