@@ -1,0 +1,33 @@
+name: First-run setup (1.6.3)
+# The owner, 2026-11-28: a new installation from a stick made in Update and recovery › Make a USB stick booted, its setup
+# wizard (the first account's, an administrator's) came up, and it was restarted at once: the person was at the sign-in screen
+# with no account of their own. Two causes, one check each: the desktop's one-time move to the shell (iso/qt/shell2/
+# setuprun63_t.js) and the session's "set up" rule for the Native desktop (iso/qt/host/setupnative63_t.sh).
+on:
+  workflow_dispatch:
+  push:
+    branches: ['setup-first-run']
+  pull_request:
+    paths: ['desktop/shell26.js', 'desktop/a11y25.js', 'desktop/base_v24.html', 'iso/sys/root/usr/lib/rudolf/session', 'iso/qt/shell2/setuprun63_t.js', 'iso/qt/shell2/setupkeep63_t.js', 'iso/qt/host/setupnative63_t.sh', '.github/workflows/setuprun63-check.yml']
+permissions: {contents: read}
+jobs:
+  wizard:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - name: Tools
+        run: npm i -s --no-save playwright@1.63.0 >/dev/null && npx playwright install --with-deps chromium >/dev/null
+      - name: The page
+        run: cd desktop && python3 build19.py ../iso/www/index.html >/dev/null
+      - name: setuprun63_t.js
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/setuprun63_t.js
+      - name: setupkeep63_t.js
+        run: NODE_PATH=$PWD/node_modules node iso/qt/shell2/setupkeep63_t.js
+  session:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: setupnative63_t.sh
+        run: sh iso/qt/host/setupnative63_t.sh

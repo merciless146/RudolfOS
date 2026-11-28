@@ -32,6 +32,19 @@ Summary: In progress.
   menu offers "Set up Linux (Debian)…" and opens that page. The Terminal is also one window: Ctrl+Alt+T, the Start menu's
   Terminal, the taskbar, prompt() (a .BAT, a Lua program, rpk) and the desktop's Command Prompt come to the Terminal that
   is open and add their tab there, instead of opening a second one whose tabs are somewhere else.
+- Fixed: a new installation from a USB stick made in Update and recovery › Make a USB stick started, showed its setup
+  wizard (where the first account, the administrator's, is made), and was restarted under the person's hands at once: the
+  desktop's one-time move to the browser shell happens by itself right after start-up on a plain desktop page, and it did
+  not know the wizard was there. The person was then at the sign-in screen, whose only account is the placeholder "admin"
+  no one chose a password for. The move now waits until Rudolf OS is set up (the wizard's last step) and never happens
+  with the wizard on the screen. The next start is where the setup was lost for good: the session counted the page's
+  placeholder account as "set up", so the Native desktop started then, and it has no setup wizard of its own — now only the
+  wizard's last step counts, as it does for the wizard itself, so an unfinished setup starts on Standard and its wizard
+  again.
+- New: the setup wizard keeps its place. If the desktop starts again, or the computer is switched off, in the middle of
+  setup, the wizard comes back at the step it was at with the name already typed, instead of Step 1 with an empty box. The
+  password is never kept: a restart after it is typed comes back to the step that asks for it, both boxes empty, and the
+  place goes away when the wizard ends.
 - Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
   is how the camera went a release without a capture source; it now names every plug-in it cannot find.

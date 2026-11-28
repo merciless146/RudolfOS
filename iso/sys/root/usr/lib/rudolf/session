@@ -232,9 +232,13 @@ webkit_usable() {
 # Standard, after a start that never answered, no answer in 90 s, or closing three times in a row as it starts.
 # 1.6.0 (the owner, 2026-11-17: a stick from Make a USB stick, with Native chosen by install.sh, stopped at Native's
 # sign-in screen with no account and no way on): Native has no setup wizard of its own, so a Rudolf OS not set up yet
-# (no accounts and no "bd95setup" in the desktop's data that rudolfd keeps, /home/rudolf/.rudolf-ls.json) starts on
-# Standard, whose first-run wizard makes the first account; the choice stays Native, taken at the next start.
-native_setup_done() { grep -qs '"bd95\(setup\|user\)"' "${RUDOLF_LS:-/home/rudolf/.rudolf-ls.json}"; }
+# starts on Standard, whose first-run wizard makes the first account; the choice stays Native, taken at the next start.
+# 1.6.3 (the owner, 2026-11-28, a new installation from a stick made in Make a USB stick: its first start was restarted
+# over the wizard and the person was at a sign-in screen with no account of their own): "set up" is "bd95setup" alone.
+# "bd95user" no longer counts: the desktop page keeps its placeholder account ("admin", a password nobody chose) under
+# it at its very first start, before the wizard runs, so counting it made Native start at the next start over a computer
+# that had never been set up.
+native_setup_done() { grep -qs '"bd95setup"' "${RUDOLF_LS:-/home/rudolf/.rudolf-ls.json}"; }
 native_usable() {
 	[ "$(cat /run/rudolf/engine-choice 2>/dev/null)" = native ] || return 1
 	grep -q 'rudolf.recovery=1' $RCMD && return 1
