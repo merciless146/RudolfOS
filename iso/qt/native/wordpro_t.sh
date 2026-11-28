@@ -96,6 +96,8 @@ ok "11. Ctrl+F marks the match (the find tag is on the writing, not only on the 
 	"$([ $? = 0 ] && echo 1)" "$(grep -E '^(tags|sel) ' "$ST" | tr '\n' ' ')"
 # (New is a step of the history, as the page's own is: undo brings the page back, redo empties it again. There are
 #  unsaved changes on the page, so New asks first, and Don't save -- the answer the test would press -- throws it away)
+# (the find bar still has the keys from the case above: a press in the writing gives them back to it, as a person's does)
+DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.6
 echo "Don't save" > "$ANS"
 DISPLAY=$DSP xdotool key ctrl+n; sleep 1.2
 : > "$ANS"
@@ -355,6 +357,7 @@ ST10=$T/state10.txt; rm -f "$ST10"; A10=$T/ans10; : > "$A10"
 RUDOLF_WP_STATE=$ST10 RUDOLF_WP_ANSWER=$A10 DISPLAY=$DSP "$BIN" >"$T/wp10.log" 2>&1 & WPP10=$!
 i=0; while [ $i -lt 40 ] && [ ! -s "$ST10" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 W10=$(timeout 20 xdotool search --sync --onlyvisible --pid "$WPP10" 2>/dev/null | tail -1)
+[ -n "$W10" ] || W10=$(DISPLAY=$DSP xdotool search --name 'WordPro$' 2>/dev/null | tail -1)
 i=0; while [ $i -lt 60 ] && [ -n "$W10" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W10" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W10" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W10" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W10" 480 300 click 1; sleep 0.8; }
@@ -382,6 +385,7 @@ ST11=$T/state11.txt; rm -f "$ST11"; A11=$T/ans11; : > "$A11"
 RUDOLF_WP_STATE=$ST11 RUDOLF_WP_ANSWER=$A11 RUDOLF_WP_CLOSE=1 DISPLAY=$DSP "$BIN" >"$T/wp11.log" 2>&1 & WPP11=$!
 i=0; while [ $i -lt 40 ] && [ ! -s "$ST11" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 W11=$(timeout 20 xdotool search --sync --onlyvisible --pid "$WPP11" 2>/dev/null | tail -1)
+[ -n "$W11" ] || W11=$(DISPLAY=$DSP xdotool search --name 'WordPro$' 2>/dev/null | tail -1)
 i=0; while [ $i -lt 60 ] && [ -n "$W11" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W11" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W11" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W11" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W11" 480 300 click 1; sleep 0.8; }
@@ -405,6 +409,7 @@ ST12=$T/state12.txt; rm -f "$ST12"
 RUDOLF_WP_STATE=$ST12 DISPLAY=$DSP "$BIN" >"$T/wp12.log" 2>&1 & WPP12=$!
 i=0; while [ $i -lt 40 ] && [ ! -s "$ST12" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 W12=$(timeout 20 xdotool search --sync --onlyvisible --pid "$WPP12" 2>/dev/null | tail -1)
+[ -n "$W12" ] || W12=$(DISPLAY=$DSP xdotool search --name 'WordPro$' 2>/dev/null | tail -1)
 i=0; while [ $i -lt 60 ] && [ -n "$W12" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$W12" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$W12" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 [ -n "$W12" ] && { sleep 0.6; DISPLAY=$DSP xdotool mousemove --window "$W12" 480 300 click 1; sleep 0.8; }

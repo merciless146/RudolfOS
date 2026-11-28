@@ -1932,7 +1932,10 @@ static gboolean answer_hook(gpointer d)
 static int DO_TICKS;
 static gboolean do_hook(gpointer d)
 {
-	if (!gtk_text_buffer_get_char_count(BUF) && ++DO_TICKS < 50) return G_SOURCE_CONTINUE;
+	static int LASTN;   /* (what the writing held on the last turn: the commands act on the whole of it, so a turn that
+						   sees the letters still coming waits for the next one -- a check types just after the app opens) */
+	int n = (int)gtk_text_buffer_get_char_count(BUF);
+	if ((!n && ++DO_TICKS < 50) || n != LASTN) { LASTN = n; return G_SOURCE_CONTINUE; }
 	char *copy = g_strdup((const char *)d), *sv = NULL;
 	for (char *tok = strtok_r(copy, ",", &sv); tok; tok = strtok_r(NULL, ",", &sv)) {
 		GtkTextIter a, b;
