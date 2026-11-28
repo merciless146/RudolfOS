@@ -66,7 +66,7 @@ Library's publish still sign on main; a computer on the new release trusts both 
   and nothing else.
 - **Its check:** `iso/qt/host/keyswitch_t.sh`, 15 cases on copies of the list (the state as it stands, each refusal,
   the switch, a second switch, and that this tree is still before the switch so one cannot be made by accident), and
-  `.github/workflows/keyswitch-check.yml`: the tool and its 18 cases, `deadcheck.py` (no workflow ran it before, so its
+  `.github/workflows/keyswitch-check.yml`: the tool and its 19 cases, `deadcheck.py` (no workflow ran it before, so its
   new gate had no CI at all) and a negative control that breaks a copy of the list and expects deadcheck to refuse it,
   so the job proves the gate fires rather than only that it exits 0; and on `main` a job in the `release` environment
   that fails if `RPK_SIGNING_KEY` is not there — a broken secret shows now, not at the next 6-hourly release. What the plan asked as a one-off, that a branch
