@@ -84,4 +84,11 @@ o=$(t "GET read?path=$O/game (2)/Made Up Game/readme.txt" "POST file?path=$O/gam
 ok "27. the antivirus reads a file inside the extraction's folder, and quarantines it there" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 200|' && echo "$o" | sed -n 1p | grep -q 'Read me' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 200' && echo "$o" | sed -n 2p | grep -q '"name":"readme.txt"' && [ ! -e "$O/game (2)/Made Up Game/readme.txt" ] && echo 1)" "$o $(ls $S)"
 o=$(t "GET read?path=$A/game.zip" "POST file?path=$A/game.zip&to=del" "GET read?path=$O/game/Made Up Game/readme.txt")
 ok "28. ...and nothing outside it: a file elsewhere (an older extraction's folder too) refused, and still there" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 3p | grep -q '^HTTP/1.1 403' && [ -f "$A/game.zip" ] && [ -f "$O/game/Made Up Game/readme.txt" ] && echo 1)" "$o"
+# (the folder an extraction made is the extraction's account's: another account signing in does not inherit it)
+echo u-bob > /run/rudolf/home-session
+o=$(t "GET read?path=$O/game (2)/Made Up Game/data/level.dat")
+ok "29. ...and another account's extraction is not this one's, though the record is fresh" "$(echo "$o" | grep -q '^HTTP/1.1 403' && echo 1)" "$o"
+rm -f /run/rudolf/home-session
+o=$(t "GET read?path=$O/game (2)/Made Up Game/data/level.dat")
+ok "30. ...while the same session that unpacked it (here: nobody) still reads it" "$(echo "$o" | grep -q '^HTTP/1.1 200|' && echo 1)" "$o"
 echo "$((N-F))/$N passed"; [ $F = 0 ]
