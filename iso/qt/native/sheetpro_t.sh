@@ -118,7 +118,7 @@ ok "13. File opens with the page's 15 rows and Data with its 12" "$([ $? = 0 ] &
 kill $SPP 2>/dev/null; sleep 0.8
 F=$T/grid.RSHEET
 cat > "$F" <<'RS'
-{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[{"b":1},{"ha":"center"}],"sheets":[{"name":"Sheet1","color":"","cells":[[0,5],[1,null,"=A1*2"],[702,"x",null,0],[1406,7,null,1]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[{"b":1},{"ha":"center"}],"sheets":[{"name":"Sheet1","color":"","cells":[[0,5],[1,null,"=A1*2"],[702,"x",null,0],[1404,"say \"hi\", \\o/"],[1405,0.333333333333333],[1406,7,null,1]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
 RS
 ST3=$T/state_open; rm -f "$ST3"
 RUDOLF_SP_STATE=$ST3 DISPLAY=$DSP "$BIN" "$F" >"$T/sp_open.log" 2>&1 & SPP3=$!
@@ -154,18 +154,22 @@ DISPLAY=$DSP xdotool key ctrl+s; sleep 1.6
 TITLE3=$(DISPLAY=$DSP xdotool getwindowname "$WIN3" 2>/dev/null)
 [ "$TITLE3" = "grid.RSHEET - SpreadsheetPro" ] || RC=1
 grep -q '^dirty 0$' "$ST3" || RC=1
+grep -q '^say Saved grid.RSHEET$' "$ST3" || RC=1
 python3 - "$F" <<'PY' || RC=1
 import json, sys
 d = json.load(open(sys.argv[1]))
 assert d['v'] == 2 and d['app'] == 'SpreadsheetPro', d
 assert [s['name'] for s in d['sheets']] == ['Sheet1'], d['sheets']
 cells = {a[0]: a for a in d['sheets'][0]['cells']}
-assert sorted(cells) == [0, 1, 702, 1406], sorted(cells)
+assert sorted(cells) == [0, 1, 702, 1404, 1405, 1406], sorted(cells)
 assert cells[0] == [0, 9], cells[0]
 assert cells[1] == [1, None, '=A1*2'], cells[1]
 assert cells[702] == [702, 'x', None, 0], cells[702]
+assert cells[1404] == [1404, 'say "hi", \\o/'], cells[1404]     # (the escapes survive both ways)
+assert cells[1405] == [1405, 0.333333333333333], cells[1405]      # (15 significant digits, as the page keeps them)
 assert cells[1406] == [1406, 7, None, 1], cells[1406]
 assert d['styles'] == [{'b': 1}, {'ha': 'center'}], d['styles']
+assert d['sheets'][0]['name'] == 'Sheet1', d['sheets'][0]['name']
 PY
 ok "15. a change puts the page's * in the title, and Ctrl+S saves the page's own JSON (cells, formulas and styles)" \
 	"$([ $RC = 0 ] && echo 1)" "title '$TITLE3'; $(sed -n '1,12p' "$ST3" | tr '\n' ' '); $(tail -3 "$T/sp_open.log" 2>/dev/null); $(head -c 300 "$F" 2>/dev/null)"

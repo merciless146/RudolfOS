@@ -408,12 +408,13 @@ static void hist_redo(void)
 
 /* ------------------------------------------------------------------ the file: a .RSHEET, as the page writes it
    sprof45.js's own v2 JSON (its spToJSON): {v:2, app, active, names, styles:[a style], sheets:[{name, color, cells:
-   [[spK(r,c), value, formula, style]], ...}]}, each different style once, a cell's value what the page parses (its
-   spParse: a number, TRUE or FALSE, or text) and the style index into the book's list. A file saved here opens in the
-   page and in Oracle, and one they saved opens here.
+   [[spK(r,c), value, formula, style]], ...}]}. Each different style is written once; a cell's value is what the page
+   parses (its spParse: a number, TRUE or FALSE, or text) and its style an index into the book's list. A file saved here
+   opens in the page and in Oracle, and one they saved opens here; the old Spreadsheet's version 1 is read too.
    What the app does not model yet is not carried through a save -- the number formats, the sizes and hiding of rows and
    columns, the merges, the frozen panes, the charts, the other sheets -- and the step that models each takes it on. */
-static char *FILE_PATH;   /* the file the book came from or went to; NULL for a book that has none */
+static char *FILE_PATH;                    /* the book's file, or NULL for one that has none */
+static char SHEET_NAME[32] = "Sheet1";     /* (the one sheet of this step, by the name the file gave it) */
 static int DIRTY, SUSPEND;
 static const char *path_base(const char *p)
 {
@@ -425,9 +426,9 @@ static void title_update(void)
 {
 	if (!W || !W->win) return;
 	const char *b = path_base(FILE_PATH);
-	char t[600];
-	snprintf(t, sizeof t, "%s%s - SpreadsheetPro", b && *b ? b : "Book1", DIRTY ? " *" : "");
+	char *t = g_strdup_printf("%s%s - SpreadsheetPro", b && *b ? b : "Book1", DIRTY ? " *" : "");
 	gtk_window_set_title(GTK_WINDOW(W->win), t);
+	g_free(t);
 }
 /* (a change the person made: the page's dirty flag, and its * in the title) */
 static void mark_dirty(void)
@@ -435,28 +436,29 @@ static void mark_dirty(void)
 	if (!READY || SUSPEND || DIRTY) return;
 	DIRTY = 1; title_update();
 }
-/* ---- writing the page's JSON ---- */
+
+/* ---- writing: the page's JSON ---- */
+/* (a JSON string: the two characters JSON must escape, and every control character as \u) */
 static void j_str(GString *o, const char *s)
 {
 	g_string_append_c(o, '"');
 	for (const unsigned char *p = (const unsigned char *)(s ? s : ""); *p; p++) {
-		switch (*p) {
-		case '"': g_string_append(o, "\\\""); break;
-		case '\\': g_string_append(o, "\\\\"); break;
-		case '\n': g_string_append(o, "\\n"); break;
-		case '\r': g_string_append(o, "\\r"); break;
-		case '\t': g_string_append(o, "\\t"); break;
-		default:
-			if (*p < 0x20) g_string_append_printf(o, "\\u%04x", (unsigned)*p);
-			else g_string_append_c(o, (char)*p);
-		}
+		if (*p == '"' || *p == '\\') g_string_append_printf(o, "\\%c", *p);
+		else if (*p == '\n') g_string_append(o, "\\n");
+		else if (*p == '\r') g_string_append(o, "\\r");
+		else if (*p == '\t') g_string_append(o, "\\t");
+		else if (*p < 0x20) g_string_append_printf(o, "\\u%04x", (unsigned)*p);
+		else g_string_append_c(o, (char)*p);
 	}
 	g_string_append_c(o, '"');
 }
+/* (a number as the page writes one: a whole number inside the range as its digits, as its own String() does, and
+   otherwise 15 significant digits, which is what its toPrecision(15) keeps. Nothing finite has no number to write.) */
 static void j_num(GString *o, double v)
 {
+	if (!isfinite(v)) { g_string_append(o, "null"); return; }
 	if (v == (double)(long long)v && fabs(v) < 1e15) g_string_append_printf(o, "%lld", (long long)v);
-	else { char b[48]; snprintf(b, sizeof b, "%.15g", v); g_string_append(o, b); }
+	else g_string_append_printf(o, "%.15g", v);
 }
 static const char *ha_name(int ha) { return ha == 2 ? "center" : ha == 3 ? "right" : ha == 1 ? "left" : NULL; }
 static int ha_num(const char *s) { return !s ? 0 : !g_ascii_strcasecmp(s, "left") ? 1 : !g_ascii_strcasecmp(s, "center") ? 2 : !g_ascii_strcasecmp(s, "right") ? 3 : 0; }
@@ -464,23 +466,24 @@ static int cell_styled(const Cell *c)
 {
 	return c && (c->b || c->i || c->u || c->s || c->ha || c->fc || c->bg || c->font || c->sz);
 }
-/* (a cell's style as the page keeps it: b, i, u, s as 1, ha as its own word, fc and bg as colours, font and sz) */
+/* (a cell's style in the page's own field names: b, i, u and s as 1, ha as its word, the colours and the font as
+   strings, sz as the size) */
 static void style_json(GString *o, const Cell *c)
 {
-	int first = 1;
+	GPtrArray *f = g_ptr_array_new_with_free_func(g_free);
+	if (c->b) g_ptr_array_add(f, g_strdup("\"b\":1"));
+	if (c->i) g_ptr_array_add(f, g_strdup("\"i\":1"));
+	if (c->u) g_ptr_array_add(f, g_strdup("\"u\":1"));
+	if (c->s) g_ptr_array_add(f, g_strdup("\"s\":1"));
+	if (c->ha) g_ptr_array_add(f, g_strdup_printf("\"ha\":\"%s\"", ha_name(c->ha)));
+	if (c->fc) { GString *b = g_string_new("\"fc\":"); j_str(b, c->fc); g_ptr_array_add(f, g_string_free(b, FALSE)); }
+	if (c->bg) { GString *b = g_string_new("\"bg\":"); j_str(b, c->bg); g_ptr_array_add(f, g_string_free(b, FALSE)); }
+	if (c->font) { GString *b = g_string_new("\"font\":"); j_str(b, c->font); g_ptr_array_add(f, g_string_free(b, FALSE)); }
+	if (c->sz) g_ptr_array_add(f, g_strdup_printf("\"sz\":%d", c->sz));
 	g_string_append_c(o, '{');
-#define STFIELD(fmt, ...) do { if (!first) g_string_append_c(o, ','); g_string_append_printf(o, fmt, __VA_ARGS__); first = 0; } while (0)
-	if (c->b) { if (!first) g_string_append_c(o, ','); g_string_append(o, "\"b\":1"); first = 0; }
-	if (c->i) { if (!first) g_string_append_c(o, ','); g_string_append(o, "\"i\":1"); first = 0; }
-	if (c->u) { if (!first) g_string_append_c(o, ','); g_string_append(o, "\"u\":1"); first = 0; }
-	if (c->s) { if (!first) g_string_append_c(o, ','); g_string_append(o, "\"s\":1"); first = 0; }
-	if (c->ha) { if (!first) g_string_append_c(o, ','); g_string_append_printf(o, "\"ha\":\"%s\"", ha_name(c->ha)); first = 0; }
-	if (c->fc) { if (!first) g_string_append_c(o, ','); g_string_append(o, "\"fc\":"); j_str(o, c->fc); first = 0; }
-	if (c->bg) { if (!first) g_string_append_c(o, ','); g_string_append(o, "\"bg\":"); j_str(o, c->bg); first = 0; }
-	if (c->font) { if (!first) g_string_append_c(o, ','); g_string_append(o, "\"font\":"); j_str(o, c->font); first = 0; }
-	if (c->sz) STFIELD("\"sz\":%d", c->sz);
-#undef STFIELD
+	for (guint i = 0; i < f->len; i++) { if (i) g_string_append_c(o, ','); g_string_append(o, g_ptr_array_index(f, i)); }
 	g_string_append_c(o, '}');
+	g_ptr_array_free(f, TRUE);
 }
 /* (what the page keeps as a cell's value: a number, TRUE or FALSE, or the text -- its own words after the page's ') */
 static void j_value(GString *o, int r, int c, const Cell *cl)
@@ -500,41 +503,47 @@ static GArray *sorted_keys(void)
 	g_array_sort(ks, cmp_key);
 	return ks;
 }
+/* (the book the page would write of this sheet: each different style once, in the order its cells meet it, and the
+   cells by their key, each as [key, value, formula, style] -- the style only where there is one) */
 static int sheet_save(const char *path, char **err)
 {
 	if (!path || !*path) { if (err) *err = g_strdup("no file"); return 0; }
 	GArray *ks = sorted_keys();
+	guint n = ks->len;
 	GPtrArray *sty = g_ptr_array_new_with_free_func(g_free);
 	GHashTable *seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-	for (guint i = 0; i < ks->len; i++) {
-		guint key = g_array_index(ks, guint, i) - 1u; int r = (int)(key / MAXC), c = (int)(key % MAXC);
-		Cell *cl = cell_get(r, c);
+	int *si = g_new0(int, n ? n : 1);
+	for (guint i = 0; i < n; i++) {
+		guint key = g_array_index(ks, guint, i) - 1u;
+		Cell *cl = cell_get((int)(key / MAXC), (int)(key % MAXC));
+		si[i] = -1;
 		if (!cell_styled(cl)) continue;
 		GString *b = g_string_new(NULL); style_json(b, cl);
-		if (!g_hash_table_contains(seen, b->str)) {
-			g_hash_table_insert(seen, g_strdup(b->str), GINT_TO_POINTER(sty->len + 1));
+		gpointer p = g_hash_table_lookup(seen, b->str);
+		if (!p) {
 			g_ptr_array_add(sty, g_strdup(b->str));
+			p = GINT_TO_POINTER(sty->len);
+			g_hash_table_insert(seen, g_strdup(b->str), p);
 		}
+		si[i] = GPOINTER_TO_INT(p) - 1;
 		g_string_free(b, TRUE);
 	}
 	GString *o = g_string_new("{\"v\":2,\"app\":\"SpreadsheetPro\",\"active\":0,\"names\":{},\"styles\":[");
 	for (guint i = 0; i < sty->len; i++) { if (i) g_string_append_c(o, ','); g_string_append(o, g_ptr_array_index(sty, i)); }
-	g_string_append(o, "],\"sheets\":[{\"name\":\"Sheet1\",\"color\":\"\",\"cells\":[");
+	g_string_append(o, "],\"sheets\":[{\"name\":");
+	j_str(o, SHEET_NAME);
+	g_string_append(o, ",\"color\":\"\",\"cells\":[");
 	int first = 1;
-	for (guint i = 0; i < ks->len; i++) {
-		guint key = g_array_index(ks, guint, i) - 1u; int r = (int)(key / MAXC), c = (int)(key % MAXC);
-		Cell *cl = cell_get(r, c);
+	for (guint i = 0; i < n; i++) {
+		guint key = g_array_index(ks, guint, i) - 1u;
+		Cell *cl = cell_get((int)(key / MAXC), (int)(key % MAXC));
 		if (!cl || !cl->t || !*cl->t) continue;
-		int si = 0;
-		if (cell_styled(cl)) {
-			GString *b = g_string_new(NULL); style_json(b, cl);
-			gpointer p = g_hash_table_lookup(seen, b->str); si = p ? GPOINTER_TO_INT(p) - 1 : 0;
-			g_string_free(b, TRUE);
-		}
+		int formula = cl->t[0] == '=';
 		if (!first) g_string_append_c(o, ','); first = 0;
 		g_string_append_printf(o, "[%u,", key);
-		if (cl->t[0] == '=') { g_string_append(o, "null,"); j_str(o, cl->t); if (si || cell_styled(cl)) g_string_append_printf(o, ",%d", si); }
-		else { j_value(o, r, c, cl); if (cell_styled(cl)) g_string_append_printf(o, ",null,%d", si); }
+		if (formula) { g_string_append(o, "null,"); j_str(o, cl->t); }
+		else j_value(o, (int)(key / MAXC), (int)(key % MAXC), cl);
+		if (si[i] >= 0) g_string_append_printf(o, formula ? ",%d" : ",null,%d", si[i]);
 		g_string_append_c(o, ']');
 	}
 	g_string_append_printf(o, "],\"cw\":{},\"rh\":{},\"hid\":{},\"hc\":{},\"freeze\":{\"r\":0,\"c\":0},\"merges\":[],\"cf\":[],"
@@ -547,104 +556,117 @@ static int sheet_save(const char *path, char **err)
 	g_ptr_array_free(sty, TRUE);
 	g_hash_table_destroy(seen);
 	g_array_free(ks, TRUE);
+	g_free(si);
 	if (!ok) return 0;
 	{ char *keep = g_strdup(path); g_free(FILE_PATH); FILE_PATH = keep; }
 	DIRTY = 0; title_update();
 	return 1;
 }
+
 /* ---- reading it back (the page's spFromJSON) ---- */
-/* (a string read as a value must not be read back as a number or TRUE/FALSE: the page's own ' in front of it) */
+/* (a string the page keeps as a value, as the text this app holds: the page's own ' in front where the text would
+   read back as something else -- a number, TRUE, FALSE, or a number of the app's own with $ or % in it) */
 static char *typed_text(const char *s)
 {
 	if (!s) return NULL;
 	if (!*s) return g_strdup("");
 	if (s[0] == '=' || s[0] == '\'') return g_strdup_printf("'%s", s);
-	char *end = NULL;
-	double d = g_ascii_strtod(s, &end); (void)d;
-	if (end && end != s && !*end) return g_strdup_printf("'%s", s);
+	{ char *end = NULL; double d = g_ascii_strtod(s, &end); (void)d; if (end && end != s && !*end) return g_strdup_printf("'%s", s); }
 	if (!g_ascii_strcasecmp(s, "TRUE") || !g_ascii_strcasecmp(s, "FALSE")) return g_strdup_printf("'%s", s);
-	int digits = 0, other = 0;
-	for (const char *p = s; *p; p++) { if (g_ascii_isdigit(*p)) digits = 1; else if (!strchr("+-.,eE$%:/ ", *p)) other = 1; }
-	if (digits && !other) return g_strdup_printf("'%s", s);   /* ($5, 5%, 1,200, a date, a time) */
+	{ int digits = 0, other = 0;
+	  for (const char *p = s; *p; p++) { if (g_ascii_isdigit(*p)) digits = 1; else if (!strchr("+-.,eE$%:/ ", *p)) other = 1; }
+	  if (digits && !other) return g_strdup_printf("'%s", s); }   /* ($5, 5%, 1,200, a date, a time) */
 	return g_strdup(s);
+}
+/* (a value's text as this app holds it: a number as its digits, TRUE or FALSE, or the text) */
+static char *value_text(RuiJ *v)
+{
+	char b[48];
+	switch (rui_jtype(v)) {
+	case 2: snprintf(b, sizeof b, "%.15g", rui_jval(v)); return g_strdup(b);
+	case 1: return g_strdup(rui_jval(v) ? "TRUE" : "FALSE");
+	case 3: return typed_text(rui_jsval(v));
+	default: return NULL;
+	}
 }
 static void style_read(Cell *cl, RuiJ *so)
 {
 	cl->b = rui_jbool(so, "b"); cl->i = rui_jbool(so, "i"); cl->u = rui_jbool(so, "u"); cl->s = rui_jbool(so, "s");
 	cl->ha = ha_num(rui_jstr(so, "ha"));
-	const char *fc = rui_jstr(so, "fc"), *bg = rui_jstr(so, "bg"), *fo = rui_jstr(so, "font");
-	if (fc && *fc) cl->fc = g_strdup(fc);
-	if (bg && *bg) cl->bg = g_strdup(bg);
-	if (fo && *fo) cl->font = g_strdup(fo);
+	{ const char *fc = rui_jstr(so, "fc"), *bg = rui_jstr(so, "bg"), *fo = rui_jstr(so, "font");
+	  if (fc && *fc) cl->fc = g_strdup(fc);
+	  if (bg && *bg) cl->bg = g_strdup(bg);
+	  if (fo && *fo) cl->font = g_strdup(fo); }
 	cl->sz = (int)rui_jnum(so, "sz", 0);
 }
 static int sheet_load(const char *path, char **err)
 {
-	char *text = NULL;
-	if (!path || !*path) { if (err) *err = g_strdup("no file"); return 0; }
-	if (!g_file_get_contents(path, &text, NULL, NULL)) { if (err) *err = g_strdup_printf("%s could not be read", path_base(path)); return 0; }
+	char *text = NULL, *base = g_strdup(path ? path_base(path) : NULL);
+	if (!path || !*path) { if (err) *err = g_strdup("no file"); g_free(base); return 0; }
+	if (!g_file_get_contents(path, &text, NULL, NULL)) {
+		if (err) *err = g_strdup_printf("%s could not be read", base);
+		g_free(base);
+		return 0;
+	}
 	RuiJ *o = rui_jparse(text); g_free(text);
-	if (!o) { if (err) *err = g_strdup("not a spreadsheet"); return 0; }
-	int ver = (int)rui_jnum(o, "v", 1);
+	if (!o) { if (err) *err = g_strdup("not a spreadsheet"); g_free(base); return 0; }
 	GHashTable *h = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, cell_free);
-	RuiJ *sheets = rui_jprop(o, "sheets");
+	RuiJ *sheets = rui_jprop(o, "sheets"), *sty = rui_jprop(o, "styles");
+	snprintf(SHEET_NAME, sizeof SHEET_NAME, "Sheet1");
 	if (sheets && rui_jlen(sheets)) {
-		RuiJ *sh = rui_jat(sheets, 0), *cells = rui_jprop(sh, "cells"), *sty = rui_jprop(o, "styles");
+		RuiJ *sh = rui_jat(sheets, 0), *cells = rui_jprop(sh, "cells");
+		const char *nm = rui_jstr(sh, "name");
+		if (nm && *nm) snprintf(SHEET_NAME, sizeof SHEET_NAME, "%s", nm);
 		for (int i = 0; cells && i < rui_jlen(cells); i++) {
-			RuiJ *a = rui_jat(cells, i);
-			if (rui_jtype(a) != 4 || rui_jlen(a) < 2) continue;
-			double kd = rui_jval(rui_jat(a, 0));
-			if (kd < 0 || kd >= (double)MAXC * (double)MAXR) continue;
-			guint key = (guint)kd;
-			RuiJ *fv = rui_jlen(a) > 2 ? rui_jat(a, 2) : NULL;
-			const char *f = fv && rui_jtype(fv) == 3 ? rui_jsval(fv) : NULL;
+			RuiJ *a = rui_jat(cells, i), *fv, *sv;
+			const char *f;
+			double kd;
 			char *t = NULL;
-			if (f && *f) t = g_strdup(f);
-			else {
-				RuiJ *vv = rui_jat(a, 1); int vt = rui_jtype(vv);
-				if (vt == 2) { char b[48]; snprintf(b, sizeof b, "%.15g", rui_jval(vv)); t = g_strdup(b); }
-				else if (vt == 1) t = g_strdup(rui_jval(vv) ? "TRUE" : "FALSE");
-				else if (vt == 3) t = typed_text(rui_jsval(vv));
-			}
+			if (rui_jtype(a) != 4 || rui_jlen(a) < 2) continue;
+			kd = rui_jval(rui_jat(a, 0));
+			if (!(kd >= 0 && kd < (double)MAXC * (double)MAXR)) continue;
+			fv = rui_jlen(a) > 2 ? rui_jat(a, 2) : NULL;
+			f = fv && rui_jtype(fv) == 3 ? rui_jsval(fv) : NULL;
+			t = f && *f ? g_strdup(f) : value_text(rui_jat(a, 1));
 			if (!t || !*t) { g_free(t); continue; }
 			Cell *cl = g_new0(Cell, 1); cl->t = t;
-			RuiJ *sv = rui_jlen(a) > 3 ? rui_jat(a, 3) : NULL;
+			sv = rui_jlen(a) > 3 ? rui_jat(a, 3) : NULL;
 			if (sv && rui_jtype(sv) == 2 && sty && rui_jlen(sty)) {
-				int si = (int)rui_jval(sv);
-				if (si >= 0 && si < rui_jlen(sty)) style_read(cl, rui_jat(sty, si));
+				int k = (int)rui_jval(sv);
+				if (k >= 0 && k < rui_jlen(sty)) style_read(cl, rui_jat(sty, k));
 			}
-			g_hash_table_insert(h, GUINT_TO_POINTER(key + 1u), cl);
+			g_hash_table_insert(h, GUINT_TO_POINTER((guint)kd + 1u), cl);
 		}
-	} else if (ver == 1) {   /* (the old Spreadsheet: {v:1, cells:{A1:{v, b}}}) */
+	} else if ((int)rui_jnum(o, "v", 1) == 1) {   /* (the old Spreadsheet: {v:1, cells:{A1:{v, b}}}) */
 		RuiJ *cells = rui_jprop(o, "cells");
 		for (int i = 0; cells && i < rui_jlen(cells); i++) {
 			const char *name = rui_jkey(cells, i);
 			RuiJ *c = name ? rui_jprop(cells, name) : NULL;
+			const char *v = c ? rui_jstr(c, "v") : NULL;
 			int r = 0, c0 = 0, r1 = 0, c1 = 0;
-			if (!name || !c || !a1_parse(name, &r, &c0, &r1, &c1)) continue;
-			const char *v = rui_jstr(c, "v");
-			if (!v || !*v) continue;
+			if (!v || !*v || !a1_parse(name, &r, &c0, &r1, &c1)) continue;
 			Cell *cl = g_new0(Cell, 1); cl->t = g_strdup(v);
 			if (rui_jbool(c, "b")) cl->b = 1;
 			g_hash_table_insert(h, GUINT_TO_POINTER(ckey(r, c0)), cl);
 		}
 	}
 	rui_jfree(o);
-	if (!g_hash_table_size(h)) { /* (an empty book is still a book: a new one, from the file's name) */ }
 	SUSPEND = 1;
 	{ GHashTable *old = CELLS; CELLS = h; g_hash_table_destroy(old); }
 	UNDO_N = UNDO_I = 0; hist_push();
 	CUR_R = CUR_C = SEL_R0 = SEL_C0 = SEL_R1 = SEL_C1 = SEL_AR = SEL_AC = 0;
 	SCX = SCY = 0; TABFROM = -1; SHOWF = 0;
-	{ char *keep = g_strdup(path); g_free(FILE_PATH); FILE_PATH = keep; }
 	DIRTY = 0;
+	{ char *keep = g_strdup(path); g_free(FILE_PATH); FILE_PATH = keep; }
 	SUSPEND = 0;
 	title_update();
-	nb_update(); fx_update(); upd_tb(); layout_ranges(); status_update(); redraw();
-	snprintf(SAY, sizeof SAY, "%s %s", rui_tr("Opened"), path_base(path));
-	status_update();
+	nb_update(); fx_update(); upd_tb(); layout_ranges();
+	snprintf(SAY, sizeof SAY, "%s %s", rui_tr("Opened"), base);
+	status_update(); redraw();
+	g_free(base);
 	return 1;
 }
+
 /* ---- what File's rows and the page's keys do ---- */
 static void file_note(const char *title, const char *msg)
 {
@@ -679,9 +701,10 @@ static void file_open_dlg(void)
 }
 static void save_to(const char *path)
 {
-	char *err = NULL;
-	if (!sheet_save(path, &err)) { file_note("Save", err); g_free(err); return; }
-	snprintf(SAY, sizeof SAY, "%s %s", rui_tr("Saved"), path_base(path));
+	char *err = NULL, *nm = g_strdup(path_base(path));   /* (the saver may take the book's own name away) */
+	if (!sheet_save(path, &err)) { file_note("Save", err); g_free(err); g_free(nm); return; }
+	snprintf(SAY, sizeof SAY, "%s %s", rui_tr("Saved"), nm);
+	g_free(nm);
 	status_update(); state_soon();
 }
 static void save_done(GtkNativeDialog *d, gint resp, gpointer u)
@@ -691,8 +714,8 @@ static void save_done(GtkNativeDialog *d, gint resp, gpointer u)
 		char *f = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d));
 		if (f) {
 			const char *e = strrchr(f, '.');
-			if (!e || (g_ascii_strcasecmp(e, ".RSHEET"))) { char *n = g_strconcat(f, ".RSHEET", NULL); save_to(n); g_free(n); }
-			else save_to(f);
+			if (e && !g_ascii_strcasecmp(e, ".RSHEET")) save_to(f);
+			else { char *n = g_strconcat(f, ".RSHEET", NULL); save_to(n); g_free(n); }
 			g_free(f);
 		}
 	}
@@ -703,19 +726,19 @@ static void file_save_as(void)
 	GtkFileChooserNative *ch = gtk_file_chooser_native_new(rui_tr("Save as"), GTK_WINDOW(W->win),
 		GTK_FILE_CHOOSER_ACTION_SAVE, rui_tr("Save"), rui_tr("Cancel"));
 	const char *b = path_base(FILE_PATH);
-	char *def = b && *b ? g_strdup(b) : g_strdup("Book1.RSHEET");
+	char *def = g_strdup(b && *b ? b : "Book1.RSHEET");
 	gtk_file_chooser_set_current_name(GTK_FILE_CHOOSER(ch), def);
 	g_free(def);
 	gtk_file_chooser_set_do_overwrite_confirmation(GTK_FILE_CHOOSER(ch), TRUE);
 	g_signal_connect(ch, "response", G_CALLBACK(save_done), NULL);
 	gtk_native_dialog_show(GTK_NATIVE_DIALOG(ch));
 }
+/* (Save writes where the book came from; without one, or on Save as, the page's own chooser asks where) */
 static void do_save(int as)
 {
-	if (!as && FILE_PATH && *FILE_PATH) { save_to(FILE_PATH); return; }
-	file_save_as();
+	if (!as && FILE_PATH && *FILE_PATH) save_to(FILE_PATH);
+	else file_save_as();
 }
-
 /* ------------------------------------------------------------------ the page's grid, drawn as its canvas is
    The head is 46 x 22 px (the row numbers and the column letters), a column 80 px and a row 20 px at 100 %, the grid lines
    #e2e3e3, the head #f3f4f6 with #444 letters, the choice #1a73e8 at 12 % with its 2 px border -- the page's own values
@@ -1414,7 +1437,9 @@ static void new_book(void)
 	CUR_R = CUR_C = SEL_R0 = SEL_C0 = SEL_R1 = SEL_C1 = SEL_AR = SEL_AC = 0;
 	SCX = SCY = 0; TABFROM = -1; SHOWF = 0;
 	SUSPEND = 1; hist_push(); SUSPEND = 0;
-	g_free(FILE_PATH); FILE_PATH = NULL; DIRTY = 0; title_update();
+	g_free(FILE_PATH); FILE_PATH = NULL; DIRTY = 0;
+	snprintf(SHEET_NAME, sizeof SHEET_NAME, "Sheet1");
+	title_update();
 	layout_ranges(); nb_update(); fx_update(); upd_tb(); status_update(); redraw();
 }
 static void show_keys(void)
