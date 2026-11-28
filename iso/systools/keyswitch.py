@@ -65,15 +65,16 @@ def status(path):
         name = {v: k2 for k2, v in ROTATION.items()}.get(k, 'another key')
         print(f'  {i + 1}. {k}  {name}{"  <- signs" if i == 0 else ""}')
     old, new = ROTATION['old'] in ks, ROTATION['new'] in ks
-    if old and new and signs == ROTATION['old']:
+    if signs == ROTATION['old'] and new:
         print('keyswitch: the 2026-11-24 rotation is ready: both keys are trusted and the old one signs.')
         print('  On the day: `keyswitch.py --switch --yes`, then the owner sets the release environment\'s '
               'RPK_SIGNING_KEY to the new key and deletes the repository secret, then the change merges.')
-    elif old and new:
+    elif signs == ROTATION['new']:
         print('keyswitch: switched: the new key signs. The old one may leave the list (Part 0 item 3e) once every '
               'supported stable release trusts the new one.')
-    elif new:
-        print('keyswitch: the old key has left the list; nothing of this rotation is left to do.')
+    elif old or new:
+        print('keyswitch: the 2026-11-24 pair is in the list but does not sign: a later key does. Nothing of this '
+              'rotation is left to do.')
     else:
         print('keyswitch: the 2026-11-24 pair is no longer in the list. If a new rotation has begun, change ROTATION in '
               'this tool; the --check gate does not name any key, so it still holds.')

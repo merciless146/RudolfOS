@@ -50,6 +50,9 @@ ok "10. ...and --status names them as another rotation and says what to change w
 printf '%s\n' "$K1" "$K2" "$(gen)" "$(gen)" > "$W/l"; o=$("$K" --check "$W/l" 2>&1); r=$?
 ok "11. four keys (mkuki.py's bound) accepted, a stranger among them named but not refused" \
   "$([ $r = 0 ] && echo "$o" | grep -q 'keyswitch: OK' && echo 1)" "$o"
+printf '%s\n' "$(gen)" "$K2" "$K1" > "$W/lead"; o=$("$K" --status "$W/lead" 2>&1)
+ok "11a. a later key leading while this pair is still trusted: --status does not claim the new key signs" \
+  "$(echo "$o" | grep -q 'pair is in the list but does not sign' && ! echo "$o" | grep -q 'switched: the new key signs' && echo 1)" "$o"
 
 # ---- 12. the switch itself, on two made-up keys so that no case depends on where this tree stands
 A=$(gen); B=$(gen); printf '%s\n' "$A" "$B" > "$W/t2"; S0=$(cksum < "$W/t2")
