@@ -11,7 +11,9 @@ the web WordPro itself, so the native app's lists and menus are the page's and n
   - the menu bar (MENUS): each menu's name, and each item's label and key (Ctrl+N, Ctrl+S...), with the separators
     where the page has them. Every item is given an id here (WPI_<MENU>_<LABEL>), so the app says which command it
     has by naming the id: a label the page renames follows the page, and an item the page drops (or the whole menu
-    bar) stops the build instead of leaving a menu behind.
+    bar) stops the build instead of leaving a menu behind. The page's fourth field is its tick (the current zoom, the
+    layout chosen): it is not read here yet, because the native menu bar has no field to show it, and the app's own
+    state is where that tick will come from.
 
 Values the page changes are read here, never copied by hand: a list or a menu that cannot be found, or an item whose
 label is not a plain string in the page, is an error, never a quiet default.
@@ -90,8 +92,7 @@ def lit(s, what):
 
 def label_of_spread(expr, var):
     """the label a page's spread map builds: 'Zoom '+z+'%' with z the map's own variable"""
-    parts = split_top(expr.replace('+', ',')) if False else None   # (kept simple below)
-    pieces, i, out = [], 0, []
+    i, out = 0, []
     while i < len(expr):
         c = expr[i]
         if c == '+':
@@ -111,9 +112,10 @@ def slug(s):
 
 
 def menus(page):
+    if page.count('const MENUS') != 1:
+        die("base_v24.html has %d MENUS (the menu bar): one is read here, and the page must have exactly one"
+            % page.count('const MENUS'))
     i = page.find('const MENUS=')
-    if i < 0:
-        die("base_v24.html's MENUS (the menu bar) was not found")
     b = page.index('{', i)
     e = close_of(page, b, '{', '}')
     body = page[b + 1:e]
@@ -127,13 +129,13 @@ def menus(page):
         name = m.group(1)
         a = m.end() - 1
         z = close_of(body, a, '[', ']')
-        items, seps = [], 0
+        items = []
         for el in split_top(body[a + 1:z]):
             el = el.strip()
             if not el:
                 continue
             if el == "'-'":
-                items.append((None, None, None)); seps += 1; continue
+                items.append((None, None, None)); continue
             if el.startswith('...'):
                 sm = re.fullmatch(r"\.\.\.\[([0-9,\s]+)\]\.map\(\s*(\w+)\s*=>\s*\[\s*(.+?)\s*,\s*'[^']*'\s*,.*\)", el, re.S)
                 if not sm:
@@ -149,7 +151,14 @@ def menus(page):
             parts = split_top(el[1:inner])
             if len(parts) < 2:
                 die('%s has an item with only a label: %s' % (name, el[:70]))
-            items.append((lit(parts[0], '%s\'s item label' % name), lit(parts[1], '%s\'s item key' % name), None))
+            lab = lit(parts[0], '%s\'s item label' % name)
+            if not lab.strip():
+                die('%s has an item with no label in the page' % name)
+            items.append((lab, lit(parts[1], '%s\'s item key' % name), None))
+        if not any(lab for lab, _, _ in items):
+            die('%s has no items in the page: a menu the page emptied is not read' % name)
+        if name in [n for n, _ in out]:
+            die("the page's MENUS names %s twice" % name)
         out.append((name, items))
         pos = z + 1
     if len(out) < 4:
@@ -189,7 +198,7 @@ def main(out):
     o.append('#define NWPFONTS %d' % len(fonts))
 
     # ---- the menu bar: an id per item, so the app names the commands it has instead of copying the page's text
-    ids, n = [], 1
+    ids = []
     seen = {}
     for name, items in M:
         for lab, key, _ in items:
@@ -200,7 +209,6 @@ def main(out):
                 die("two items of the page's %s menu would share the id %s" % (name, nid))
             seen[nid] = 1
             ids.append((nid, name, lab, key))
-            n += 1
     o.append('/* (the menu bar\'s items: the page\'s labels and keys, each with the id the app dispatches by) */')
     o.append('typedef struct { const char *label, *key; int id; } WpItem;')
     o.append('typedef struct { const char *title; const WpItem *items; int n; } WpMenu;')

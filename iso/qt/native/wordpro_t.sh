@@ -155,6 +155,14 @@ if [ $RC = 1 ] && grep -q 'MENUS' "$T/mk2.log"; then
 else
 	ok "17. mkwordpro.py refuses a page without the menu bar (no hand-copied labels)" 0 "rc=$RC $(cat "$T/mk2.log")"
 fi
+# ---- 18. the page's commands the app has not got are counted, menu by menu (62 of them now): a command the page adds
+#      moves a number here, so it cannot arrive as a silent greyed entry, and a wired one the page renames or drops stops
+#      the build by its id
+L18=1
+for pair in "File 10" "Edit 4" "View 6" "Insert 15" "Format 10" "Table 12" "Tools 4" "Help 1"; do
+	grep -q "^later $pair$" "$ST" || L18=0
+done
+ok "18. the page's commands the app has not got are counted, menu by menu" "$L18" "$(grep '^later' "$ST" | tr '\n' ' ')"
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/wp.log" "$OUT/app.log" 2>/dev/null
 echo "$NP passed, $NF failed"; [ $NF = 0 ]

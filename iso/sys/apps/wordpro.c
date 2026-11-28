@@ -37,7 +37,7 @@ static char ON[40];   /* (the toggles the cursor's place has, as the page's updS
    item). What the app can do for an item is said here, by the item's id: an item with no op is drawn greyed and refuses,
    so the bar cannot promise a command the app has not got, and an item the page drops stops the build (its id is gone)
    instead of leaving a dead entry behind. */
-enum { M_NONE, M_CLOSE, M_UNDO, M_REDO, M_SELALL, M_FIND, M_FINDREP, M_ZOOM, M_TOGGLE, M_ALIGN, M_LIST, M_CLEAR, M_KEYS, M_ABOUT };
+enum { M_CLOSE, M_UNDO, M_REDO, M_SELALL, M_FIND, M_FINDREP, M_ZOOM, M_TOGGLE, M_LIST, M_CLEAR, M_KEYS, M_ABOUT };
 typedef struct { int id, op; const char *arg; } WpOp;
 static const WpOp OPS[] = {
 	{ WPI_FILE_CLOSE, M_CLOSE, NULL },
@@ -447,6 +447,13 @@ static void state_write(void)
 	g_string_append_printf(s, "mb %d", NMENUS);
 	for (int i = 0; i < NMENUS; i++) g_string_append_printf(s, "%s%s", i ? "," : " ", WP_MENUS[i].title);
 	g_string_append_c(s, '\n');
+	/* (what the page has and the app has no command for, menu by menu: the tests read these, so a command that
+	   joins the page's bar cannot arrive here quietly, greyed, with nobody noticing) */
+	for (int i = 0; i < NMENUS; i++) {
+		int later = 0;
+		for (int k = 0; k < WP_MENUS[i].n; k++) { const WpItem *m = &WP_MENUS[i].items[k]; if (m->label && !op_of(m->id)) later++; }
+		g_string_append_printf(s, "later %s %d\n", WP_MENUS[i].title, later);
+	}
 	if (MENU_OPEN_I >= 0) {
 		g_string_append_printf(s, "menuopen %s %d\n", WP_MENUS[MENU_OPEN_I].title, WP_MENUS[MENU_OPEN_I].n);
 		g_string_append(s, "grey");
@@ -698,7 +705,6 @@ static void menu_do(int id)
 	case M_FINDREP: on_find_open(NULL, NULL); if (REPL) gtk_widget_grab_focus(REPL); break;
 	case M_ZOOM: ZOOM = atoi(o->arg); set_editor_font(); state_soon(); break;
 	case M_TOGGLE: toggle(NULL, (gpointer)o->arg); break;
-	case M_ALIGN: on_align(NULL, (gpointer)o->arg); break;
 	case M_LIST: on_list(NULL, (gpointer)o->arg); break;
 	case M_CLEAR: on_clear(NULL, NULL); break;
 	case M_KEYS:
