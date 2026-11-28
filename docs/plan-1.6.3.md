@@ -84,8 +84,10 @@ accent colours), its memory at idle against the web version, built in the releas
   `eachIn` -- so a column is added up and a range gives the same answer as before.
 - **A big choice is bounded as the page bounds it:** a format over more than 200 000 cells (a column, a row, the sheet)
   takes the cells that hold something plus the ones on the screen, as the page's `styleSel` does, so a hundred thousand
-  empty cells are not given an entry each; Clear contents and Delete on such a choice take the cells that hold something
-  rather than returning without a word, and Clear formats walks only cells that exist.
+  empty cells are not given an entry each; a style asked for with none to put on the cells walks nothing at all; Clear
+  contents and Delete on such a choice take the cells that hold something rather than returning without a word; and Clear
+  formats walks the sheet's own cells, which is the whole of it, since only a cell that holds something has a format to
+  take (it walked the choice's rectangle until this was fixed: the whole sheet was 70 million places to look at).
 - **The fault this step found:** the choice's tint painted every cell of it -- 100 000 rows for a chosen column and 70
   million for the sheet -- so a press on the corner left the window painting cells the clip throws away, and every press
   after it went unanswered (the check saw the press "do nothing" while the app was still running, its window in place).
@@ -94,7 +96,9 @@ accent colours), its memory at idle against the web version, built in the releas
   opens a book of seven cells (A1 5, A2 10, A3 15, B1 `x`, A5 4, B5 6, C5 8), presses column A's head and finds
   `sel 0 0 0 0 99999 0`, the name box's `A1:A100000` and `agg 34|8.5|4|15|4`; Shift and B's head grow it across
   (`A1:B100000`, `40|8|4|15|6`, B1's text counted and not summed); row 5's head takes its row (`A5:ZZ5`,
-  `18|6|4|8|3`); the corner takes the sheet (`A1:ZZ100000`, `48|8|4|15|7`); and Delete on column A takes its four cells
+  `18|6|4|8|3`); the corner takes the sheet (`A1:ZZ100000`, `48|8|4|15|7`), and Format ▸ Clear formatting over it --
+  `RUDOLF_SP_DO=clearf`, the check's hand on a row it cannot aim -- leaves the book changed (`dirty 1`) with the window
+  still answering, which a walk over the rectangle would not; and Delete on column A takes its four cells
   and nothing else (`cells 3`, C5's 8 still there), Ctrl+Z putting them back (`cells 7`). The state's new `area x y`
   line is where the grid sits in the window, because a head's press is at its corner and a check cannot guess it; each
   press is tried again while its effect is missing, and a failure prints what every press saw.

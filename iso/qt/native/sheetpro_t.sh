@@ -318,7 +318,9 @@ ok "22. a book with nothing to lose closes at once, without a question" \
 	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(dirty|ask|cells) ' "$ST9" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_clean.log")"
 kill $SPP9 2>/dev/null; sleep 0.4
 # ---- 24. the heads: a column's head takes the whole column and the status line adds it up, a row's head the whole row,
-#      Shift grows the choice across, the corner takes the sheet -- and Delete on a chosen column takes only its cells.
+#      Shift grows the choice across, the corner takes the sheet -- Clear formatting over the whole sheet answers at once
+#      (a walk over 70 million places, or over the cells that hold something) -- and Delete on a chosen column takes only
+#      its cells.
 # (a head's press is at the grid's own corner, which the state reports as `area x y`: 46 px of row heads, 22 px of column
 #  heads, then a column's 80 px or a row's 20 px at 100 %)
 F5=$T/heads.RSHEET
@@ -326,7 +328,7 @@ cat > "$F5" <<'RS'
 {"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"Sheet1","color":"","cells":[[0,5],[702,10],[1404,15],[1,"x"],[2808,4],[2809,6],[2810,8]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
 RS
 ST24=$T/state_heads; rm -f "$ST24" "$T/heads.steps"
-RUDOLF_SP_STATE=$ST24 DISPLAY=$DSP "$BIN" "$F5" >"$T/sp_heads.log" 2>&1 & SPP24=$!
+RUDOLF_SP_STATE=$ST24 RUDOLF_SP_DO=clearf DISPLAY=$DSP "$BIN" "$F5" >"$T/sp_heads.log" 2>&1 & SPP24=$!
 i=0; while [ $i -lt 60 ] && ! grep -q '^area ' "$ST24" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
 WIN24=$(DISPLAY=$DSP xdotool search --sync --name 'heads\.RSHEET - SpreadsheetPro$' 2>/dev/null | head -1)
 i=0; while [ $i -lt 60 ] && [ -n "$WIN24" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN24" 2>/dev/null
@@ -360,6 +362,10 @@ chk 'grep -q "^agg 18|6|4|8|3$" "$ST24"' rowsum
 tap $((AX + 20)) $((AY + 11)) '^selname A1:ZZ100000$'          # (the corner: the whole sheet)
 chk 'grep -q "^selname A1:ZZ100000$" "$ST24"' all
 chk 'grep -q "^agg 48|8|4|15|7$" "$ST24"' allagg
+# (Clear formatting takes nothing off these cells -- none has a style -- so what it leaves is the book's first change:
+#  `dirty 1`. The press after it is what says the window still answers.)
+i=0; while [ $i -lt 20 ] && ! grep -q '^dirty 1$' "$ST24" 2>/dev/null; do sleep 0.2; i=$((i+1)); done
+chk 'grep -q "^dirty 1$" "$ST24"' clearf
 tap $((AX + 86)) $((AY + 11)) '^selname A1:A100000$'           # (column A again: Delete takes its cells and nothing else)
 DISPLAY=$DSP xdotool key Delete; sleep 0.9
 chk 'grep -q "^cells 3$" "$ST24"' cleared

@@ -96,6 +96,8 @@ typedef void (*StyleFn)(Cell *cl, void *d);
 static void style_sel(StyleFn fn, void *d)
 {
 	long area = (long)(SEL_R1 - SEL_R0 + 1) * (long)(SEL_C1 - SEL_C0 + 1);
+	/* (with no style to put on the cells there is nothing to walk at all, and a whole column or the sheet is walked as the
+	   page's styleSel has it -- see below) */
 	if (area > 200000 && fn) {
 		/* (the page's guard for a whole column or row: the cells that hold something, plus the ones on the screen -- a
 		   hundred thousand empty cells are not worth an entry each; spro45.js's styleSel) */
@@ -115,10 +117,10 @@ static void style_sel(StyleFn fn, void *d)
 			fn(cl, d);
 		}
 		g_array_free(ks, TRUE);
-	} else for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
+	} else if (fn) for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
 		Cell *cl = cell_get(r, c);
-		if (!cl) { if (!fn) continue; cl = g_new0(Cell, 1); g_hash_table_insert(CELLS, GUINT_TO_POINTER(ckey(r, c)), cl); }
-		if (fn) fn(cl, d);
+		if (!cl) { cl = g_new0(Cell, 1); g_hash_table_insert(CELLS, GUINT_TO_POINTER(ckey(r, c)), cl); }
+		fn(cl, d);
 	}
 	hist_push(); upd_tb(); layout_ranges(); status_update(); fx_update(); redraw();
 }
@@ -1318,12 +1320,25 @@ static void clear_cells(void)
 	hist_push();
 	layout_ranges(); status_update(); fx_update(); redraw();
 }
+static void fmt_take(Cell *cl)
+{
+	cl->b = cl->i = cl->u = cl->s = 0; cl->ha = 0; cl->sz = 0;
+	g_free(cl->fc); cl->fc = NULL; g_free(cl->bg); cl->bg = NULL; g_free(cl->font); cl->font = NULL;
+}
 static void clear_formats(void)
 {
-	for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
-		Cell *cl = cell_get(r, c); if (!cl) continue;   /* (only a cell that holds something has a format to take) */
-		cl->b = cl->i = cl->u = cl->s = 0; cl->ha = 0; cl->sz = 0;
-		g_free(cl->fc); cl->fc = NULL; g_free(cl->bg); cl->bg = NULL; g_free(cl->font); cl->font = NULL;
+	/* (only a cell that holds something has a format to take, so a whole column or the whole sheet walks the sheet's cells
+	   rather than each of its 70 million places -- the page's eachIn again) */
+	long area = (long)(SEL_R1 - SEL_R0 + 1) * (long)(SEL_C1 - SEL_C0 + 1);
+	if (area > 20000) {
+		GArray *ks = g_array_new(FALSE, FALSE, sizeof(guint)); sel_keys(ks);
+		for (guint i = 0; i < ks->len; i++) {
+			Cell *cl = g_hash_table_lookup(CELLS, GUINT_TO_POINTER(g_array_index(ks, guint, i)));
+			if (cl) fmt_take(cl);
+		}
+		g_array_free(ks, TRUE);
+	} else for (int r = SEL_R0; r <= SEL_R1; r++) for (int c = SEL_C0; c <= SEL_C1; c++) {
+		Cell *cl = cell_get(r, c); if (cl) fmt_take(cl);
 	}
 	hist_push();
 	upd_tb(); redraw();
@@ -2141,6 +2156,16 @@ static void on_clear_btn(GtkWidget *b, gpointer d) { (void)b; (void)d; clear_cel
 static int HOOK_TICKS;
 /* (the check's way to the window's own going-out: it waits for the first change, asks again after a Cancel, and
    closes a book with nothing to lose after about three seconds) */
+/* (the check's hand on Format > Clear formatting: the row cannot be aimed, so it waits for the whole sheet to be chosen
+   -- the corner's press -- and takes the formats off once, as the menu row's `case OP_CLEARF` does. That is where the walk
+   must not touch every cell of the choice.) */
+static gboolean clearf_hook(gpointer d)
+{
+	(void)d;
+	if (SEL_R0 != 0 || SEL_R1 != MAXR - 1 || SEL_C0 != 0 || SEL_C1 != MAXC - 1) return G_SOURCE_CONTINUE;
+	clear_formats();
+	return G_SOURCE_REMOVE;
+}
 static gboolean close_hook(gpointer d)
 {
 	(void)d;
@@ -2179,7 +2204,9 @@ int main(int argc, char **argv)
 	  if (mo && *mo) for (int i = 0; i < NMENUS; i++) if (!strcmp(MENUS[i].title, mo)) { g_timeout_add(400, menu_hook, (gpointer)(intptr_t)i); break; } }
 	{ const char *go = getenv("RUDOLF_SP_GOTO"); if (go && *go) g_timeout_add(900, goto_hook, (gpointer)go); }
 	{ const char *x = getenv("RUDOLF_SP_EXPORT"); if (x && *x) g_timeout_add(900, export_hook, (gpointer)x); }
-	{ const char *c = getenv("RUDOLF_SP_DO"); if (c && *c && !strcmp(c, "close")) g_timeout_add(300, close_hook, NULL); }
+	{ const char *c = getenv("RUDOLF_SP_DO");
+	  if (c && *c && !strcmp(c, "close")) g_timeout_add(300, close_hook, NULL);
+	  if (c && *c && !strcmp(c, "clearf")) g_timeout_add(300, clearf_hook, NULL); }
 	state_soon();
 	gtk_main();
 	return 0;
