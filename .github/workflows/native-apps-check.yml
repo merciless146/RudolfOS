@@ -29,7 +29,12 @@ jobs:
         run: |
           cd iso && . systools/hardflags.sh && RUI_WERROR=1 sh sys/ui/build.sh $RUNNER_TEMP/ui $RUNNER_TEMP/rudolf-uisample ui-sample $HARD
           python3 systools/hardcheck.py $RUNNER_TEMP/rudolf-uisample
-          echo "::notice title=librudolf-ui::$(size -B $RUNNER_TEMP/ui/rudolf-ui.o | awk 'NR==2{print int(($1+$2+$3)/1024)}') KB in each native app"
+          # 1.6.3: the release's own budgets, here, so an over-budget build fails in its pull request instead of at
+          # ci_release.sh step 12 (a release run that then made no beta at all): librudolf-ui 512 KB (added to every
+          # native app), each native app 1 MB. The same measures the release takes (docs/plan-1.6.2.md Part 39).
+          RUIB=$(size -B $RUNNER_TEMP/ui/rudolf-ui.o | awk 'NR==2{print $1+$2+$3}')
+          [ "$RUIB" -lt 524288 ] || { echo "::error title=librudolf-ui is over its 512 KB budget::$((RUIB / 1024)) KB added to each native app, over 512 KB (systools/ci_release.sh, docs/plan-1.6.2.md Part 39)"; exit 1; }
+          echo "::notice title=librudolf-ui::$((RUIB / 1024)) KB in each native app (budget 512 KB)"
       - name: the fonts' antialiasing and hinting here (fontconfig's, which Chromium and librudolf-ui follow)
         run: fc-match -v "DejaVu Sans:pixelsize=13" | grep -E "antialias|hint|rgba|lcdfilter" || true
       - name: "ui_t.sh: the sample window against the page's controls"
@@ -61,7 +66,10 @@ jobs:
         run: |
           cd iso && . systools/hardflags.sh && RUI_WERROR=1 sh sys/ui/build.sh $RUNNER_TEMP/ui $RUNNER_TEMP/rudolf-taskmgr taskmgr $HARD
           python3 systools/hardcheck.py $RUNNER_TEMP/rudolf-taskmgr && cp $RUNNER_TEMP/rudolf-taskmgr $RUNNER_TEMP/s && strip $RUNNER_TEMP/s
-          echo "::notice title=rudolf-taskmgr::$(($(stat -c %s $RUNNER_TEMP/s) / 1024)) KB stripped (budget 1 MB)"
+          # 1.6.3: the release's own 1 MB budget for a native app, here, so an over-budget build fails here (ci_release.sh step 12)
+          NAB=$(stat -c %s $RUNNER_TEMP/s)
+          [ "$NAB" -lt 1048576 ] || { echo "::error title=rudolf-taskmgr is over its 1 MB budget::$((NAB / 1024)) KB stripped, over 1 MB (systools/ci_release.sh, docs/plan-1.6.2.md Part 39)"; exit 1; }
+          echo "::notice title=rudolf-taskmgr::$((NAB / 1024)) KB stripped (budget 1 MB)"
       - name: "taskmgr_t.sh: every tab against the web one (light, dark), the checklist, started by the native shell, the memory"
         run: mkdir -p out && NODE_PATH=$PWD/node_modules TM_PORT=8684 TM_DSP=:90 sh iso/qt/native/taskmgr_t.sh $PWD/out "" $RUNNER_TEMP/rudolf-taskmgr
       - if: always()
@@ -83,7 +91,10 @@ jobs:
         run: |
           cd iso && . systools/hardflags.sh && RUI_WERROR=1 sh sys/ui/build.sh $RUNNER_TEMP/ui $RUNNER_TEMP/rudolf-settings settings $HARD
           python3 systools/hardcheck.py $RUNNER_TEMP/rudolf-settings && cp $RUNNER_TEMP/rudolf-settings $RUNNER_TEMP/s && strip $RUNNER_TEMP/s
-          echo "::notice title=rudolf-settings::$(($(stat -c %s $RUNNER_TEMP/s) / 1024)) KB stripped (budget 1 MB)"
+          # 1.6.3: the release's own 1 MB budget for a native app, here, so an over-budget build fails here (ci_release.sh step 12)
+          NAB=$(stat -c %s $RUNNER_TEMP/s)
+          [ "$NAB" -lt 1048576 ] || { echo "::error title=rudolf-settings is over its 1 MB budget::$((NAB / 1024)) KB stripped, over 1 MB (systools/ci_release.sh, docs/plan-1.6.2.md Part 39)"; exit 1; }
+          echo "::notice title=rudolf-settings::$((NAB / 1024)) KB stripped (budget 1 MB)"
       - name: "settings_t.sh: each native page against the web one (light, dark, two other accents), Search in Settings, the checklist, the memory"
         run: mkdir -p out && NODE_PATH=$PWD/node_modules SET_PORT=8693 SET_DSP=:93 sh iso/qt/native/settings_t.sh $PWD/out "" $RUNNER_TEMP/rudolf-settings
       - if: always()
