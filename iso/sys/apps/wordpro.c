@@ -190,7 +190,7 @@ static int has_prefix(const char *h, const char *kind)
    own does, and the lines are taken by their number: an inserted prefix does not move the ones still to come.) */
 static void line_prefix(const char *kind)
 {
-	GtkTextIter s, e; if (!need_sel()) return;
+	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;   /* (need_sel fills its own iterators, not these) */
 	int l0 = gtk_text_iter_get_line(&s), l1 = gtk_text_iter_get_line(&e), block = !strcmp(kind, "ind") || !strcmp(kind, "out");
 	if (l1 > l0 && gtk_text_iter_get_line_offset(&e) == 0) l1--;   /* (a choice ending at a line's start does not take that line) */
 	int all = 1, n = 0;
