@@ -866,7 +866,7 @@ static void titlebar_ask(const char *id)
 	"echo '# Vulkan'; if command -v vulkaninfo >/dev/null; then timeout 3 vulkaninfo --summary 2>&1 | grep -Ei 'apiVersion|driverName|deviceName|deviceType' | head -8; else echo '(vulkaninfo is not installed: apt install vulkan-tools)'; fi; " \
 	"echo '# /dev/dri'; ls -l /dev/dri 2>&1 | head -6; " \
 	"echo '# room'; df -h /home /tmp 2>&1 | head -4; " \
-	"echo '# the newest logs'; for f in $(ls -t RUND "/*.log" 2>/dev/null | head -3); do echo \"--- $f\"; tail -12 \"$f\"; done"
+	"echo '# the newest logs'; for f in $(ls -t " RUND "/*.log 2>/dev/null | head -3); do echo \"--- $f\"; tail -12 \"$f\"; done"
 #endif
 #define LR_DIAG_MAX 100   /* (the box says them all; the file, every line) */
 static char lr_diag[LR_DIAG_MAX][300]; static int lr_diag_n;
