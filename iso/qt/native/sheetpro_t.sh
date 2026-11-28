@@ -137,7 +137,10 @@ grep -q '^fmt C3 b0 i0 u0 s0 ha2 ' "$ST3" || RC=1
 ok "14. a .RSHEET the page wrote opens with its cells, its formula worked out and its styles, and its name in the title" \
 	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|file|dirty|cell|show|fmt) ' "$ST3" | tr '\n' ' '); $(cat "$T/sp_open.log")"
 # ---- 15. a change marks the book unsaved (the page's * in the title) and Ctrl+S writes it back as the page's own JSON
-WIN3=$(DISPLAY=$DSP xdotool search --name 'SpreadsheetPro$' 2>/dev/null | head -1)
+# (the window of the book just opened, by its own title: the first copy's window may still be there, its shell killed
+#  rather than the program it started, and a key sent to that one would leave this book untouched)
+WIN3=$(DISPLAY=$DSP xdotool search --name '^grid\.RSHEET - SpreadsheetPro$' 2>/dev/null | head -1)
+[ -n "$WIN3" ] || WIN3=$(DISPLAY=$DSP xdotool search --name 'SpreadsheetPro$' 2>/dev/null | tail -1)
 i=0; while [ $i -lt 60 ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN3" 2>/dev/null
 	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN3" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
 DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.5
