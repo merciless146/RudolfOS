@@ -9,6 +9,18 @@ Each version's first line after "Summary:" is what Settings shows before an upda
   PipeWire under WebKitGTK 2.52, so it now starts with the session beside PulseAudio, which keeps the sound cards
   (WirePlumber's ALSA monitor is off). No `pipewire-pulse`; nothing listens.
 Summary: In progress.
+- **Archive Manager, a ZIP anywhere** (Part 10, begun): the Archive Manager opens and unpacks a ZIP kept anywhere your account
+  may read — another folder in your home, a USB drive, `/tmp` — not only one in Downloads. A listing is the same answer
+  wherever the ZIP is; Extract here unpacks it into a new folder beside it, named after it (`game`, `game (2)`), with the ZIP's
+  own folders and names, and the antivirus checks every file there by its own path, quarantining or blocking a bad one as it
+  does in Downloads. Nothing is moved into Downloads, so an extraction from a path leaves your downloads as they are. That
+  check only ever touches the folder the extraction made: no other file may be read, quarantined or deleted by path, and a
+  hidden folder (where each account's unencrypted downloads and the quarantine are kept) is never one a path may name.
+- Security: an account's folder of large downloads is the signed-in account's own. Since 1.5.5 a request named an account
+  and a file in it and was answered for any account whose name was of the right shape, so a window of the desktop could
+  list, read, unpack and write in another account's downloads (they are not under a key; they belong to the desktop's
+  user). The account is now checked against the one signed in, the guest's and shared stores stay open to nobody's own,
+  and nothing is refused with nobody signed in (the sign-in screen's own housekeeping, and the checks).
 - New: on the native desktop, Settings is the native Settings app: Privacy, Security, System health and Users join the
   pages built before it, so every page of Settings is native there (Chromium mode and Lite keep the web Settings, as the
   owner's rule says). The Users page's security keys and fingerprints are added, removed and required through the page's own

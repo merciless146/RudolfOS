@@ -3283,6 +3283,12 @@ static void api_dl(struct req *r, const char *what, int post)
 {
 	/* 1.6.1: a ZIP kept on the disk: what is inside it, Extract here (rudolfd-dlzip.inc) */
 	if (!strcmp(what, "zip") || !strcmp(what, "unzip") || !strcmp(what, "unzipped")) { api_dl_zip(r, what, post); return; }
+	/* 1.6.3 Part 10, item 1: the antivirus's bytes, its quarantine and a bad file's deletion for a file outside Downloads too
+	   (one unpacked beside a ZIP), named by path instead of by name and account */
+	if (!strcmp(what, "read") || !strcmp(what, "file")) {
+		const char *pp = qparam(r->query, "path");
+		if (pp && *pp) { api_dl_path(r, what, post); return; }
+	}
 	/* 1.5.5: home: the files in Downloads itself, so ones that no C:\DOWNLOADS entry points at (saved by a Linux app,
 	   or a download whose entry was lost) can be shown there too */
 	if (!strcmp(what, "incoming") || !strcmp(what, "quarantine") || !strcmp(what, "home")) {
