@@ -1100,7 +1100,8 @@ static void draw(GtkWidget *widget, cairo_t *cr, gpointer d)
 	cairo_set_source_rgba(cr, 26 / 255.0, 115 / 255.0, 232 / 255.0, 0.12);
 	/* (only the part of the choice that is on the screen: a chosen column is 100 000 rows and the sheet is 70 million
 	   cells, and painting what the clip takes away only makes the window wait; the rest is drawn when it is scrolled to) */
-	for (int r = MAX(SEL_R0, r0); r <= MIN(SEL_R1, MAXR - 1); r++) for (int c = MAX(SEL_C0, c0); c <= MIN(SEL_C1, MAXC - 1); c++) {
+	int tr0 = MAX(SEL_R0, r0), tr1 = MIN(SEL_R1, r1), tc0 = MAX(SEL_C0, c0), tc1 = MIN(SEL_C1, c1);
+	for (int r = tr0; r <= tr1; r++) for (int c = tc0; c <= tc1; c++) {
 		double x, y, w, h; cell_box(r, c, &x, &y, &w, &h); cairo_rectangle(cr, x, y, w, h); }
 	cairo_fill(cr);
 	{ double x, y, w, h; cell_box(CUR_R, CUR_C, &x, &y, &w, &h);

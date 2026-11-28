@@ -352,7 +352,7 @@ chk 'grep -q "^selname A1:A100000$" "$ST24"' colname
 chk 'grep -q "^agg 34|8.5|4|15|4$" "$ST24"' colsum   # (5, 10, 15 and 4: B1's text is not in column A)
 tap $((AX + 166)) $((AY + 11)) '^selname A1:B100000$' shift    # (Shift: B's head grows it across)
 chk 'grep -q "^selname A1:B100000$" "$ST24"' two
-chk 'grep -q "^agg 34|8.5|4|15|5$" "$ST24"' twoagg   # (and B1's text, which the page counts)
+chk 'grep -q "^agg 40|8|4|15|6$" "$ST24"' twoagg   # (and B5's 6, and B1's text, which the page counts)
 tap $((AX + 20)) $((AY + 112)) '^selname A5:ZZ5$'              # (row 5's head)
 chk 'grep -q "^sel 4 0 4 0 4 701$" "$ST24"' row
 chk 'grep -q "^selname A5:ZZ5$" "$ST24"' rowname
@@ -364,7 +364,7 @@ tap $((AX + 86)) $((AY + 11)) '^selname A1:A100000$'           # (column A again
 DISPLAY=$DSP xdotool key Delete; sleep 0.9
 chk 'grep -q "^cells 3$" "$ST24"' cleared
 chk '! grep -q "^cell A2 " "$ST24"' cleareda
-chk 'grep -q "^cell B5 8$" "$ST24"' kept
+chk 'grep -q "^cell C5 8$" "$ST24"' kept
 DISPLAY=$DSP xdotool key ctrl+z; sleep 1.0
 chk 'grep -q "^cells 7$" "$ST24"' undone
 kill -0 $SPP24 2>/dev/null; LIVE=$?
