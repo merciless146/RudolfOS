@@ -15,7 +15,7 @@ PORT=${FPUI_PORT:-8733}; DSP=${FPUI_DSP:-:86}; TICKET=0123456789abcdef0123456789
 command -v Xvfb >/dev/null || { echo "SKIP: needs Xvfb"; exit 0; }
 W=$T/w; D=$T/d; mkdir -p "$W" "$D"
 python3 "$R/iso/sys/ui/mkui.py" "$W/rui-gen.h" || { echo "FAIL mkui.py"; exit 1; }
-gcc -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-sign-compare -Wno-deprecated-declarations \
+gcc -O2 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-sign-compare -Wno-misleading-indentation -Wno-deprecated-declarations \
 	-o "$T/fpui" "$HERE/fpuiprompt63_t.c" "$R/iso/sys/ui/rudolf-ui.c" -I"$W" -I"$R/iso/sys/ui" \
 	$(pkg-config --cflags --libs gtk+-3.0 fontconfig) -lX11 -lm 2>"$T/cc" || { cat "$T/cc"; echo "FAIL build"; exit 1; }
 [ -s "$T/cc" ] && { echo "FAIL the prompt's test builds with warnings:"; cat "$T/cc"; exit 1; }
