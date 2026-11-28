@@ -63,11 +63,15 @@ Library's publish still sign on main; a computer on the new release trusts both 
   kept beside the program's log as `…/ID.diag.txt` (`LR_DIAG_CMD`, a fixed command; a test's own in `debreport.c`'s
   build). **The request is written first and the readings fill it in**: they come in a request of their own (`…-diag`, as
   the page never takes an id twice: `lxPortalPoll`'s `LX.seen`) that says whose box it fills (`"fill"`, `"of"`), which
-  `wineold62.js` does, never a second box: the box never waits for `glxinfo` or `vulkaninfo`, which can each take seconds.
-  The newest logs are this account's only (`find … -uid $(id -u)`). The owner's block of commands did not
-  have to be typed on the stick: it is what the box now says by itself, in 1.6.3 and after. `wineold162_t.sh` holds the
-  error-first, the noise-only, the check read and the Debian-program (nothing read) cases; `wineold162_t.js` the box shown
-  before the readings, then filled in, one box. PR #762.
+  `wineold62.js` does, never a second box, and that carries only the readings and the file they were kept in (nothing the
+  box already says): the box never waits for `glxinfo` or `vulkaninfo`, which can each take seconds. The newest logs are
+  this account's only (`find … -uid $(id -u)`). The cause is the highest-ranked of Wine's lines (`lr_cause`): its own
+  `wine: ` words of a failure, then any of its errors (`err:`, `err:winediag:`, its Direct3D channels), then Direct3D's
+  other lines (`warn:d3d:`), a tie going to the earliest. The owner's block of commands did not have to be typed on the
+  stick: it is what the box now says by itself, in 1.6.3 and after. `wineold162_t.sh` holds the error-first, the
+  winediag, the `wine: ` and the `warn:d3d:` cases, the noise-only, the check read (its own request says only that) and the
+  Debian-program (nothing read) cases; `wineold162_t.js` the box shown before the readings, then filled in, one box.
+  PR #762.
 - **Oracle's status line stays one line** (the owner, 2026-11-23 19:04 CST, with photos: a long "Goes To:" address wrapped
   onto a second line and the page above it jumped; 19:08 CST: "Add it as the first 1.6.3 fix"): PR #677.
 

@@ -73,12 +73,13 @@ async function woFail(id,r){try{await lxAnswer(id,{})}catch(e){}
 <p class='wo62fo'></p><p class='wo62fg' style='font-size:12px;opacity:.75'></p><div class='rmrow'><button class='wo62fc'>Close</button><button class='wo62fb pri' hidden>Bring them in…</button></div></div>`;
  const q=c=>o.querySelector(c);q('h3').textContent=name+' did not start';
  q('.wo62fa').textContent='It ended '+(secs<1?'at once':'after '+Math.round(secs)+' s')+' ('+how+') without opening a window. The last lines of its log:';
- const fill=r2=>{   /* (what it ended with; then, a moment later, what it runs with) */
-  const L=(r2.lines||[]).map(String).filter(Boolean);q('.wo62fl').textContent=L.length?L.join('\n'):'(its log is empty)';
+ const L=(r.lines||[]).map(String).filter(Boolean);q('.wo62fl').textContent=L.length?L.join('\n'):'(its log is empty)';
+ q('.wo62fg').textContent=r.log?'Its whole log: '+r.log:'';
+ const fill=r2=>{   /* (what it runs with, in a request of its own: the rest the box says already) */
   const D=(r2.diag||[]).map(String).filter(Boolean);
   if(D.length){const d=q('.wo62fd');d.hidden=false;d.textContent='What it runs with (Wine, its 32- and 64-bit GL and Vulkan, the renderer, the GPU, room):\n'+D.join('\n')}
-  q('.wo62fg').textContent=(r2.log?'Its whole log: '+r2.log:'')+(r2.diaglog?' · its whole check: '+r2.diaglog:'')};
- WO62.fill[id]=fill;fill(r);
+  if(r2.diaglog)q('.wo62fg').textContent+=' · its whole check: '+r2.diaglog};
+ WO62.fill[id]=fill;
  if(offer){const f=String(r.dir||'').split('/').filter(Boolean).pop();
   q('.wo62fo').textContent=(s.inOld&&f?'Its folder ('+f+') is among the Windows programs from before Rudolf OS 1.5.9, which are not in your account yet.':'Your account does not have the Windows programs from before Rudolf OS 1.5.9 yet: it may be one of them.')+' They can be brought in: a copy, owned by your account.';
   const b=q('.wo62fb');b.hidden=false;b.onclick=()=>{o.remove();woOffer('fail')}}
