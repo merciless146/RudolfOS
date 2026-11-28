@@ -7,11 +7,11 @@ name: Release key switch check
 on:
   pull_request:
     paths: ['iso/systools/**', 'iso/trusted-keys.txt', 'iso/qt/host/keyswitch_t.sh', 'docs/secure-boot.md',
-            '.github/workflows/keyswitch-check.yml']
+            'docs/plan-1.6.3.md', '.github/workflows/keyswitch-check.yml']
   push:
     branches: [main]
     paths: ['iso/systools/**', 'iso/trusted-keys.txt', 'iso/qt/host/keyswitch_t.sh', 'docs/secure-boot.md',
-            '.github/workflows/keyswitch-check.yml']
+            'docs/plan-1.6.3.md', '.github/workflows/keyswitch-check.yml']
 permissions: {contents: read}
 jobs:
   tool:
