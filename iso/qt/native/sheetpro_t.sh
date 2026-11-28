@@ -248,6 +248,62 @@ PY
 ok "19. the sheet is exported as the page writes a CSV: what each cell shows, quoted where it must be, CRLF lines" \
 	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(say|file) ' "$ST7" 2>/dev/null | tr '\n' ' '); $(head -c 200 "$EX" 2>/dev/null); $(cat "$T/sp_ex.log")"
 kill $SPP7 2>/dev/null; sleep 0.4
+# ---- 20. a modified book is not thrown away: closing asks, Cancel keeps it, Save writes it and goes
+# (RUDOLF_SP_DO=close is the check's hand on the window's own X: it waits for the first change, and asks again if the
+#  question is put off. the question is the page's own overlay in the window: Escape is Cancel, Return is Save -- the
+#  button it focuses -- and the book is still there with its cells while it is up)
+F4=$T/ask.RSHEET
+cat > "$F4" <<'RS'
+{"v":2,"app":"SpreadsheetPro","active":0,"names":{},"styles":[],"sheets":[{"name":"Sheet1","color":"","cells":[[0,1],[1407,"keep"]],"cw":{},"rh":{},"hid":{},"hc":{},"freeze":{"r":0,"c":0},"merges":[],"cf":[],"dv":[],"cm":{},"charts":[],"filter":null,"grid":true,"print":{}}]}
+RS
+ST8=$T/state_ask; rm -f "$ST8"
+RUDOLF_SP_STATE=$ST8 RUDOLF_SP_DO=close DISPLAY=$DSP "$BIN" "$F4" >"$T/sp_ask.log" 2>&1 & SPP8=$!
+i=0; while [ $i -lt 60 ] && ! grep -q '^dirty ' "$ST8" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+WIN8=$(DISPLAY=$DSP xdotool search --name '^ask\.RSHEET - SpreadsheetPro$' 2>/dev/null | head -1)
+i=0; while [ $i -lt 60 ] && [ -n "$WIN8" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN8" 2>/dev/null
+	[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN8" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+DISPLAY=$DSP xdotool key ctrl+Home; sleep 0.4
+DISPLAY=$DSP xdotool type --delay 20 '4'; sleep 0.4; DISPLAY=$DSP xdotool key Return; sleep 0.8
+RC=0
+grep -q '^dirty 1$' "$ST8" || RC=1
+i=0; while [ $i -lt 40 ] && ! grep -q '^ask 1$' "$ST8" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^ask 1$' "$ST8" || RC=1                       # (the question is up)
+[ -d "/proc/$SPP8" ] || RC=1                          # (the window is still there)
+grep -q '^cells 2$' "$ST8" || RC=1                    # (with both of its cells)
+grep -q '^cell A2 keep$' "$ST8" || RC=1
+SUM4=$(md5sum "$F4" | cut -d' ' -f1)
+SAY4=$(sed -n 's/^say //p' "$ST8")
+case "$SAY4" in *"has changes that are not saved"*) ;; *) RC=1 ;; esac
+[ "$(md5sum "$F4" | cut -d' ' -f1)" = "$SUM4" ] || RC=1   # (nothing written while the question waits)
+DISPLAY=$DSP xdotool key Escape; sleep 0.8               # (Cancel: the book stays as it is)
+grep -q '^ask 0$' "$ST8" || RC=1
+[ -d "/proc/$SPP8" ] || RC=1
+grep -q '^cells 2$' "$ST8" || RC=1
+i=0; while [ $i -lt 40 ] && ! grep -q '^ask 1$' "$ST8" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+grep -q '^ask 1$' "$ST8" || RC=1                       # (it comes back to the question)
+DISPLAY=$DSP xdotool key Return; sleep 1.6                # (Save, the button the question focuses: writes, then goes)
+i=0; while [ $i -lt 40 ] && [ -d "/proc/$SPP8" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+[ -d "/proc/$SPP8" ] && RC=1                              # (the window is gone)
+python3 - "$F4" <<'PY' || RC=1
+import json, sys
+d = json.load(open(sys.argv[1]))
+cells = {a[0]: a[1] for a in d['sheets'][0]['cells']}
+assert cells.get(0) == 4, cells        # (the change was saved, not thrown away)
+assert cells.get(1407) == 'keep', cells
+PY
+ok "20. closing a modified book asks first: Cancel keeps it and writes nothing, Save writes it and closes" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|dirty|ask|cells|say) ' "$ST8" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_ask.log"); $(head -c 200 "$F4" 2>/dev/null)"
+kill $SPP8 2>/dev/null; sleep 0.4
+# ---- 21. a book with nothing to lose closes at once, with no question
+ST9=$T/state_clean; rm -f "$ST9"
+RUDOLF_SP_STATE=$ST9 RUDOLF_SP_DO=close DISPLAY=$DSP "$BIN" "$F4" >"$T/sp_clean.log" 2>&1 & SPP9=$!
+i=0; while [ $i -lt 60 ] && [ -d "/proc/$SPP9" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+RC=0
+[ -d "/proc/$SPP9" ] && RC=1
+grep -q '^ask 1$' "$ST9" 2>/dev/null && RC=1
+ok "21. a book with nothing to lose closes at once, without a question" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(dirty|ask|cells) ' "$ST9" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_clean.log")"
+kill $SPP9 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"
 sed 's/const OFF_FONTS=/const OFF_FONTS_GONE=/' "$R/desktop/office45.js" > "$T/page/desktop/office45.js"
@@ -255,9 +311,9 @@ cp "$R/desktop/spro45.js" "$T/page/desktop/spro45.js"
 cp "$R/iso/sys/apps/mksheetpro.py" "$T/page/iso/sys/apps/mksheetpro.py"
 python3 "$T/page/iso/sys/apps/mksheetpro.py" "$T/gone.h" >"$T/mk.log" 2>&1; RC=$?
 if [ $RC = 1 ] && grep -q 'OFF_FONTS' "$T/mk.log"; then
-	ok "16. mksheetpro.py refuses a page it cannot read (no quiet default)" 1
+	ok "22. mksheetpro.py refuses a page it cannot read (no quiet default)" 1
 else
-	ok "16. mksheetpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
+	ok "22. mksheetpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
 fi
 cp "$ST" "$OUT/state.txt" 2>/dev/null; cp "$T/sp.log" "$OUT/app.log" 2>/dev/null
 for f in "$T/state_File.txt" "$T/state_Data.txt"; do [ -f "$f" ] && cp "$f" "$OUT/$(basename "$f")"; done

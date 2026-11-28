@@ -56,7 +56,9 @@ static void file_import_dlg(void); static void file_export_dlg(void);
 static char *cell_show(int r, int c);
 static int csv_ext(const char *p); static void csv_read(const char *text, GHashTable *h);
 static void export_quiet(const char *path);
+static void do_close(void); static void ask_discard(int act, const char *path);
 static void check_errors(void); static int menus_n(void);
+enum { PEND_NONE = 0, PEND_CLOSE, PEND_NEW, PEND_OPEN };
 static void on_clear_btn(GtkWidget *b, gpointer d);
 static void redraw(void) { if (AREA) gtk_widget_queue_draw(AREA); }
 
@@ -789,6 +791,47 @@ static void file_note(const char *title, const char *msg)
 	const char *b[] = { rui_tr("Close") };
 	rui_confirm(W, rui_tr(title), msg ? msg : "", b, 1, 1, dlg_close, NULL);
 }
+/* ---- a book with changes is not thrown away: the page asks before it goes, and so does this (Save, Discard,
+   Cancel). The question is the page's own overlay, so the answer is a button, Return (Save is the one it focuses) or
+   Escape (Cancel). A Save with no file yet opens the chooser, and the act waits for it -- save_done runs it. ---- */
+static int PEND = PEND_NONE, ASK; static char *PEND_PATH;
+static void pending_do(void)
+{
+	int act = PEND; char *p = PEND_PATH;
+	PEND = PEND_NONE; PEND_PATH = NULL;
+	if (act == PEND_CLOSE) gtk_widget_destroy(W->win);
+	else if (act == PEND_NEW) new_book();
+	else if (act == PEND_OPEN && p) do_open(p);
+	g_free(p);
+}
+static void ask_cb(int i, void *d)
+{
+	(void)d; ASK = 0; state_soon();
+	if (i != 1 && i != 2) { g_free(PEND_PATH); PEND_PATH = NULL; PEND = PEND_NONE; return; }  /* (Cancel, or Escape) */
+	if (i == 1) { pending_do(); return; }                                                     /* (Discard) */
+	do_save(0);                                                                               /* (Save: then the act) */
+	if (!DIRTY) pending_do();   /* (no file yet: the chooser is open, and save_done runs it) */
+}
+static void ask_discard(int act, const char *path)
+{
+	const char *b[] = { rui_tr("Cancel"), rui_tr("Discard"), rui_tr("Save") };
+	const char *nm = FILE_PATH && *FILE_PATH ? path_base(FILE_PATH) : "Book1";
+	char *msg = g_strdup_printf(rui_tr("%s has changes that are not saved."), nm);
+	PEND = act; g_free(PEND_PATH); PEND_PATH = g_strdup(path); ASK = 1;
+	snprintf(SAY, sizeof SAY, "%s", msg);
+	status_update(); state_soon();
+	rui_confirm(W, rui_tr("Save the changes?"), msg, b, 3, 1, ask_cb, NULL);
+	g_free(msg);
+}
+static void do_close(void) { if (DIRTY) ask_discard(PEND_CLOSE, NULL); else gtk_widget_destroy(W->win); }
+static void do_new(void) { if (DIRTY) ask_discard(PEND_NEW, NULL); else new_book(); }
+static gboolean on_delete(GtkWidget *w, GdkEvent *e, gpointer d)
+{
+	(void)w; (void)e; (void)d;
+	if (ASK) return TRUE;                       /* (the question is already up) */
+	if (DIRTY) { ask_discard(PEND_CLOSE, NULL); return TRUE; }
+	return FALSE;
+}
 static void do_open(const char *path)
 {
 	char *err = NULL;
@@ -806,7 +849,7 @@ static void open_done(GtkNativeDialog *d, gint resp, gpointer u)
 	(void)u;
 	if (resp == GTK_RESPONSE_ACCEPT) {
 		char *f = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d));
-		if (f) { do_open(f); g_free(f); }
+		if (f) { if (DIRTY) ask_discard(PEND_OPEN, f); else do_open(f); g_free(f); }
 	}
 	g_object_unref(d);
 }
@@ -844,6 +887,7 @@ static void save_done(GtkNativeDialog *d, gint resp, gpointer u)
 			if (e && !g_ascii_strcasecmp(e, ".RSHEET")) save_to(f);
 			else { char *n = g_strconcat(f, ".RSHEET", NULL); save_to(n); g_free(n); }
 			g_free(f);
+			if (!DIRTY) pending_do();   /* (a Close or a New that waited for this file: run it) */
 		}
 	}
 	g_object_unref(d);
@@ -866,7 +910,7 @@ static void import_done(GtkNativeDialog *d, gint resp, gpointer u)
 	(void)u;
 	if (resp == GTK_RESPONSE_ACCEPT) {
 		char *f = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(d));
-		if (f) { do_open(f); g_free(f); }
+		if (f) { if (DIRTY) ask_discard(PEND_OPEN, f); else do_open(f); g_free(f); }
 	}
 	g_object_unref(d);
 }
@@ -1495,7 +1539,7 @@ static void state_write(void)
 				cl->ha, cl->fc ? cl->fc : "-", cl->bg ? cl->bg : "-");
 	}
 	g_array_free(ks, TRUE);
-	g_string_append_printf(s, "zoom %d\nhist %d %d\nagg %s\nsay %s\n", ZOOM, UNDO_I, UNDO_N, AGGS, SAY);
+	g_string_append_printf(s, "zoom %d\nhist %d %d\nagg %s\nask %d\nsay %s\n", ZOOM, UNDO_I, UNDO_N, AGGS, ASK, SAY);
 	char *tmp = g_strdup_printf("%s.t", f); g_file_set_contents(tmp, s->str, -1, NULL); rename(tmp, f); g_free(tmp);
 	g_string_free(s, TRUE);
 }
@@ -1678,8 +1722,8 @@ static void check_errors(void)
 static void menu_do(const Mi *s)
 {
 	switch (s->op) {
-	case OP_NEW: new_book(); break;
-	case OP_CLOSE: gtk_widget_destroy(W->win); break;
+	case OP_NEW: do_new(); break;
+	case OP_CLOSE: do_close(); break;
 	case OP_FOPEN: file_open_dlg(); break;
 	case OP_FSAVE: do_save(0); break;
 	case OP_FIMPORT: file_import_dlg(); break;
@@ -2007,6 +2051,17 @@ static void build_status(void)
 	gtk_box_pack_start(GTK_BOX(W->body), sb, FALSE, FALSE, 0);
 }
 static void on_clear_btn(GtkWidget *b, gpointer d) { (void)b; (void)d; clear_cells(); }
+static int HOOK_TICKS;
+/* (the check's way to the window's own going-out: it waits for the first change, asks again after a Cancel, and
+   closes a book with nothing to lose after about three seconds) */
+static gboolean close_hook(gpointer d)
+{
+	(void)d;
+	if (ASK) return G_SOURCE_CONTINUE;
+	if (DIRTY) { do_close(); return G_SOURCE_CONTINUE; }
+	if (++HOOK_TICKS > 10) { do_close(); return G_SOURCE_REMOVE; }
+	return G_SOURCE_CONTINUE;
+}
 static gboolean export_hook(gpointer d) { export_quiet((const char *)d); state_soon(); return G_SOURCE_REMOVE; }
 static gboolean goto_hook(gpointer d)
 {
@@ -2024,6 +2079,7 @@ int main(int argc, char **argv)
 	VISIT = g_hash_table_new(g_direct_hash, g_direct_equal);
 	build_menubar(); build_toolbar(); build_formula(); build_grid(); build_tabs(); build_status();
 	gtk_window_set_title(GTK_WINDOW(W->win), "Book1 - SpreadsheetPro");
+	g_signal_connect(W->win, "delete-event", G_CALLBACK(on_delete), NULL);
 	hist_push();
 	gtk_widget_show_all(W->win);
 	gtk_widget_hide(ENTRY);
@@ -2036,6 +2092,7 @@ int main(int argc, char **argv)
 	  if (mo && *mo) for (int i = 0; i < NMENUS; i++) if (!strcmp(MENUS[i].title, mo)) { g_timeout_add(400, menu_hook, (gpointer)(intptr_t)i); break; } }
 	{ const char *go = getenv("RUDOLF_SP_GOTO"); if (go && *go) g_timeout_add(900, goto_hook, (gpointer)go); }
 	{ const char *x = getenv("RUDOLF_SP_EXPORT"); if (x && *x) g_timeout_add(900, export_hook, (gpointer)x); }
+	{ const char *c = getenv("RUDOLF_SP_DO"); if (c && *c && !strcmp(c, "close")) g_timeout_add(300, close_hook, NULL); }
 	state_soon();
 	gtk_main();
 	return 0;
