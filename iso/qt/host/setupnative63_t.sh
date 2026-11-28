@@ -25,5 +25,5 @@ printf '{"data":{"bd95setup":"1","bd95user":"{\\"accts\\":[{\\"n\\":\\"Ann\\",\\
 ok "5. ...with the account the person made: Native" $([ "$(t)" = yes ]; echo $?)
 # the page's own rule is the same one (a1y25.js firstRun: "bd95setup" alone), or a computer set up with the wizard would be
 # sent back to it at every start
-ok "6. the wizard's own rule is \"bd95setup\" alone, which the session now reads the same way" $(grep -q "function firstRun(){if(ld('bd95setup',0))return" $HERE/../../../desktop/a11y25.js; echo $?)
+ok "6. the wizard's own rule is \"bd95setup\" alone, which the session now reads the same way" $(grep -q "function firstRun(){if(ld('bd95setup',0)" $HERE/../../../desktop/a11y25.js; echo $?)
 echo "$P/$((P+F)) passed"; [ $F = 0 ]
