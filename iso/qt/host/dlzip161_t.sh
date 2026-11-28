@@ -78,6 +78,14 @@ for U in infozip busybox; do
 	: > $DLZIP_STOP; o=$(run many.zip); rm -f $DLZIP_STOP
 	ok "$U: Cancel stops it, the hidden folder removed" "$(hasq "$o" 'stopped ' && [ -z "$(ls -A $A | grep '^\.')" ] && [ ! -d $A/f ] && echo 1)" "$(echo "$o" | tail -3)"
 	o=$(printf '%s\n%s\n' "/etc/passwd" "$A" > $T/list; $SH $P extract $T/list 2>&1); ok "$U: a ZIP outside the account's folder: refused" "$(has "$o" "error The ZIP is not in the account's folder")" "$o"
+	# 1.6.3 Part 10, item 1: beside (a ZIP at a path, unpacked into a new folder named after it next to it)
+	B=$T/beside; rm -rf $B; mkdir -p $B; [ $ROOT = 1 ] && chown $ME $B
+	runb() { cp $T/z/$1 $B/$1; [ $ROOT = 1 ] && chown $ME $B/$1; printf '%s\n%s\n%s\n' "$B/$1" "$B" beside > $T/list; $SH $P extract $T/list 2>&1; }
+	o=$(runb game.zip)
+	ok "$U: beside: a new folder named after the ZIP, its own folders and names inside" "$(echo "$o" | grep -qx "dest $B/game" && [ -f "$B/game/Made Up Game/readme.txt" ] && [ -f "$B/game/.hidden" ] && [ -d "$B/game/Made Up Game/empty" ] && [ ! -e "$B/Made Up Game" ] && [ -f $B/game.zip ] && echo 1)" "$o $(ls -A $B)"
+	ok "$U: beside: dirs and files with their paths in that folder, done; nothing hidden left" "$(echo "$o" | grep -qx 'dir game/Made Up Game/data/deep' && echo "$o" | grep -q "^file Made Up Game/data/level 1.dat	game/Made Up Game/data/level 1.dat	3000$" && echo "$o" | tail -1 | grep -qx 'done 6 8042' && [ -z "$(ls -A $B | grep '^\.')" ] && echo 1)" "$o $(ls -A $B)"
+	ok "$U: beside: a second time, the next free folder (game (2))" "$(runb game.zip >/dev/null; [ -d "$B/game (2)/Made Up Game/data" ] && [ -f "$B/game/Made Up Game/readme.txt" ] && echo 1)" "$(ls -A $B)"
+	[ $ROOT = 1 ] && ok "$U: beside: unpacked as the desktop user, not as root" "$([ "$(stat -c %U "$B/game/readme.txt")" = $ME ] && [ -z "$(find $B/game -user root)" ] && echo 1)" "$(ls -ln $B/game)"
 	[ $ROOT = 1 ] && { o=$(su -s /bin/sh $ME -c "sh $P extract $T/list" 2>&1); ok "$U: extract is root's (rudolfd's job) only" "$(has "$o" "error This is rudolfd's")" "$o"; }
 done
 # a real disk too small (as root: a 4 MB tmpfs in a mount namespace of its own) and the 100 MB kept free by default
