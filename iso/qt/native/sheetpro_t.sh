@@ -431,7 +431,7 @@ chk5 'grep -q "^sel 0 0 0 0 99999 2$" "$ST25"' headdrag
 chk5 'grep -q "^dirty 1$" "$ST25"' dirty
 kill -0 $SPP25 2>/dev/null; LIVE5=$?
 ok "25. the mouse: a drag from a cell makes the choice, a drag from a head takes the columns, and the fill handle continues 1, 2 as 3, 4 and carries a formula with its references moved" \
-	"$([ $RC5 = 0 ] && echo 1)" "failed:${WHY5:-none} | $(tr '\n' '|' < "$T/drag.steps" 2>/dev/null) | app alive=$((1-LIVE5)) | $(head -40 "$T/sp_drag.log" | tr '\n' '/')"
+	"$([ $RC5 = 0 ] && echo 1)" "failed:${WHY5:-none} | $(tr '\n' '|' < "$T/drag.steps" 2>/dev/null) | app alive=$((1-LIVE5)) | $(tr '\n' '/' < "$T/sp_drag.log" 2>/dev/null)"
 kill $SPP25 2>/dev/null; sleep 0.4
 # the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/desktop"
