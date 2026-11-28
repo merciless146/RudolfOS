@@ -124,10 +124,19 @@ static int dlz_in_dest(const char *real)
 {
 	struct stat st;
 	if (stat(DLZIP_DEST, &st) || time(NULL) - st.st_mtime >= 900) return 0;
-	char *d = slurp(DLZIP_DEST, NULL); if (!d) return 0; trim(d);
-	char want[PATH_MAX + 2]; snprintf(want, sizeof want, "%s/", d);
-	size_t l = strlen(d) ? strlen(want) : 0;
-	int ok = l && *d == '/' && !strncmp(real, want, l) && real[l];
+	char *d = slurp(DLZIP_DEST, NULL); if (!d) return 0;
+	/* line 1: the account whose extraction it was (empty with nobody signed in), line 2: the folder. A folder another
+	   account unpacked is not this account's to read, quarantine or delete: the record goes with the session. */
+	char *nl = strchr(d, '\n'); if (!nl) { free(d); return 0; }
+	*nl = 0;
+	char s[80]; dlz_sess(s, sizeof s); size_t i = 0;
+	for (; d[i] && s[i]; i++) if (tolower((unsigned char)d[i]) != tolower((unsigned char)s[i])) break;
+	int ok = !d[i] && !s[i];
+	if (ok) {
+		const char *path = nl + 1; char want[PATH_MAX + 2]; snprintf(want, sizeof want, "%s/", path);
+		size_t l = strlen(path) ? strlen(want) : 0;
+		ok = l && *path == '/' && !strncmp(real, want, l) && real[l];
+	}
 	free(d); return ok;
 }
 static void api_dl_path(struct req *r, const char *what, int post)
@@ -272,7 +281,7 @@ static void api_dl_zip(struct req *r, const char *what, int post)
 			} else if (!strncmp(l, "dest ", 5)) {
 				dest = l + 5;
 				/* where the page will read, quarantine and delete its files by path: kept for its antivirus */
-				if (*dest == '/') { write_str(DLZIP_DEST, dest); chmod(DLZIP_DEST, 0600); }
+				if (*dest == '/') { char ss[80], b[PATH_MAX + 100]; dlz_sess(ss, sizeof ss); snprintf(b, sizeof b, "%s\n%s\n", ss, dest); write_str(DLZIP_DEST, b); chmod(DLZIP_DEST, 0600); }
 			}
 			else if (!strncmp(l, "done ", 5) || !strncmp(l, "stopped ", 8) || !strncmp(l, "error ", 6)) end = l;
 		}
