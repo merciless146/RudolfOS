@@ -11,6 +11,11 @@ called Rudolf Kryptonite"): 2.0 on the newest kernel (7.3 and later) with Waylan
 the name Rudolf OS.
 2.0 also brings the phone's own build, on the hardware 1.6.1 proves ("The phone build", below).
 
+**What 2.0 owns, from the gap analysis (the owner, 2026-11-28):** gaps 3, 5 and 9 of `docs/gap-analysis-1.6.3.md` are
+this plan's — the newest kernel and the "next" channel (below), Wayland (below), and Waydroid, which the phone build
+carries. Gaps 1, 2, 4, 6, 7 and 8 are `docs/plan-1.6.4.md`'s; File Explorer's step 1 (the window, the folders, the
+drives) comes forward out of wave 2 into 1.6.4, Part 6, and the rest of that app stays here.
+
 **Two editions, one repository (the owner, 2026-11-22):** "The 6.18 kernel version with X11 is going to continue being
 developed as the main version of the operating system", and "Rudolf Kryptonite is going to be a version of Rudolf
 specifically built and optimized for gaming and mobile use. Rudolf as it currently is in 1.6.x is going to be the regular
@@ -73,7 +78,8 @@ Clock (alarms, timers, world clock), Calculator, Notepad, Task Manager (from rud
 Image Viewer, Screenshot, Characters & Emoji, Font Viewer, Trash.
 
 **Wave 2: the everyday tools**
-File Explorer (its drag and drop with the shell's desktop and windows), Media Player (GStreamer), PDF Viewer (with
+File Explorer (its drag and drop with the shell's desktop and windows; its step 1, the window and the folders, is
+`docs/plan-1.6.4.md` Part 6 and comes first), Media Player (GStreamer), PDF Viewer (with
 printing, as 1.5.9's: a PDF renderer is the wave's one new library, poppler-glib, about 5 MB, budget checked), Archive
 Manager, Command Prompt and Terminal (VTE if it fits the budget, else a terminal of our own on a pty), Code Editor,
 Event Viewer, Calendar, Contacts, Weather, Voice Recorder, Camera, Help.

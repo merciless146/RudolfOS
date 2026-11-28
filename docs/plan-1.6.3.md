@@ -94,6 +94,39 @@ accent colours), its memory at idle against the web version, built in the releas
   three open together free roughly 200-350 MB.
 - **The owner's checklist:** each app on the Vivobook against Chromium mode's (every menu and toolbar button, a real
   document, spreadsheet and presentation of the owner's, printing), light and dark; the memory in Task Manager.
+#### Status (2026-11-28, session): WordPro's menu bar -- the page's eight menus, and what they hold today
+- **The app had no menus at all** (its step 1 ended at the toolbar, and the plan's step 2 begins with the menu bar), so
+  nothing the page puts behind a menu existed: Undo, Find, the zooms, the alignments, About. `wordpro.c` now has the
+  page's own `MENUS` (base_v24.html): **File, Edit, View, Insert, Format, Table, Tools, Help**, in the page's order, each
+  item with the page's label and its key (Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+P, Ctrl+K, Ctrl+H, Ctrl+Enter...), and its
+  separators where the page has them -- **generated, not copied**: `mkwordpro.py` reads the menu bar at build time, as it
+  already read the styles and the fonts, and writes each item with an id (`WPI_FORMAT_BOLD`, `WPI_VIEW_ZOOM_50`); the app
+  says which command it has by that id, so a label the page renames follows the page, and an item or a whole menu bar the
+  page loses stops the build (`a page without MENUS was not read`) instead of leaving hand-copied text behind. The one
+  shape it must work to read -- the page builds View's six zooms with a `.map` -- is expanded from the page's own list,
+  and any other computed item is refused by name.
+- **An item is wired where its command exists:** Edit's Undo, Redo, Select all, Find… and Find and replace…; View's six
+  zooms (50-200 %); Format's bold, italic, underline, strikethrough, sub- and superscript, Clear formatting, Bulleted
+  list, Numbered list, Increase and Decrease indent; Help's Keyboard shortcuts and About WordPro; File's Close. They call
+  the same functions the toolbar's buttons do, so a menu and a button cannot disagree.
+- **The rest is greyed and refuses**, as SpreadsheetPro's are until their step: the file commands (New, Open…, Save,
+  Save As…, the two exports, Page setup…, Print…, Document statistics…) with the .DOC format in step 3; Insert's tables,
+  pictures, links, page breaks, dates, footnotes, the contents, headers and page numbers; Table's rows and columns;
+  Tools' Notey and page colour; View's layouts, outline, marks, spell check and Notey -- they are listed so a person can
+  see what is coming, and no greyed item acts.
+- **Its test (the same workflow): 18 passed, 0 failed.** Case 14 reads the bar from the state: `mb 8 File,Edit,View,Insert,
+  Format,Table,Tools,Help`. Case 15 opens File (`RUDOLF_WP_DO=menu:0`, the check's hand on a bar it cannot aim) and finds
+  `menuopen File 14` with Page setup… and Print… in the greyed list and Close not in it. Case 16 runs Format ▸ Bold
+  through the menu's own dispatch (`mi:4:0`) and finds the writing tagged `b`, which is what the toolbar's B leaves.
+  Case 17 does what case 9 does for the styles: a copy of the page with `MENUS` taken out, and `mkwordpro.py` refuses it
+  by name rather than writing a bar of its own. Case 18 pins, menu by menu, how many of the page's commands the app has
+  not got (File 10, Edit 4, View 6, Insert 15, Format 10, Table 12, Tools 4, Help 1 -- 62): a command the page adds moves
+  a number and the test fails, so nothing joins the bar as a silent greyed entry, while a wired one the page renames or
+  drops stops the build by its id.
+- **Not in this step:** the commands behind the greyed items (their steps), the keyboard's Alt+letter paths to a menu, and
+  the screenshot comparison against the web WordPro. `wordpro` is still **not** in `NATIVE_APPS[]`: the native desktop
+  keeps opening the web WordPro until the whole app passes.
+
 #### Status (2026-11-28, session): SpreadsheetPro's mouse -- the drags, and the fill handle
 - **The app handled no motion at all** (the step before this one said so): only a press. The page's own mouse is now here
   (spro45.js's `mousedown` with its `drag`, `drag.col`, `drag.row` and `fillDrag`, its `mm` and `mu`, the handle's 7 px
@@ -336,7 +369,10 @@ accent colours), its memory at idle against the web version, built in the releas
   drawn as the page draws an item it cannot choose. The native desktop keeps opening the web PresentPro until the whole
   app passes, and `presentpro` is **not** in `NATIVE_APPS[]` yet.
 
-### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
+### Part 2. Fingerprint readers (from the owner's question of 2026-11-23; moved to `docs/plan-1.6.4.md`, Part 7)
+**Moved 2026-11-28:** every step of it is built (below, #750 for the native apps' administrator prompt); what is
+left is the owner's checklist with a real USB reader, which is `docs/plan-1.6.4.md` Part 7. Its text stays here as
+written.
 A dedicated fingerprint sensor is needed (in the power button, a corner of the touchpad, a pad beside the keyboard, or
 a USB reader): a touchscreen or touchpad senses at a few millimetres, far too coarse for a fingerprint's ridges.
 - **What it does:** a fingerprint unlocks the lock screen and answers administrator prompts; the password always still
@@ -747,6 +783,36 @@ each account in its own partition of the desktop's one shared browser profile (e
 Part 20). With "Keep my websites encrypted with my account" on (1.6.0 Part 22, oraenc60.js; #583), Oracle runs instead in a
 Chromium of its own whose profile is the account's encrypted folder (/persist/oracle/ID, the home folder's key, locked at
 sign-out), as a separate window (1.6.2 Part 29 frames it). Turning the setting off brings the tabs back into the page.
+#### Status (2026-11-28, session): what is already here, and where this part starts
+- **Nothing of Part 5 itself is built:** no bind mount, no forced close of a partition at sign-out, and no test that says
+  where a Controlled Frame partition's files live. The part is the three proofs above, then the mount, then the tests and
+  the owner's checklist.
+- **Its ground is all shipped,** though, and this is what a start builds on rather than reworks:
+  - **The setting and its meaning** (1.6.0 Part 22, #583; `desktop/oraenc60.js`): per account, off on Standard and on in
+    Native and Lite; kept inside the account's encrypted home (`desktop/owenc`), so the drive alone cannot change it;
+    turning it off asks for the account's password and is noted in System health. With it on, Oracle's websites --
+    sign-ins, site data, cache and saved site passwords -- live in `/persist/oracle/ID`, the home folder's key, locked at
+    sign-out (1.6.1 Part 20), and Oracle runs in a Chromium of its own (framed as a separate window, 1.6.2 Part 29).
+  - **The in-page tabs it has to keep** (1.6.0-1.6.1, `desktop/tabs26.js`): Oracle's tabs are real tabs of the desktop page
+    as Controlled Frames, each account in its own `persist:` partition of the desktop's one profile (that profile
+    encrypted by the computer's TPM key, 1.6.1 Part 20). The setting off already uses this path; Part 5 would use it with
+    the setting on.
+  - **The harness a proof can borrow** (`iso/qt/native/oramem63_t.js`, Part 4): a real Chromium, an Isolated Web App of its
+    own holding `<controlledframe>` tabs in an account's `persist:` partition, real or stand-in sites, and a measurement
+    taken from outside the page. Part 5's first proof is the same harness with a different question asked of it.
+- **Where to start, and why there:** the **first** proof -- where a partition's files are -- because the other two depend
+  on its answer: the mount point it names is what gets mounted (proof 2), and the password store it finds decides the
+  third. It needs no privileged code and no QEMU: one test, `iso/qt/native/oraencpart63_t.js`, in oramem63_t.js's shape,
+  which has a site write a cookie, a `localStorage` key, an IndexedDB record and a service worker, saves a password, and
+  then reads the profile's tree before and after: every one of them listed, each under one folder per partition or named
+  where it is not, and the profile's shared files (`Network/Cookies`, `HTTP Cache`, `History`, `Login Data`, `Preferences`,
+  Safe Browsing's folder) compared byte for byte. **Pass:** all of a site's data under one `Partitions/<key>` folder with
+  the shared files unchanged, and the password store named; **fail:** this part is written up as not possible, with what
+  was found instead, and the setting keeps its meaning today.
+- **Then**, in that order: proof 2 (the mount and unmount at sign-in and sign-out, with a crash in between, on a fake
+  profile), the build on Chromium, the QEMU test (sign in, a site's cookie kept, sign out, the drive read from outside),
+  and the owner's checklist on the Vivobook.
+
 **The way to have both** (to be proven first): while the account is signed in, rudolfd mounts the account's encrypted Oracle
 folder over that account's partition's storage folder inside the desktop's Chromium profile (bind mount, as Documents are
 mounted over /home/rudolf for Linux apps); at sign-out the partition's tabs are closed, Chromium is made to let go of the
@@ -770,7 +836,9 @@ Chromium in QEMU (sign in, a site's cookie kept, sign out, the drive read from o
 the owner's checklist: Chromium mode on the Vivobook, the setting on, Oracle's tabs in the page, signed-in sites kept after
 sign-out and back in.
 
-### Part 6. Installing beside Windows on the same drive (the owner, 2026-11-24 11:35 and 12:30 CST)
+### Part 6. Installing beside Windows on the same drive (the owner, 2026-11-24 11:35 and 12:30 CST; moved to `docs/plan-1.6.4.md`, Part 4)
+**Moved 2026-11-28:** the owner put installing beside Windows in 1.6.4, with gaps 1, 2, 4, 6, 7 and 8 of the gap
+analysis. Nothing of it is built, and its text stays here as written.
 The owner, installing on an ASUS desktop: "Is there a way to install it without formatting the hard drive or removing
 Windows?", then "Yes, add it to 1.6.3."
 **Today.** Settings > Update and recovery > Install here... writes Rudolf OS's whole disc image to the start of the
@@ -1310,7 +1378,11 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
 **Not this Part:** Oracle's WebRTC, which Native's WebKit does not have at all (docs/plan-1.5.9.md 7.1), and the camera in
 Linux apps, which use the Debian container's own stack.
 
-### Part 10. Archive Manager: unpacking and installing made easier (the owner's question, 2026-11-28)
+### Part 10. Archive Manager: unpacking and installing made easier (the owner's question, 2026-11-28; item 1 in the PRs
+below, items 2 to 8 moved to `docs/plan-1.6.4.md`, Part 5)
+
+**Moved 2026-11-28:** items 2 to 8 are 1.6.4's (gap 7 of the gap analysis); item 1 is the PRs of 2026-11-28, and its
+text stays here as written.
 
 **Asked:** "assess the archive manager application and determine the necessary changes to make unpacking and working with .zip
 files or installations easier and more intuitive." This part is that assessment and the list of changes; nothing of it is built
@@ -1409,6 +1481,22 @@ compression the desktop does not already do — no new archive format of Rudolf 
 
 **Both editions:** all of it is the page's own code and rudolfd's helpers, so Standard, Native and Lite get it the same; the
 native desktop's window is a page of its own and shows the same dialogs.
+
+#### Status (2026-11-28, session): item 1 built (PRs "a ZIP at any path" and "asking by path")
+rudolfd's half (PR #754): `GET dl/zip?path=` and `POST dl/unzip?path=` take an absolute path instead of `name=` and `acct=` —
+`realpath()`ed, a plain file, under the home, a mounted drive, `/tmp`, `/var/tmp` or `/srv` (`DLZIP_ROOTS` adds more, for the
+checks), so a link cannot lead out; the listing is the same answer everywhere. An extraction from a path unpacks as it always
+did (free space first, progress, `..` and absolute entries refused, links removed, as the desktop user) and then moves the whole
+unpacked folder, in one `mv` inside the ZIP's folder, into a free folder beside it named after it (`game`, `game (2)`), keeping
+the ZIP's own folders and names; the result says where with `dest`, and no account is marked as unzipping. The page's half (this
+PR): `dlzOf` accepts a ZIP reference whose file is outside the accounts' folders and asks by `path=`; the window's list, the
+progress window and Cancel are the same, and an extraction there ends by checking every file with the same antivirus, at its
+path — `dl/read?path=` for the bytes (a new `from='path'` in `dlRead`, so `dlScanBig` is unchanged) and `dl/file?path=&to=` for
+the quarantine or the deletion — then says where the folder is. Checks: `dlzip161api_t.sh` 16–22, beside cases in
+`dlzip161_t.sh` for both unzips, and `dlzip61_t.js` 23–27 (a ZIP in Documents listed and extracted beside itself, the antivirus
+reading and quarantining by path, nothing added to the page's own folders). What is left of item 1: the window's *in-memory*
+path (a ZIP in the account's own files that was never on the disk) still reads it the old way, and choosing a destination is
+item 2.
 
 ## Steps
 - Part 0: first.

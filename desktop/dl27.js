@@ -70,7 +70,9 @@ async function dlPoll(){clearTimeout(DLN.t);if(!dlOn()||!dlMine())return;if(DLN.
  try{dlReconcile()}catch(e){console.warn('downloads',e)}
  DLN.t=setTimeout(dlPoll,active||DLN.pend.length?1000:4000)}
 /* bytes of a file in the download folders */
-async function dlRead(name,from,off,len){const r=await rd('dl/read?name='+encodeURIComponent(name)+'&from='+from+'&off='+off+'&len='+len+(from=='home'?DLAQ():''));return new Uint8Array(await r.arrayBuffer())}
+/* 1.6.3 Part 10, item 1: from='path' -- name is an absolute path, a file outside Downloads (one a ZIP was unpacked into beside
+   it), which rudolfd reads through the same places a ZIP at a path may be in */
+async function dlRead(name,from,off,len){const r=await rd('dl/read?'+(from=='path'?'path='+encodeURIComponent(name):'name='+encodeURIComponent(name)+'&from='+from+(from=='home'?DLAQ():''))+'&off='+off+'&len='+len);return new Uint8Array(await r.arrayBuffer())}
 const dlLatin=u8=>new TextDecoder('latin1').decode(u8);
 /* the antivirus on a large file: its first and last 4 MB (the whole file up to 8 MB) */
 async function dlScanBig(name,from,size,NM,prog){const hits=[];const h=await dlRead(name,from,0,DL_AVPART*2>=size?size:DL_AVPART);const parts=[dlLatin(h)];
