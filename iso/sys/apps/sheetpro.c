@@ -812,6 +812,13 @@ static void ask_cb(int i, void *d)
 	do_save(0);                                                                               /* (Save: then the act) */
 	if (!DIRTY) pending_do();   /* (no file yet: the chooser is open, and save_done runs it) */
 }
+/* (the check cannot aim the overlay's buttons, so RUDOLF_SP_ANSWER stands in for the press: Save, Discard or Cancel) */
+static gboolean answer_hook(gpointer d)
+{
+	const char *a = (const char *)d;
+	ask_cb(!strcmp(a, "save") ? 2 : !strcmp(a, "discard") ? 1 : 0, NULL);
+	return G_SOURCE_REMOVE;
+}
 static void ask_discard(int act, const char *path)
 {
 	const char *b[] = { rui_tr("Cancel"), rui_tr("Discard"), rui_tr("Save") };
@@ -822,6 +829,7 @@ static void ask_discard(int act, const char *path)
 	status_update(); state_soon();
 	rui_confirm(W, rui_tr("Save the changes?"), msg, b, 3, 1, ask_cb, NULL);
 	g_free(msg);
+	{ const char *a = getenv("RUDOLF_SP_ANSWER"); if (a && *a) g_timeout_add(600, answer_hook, (gpointer)a); }
 }
 static void do_close(void) { if (DIRTY) ask_discard(PEND_CLOSE, NULL); else { gtk_widget_destroy(W->win); gtk_main_quit(); } }
 static void do_new(void) { if (DIRTY) ask_discard(PEND_NEW, NULL); else new_book(); }
