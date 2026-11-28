@@ -52,14 +52,63 @@ with a harmless job that only says whether RPK_SIGNING_KEY is set, never its val
 Library's publish still sign on main; a computer on the new release trusts both keys.
 **Later (not this part):** signing through a hardware key or a cloud key service, so the private key can't be copied at all.
 
+#### Status (2026-11-28, session): the replacement's machinery, before the switch's day
+- **Item 1, checked on the server (read-only, 2026-11-28):** the environment `release` exists, its one protection rule
+  is a branch policy, and the branches it allows are exactly `main` (`GET /repos/…/environments/release` and its
+  branch policies). Item 2: `rudolf-release.yml`, `extensions.yml` and `blitzen-model.yml` each name it, and the
+  signing step fails loudly when the secret is missing.
+- **Built here:** `iso/systools/keyswitch.py` — `--status` says where the replacement stands (which key signs, whether
+  the 2026-11-24 pair is still trusted, and what the switch still waits for); `--check` is the list's own invariant and
+  names no key: one to four public keys in the shape `mkuki.py` reads for `recovery.efi`, no key twice, and no list
+  without a key. A rotation after this one therefore passes it unchanged; it is `deadcheck.py`'s new step before every
+  pull request. `--switch --yes [--to KEY]` makes the switch (that key first, the one that signed after it), and refuses
+  without the owner's word, on a list that would not check, on a key the list does not trust, and on `--to` with no key
+  after it — which on the day would otherwise switch to the default.
+- **Its check:** `iso/qt/host/keyswitch_t.sh`, 19 cases on copies of the list (the state as it stands, each refusal, the
+  gate on a later rotation's keys, the switch, a second switch, a key given twice, the wording of `--status`); and
+  `.github/workflows/keyswitch-check.yml`: the tool and its 19 cases, `deadcheck.py` for every change of
+  `iso/systools/**` — no workflow ran it before, so its new gate had no CI at all — with a negative control that breaks a
+  copy of the list and expects deadcheck to refuse it, so the job proves the gate fires rather than only that it exits 0;
+  and on `main` a job in the `release` environment that fails if `RPK_SIGNING_KEY` is not there — a broken secret shows
+  now, not at the next 6-hourly release. What the plan asked as a one-off, that a branch cannot see the signing key, is
+  answered by the environment's policy read from GitHub (Deployment branches: `main`), not by a job of its own.
+- **The day itself (3d) is not done and cannot be:** it needs a stable release that ships both keys to have been out
+  for a while (the owner's call), then `keyswitch.py --switch --yes`, the environment's `RPK_SIGNING_KEY` set to the
+  new key and the repository secret deleted, and the merge — in that order, which `docs/secure-boot.md` now writes
+  down under "Replacing the release key".
+- **Left:** the switch's day and item 3e (the old half leaving the list); item 4, two-factor with a hardware key on
+  the owner's GitHub account, which only the owner can do.
+
 ### Fixes
+- **A Windows program's failure box says the real error** (the owner, 2026-11-28, with three photos: Starport: GE and
+  Dead Frontier, started through Wine from a USB stick, both end at once (exit 3) and the box showed only Wine's
+  `winebth` line, which is harmless and on every launch): `launch_report` now shows the earliest `err:` line of the log
+  first and then its last lines, leaving out `fixme:` and Wine's driver-service setup (`winebth`, `wineusb`, the
+  `scmdatabase_autostart_services` line after them); a log of nothing else says so. **And what it runs with** is read
+  when a Windows program ends at once and shown in it: Wine's version, its 64- and 32-bit GL and Vulkan packages and any
+  that is not installed cleanly, the OpenGL renderer, Vulkan's device, `/dev/dri`, the room left, and the newest logs —
+  kept beside the program's log as `…/ID.diag.txt` (`LR_DIAG_CMD`, a fixed command; a test's own in `debreport.c`'s
+  build). **The request is written first and the readings fill it in**: they come in a request of their own (`…-diag`, as
+  the page never takes an id twice: `lxPortalPoll`'s `LX.seen`) that says whose box it fills (`"fill"`, `"of"`), which
+  `wineold62.js` does, never a second box, and that carries only the readings and the file they were kept in (nothing the
+  box already says), and that always comes: `lr_read_diag` keeps the check's lines, or a line of its own saying the check
+  could not start or printed nothing — never nothing at all, which left two of the six runs in #762's CI with no readings
+  request and no word about it. The box never waits for `glxinfo` or `vulkaninfo`, which can each take seconds. The newest logs are
+  this account's only (`find … -uid $(id -u)`). The cause is the highest-ranked of Wine's lines (`lr_cause`): its own
+  `wine: ` words of a failure, then any of its errors (`err:`, `err:winediag:`, its Direct3D channels), then Direct3D's
+  other lines (`warn:d3d:`), a tie going to the earliest. The owner's block of commands did not have to be typed on the
+  stick: it is what the box now says by itself, in 1.6.3 and after. `wineold162_t.sh` holds the error-first, the
+  winediag, the `wine: ` and the `warn:d3d:` cases, the noise-only, the check read (its own request says only that), a Wine
+  program's two requests (the case that would have caught the missing readings), a check that prints nothing (its line in
+  the box and in the file) and the Debian-program (nothing read) cases; `wineold162_t.js` the box shown before the readings, then filled in, one box.
+  PR #762.
 - **Oracle's status line stays one line** (the owner, 2026-11-23 19:04 CST, with photos: a long "Goes To:" address wrapped
   onto a second line and the page above it jumped; 19:08 CST: "Add it as the first 1.6.3 fix"): PR #677.
 
 ### Part 1. The Office apps as native programs (moved from 1.6.2 Part 39, item 4)
 WordPro, SpreadsheetPro and PresentPro, about 130 MB each today as web windows (1.6.2 Part 38's readings), rewritten as
 native programs on librudolf-ui as the native Task Manager (1.6.2 #660) and native Settings (1.6.2 Part 39) were: each
-its own /usr/bin program (rudolf-wordpro, rudolf-sheets, rudolf-present), its checklist made from the web app's code and
+its own /usr/bin program (rudolf-wordpro, rudolf-sheetpro, rudolf-presentpro), its checklist made from the web app's code and
 tests, its windows screenshot-compared with the web version in Chromium mode (under 2 % different, light and dark, two
 accent colours), its memory at idle against the web version, built in the release build within the base layer's budget.
 - **The order:** WordPro first, then SpreadsheetPro, then PresentPro; one PR per app, or per part of an app when it is
@@ -72,6 +121,124 @@ accent colours), its memory at idle against the web version, built in the releas
   three open together free roughly 200-350 MB.
 - **The owner's checklist:** each app on the Vivobook against Chromium mode's (every menu and toolbar button, a real
   document, spreadsheet and presentation of the owner's, printing), light and dark; the memory in Task Manager.
+#### Status (2026-11-28, session): WordPro's menu bar -- the page's eight menus, and what they hold today
+- **The app had no menus at all** (its step 1 ended at the toolbar, and the plan's step 2 begins with the menu bar), so
+  nothing the page puts behind a menu existed: Undo, Find, the zooms, the alignments, About. `wordpro.c` now has the
+  page's own `MENUS` (base_v24.html): **File, Edit, View, Insert, Format, Table, Tools, Help**, in the page's order, each
+  item with the page's label and its key (Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+P, Ctrl+K, Ctrl+H, Ctrl+Enter...), and its
+  separators where the page has them -- **generated, not copied**: `mkwordpro.py` reads the menu bar at build time, as it
+  already read the styles and the fonts, and writes each item with an id (`WPI_FORMAT_BOLD`, `WPI_VIEW_ZOOM_50`); the app
+  says which command it has by that id, so a label the page renames follows the page, and an item or a whole menu bar the
+  page loses stops the build (`a page without MENUS was not read`) instead of leaving hand-copied text behind. The one
+  shape it must work to read -- the page builds View's six zooms with a `.map` -- is expanded from the page's own list,
+  and any other computed item is refused by name.
+- **An item is wired where its command exists:** Edit's Undo, Redo, Select all, Find… and Find and replace…; View's six
+  zooms (50-200 %); Format's bold, italic, underline, strikethrough, sub- and superscript, Clear formatting, Bulleted
+  list, Numbered list, Increase and Decrease indent; Help's Keyboard shortcuts and About WordPro; File's Close. They call
+  the same functions the toolbar's buttons do, so a menu and a button cannot disagree.
+- **The rest is greyed and refuses**, as SpreadsheetPro's are until their step: the file commands (New, Open…, Save,
+  Save As…, the two exports, Page setup…, Print…, Document statistics…) with the .DOC format in step 3; Insert's tables,
+  pictures, links, page breaks, dates, footnotes, the contents, headers and page numbers; Table's rows and columns;
+  Tools' Notey and page colour; View's layouts, outline, marks, spell check and Notey -- they are listed so a person can
+  see what is coming, and no greyed item acts.
+- **Its test (the same workflow): 18 passed, 0 failed.** Case 14 reads the bar from the state: `mb 8 File,Edit,View,Insert,
+  Format,Table,Tools,Help`. Case 15 opens File (`RUDOLF_WP_DO=menu:0`, the check's hand on a bar it cannot aim) and finds
+  `menuopen File 14` with Page setup… and Print… in the greyed list and Close not in it. Case 16 runs Format ▸ Bold
+  through the menu's own dispatch (`mi:4:0`) and finds the writing tagged `b`, which is what the toolbar's B leaves.
+  Case 17 does what case 9 does for the styles: a copy of the page with `MENUS` taken out, and `mkwordpro.py` refuses it
+  by name rather than writing a bar of its own. Case 18 pins, menu by menu, how many of the page's commands the app has
+  not got (File 10, Edit 4, View 6, Insert 15, Format 10, Table 12, Tools 4, Help 1 -- 62): a command the page adds moves
+  a number and the test fails, so nothing joins the bar as a silent greyed entry, while a wired one the page renames or
+  drops stops the build by its id.
+- **Not in this step:** the commands behind the greyed items (their steps), the keyboard's Alt+letter paths to a menu, and
+  the screenshot comparison against the web WordPro. `wordpro` is still **not** in `NATIVE_APPS[]`: the native desktop
+  keeps opening the web WordPro until the whole app passes.
+
+#### Status (2026-11-28, session): SpreadsheetPro's mouse -- the drags, and the fill handle
+- **The app handled no motion at all** (the step before this one said so): only a press. The page's own mouse is now here
+  (spro45.js's `mousedown` with its `drag`, `drag.col`, `drag.row` and `fillDrag`, its `mm` and `mu`, the handle's 7 px
+  square in `drawSel`, and `doFill`):
+  - **From a cell**: a press chooses the cell and a drag grows the choice from where the press began (Shift still grows
+    it from the press before), the cursor following it and the grid scrolling it into view as the page's own does.
+  - **From a head**: a press takes the whole column or row, and a drag across the other heads grows it, as the page's
+    `drag.col`/`drag.row` do; the cursor goes to the top (or left) of the view, as before.
+  - **The fill handle**: the page's 7 px blue square (in white round it) now sits at the choice's bottom-right corner;
+    pressing it starts a fill drag, and a dashed rectangle shows what the release would fill, on the drag's longer axis
+    exactly as the page chooses it. The release fills: numbers go on by their line of best fit (1, 2 becomes 3, 4), a
+    single number is copied, weekdays and months continue (full names or their first three letters, the case kept), a
+    word with a number in it continues that number ("Item 1", and a leading zero's width), and a formula is copied with
+    its **references moved** (`=A1*2` in B1 becomes `=A2*2` in B2 and `=A3*2` in B3; `$A$1`, `$A1` and `A$1` stay as they
+    are; a sheet's name before `!` and a word in a string are not references). The filled cells keep the style of the ones
+    they came from, the whole drag is one step of the history, and the filled range is left chosen -- the page's own
+    results.
+- **Its test (the same workflow): case 25, new**, with the mouse as a person holds it (Xvfb and xdotool: a press, motion
+  part of the way and the release, tried again while what it should leave is missing): a book of 1 and 2 in A1:A2 with
+  `=A1*2` in B1; A1 dragged to B2 finds `sel 1 1 0 0 1 1` and `A1:B2`; A1 dragged to A2, then its handle down to row 4's
+  middle, finds A3 3, A4 4 and the choice `A1:A4`; B1's handle down to row 3's middle finds `=A2*2` (shown 4) and
+  `=A3*2` (shown 6); A's head dragged to C's finds `sel 0 2 0 0 99999 2` and `A1:C100000`; the book is marked unsaved and
+  the window still answers. A cell's middle is 46 + 80 c and 22 + 20 r from the grid's corner (the state's `area` line),
+  and a choice's handle is at its corner, so the check computes both.
+- **Not in this step, by the page's own split:** the page's scroll while the pointer is held past the edge, double-click
+  on the handle (its fill as far as the column beside), the comments' tooltip on rest, the borders' drag to resize, and
+  the rest of Part 1's steps; the native desktop keeps opening the web SpreadsheetPro until the whole app passes, and
+  `sheets` is still not in `NATIVE_APPS[]`.
+
+#### Status (2026-11-28, session): SpreadsheetPro's heads -- a press takes the whole column or row, and the status line adds it up
+- **The heads answered nothing:** a press on a column's letter, a row's number or the corner returned before it was
+  handled ("choosing a whole row or column is a later step"), so a person had no way to choose a column -- and so no way
+  to see its sum, make it bold or empty it. The press is the page's now (`spro45.js`'s mousedown): a column's head takes
+  the whole column from row 1 to 100 000, a row's head its whole row to ZZ, the corner the sheet (`A1:ZZ100000`, the
+  page's `selAll`), and Shift grows the choice from where it started. The cursor goes to the top of the view, where the
+  page puts it, so a head's press never throws the sheet to its last row.
+- **The figures follow the choice:** the status line's Sum, Average, Min, Max and Count were worked out only for a choice
+  of 20 000 cells or fewer, which a column never is; they now read the sheet's own cells inside the choice -- the page's
+  `eachIn` -- so a column is added up and a range gives the same answer as before.
+- **A big choice is bounded as the page bounds it:** a format over more than 200 000 cells (a column, a row, the sheet)
+  takes the cells that hold something plus the ones on the screen, as the page's `styleSel` does, so a hundred thousand
+  empty cells are not given an entry each; a style asked for with none to put on the cells walks nothing at all; Clear
+  contents and Delete on such a choice take the cells that hold something rather than returning without a word; and Clear
+  formats walks the sheet's own cells, which is the whole of it, since only a cell that holds something has a format to
+  take (it walked the choice's rectangle until this was fixed: the whole sheet was 70 million places to look at).
+- **The fault this step found:** the choice's tint painted every cell of it -- 100 000 rows for a chosen column and 70
+  million for the sheet -- so a press on the corner left the window painting cells the clip throws away, and every press
+  after it went unanswered (the check saw the press "do nothing" while the app was still running, its window in place).
+  It paints the visible rectangle now, both ends, and the rest as the sheet is scrolled to.
+- **Its test (the same workflow): 23 passed, 0 failed, 343 552 bytes**, hardened (the app's budget is 1 MB). Case 24
+  opens a book of seven cells (A1 5, A2 10, A3 15, B1 `x`, A5 4, B5 6, C5 8), presses column A's head and finds
+  `sel 0 0 0 0 99999 0`, the name box's `A1:A100000` and `agg 34|8.5|4|15|4`; Shift and B's head grow it across
+  (`A1:B100000`, `40|8|4|15|6`, B1's text counted and not summed); row 5's head takes its row (`A5:ZZ5`,
+  `18|6|4|8|3`); the corner takes the sheet (`A1:ZZ100000`, `48|8|4|15|7`), and Format ▸ Clear formatting over it --
+  `RUDOLF_SP_DO=clearf`, the check's hand on a row it cannot aim -- leaves the book changed (`dirty 1`) with the window
+  still answering, which a walk over the rectangle would not; and Delete on column A takes its four cells
+  and nothing else (`cells 3`, C5's 8 still there), Ctrl+Z putting them back (`cells 7`). The state's new `area x y`
+  line is where the grid sits in the window, because a head's press is at its corner and a check cannot guess it; each
+  press is tried again while its effect is missing, and a failure prints what every press saw.
+- **Not in this step, by the plan's own split:** a drag from a head (or from a cell, or the fill handle) -- the app
+  handles no motion at all yet, which is the step that gives the grid its drags -- Ctrl+click for a second range, the
+  widths, hiding and freezing of rows and columns, and the rest of Part 1's steps. The screenshot comparison is still
+  not in it: it comes with the step that makes every view of the window. The native desktop keeps opening the web
+  SpreadsheetPro until the whole app passes, and `sheets` is still not in `NATIVE_APPS[]`.
+
+#### Status (2026-11-28, session): WordPro's functions check -- what the page's own commands were doing to the writing
+- **Undo took the marks with it:** Ctrl+Z put the text back but not the bold, the italic or the find mark, because a
+  step was the characters alone. A step is now the writing *and* its tag set, taken before each change (serialised with
+  GTK's own tag set), so undoing a letter leaves the bold where it was, the choice and the cursor go back with the text,
+  and Ctrl+Shift+Z is the redo the page has.
+- **The block commands:** Bullets, Numbering, Indent and Outdent did nothing on a person's choice and could only add --
+  a second press added another bullet. They act on every line of the choice, a second press takes the bullet or the
+  number off (as the page's `wpBlock` does), the numbering counts up line by line, and the lines are taken by number so
+  an inserted prefix does not move the ones still to come.
+- **The formatting steps and Find:** a style, font, size, colour, alignment, spacing or list change is a step of the
+  history now (they were applied and forgotten); Ctrl+F puts the page's `find` tag on the match, not only the choice;
+  bold/italic/underline/strike are toggles of their own (a second Ctrl+B takes bold off and leaves italic), sub and sup
+  take each other off, and the styles do not stack.
+- **Its test (the same workflow): 13 passed, 0 failed, 278 856 bytes.** Cases 10-13: the undo that keeps the bold and
+  the find mark that is on the writing; a bullet on and the same press taking it off. The bullets cases open their own
+  app (`RUDOLF_WP_DO=bul`, the check's hand on the toolbar's buttons, which it cannot aim) and count the characters the
+  command put in.
+- **A claim that was wrong:** a "replace-all hang" I had listed is **not** real -- GTK's `gtk_text_buffer_insert`
+  advances the iterator past what it inserted, so the loop always moves on. Nothing was changed for it.
+
 #### Status (2026-11-27, scheduled task): WordPro begun, step 1 (the editor and its toolbar)
 - **Branch `wordpro-1`:** `iso/sys/apps/wordpro.c` (`/usr/bin/rudolf-wordpro`, with librudolf-ui) has the page's window
   (980 x 646), the toolbar of `.wp-tb` -- the paragraph styles, the fonts, the size with its - and +, bold, italic,
@@ -198,6 +365,149 @@ The native document is the page's document, not a text buffer that happens to lo
   inserts the page's default table and asks for a picture's file through GTK's own chooser.
 
 ### Part 2. Fingerprint readers (from the owner's question of 2026-11-23)
+#### Status (2026-11-28, session): SpreadsheetPro's functions check -- a changed book is not thrown away
+- **The fault a person hits:** File ▸ Close threw the book away without a word (a bare `gtk_widget_destroy`, no
+  `delete-event`), and New and Open replaced the cells outright. All four ways out now ask first -- the window's own X,
+  File ▸ Close, New and Open... -- in the page's own overlay inside the window, with the page's three answers: **Save**
+  writes the book (through the chooser when it has no file, and the act that was put off runs when that save finishes),
+  **Discard** goes ahead, **Cancel** stays where it was and writes nothing. The question names the book as the page's
+  does (`Book1`, or the file's name), and the status line says it too.
+- **Closing ends the program:** the window's destroy alone left the loop running with the book gone, so a closed
+  SpreadsheetPro stayed behind as a headless process; the window and the loop go together now.
+- **Its test (the same workflow): 22 passed, 0 failed, 339 320 bytes.** Three cases of the guard. Case 20 closes a book
+  of two cells with a change in it: the question is up, `dirty 1`, both cells still there, the file's bytes untouched,
+  and Escape (the Cancel answer) leaves the book, the cells and the bytes as they were. Case 21 answers Save and finds
+  the change written in the page's own JSON (`[[0,7],[702,"keep"]]`) with the window gone. Case 22 closes a book with
+  nothing to lose and no question is asked. The check's hand on the X is `RUDOLF_SP_DO=close` (it waits for the first
+  change and asks again while the question is put off) and its answer is `RUDOLF_SP_ANSWER=save|discard|cancel`, which
+  calls the same callback a press on the overlay's button does (the overlay cannot be aimed by the check); the state's
+  `answer` line (0 Cancel, 1 Discard, 2 Save) lets a case see which answer was given. Escape counts as Cancel, which is
+  what `rui_confirm` hands its callback as -1.
+
+#### Status (2026-11-27, scheduled task): SpreadsheetPro begun, step 1 (the window, the grid and its formulas)
+- **Branch `sheetpro-1`:** `iso/sys/apps/sheetpro.c` (`/usr/bin/rudolf-sheetpro`, with librudolf-ui) has the page's window
+  (1000 x 660) as `desktop/spro45.js` draws it: the page's eight menus (File, Edit, View, Insert, Format, Data, Tools,
+  Help -- File's 15 rows and Data's 12, each of them working here or greyed as the page draws an item it cannot choose),
+  the toolbar (the fonts and the sizes, bold, italic, underline, strikethrough, the text and fill colours, the three
+  alignments, Σ, undo, redo, clear; the number formats, wrap, merge, borders, sorting, filtering and charts greyed for
+  their later steps), the name box and the formula bar, the grid drawn with the page's own values (a head of 46 x 22 px,
+  a column 80 px and a row 20 px at 100 %, the lines `#e2e3e3`, the head `#f3f4f6` with `#444` letters, the choice
+  `#1a73e8` at 12 % with its 2 px border), the sheet tab and the status line with what a choice adds up to and the zoom.
+- **What a cell is:** what was typed, never a parsed value, with its style beside it, as `sprof45.js`/`spreng45.js` keep
+  it: numbers (`$` and commas allowed, a trailing %), text, TRUE and FALSE, and formulas -- references (`A1`, `$A$1`),
+  ranges (`A1:B9`), `^ * / + -`, the comparisons, `&`-less strings, and SUM, AVERAGE, MIN, MAX and COUNT, with the errors
+  `#DIV/0!`, `#VALUE!`, `#NAME?` and `#CIRCULAR!` (a reference that comes back to its own cell). 100 steps of undo and
+  redo, each a copy of the sheet as it stood (the page's own "the cells as they were").
+- **Its keys, the page's:** typing, F2, Enter (down, and back to the column the row started in when it was typed with
+  Tab), Tab and Shift+Tab, Shift+Enter, the arrows, Ctrl+arrows to the edge of the data, Shift+arrows choosing more,
+  Delete, Ctrl+Z and Ctrl+Y, Ctrl+B/I/U/5, Ctrl+` for the formulas, Ctrl+A, Ctrl+G and the name box (`A1`, `A1:B2`),
+  Alt+= for the numbers above, Ctrl+C/X/V as tab-separated text.
+- **Build time:** `iso/sys/apps/mksheetpro.py` reads the toolbar's lists from the page itself (`desktop/office45.js`'s
+  OFF_FONTS, `desktop/spro45.js`'s sizes and SP_NF), as `mkwordpro.py` does for WordPro: a list it cannot find stops the
+  build rather than shipping a blank toolbar.
+- **Its test:** `iso/qt/native/sheetpro_t.sh` (`sheetpro-check.yml`): built with `RUI_WERROR=1` and checked hardened,
+  then used under Xvfb with a stand-in rudolfd -- **14 passed, 0 failed, 317 072 bytes**: the window and its title, typing
+  with Enter, a formula worked out (A3 = A1 + A2 is 12), the formula bar and the name box, Tab's run and Enter's return,
+  `#DIV/0!` and `SUM(A1:A3)`, Ctrl+Down, Ctrl+A with the status line's figures (Sum 48, Average 12, Min 5, Max 24,
+  Count 7), undo and redo, Ctrl+B twice, Ctrl+`, the name box's cell and range, the page's 15-row File and 12-row Data
+  menus, and `mksheetpro.py` refusing a page it cannot read.
+- **Not in this step, by the plan's own split:** the files (`.RSHEET`, CSV, `.xlsx`; open, save, print, PDF), charts,
+  conditional formatting, data validation, sorting, filtering, the number formats, wrap, merge, borders, row and column
+  sizes, frozen panes, more than one sheet, and the assistant -- steps 2 and 3. The screenshot comparison against the web
+  SpreadsheetPro is **not** in it yet either: it comes with the step that makes every view of the window. The native
+  desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is **not** in `NATIVE_APPS[]`.
+#### Status (2026-11-28, session): PresentPro's functions check -- the notes and the order of the deck
+- **The notes were outside the undo:** typing a speaker's note and pressing Ctrl+Z undid the last *slide* change while
+  the note stayed, because the notes were written onto the slide as they were typed and never entered the history. They
+  are a step of the history now, taken when the typing pauses (one keystroke is not a step, a sentence is), and undoing
+  from the notes puts the notes back and touches nothing else.
+- **A slide could only stay where it was typed:** Ctrl+Up and Ctrl+Down move the chosen slide up or down the deck (the
+  choice goes with it, and it is one step of the history). The page's Slide menu has the same two rows.
+- **Its test (the same workflow): 18 passed, 0 failed.** Case 17 types a note (`notes:Speaker's line`), finds it on the
+  slide and sees the step it puts on the history (`hist 1 2`), then presses Ctrl+Z: the note is gone and the history
+  went back exactly one step (`hist 0 2` -- the history counts its first step as 0). Case 18 makes a slide and moves it
+  up: `cur 0`, the new slide first, the title slide second.
+#### Status (2026-11-28, session): SpreadsheetPro step 2 begun (the .RSHEET file)
+- **Branch `sheetpro-2`:** a .RSHEET opens and saves exactly as `sprof45.js` writes it -- its v2 JSON: the book's styles
+  (each different one once, in the page's order) and its sheet's cells as `[spK(r,c), value, formula, style]`, the value
+  what the page parses (a number, TRUE or FALSE, or text -- with the page's `'` in front of a text that would read back
+  as something else), sorted by the cell's key. A file the page or Oracle saved opens here, and one saved here opens
+  there; the version 1 format of the old Spreadsheet is read too. The window's title is `NAME - SpreadsheetPro` with the
+  page's ` *` while there are changes, New (Ctrl+N) is a book with no file, Open... (Ctrl+O) and Save, Save as...
+  (Ctrl+S, Shift+Ctrl+S) are the page's own File rows and use the desktop's own file chooser, and the program takes a
+  path on its command line, which is how Files launches an app with a file.
+- **A book of several sheets is refused, not cut down:** this step shows one sheet. Opening a .RSHEET of two and
+  saving it kept the first and dropped the rest without a word, so the loader counts the sheets before it touches the
+  book and refuses one of more than a single sheet, naming the file, saying how many it has, and leaving the bytes as
+  they were; the reason is on the status line before the dialog opens (whose own loop runs the state's timer).
+- **CSV, read and written as the page does it:** a .CSV or .TSV opens with `sprof45.js`'s `spFromCSV` rules -- the
+  first line's own delimiter (tab, then semicolon, then comma), quotes with a doubled quote inside, CRLF and a BOM
+  skipped, each field a cell's text -- and the file's own name, without the extension, is the sheet's. Saving it back
+  (Ctrl+S on a CSV, as the page's `doSave` does, or a Save as to a .CSV) writes what each cell shows -- the formula's
+  value, not its text -- quoted where it holds a delimiter, a quote or a line break, a line each, CRLF. File's two
+  greyed rows are live: Import CSV asks by the page's own title and reads the file as this step's one sheet (the page
+  puts it in a new sheet; this step has one), and Export this sheet as CSV writes it wherever it is asked to without
+  becoming the book's file.
+- **Its test (the same workflow):** **19 passed, 0 failed, 338 896 bytes**, hardened (the app's budget is 1 MB). Case 14
+  opens a .RSHEET the page wrote -- a number, a formula worked out as 10, a bold cell and a centred one -- with its name
+  in the title and `dirty 0`; case 15 types into it (the page's ` *` in the window's own title, `dirty 1`) and presses
+  Ctrl+S, then reads the file back: v2, the page's `app`, the cells by key (`[0,9]`, `[1,null,"=A1*2"]`,
+  `[702,"x",null,0]`, `[1406,7,null,1]`), a text with a quote and a backslash, a number of 15 digits, `styles`
+  `[{"b":1},{"ha":"center"}]`, the sheet's own name, and the status line's `Saved grid.RSHEET` -- the name read
+  after the saver had taken the book's own away, which is how the freed path showed itself. The case caught that fault:
+  Ctrl+S hands the saver the path already held, which was freed and then copied, so the title and the status line read
+  freed memory; both places now take the new name first. The review of the section also made a number that is not
+  finite a JSON null instead of `inf`, kept the sheet's own name rather than always saving `Sheet1`, and cut a second
+  pass over the cells and a macro from the writer. Case 17 opens a two-sheet book: it is refused, `Book1` stays in the
+  title, `file -`, `cells 0`, `say two.RSHEET has 2 sheets`, and the file's bytes are the same afterwards. Case 18 opens
+  a CSV written with a quote inside a quoted field and CRLF, checks its cells (5, 7, `a,b`, `say "hi"`, 0.5), presses
+  Ctrl+S and gets the same bytes back. Case 19 exports a .RSHEET's sheet through `RUDOLF_SP_EXPORT` and asserts the
+  page's own text: `5,10,` / `x,,` / `,,7`, CRLF -- the formula's 10, and the empty cells' commas in place. (It opens
+  its own book: reading case 14's after case 15 has typed into and saved it would test the order, not the export.)
+- **Not in this slice, by the plan's own split:** .xlsx with its import and export rows, page setup, printing and the
+  PDFs, and more than one sheet (which is why a book of several is refused rather than cut down); the number formats, the sizes and hiding of rows and columns, the merges, the frozen panes, the charts,
+  the other sheets and the assistant are not carried through a save yet (the step that models each takes it on). The
+  screenshot comparison is still not in it: it comes with the step that makes every view of the window. The native
+  desktop keeps opening the web SpreadsheetPro until the whole app passes, and `sheets` is still not in `NATIVE_APPS[]`.
+
+#### Status (2026-11-27, scheduled task): PresentPro begun, step 1 (the window, its slides and their places)
+- **Branch `presentpro-1`:** `iso/sys/apps/presentpro.c` (`/usr/bin/rudolf-presentpro`, with librudolf-ui) has the page's
+  window with its eight menus and the page's own rows (File 18, Home 20, Insert 16, Design 4, Arrange 21, Slide Show 7,
+  View 7, Help 3), the toolbar of `.pp-tb` (a new slide, the layout, the font and its size, bold, italic, underline,
+  strikethrough, the text colour, the three alignments, bullets, numbering, undo, redo, a duplicate and a delete), the
+  184 px list of slides with the current one in the app's blue and a hidden one dimmed and struck, the stage on the
+  page's `#e5e7eb` with the slide's shadow and its 960 x 540 deck, the notes bar and the status line ("Slide n of m",
+  the zoom and Fit). The page's eight layouts are `pprof45.js`'s `ppLayout` boxes. A slide holds its layout and, for
+  each of its text places (title, sub, body, body2, h1, h2), the words and what the toolbar set on them -- bold, italic,
+  underline, strikethrough, the alignment, bullets or numbering, the size, the font and the colour -- with the layout's
+  own kept as the default and taken away with a layout that has not the place. Text is typed where it sits (Enter, F2 or
+  a double-click opens the editor over the place, Escape or a click away puts it on the slide, Enter is a line, Tab the
+  next place), and the page's keys are its own: Ctrl+M with the page's rule that a title slide is followed by a content
+  one, Ctrl+D, Ctrl+Z and Ctrl+Y, Ctrl+B/I/U, PageUp and PageDown, and Delete on the list, with the page's 60 undo steps
+  taken after each change, as WordPro's and SpreadsheetPro's are.
+  `iso/sys/apps/mkpresentpro.py` reads the page's themes (12), layouts (8), shapes (19), fonts (12) and sizes (17) at
+  build time, so the window's lists are the page's and never drift from it.
+- **Its test:** `iso/qt/native/presentpro_t.sh` (`presentpro-check.yml`): built with `RUI_WERROR=1` and `hardcheck.py`
+  (295 656 bytes, hardened), then used under Xvfb with a stand-in rudolfd -- sixteen cases: the window and its eight
+  menus, the lists against the page through `mkpresentpro.py`, a title typed into its place, the new slide's rule and its
+  two lines, bold, the bullets and the numbering, undo, PageUp and PageDown, the two-content layout keeping the body it
+  still has, a slide duplicated and another deleted, a hidden slide with the notes, the menus' own rows, and Tab and
+  Enter opening the next place, and thirteen slides made so the deck outgrows the eight slots it starts with -- where
+  making room copies the deck and can move it, the place a pointer bug lived: the run fills every block as it is freed
+  (MALLOC_PERTURB_), so a layout read across that move comes back as the fill -- asked of the toolchain first, with a
+  guarded block grown so it has to move, and the case fails where the fill cannot be seen -- and the same walk is run
+  on the ASan build. The screenshot comparison against the web PresentPro is **not** in it yet: it comes with
+  the step that makes every view of the window, so that no view can pass by being unfinished.
+- **Not in this step, by the plan's own split:** the files (.RDECK, .PPTX, the PDFs), the text boxes, shapes, pictures,
+  tables, charts and icons, the transitions and animations, the presenter view, the slide sorter, the themes, the
+  background and the master, grouping and the arrangement, the clipboard, the assistant and printing -- later steps, each
+  drawn as the page draws an item it cannot choose. The native desktop keeps opening the web PresentPro until the whole
+  app passes, and `presentpro` is **not** in `NATIVE_APPS[]` yet.
+
+### Part 2. Fingerprint readers (from the owner's question of 2026-11-23; moved to `docs/plan-1.6.4.md`, Part 7)
+**Moved 2026-11-28:** every step of it is built (below, #750 for the native apps' administrator prompt); what is
+left is the owner's checklist with a real USB reader, which is `docs/plan-1.6.4.md` Part 7. Its text stays here as
+written.
 A dedicated fingerprint sensor is needed (in the power button, a corner of the touchpad, a pad beside the keyboard, or
 a USB reader): a touchscreen or touchpad senses at a few millimetres, far too coarse for a fingerprint's ridges.
 - **What it does:** a fingerprint unlocks the lock screen and answers administrator prompts; the password always still
@@ -268,9 +578,23 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   - **Tests:** fprint163_t.sh 50/50 (adds Native's unlock with a finger, the code after it, one-time answers, an
     administrator's finger for desktop/admin once and only in its own name); fprint63_t.js 25/25 (the lock screen and
     the prompt); nativefp163_t.sh 11/11 (Xvfb, a stand-in rudolfd).
-- **Left:** the native apps' own administrator prompt (librudolf-ui, iso/sys/ui/rudolf-ui.c, used by the native apps that
-  are still switched off with the native Settings, Part 3): a finger there too, by the same one-time answer, when the
-  native Settings is switched on; the owner's checklist with a real reader.
+- **Left:** the owner's checklist with a real reader.
+#### Status (2026-11-28, session): the native apps' administrator prompt takes a finger (Part 2's last code step)
+- **The prompt** (librudolf-ui's `rui_elevate`, so every native app that asks for an administrator has it at once, the
+  native Settings included when it is switched on): the account signed in, an administrator whose sign-in needs no
+  security key, and rudolfd saying a finger is taken now (`fp/status`'s `ready`) — "☝️ Or NAME puts a finger on the
+  reader.", or, with another administrator chosen in the prompt, "A finger answers for the account signed in only" —
+  while the password works as ever. A finger not recognised is said with the tries left and the reader asked again; a
+  match answers the prompt with the finger's one-time answer where the password goes (`"fp:"` and `fp/verify`'s `"t"`),
+  in the account signed in's own name, which rudolfd's own check takes once (`fp_admin_pass`: desk_admin_check,
+  desktop/admin). The reader is given up (`fp/cancel`) when the dialog goes, as the page's dialog does; a wrong password
+  leaves the wait going, as the page's does.
+- **Test** (`iso/qt/host/fpuiprompt63_t.sh`, a new `prompt` job in fprint-check.yml): the prompt as the release builds it
+  (mkui.py's header and GTK 3), on Xvfb with a stand-in rudolfd (`iso/qt/host/fixtures/fpui_rd.py`) — the reader offered;
+  a finger not recognised with the tries left and the reader asked again; the match's own answer in Ann's name, allowed
+  once and refused the second time; the password still answering the prompt while a finger waits; `fp/cancel` sent when
+  the dialog goes.
+- **Left:** the owner's checklist with a real reader (Part 2's), on the Vivobook with a supported USB reader.
 
 ### Part 3. Native Settings, finished (moved from 1.6.2 Part 39, item 3)
 `/usr/bin/rudolf-settings` (iso/sys/apps/settings*.c), one PR per group of pages, as begun in 1.6.2 and kept there switched off:
@@ -496,6 +820,21 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   sample and each language's ▶ speak; Reduce motion, Sticky keys, Mouse keys take effect; Reset to defaults. 5. The memory in Task
   Manager.
 
+#### Status (2026-11-28, session): the app fits its 1 MB budget again, so the release builds
+- **The release stopped building** (run `46070129245` of 11-27 21:24 UTC and `46123511452` of 11-28 07:56 UTC, both at "Build the
+  release": `systools/ci_release.sh`'s `rudolf-settings is 1126 KB: over a native app's 1 MB budget`): its last pages took the app
+  past the budget, and no beta has been made since `r2026112708` on 11-27 08:43 UTC — the PipeWire work, the terminal's tabs, the
+  setup wizard and the Wine box are in no image yet.
+- **What was cut: nothing of the app.** 913 KB of its source is 142 KB of strings and label tables and the rest code, so the size is
+  code, and the budget is met by how it is built rather than by taking a page or a string out. Measured on one tree as the release
+  builds it (hardened, no warning, stripped) on 2026-11-28: **-O2 1126 KB** (what the release did), -O2 with
+  `-ffunction-sections -fdata-sections -Wl,--gc-sections` 1110 KB, **-Os 1003 KB**, **-Os with the sections 991 KB**, -Os without
+  the unwind tables 911 KB. `sys/ui/build.sh` now builds `settings` with `-Os -ffunction-sections -fdata-sections -Wl,--gc-sections`:
+  **991 KB, 32 KB under the 1 MB budget**, every page, label and string kept, so every caller (the release, `qt/native/settings_t.sh`,
+  native-apps-check.yml's size notice) builds and measures the same program. The 1 MB rule stands as it is; the unwind tables were
+  left in (911 KB without them) because a crash trace or a debugger reads them.
+- **Its check:** native-apps-check.yml's settings job — the size notice, then `settings_t.sh`'s pages against the web ones.
+
 ### Part 4. Oracle's Chromium, its memory (moved from 1.6.2 Part 38, item 5)
 On Native, Oracle runs in Rudolf's own Chromium; each tab keeps its own process and memory, also when it has not been
 looked at for an hour (estimated, before measuring: ~100-150 MB with one tab, ~450-700 MB with six). Measured with one,
@@ -594,6 +933,36 @@ each account in its own partition of the desktop's one shared browser profile (e
 Part 20). With "Keep my websites encrypted with my account" on (1.6.0 Part 22, oraenc60.js; #583), Oracle runs instead in a
 Chromium of its own whose profile is the account's encrypted folder (/persist/oracle/ID, the home folder's key, locked at
 sign-out), as a separate window (1.6.2 Part 29 frames it). Turning the setting off brings the tabs back into the page.
+#### Status (2026-11-28, session): what is already here, and where this part starts
+- **Nothing of Part 5 itself is built:** no bind mount, no forced close of a partition at sign-out, and no test that says
+  where a Controlled Frame partition's files live. The part is the three proofs above, then the mount, then the tests and
+  the owner's checklist.
+- **Its ground is all shipped,** though, and this is what a start builds on rather than reworks:
+  - **The setting and its meaning** (1.6.0 Part 22, #583; `desktop/oraenc60.js`): per account, off on Standard and on in
+    Native and Lite; kept inside the account's encrypted home (`desktop/owenc`), so the drive alone cannot change it;
+    turning it off asks for the account's password and is noted in System health. With it on, Oracle's websites --
+    sign-ins, site data, cache and saved site passwords -- live in `/persist/oracle/ID`, the home folder's key, locked at
+    sign-out (1.6.1 Part 20), and Oracle runs in a Chromium of its own (framed as a separate window, 1.6.2 Part 29).
+  - **The in-page tabs it has to keep** (1.6.0-1.6.1, `desktop/tabs26.js`): Oracle's tabs are real tabs of the desktop page
+    as Controlled Frames, each account in its own `persist:` partition of the desktop's one profile (that profile
+    encrypted by the computer's TPM key, 1.6.1 Part 20). The setting off already uses this path; Part 5 would use it with
+    the setting on.
+  - **The harness a proof can borrow** (`iso/qt/native/oramem63_t.js`, Part 4): a real Chromium, an Isolated Web App of its
+    own holding `<controlledframe>` tabs in an account's `persist:` partition, real or stand-in sites, and a measurement
+    taken from outside the page. Part 5's first proof is the same harness with a different question asked of it.
+- **Where to start, and why there:** the **first** proof -- where a partition's files are -- because the other two depend
+  on its answer: the mount point it names is what gets mounted (proof 2), and the password store it finds decides the
+  third. It needs no privileged code and no QEMU: one test, `iso/qt/native/oraencpart63_t.js`, in oramem63_t.js's shape,
+  which has a site write a cookie, a `localStorage` key, an IndexedDB record and a service worker, saves a password, and
+  then reads the profile's tree before and after: every one of them listed, each under one folder per partition or named
+  where it is not, and the profile's shared files (`Network/Cookies`, `HTTP Cache`, `History`, `Login Data`, `Preferences`,
+  Safe Browsing's folder) compared byte for byte. **Pass:** all of a site's data under one `Partitions/<key>` folder with
+  the shared files unchanged, and the password store named; **fail:** this part is written up as not possible, with what
+  was found instead, and the setting keeps its meaning today.
+- **Then**, in that order: proof 2 (the mount and unmount at sign-in and sign-out, with a crash in between, on a fake
+  profile), the build on Chromium, the QEMU test (sign in, a site's cookie kept, sign out, the drive read from outside),
+  and the owner's checklist on the Vivobook.
+
 **The way to have both** (to be proven first): while the account is signed in, rudolfd mounts the account's encrypted Oracle
 folder over that account's partition's storage folder inside the desktop's Chromium profile (bind mount, as Documents are
 mounted over /home/rudolf for Linux apps); at sign-out the partition's tabs are closed, Chromium is made to let go of the
@@ -617,7 +986,9 @@ Chromium in QEMU (sign in, a site's cookie kept, sign out, the drive read from o
 the owner's checklist: Chromium mode on the Vivobook, the setting on, Oracle's tabs in the page, signed-in sites kept after
 sign-out and back in.
 
-### Part 6. Installing beside Windows on the same drive (the owner, 2026-11-24 11:35 and 12:30 CST)
+### Part 6. Installing beside Windows on the same drive (the owner, 2026-11-24 11:35 and 12:30 CST; moved to `docs/plan-1.6.4.md`, Part 4)
+**Moved 2026-11-28:** the owner put installing beside Windows in 1.6.4, with gaps 1, 2, 4, 6, 7 and 8 of the gap
+analysis. Nothing of it is built, and its text stays here as written.
 The owner, installing on an ASUS desktop: "Is there a way to install it without formatting the hard drive or removing
 Windows?", then "Yes, add it to 1.6.3."
 **Today.** Settings > Update and recovery > Install here... writes Rudolf OS's whole disc image to the start of the
@@ -648,6 +1019,34 @@ Windows today means another disk (an internal second drive, an external SSD, or 
 6. **Removing it:** Settings > Update and recovery > "Remove Rudolf OS from this drive" (from a stick or from Windows'
    side: a guide) deletes RUDOLFDATA, \EFI\rudolf\ and the boot entry, and leaves the space unallocated for Windows to
    take back (Disk Management > Extend Volume).
+7. **The computer's other systems, each a bootable choice** (the owner, 2026-11-28: "Part 6 will be expanded in scope so
+   that the OS will recognize the license or fetch of whatever other operating system is installed as a bootable choice
+   on the device (if possible, this might be done or assisted by referring to the options in the BIOS boot menu)").
+   Windows above is the first of them; the same reading is made of the whole computer, and each system found is offered
+   by name at start-up:
+   - **What is read, read-only:** every EFI system partition's own folders under \EFI\ -- a vendor's folder and the
+     start-up file in it (\EFI\Microsoft\Boot\bootmgfw.efi, \EFI\ubuntu\shimx64.efi, \EFI\fedora\...,
+     \EFI\refind\..., \EFI\Manjaro\...) -- and the firmware's own boot entries (efibootmgr: each one's name, the disk and
+     partition it is on, whether it is enabled and its place in the order). A system is named as the firmware and the
+     loader's own folder name it (**Windows**, **Ubuntu**, **Fedora**...), never by reading its files; a folder whose
+     name is not one known is shown by that name, with its date and size.
+   - **The licence is the other system's own:** nothing here reads, checks, activates or changes it. What is recognised
+     is that a system is installed and can be started, as a bootable choice -- no disk of another system is written to,
+     mounted read-write, moved, or made the default by Rudolf OS.
+   - **At start-up and in Settings:** Rudolf OS's menu lists them after its own entries (Rudolf OS first, the short wait
+     kept), each starting the loader that was found; Settings > Update and recovery lists them with what was found, where
+     it is and whether the firmware knows it, with "Start this system now" (one restart) and "Refresh". A system whose
+     firmware entry has gone (a Windows update, a disk moved, a reset NVRAM) is found again from its loader's folder, so
+     its entry is put back at Rudolf OS's next start, as Windows' own is.
+   - **The firmware's own boot menu as the way through** (the BIOS boot menu, as the owner put it): where a loader is
+     not offered by the firmware at all (a hidden or missing entry, a system on a disk the firmware does not list),
+     Settings says so plainly and offers "Restart into the firmware's boot menu" (UEFI's OsIndications, else a restart
+     into the firmware's setup), with the key each maker uses for its one-time boot menu (ASUS F8 or Esc, Dell F12,
+     Lenovo F12, HP F9, Acer F12) and the fact that a choice made there starts that system whether or not Rudolf OS's
+     menu knows it. Nothing about another system's licence is asked for or needed.
+   - **Never:** the other system's files read as its own (no reading a registry, a ``/boot`` or a licence store), its
+     boot loader replaced or its folder renamed, its firmware entry deleted, or its disk written to at all -- every one of
+     these is read-only, and a system found is only ever started.
 **Never:** a Windows partition written, resized or formatted; anything in \EFI\Microsoft\; the firmware's Secure Boot
 keys changed; an install that goes on when the free area, the EFI system partition or the disk's partition table is not
 what was shown.
@@ -657,6 +1056,11 @@ partition with files, a recovery partition, free space; no Windows files or imag
 partition's checksum unchanged and \EFI\Microsoft\ unchanged; Rudolf OS starts, updates, rolls back, Recovery mode;
 the menu's Windows entry starts the stand-in; the boot order put back; too little free space, a full EFI system
 partition, an MBR disk and a BIOS computer refused with plain words; removal leaves the disk as before (unallocated).
+For the other systems of item 7, the same QEMU disk carries a stand-in second system in its own \EFI\ folder (a loader
+that only prints a mark) and a firmware entry for it, and a third folder whose name is not one known: each listed by
+name at start-up and in Settings and started, the one without a firmware entry found again from its folder, the unknown
+one shown by its own name, every byte of both left as it was (checksums), and "Restart into the firmware's boot menu"
+offered where the firmware lists no entry at all.
 **The owner's checklist** (the ASUS desktop): back up and note the BitLocker key; shrink in Disk Management; install
 beside; Rudolf OS and Windows each start from the menu and from F8; a Windows update, then Rudolf OS's next start; an
 update of Rudolf OS; removal and Extend Volume back.
@@ -975,6 +1379,65 @@ unless the item is Native's own (then Native is made to match Chromium, never th
    not opened by itself once named, as on Windows. **Not done yet:** Guest keeps nothing and
    says so only in Settings (a line at sign-in and a notice on the first save); double-clicking a picture opens Paint, not a viewer; a wrong user name
    once gave no message at sign-in (unconfirmed); a battery shown on a computer without one (browser edition).
+11. **The Command Prompt and the Linux terminal, one Terminal** (the owner, 2026-11-28: "the way in which the application
+   is supposed to allow the user to switch between Linux terminal and the C++ command prompt is broken"), **done:** the
+   1.5.6 design (one app, each shell a tab, ＋ opens either) was lost in two places. **A window kept its first answer:**
+   `termUI`'s newTab began `if(!ui.linux)return add('cmd')`, and `ui.linux` was set once, when the window opened (or by
+   `termCheckLinux`), never again — so one failed `debian/status` (at sign-in the encrypted folder may not be open yet, or
+   rudolfd busy) locked the window to the Command Prompt for its whole life: ＋ gave another Command Prompt tab, nothing
+   was said, and there was no route to Linux or to Debian's own setup; with no Debian installed there was nothing offered
+   at all. **And each way in opened another window:** `terminalApp()` and `termCmd()` always called `win()`, so Ctrl+Alt+T,
+   the Start menu's Terminal and Command Prompt, the taskbar, `prompt()` (.BAT, Lua, rpk) and `openPath` each made a new
+   Terminal, and the tabs one expected were in another. Now: `newTab` always shows the menu, built from `termLinuxReady()`
+   — a fresh `termLinuxOk()` (which asks a failed status again once, `debStatus2`) with only a "yes" remembered, for 8 s —
+   with `Command Prompt (C:)` always, `Linux (Debian)` when it is set up, `Set up Linux (Debian)…` (→ `termSetup()`, the
+   setup page) when it is not, and, in a web browser, `Linux (Debian) — needs the installed Rudolf OS`, off. A `TERMS`
+   list of the open Terminals (`termOpen()`, pruned as windows close) makes `terminalApp()`/`termCmd()` add their tab to the
+   Terminal that is open and focus it, a new window only when none is. `termUI` keeps the window's current ui in `W.term`
+   (so the setup page's rebuild drops the old one and its 15 s poll). The native side needed no C: the Terminal is this
+   page. *Nothing in the native shell was touched, so no rebuild of `rudolf-native` is needed.*
+   Tests: `termtabs63_t.js` (new — both shells in one window and switching, the ＋ menu when Debian is set up / not / after
+   a failed status, `prompt()` and `terminalApp()` reusing the window, Ctrl+Shift+T; the test's rudolfd stands in for the
+   daemon) and `terminal56_t.js` (1.5.6's own check, run by the same workflow) 4, 6 and 7, which asserted the old "＋ opens another
+   C: tab", "prompt() opens a Terminal" and a read of the first tab only; they now assert the menu, the tab in the open
+   window and the text of whichever tab the file opened.
+12. **A new installation from a stick: its setup wizard is not restarted under the person's hands** (the owner,
+   2026-11-28: "New installs using USB drives produced in Rudolf's update and recovery \"make a USB stick\" function are
+   buggy — they'll boot normally but the startup window force-resets quickly and puts the user at the sign-in screen
+   without having allowed them to make their first account (which is supposed to be their admin account). This causes
+   them to be locked out of a computer which has no account that they can use"), **done:** two causes, each enough on its
+   own. **A: the one-time move to the browser shell restarted the browser over the wizard.** `shell26.js`'s `shellOffer`
+   moves a plain desktop page to the shell by itself right after start-up (within two minutes and with no window open:
+   "Real browser tabs are ready" then `shell/switch` 600 ms later), and it asked only about the engine — on a new
+   installation the page is the plain one (Standard, the only engine before setup), the mirror is ready at once
+   (`idbm/ready`), and Chromium has installed the shell a few seconds in, so it fired about 6 s after the start, while the
+   wizard (up at 1.2 s) had the screen. Now `shellOffer` returns unless Rudolf OS is set up (`bd95setup`, the wizard's
+   last step) and while `#oobe` is on the screen: the move waits for a start after setup, or Settings › Oracle sign-in ›
+   "Restart the desktop now". **B: the next start treated the placeholder account as setup.** The page keeps a placeholder
+   account (`admin`, the hash of "admin") under `bd95user` at its very first start, before the wizard runs, and the
+   session's `native_setup_done()` counted `bd95user` — so from the second start the Native desktop came up (install.sh
+   writes it for new installations), whose sign-in screen has no setup wizard and whose only account was one nobody had
+   chosen a password for. `native_setup_done()` now reads `bd95setup` alone, as the wizard's own `firstRun` does, so an
+   unfinished setup starts on Standard with its wizard again (and an update repairs a computer already caught by this).
+   The daemon's `setup` flag (`desktop/accounts`, Native's "not set up yet" line) is unchanged: with A and B, Native is
+   never started before setup. *Nothing in the native shell was touched, so no rebuild of `rudolf-native` is needed.*
+   Tests: `setuprun63_t.js` (new — a new installation: the wizard stays at step 1 while the automatic move would fire and
+   when `shellOffer()` is called by hand, no `shell/switch`, no box; set up: the move still happens by itself with its
+   box) and `setupnative63_t.sh` (new — the session's `native_setup_done` read from the session itself: nothing, the
+   placeholder account alone, other data: Standard; `bd95setup`: Native; and the wizard's rule is the same one), both in
+   `setuprun63-check.yml`; `engine57_t.js` case 7 (the Chromium desktop's move) sets up first, as its WebKit page already
+   did.
+   - **Follow-up (the owner, 2026-11-28): the wizard keeps its place.** "Make the wizard keep its place if the desktop
+     restarts or the computer is switched off mid-setup, so the step and the name already typed come back instead of step
+     1, with a check for it." The wizard's place is kept in `bd95oobe`, `{step, name}`, written as the wizard is drawn,
+     the name is typed and every step is left; `firstRun` starts from it (and no longer draws a second wizard over one
+     already on the screen). The password is never kept: a restart after it is typed comes back to the step that asks for
+     it — the two last steps come after it — with the name still in its box and both password boxes empty, which is also
+     why a saved place is capped there. The key is removed when the wizard ends, so nothing is left behind on a computer
+     that is set up. Test: `setupkeep63_t.js` (new, in `setuprun63-check.yml`): step 1 at a new installation, the place as
+     the name is typed, a restart back at the account step with the name, the passwords empty, the password step's restart
+     back at the account step (not step 1 and never the last one), Back kept, Finish making the account (`Ann`) and
+     clearing the place, and no wizard on the next start.
 **The owner's checklist:** each item on the Vivobook (Native and Chromium).
 
 ### Part 9. Native's camera and microphone: PipeWire capture (found on the Vivobook, 2026-11-27)
@@ -1065,6 +1528,126 @@ which `iso/systools/addwebkit.sh` names in its copy list since 2026-11-27.
 **Not this Part:** Oracle's WebRTC, which Native's WebKit does not have at all (docs/plan-1.5.9.md 7.1), and the camera in
 Linux apps, which use the Debian container's own stack.
 
+### Part 10. Archive Manager: unpacking and installing made easier (the owner's question, 2026-11-28; item 1 in the PRs
+below, items 2 to 8 moved to `docs/plan-1.6.4.md`, Part 5)
+
+**Moved 2026-11-28:** items 2 to 8 are 1.6.4's (gap 7 of the gap analysis); item 1 is the PRs of 2026-11-28, and its
+text stays here as written.
+
+**Asked:** "assess the archive manager application and determine the necessary changes to make unpacking and working with .zip
+files or installations easier and more intuitive." This part is that assessment and the list of changes; nothing of it is built
+yet, and the owner chooses which items to take.
+
+**What it is today (the two halves).** One app, `Archive Manager`, made of two pieces of code that share a name and a window and
+little else:
+- `apps25a.js` (the window, `regApp('archive', …)`, `archiveApp`, `tarEntries`) handles an archive **in the account's own files**
+  (C:\ and everything in it): a ZIP through JSZip, a TAR by hand, listed in a table with a tick per entry, `Extract all`, `Extract
+  selected`, `Add a file…`, `New archive from files…`, and `Open…` picking a file from those same files.
+- `dlzip61.js` (1.6.1) handles a ZIP **kept on the disk** as a download larger than 1.5 MB (a reference into
+  `/home/rudolf/Downloads/.accounts/<id>/`): `dlZipWin` lists it through rudolfd's `dl/zip` (`unzip -l`, at most 20,000 entries),
+  and `Extract here` runs rudolfd's `dl/unzip` job (root writes nothing; `dlzip.sh` unpacks as the desktop user into a hidden
+  folder, then moves every file flat into the account's folder), with a progress window, Cancel, the antivirus on each file, and
+  then a folder of references beside the ZIP.
+- File Explorer adds `Extract here` (its own, `doUnzip` → `zipToVfs`), `Compress to ZIP` (`doZip` → `vfsToZip`, folders
+  included), and Open with › Archive Manager for ZIP and TAR (`files25.js`).
+
+**Where it is hard, in the order a person meets it.**
+- **The same ZIP behaves differently by where it lives, and nothing says so.** A ZIP from Oracle in Downloads gets the good path
+  (read on the disk, 20,000 entries, progress, Cancel, antivirus, no size limit); the same ZIP copied anywhere else gets the
+  in-memory path, and a TAR on the disk gets "Rudolf OS has no app that opens this kind of file from the disk". A person holding
+  a ZIP on a USB stick cannot tell which they will get or why.
+- **The in-memory path's real ceiling is the account's storage, and it fails late.** Every file is stored as a base64 `data:`
+  URL in the account's own record (`fsFlush`, one IndexedDB/localStorage record), and extraction writes each member back the same
+  way: about 2.4 times the archive's size, twice over. A 3–4 MB ZIP of binaries can pass `Open…` and then fill the storage
+  half-way through `Extract all`, leaving a half-filled folder and `storageFull()`'s "Storage is full" with no word about what
+  is in it.
+- **There is no destination choice and no merging.** `Extract all` always makes a new folder (`uniq`) — extracting an update
+  a second time gives "Game (2)" beside "Game" — and `dlZipExtract` always writes beside the ZIP (`dlUniq`). No "Extract to…",
+  no "into this folder", no overwrite question.
+- **Names are changed silently.** `dlzC` and `doUnzip` upper-case every name, replace `\ / : * ? " < > |` with `_` and cut it to
+  60 characters, and `dlUniq`/`uniq` add " (2)" when two collide; nothing tells the person, and the 60-character cut can make two
+  different names collide in the first place.
+- **A ZIP kept on the disk can only be list-and-extract-all.** `dl/zip` lists names, sizes and folders but returns no entry's
+  contents, so `Extract selected` (and a peek at one file) is impossible for exactly the big archives where it matters; a TAR or
+  TAR.GZ from the disk has no path at all (`dlzOf` asks for `.ZIP`).
+- **Formats.** ZIP (with no password field, though JSZip can decrypt) and TAR by hand, whose reader ignores GNU long names, pax
+  headers, symlinks and hard links; `.7z`, `.rar`, `.gz`, `.tgz`, `.xz` and `.bz2` appear in File Explorer's search types and in
+  Open with's Archive Manager entry is offered for them nowhere; a damaged ZIP is answered with one flat "could not be read".
+- **Nothing turns an archive into an installation.** Rudolf OS already knows what to do with a `.RAPP` (`rappInstall`), a `.DEB`,
+  `.EXE`/`.MSI` (Wine), an AppImage or a `.bin`/`.run` (`install56.js`'s `installWizard`, opened by a double-click); but the
+  Archive Manager hands the person a folder of files and leaves them to find `setup.exe` among thirty others. That is the gap
+  the question is really about.
+- **The window offers little for a big archive:** no sort, no filter by name, no "Select all"/"Select none", no total of the
+  ticked files, `Extract selected` always live (it answers in the status line instead), no keyboard route (Enter) to the ticked
+  files, and no "Open" on one entry. `Add a file…` can only add single files (not a folder) and rewrites the whole ZIP in memory;
+  nothing can be renamed or removed inside one.
+- **Two doors into a damaged or blocked archive's folder:** the antivirus run on the disk path's files can block or quarantine
+  them, and the in-memory path checks nothing at all — the same ZIP is scanned or not depending on where it came from.
+
+**What to change** (each item its own PR; item 1 is the one that makes the rest possible):
+1. **One path for every archive, on the disk, whatever its size.** rudolfd's `dl/zip` and `dl/unzip` take any ZIP at a path the
+   account may read (not only Downloads) — a USB stick, `/home/rudolf`, a folder inside the account's own files written out to a
+   temporary file first — and the window always uses them, so listing, the 20,000-entry cap, the progress window, Cancel and the
+   antivirus are the same everywhere, and the in-memory path stays only as the fallback the native desktop's `/bin/sh` will not
+   always be there for. **Test:** opening a 200 MB ZIP from a USB stick lists it and extracts it with progress; opening a 3 MB ZIP
+   from C:\ does not touch storage.
+2. **Choose where it goes, and merge when asked.** `Extract here` (a new folder, as now), `Extract to…` (a folder picker over the
+   account's files and the drives), and "Extract into this folder" with a question when a name is already there (Replace, Keep
+   both, Cancel for all); a second extraction into the same folder then updates instead of making "Game (2)". `dlzip.sh` takes
+   the destination as a line of its request file (never a command line, as now). **Test:** extract twice into one folder → one
+   folder; a name that is there → the question, and each answer.
+3. **Say what was changed.** A summary line after extraction: "12 names were changed (Windows' \ : * ? are not allowed here)", and
+   keep names as they are otherwise (drop the upper-casing and the 60-character cut; cut only what the filesystem refuses).
+   **Test:** a ZIP of long and oddly named files extracts under its own names, and the changed ones are said.
+4. **One file, and the ones you ticked, from a big archive too.** `dl/zip` gains entry contents (one entry on request, a range of
+   bytes for a preview) and `dl/unzip` takes a list of names to extract, so `Extract selected` and a preview of one member work on
+   the disk path as they do in memory. **Test:** tick two of 5,000 entries, `Extract selected` extracts exactly those; a text
+   member previews without extracting.
+5. **Install from the archive.** When an archive holds an installer — `.RAPP` (one or more), `.DEB`, `.EXE`, `.MSI`, `.AppImage`,
+   `.bin`, `.run`, an `install.sh`, a folder with a `.desktop` file — the window names them above the list and offers `Install…`,
+   which hands the file to what already exists (`rappInstall`, `installWizard`, with the same administrator prompt they use when
+   opened from Explorer) — a zip of a game or a program then becomes two clicks instead of a hunt. When there are several, a
+   short list; when the archive is an app's own update (a `.RAPP` with a higher version of one that is installed), say so.
+   **Test:** a ZIP holding one `.RAPP` and one `setup.exe` offers both, and each installs as a double-click would; a ZIP holding a
+   `.DESKTOP` folder offers its app.
+6. **Read more, and say what is not read.** TAR.GZ, and whatever Info-ZIP already does (a password field for an encrypted ZIP,
+   fed to `unzip -P` through the request file so it never appears in a command line); then `7z` through a Linux app if one is
+   there, or a plain "Rudolf OS cannot read .7z; unpack it in a Linux app from Open with" for the formats it cannot. The TAR
+   reader learns GNU long names and pax, and drops links rather than following them, as `dlzip.sh` already does. **Test:** a
+   TAR.GZ with long names lists and extracts; an encrypted ZIP asks once and extracts; `.7z` says what it cannot do.
+7. **A damaged archive is named as damaged, before anything is written.** `unzip -t` (or `unzip -l`'s rc when it fails) in the
+   list step; the window says "This ZIP is damaged: 3 files fail their checksum" and `Extract` then warns instead of half-writing,
+   and extraction into a new folder stays all-or-nothing (it already unpacks into a hidden folder; it must remove it when it
+   stops). **Test:** a ZIP with one byte flipped is named damaged, and its folder is not left behind.
+8. **The window's small things:** sort and a filter box for the list, Select all/Select none, the ticked files' count and size in
+   the status line, `Extract selected` disabled until something is ticked, Enter extracting, `Add a folder…` and `Remove` inside
+   the ZIP, and the archive's own total (packed and unpacked) in its title. Same for the native Settings-independent shapes it
+   already has. **Test:** `iso/qt/shell2/dlzip61_t.js` gains the keyboard route, the disabled button and the sizes; a 5,000-entry
+   list filters and sorts.
+
+**Not this Part:** the antivirus, the sandbox and the administrator prompts (they stay as they are and are used, never widened);
+Wine, `dpkg` and AppImage handling (`install56.js`'s own parts) and the Oracle downloads' disk references (`dl27.js`); and any
+compression the desktop does not already do — no new archive format of Rudolf OS's own.
+
+**Both editions:** all of it is the page's own code and rudolfd's helpers, so Standard, Native and Lite get it the same; the
+native desktop's window is a page of its own and shows the same dialogs.
+
+#### Status (2026-11-28, session): item 1 built (PRs "a ZIP at any path" and "asking by path")
+rudolfd's half (PR #754): `GET dl/zip?path=` and `POST dl/unzip?path=` take an absolute path instead of `name=` and `acct=` —
+`realpath()`ed, a plain file, under the home, a mounted drive, `/tmp`, `/var/tmp` or `/srv` (`DLZIP_ROOTS` adds more, for the
+checks), so a link cannot lead out; the listing is the same answer everywhere. An extraction from a path unpacks as it always
+did (free space first, progress, `..` and absolute entries refused, links removed, as the desktop user) and then moves the whole
+unpacked folder, in one `mv` inside the ZIP's folder, into a free folder beside it named after it (`game`, `game (2)`), keeping
+the ZIP's own folders and names; the result says where with `dest`, and no account is marked as unzipping. The page's half (this
+PR): `dlzOf` accepts a ZIP reference whose file is outside the accounts' folders and asks by `path=`; the window's list, the
+progress window and Cancel are the same, and an extraction there ends by checking every file with the same antivirus, at its
+path — `dl/read?path=` for the bytes (a new `from='path'` in `dlRead`, so `dlScanBig` is unchanged) and `dl/file?path=&to=` for
+the quarantine or the deletion — then says where the folder is. Checks: `dlzip161api_t.sh` 16–22, beside cases in
+`dlzip161_t.sh` for both unzips, and `dlzip61_t.js` 23–27 (a ZIP in Documents listed and extracted beside itself, the antivirus
+reading and quarantining by path, nothing added to the page's own folders). What is left of item 1: the window's *in-memory*
+path (a ZIP in the account's own files that was never on the disk) still reads it the old way, and choosing a destination is
+item 2.
+
 ## Steps
 - Part 0: first.
 - Part 3: first, after 1.6.2 is stable.
@@ -1076,3 +1659,5 @@ Linux apps, which use the Debian container's own stack.
 - Part 7 (option C): step 1 (Oracle's own password manager) early; step 2 (extensions in a Chromium window opened from
   Oracle, with about:safety) after it.
 - Part 8: alongside the others; each item its own PR.
+- Part 10: any time after 1.6.2 is stable, when the owner wants it; item 1 first, then 5 (install from an archive) if that is the
+  one that matters most; each item its own PR.

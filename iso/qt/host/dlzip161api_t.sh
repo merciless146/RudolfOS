@@ -51,4 +51,44 @@ ok "12. a second one while one runs: busy; Cancel stops it" "$(echo "$o" | sed -
 ok "13. the request file is root's and gone; the ZIP is never changed" "$([ ! -e /run/rudolf/dlzip.list ] && cmp -s $A/game.zip /tmp/dlz-elsewhere-$$/game.zip && echo 1)"
 ok "14. an account folder that is a link: its target not given to the desktop user (lchown)" "$([ "$(stat -c %u /tmp/dlz-elsewhere-$$)" = 0 ] && echo 1)"
 ok "15. no command line made from a name (rudolfd-dlzip.inc: exec arguments, a fixed command for the job)" "$(! grep -n 'run(\|system(\|popen(' $HERE/../../sys/rudolfd-dlzip.inc >/dev/null && echo 1)" "$(grep -n 'run(\|system(\|popen(' $HERE/../../sys/rudolfd-dlzip.inc)"
+# (1.6.3 Part 10, item 1: a ZIP at a path the account may read, not only the account's Downloads folder)
+t 'POST unzipped' >/dev/null
+O=$T/beside; rm -rf $O; mkdir -p $O; cp $A/game.zip $O/game.zip; chown -R 1000:1000 $O; ln -s /etc/hostname $O/etc.zip
+o=$(t "GET zip?path=$O/game.zip")
+ok "16. dl/zip: a ZIP at a path outside Downloads is listed as the same answer" "$(echo "$o" | grep -q '^HTTP/1.1 200 OK|{"ok":true,"items":\[{"name":"Made Up Game/","size":0,"dir":true},' && echo "$o" | grep -q '"more":false,"total":4,"bytes":4010}$' && echo 1)" "$o"
+o=$(t 'GET zip?path=game.zip' "GET zip?path=$T/gone-$$.zip" "GET zip?path=$O" 'GET zip?path=/etc/hostname' "GET zip?path=$O/etc.zip")
+ok "17. ...a path that is not absolute, one not there, a folder, one outside the account's places, a link to one: refused" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 400' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 404' && echo "$o" | sed -n 3p | grep -q '^HTTP/1.1 404' && echo "$o" | sed -n 4p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 5p | grep -q '^HTTP/1.1 403' && echo 1)" "$o"
+o=$(t "POST unzip?path=$O/game.zip" wait 'GET unzipped' 'GET home?acct=u-ann')
+ok "18. dl/unzip: a ZIP at a path unpacks into a new folder beside it, named after it, as the desktop user" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 200' && echo "$o" | sed -n 3p | grep -q "\"dest\":\"$O/game\"" && echo "$o" | sed -n 3p | grep -q '"end":"done 3 4010"}' && [ -f "$O/game/Made Up Game/data/level.dat" ] && [ -d "$O/game/Made Up Game/data" ] && [ -f "$O/game.zip" ] && [ "$(stat -c %u "$O/game/Made Up Game/data/level.dat")" = 1000 ] && echo 1)" "$o $(ls -ln $O)"
+ok "19. ...each folder and file with its path in that folder" "$(echo "$o" | sed -n 3p | grep -q '"dirs":\["Made Up Game","Made Up Game/data"\]' && echo "$o" | sed -n 3p | grep -q '{"path":"Made Up Game/data/level.dat","disk":"Made Up Game/data/level.dat","size":4000}' && echo 1)" "$(echo "$o" | sed -n 3p)"
+ok "20. ...no account is marked as unzipping, and the Downloads folder is not touched" "$(! echo "$o" | sed -n 4p | grep -q unzip && [ ! -e "$A/game" ] && echo 1)" "$(echo "$o" | sed -n 4p)"
+o=$(t "POST unzip?path=$O/game.zip" wait 'GET unzipped')
+ok "21. ...a second time: the next free folder beside it (game (2))" "$([ -d "$O/game (2)" ] && echo "$o" | sed -n 3p | grep -q "\"dest\":\"$O/game (2)\"" && [ -f "$O/game (2)/Made Up Game/readme.txt" ] && echo 1)" "$o $(ls $O)"
+o=$(t "GET unzip?path=$O/game.zip" 'POST unzip?path=relative.zip' 'POST unzip?path=/')
+ok "22. dl/unzip: GET refused; a relative path and the root refused" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 400' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 400' && echo "$o" | sed -n 3p | grep -q '^HTTP/1.1 403' && echo 1)" "$o"
+# (1.6.3 Part 10, item 1, security: an account's Downloads is the signed-in account's own -- never only a name of the right
+# shape, which any window could say -- and a path never leads into one of the hidden folders the accounts' files live in)
+cp $A/game.zip $S/.accounts/u-bob/game.zip; chown 1000:1000 $S/.accounts/u-bob/game.zip
+echo u-ann > /run/rudolf/home-session
+o=$(t 'GET home?acct=u-bob' 'GET home?acct=u-ann' 'GET zip?name=game.zip&acct=u-bob' 'GET read?name=game.zip&acct=u-bob&from=home')
+ok "23. signed in as u-ann: another account's Downloads (its list, its ZIP, its bytes) refused; u-ann's own listed" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 200' && echo "$o" | sed -n 2p | grep -q 'game.zip' && echo "$o" | sed -n 3p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 4p | grep -q '^HTTP/1.1 403' && echo 1)" "$o"
+o=$(t "GET zip?path=$S/.accounts/u-bob/game.zip")
+ok "24. ...and never by path: the hidden store is not a place a path may name" "$(echo "$o" | grep -q '^HTTP/1.1 403' && [ -f "$S/.accounts/u-bob/game.zip" ] && echo 1)" "$o"
+o=$(t 'GET home?acct=guest' 'GET home?acct=shared')
+ok "25. ...while the guest's store and the shared one stay reachable: they are nobody's own" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 200' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 200' && echo 1)" "$o"
+rm -f /run/rudolf/home-session
+o=$(t 'GET home?acct=u-bob')
+ok "26. nobody signed in (the sign-in screen): as before, so its housekeeping and the checks still run" "$(echo "$o" | grep -q '^HTTP/1.1 200' && echo 1)" "$o"
+# (1.6.3 Part 10, item 1: by path, the antivirus and its quarantine only ever touch the folder the extraction made)
+o=$(t "GET read?path=$O/game (2)/Made Up Game/readme.txt" "POST file?path=$O/game (2)/Made Up Game/readme.txt&to=quar")
+ok "27. the antivirus reads a file inside the extraction's folder, and quarantines it there" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 200' && echo "$o" | sed -n 1p | grep -q 'Read me' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 200' && echo "$o" | sed -n 2p | grep -q '"name":"readme.txt"' && [ ! -e "$O/game (2)/Made Up Game/readme.txt" ] && echo 1)" "$o $(ls $S)"
+o=$(t "GET read?path=$A/game.zip" "POST file?path=$A/game.zip&to=del" "GET read?path=$O/game/Made Up Game/readme.txt")
+ok "28. ...and nothing outside it: a file elsewhere (an older extraction's folder too) refused, and still there" "$(echo "$o" | sed -n 1p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 2p | grep -q '^HTTP/1.1 403' && echo "$o" | sed -n 3p | grep -q '^HTTP/1.1 403' && [ -f "$A/game.zip" ] && [ -f "$O/game/Made Up Game/readme.txt" ] && echo 1)" "$o"
+# (the folder an extraction made is the extraction's account's: another account signing in does not inherit it)
+echo u-bob > /run/rudolf/home-session
+o=$(t "GET read?path=$O/game (2)/Made Up Game/data/level.dat")
+ok "29. ...and another account's extraction is not this one's, though the record is fresh" "$(echo "$o" | grep -q '^HTTP/1.1 403' && echo 1)" "$o"
+rm -f /run/rudolf/home-session
+o=$(t "GET read?path=$O/game (2)/Made Up Game/data/level.dat")
+ok "30. ...while the same session that unpacked it (here: nobody) still reads it" "$(echo "$o" | grep -q '^HTTP/1.1 200' && echo 1)" "$o"
 echo "$((N-F))/$N passed"; [ $F = 0 ]

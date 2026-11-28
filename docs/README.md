@@ -18,6 +18,8 @@ What is written down, and where. The disc's own files are for someone building o
 - `security-keys.md` — the keys that unlock an account's files (1.6.1).
 - `website-data-key.md` — the key that protects Oracle's websites (1.6.1).
 - `system-reports.md` — how a report made in Rudolf OS reaches this repository.
+- `gap-analysis-1.6.3.md` — what Rudolf OS still lacks beside other operating systems (hardware, system software and
+  files), ranked, each gap with the first pull request it needs.
 - `native-vivobook-checklist.md` — Native against Standard, checked on the owner's computer (1.6.0).
 - `native-findings-2026-11-15.md` and `native-titlebars-2026-11-16/` — what the native desktop was measured and compared against.
 

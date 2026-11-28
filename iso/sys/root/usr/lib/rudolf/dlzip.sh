@@ -3,12 +3,15 @@
 # /home/rudolf/Downloads/.accounts/<id>/): what is inside them, and Extract here. Run by rudolfd (rudolfd-dlzip.inc).
 #   dlzip.sh list ZIP        "entry SIZE NAME" per entry (NAME ends in / for a folder), at most 20000, then "more";
 #                            then "total ENTRIES BYTES"; "error ..." when it is not a ZIP
-#   dlzip.sh extract LIST    (rudolfd's job) LIST: line 1 the ZIP, line 2 the account's folder it is in. Checks the free
-#                            space for the unpacked size first, unpacks it into a fresh hidden folder there (.unzip-XXXXXX, which
-#                            dl/home does not list), removes what is not a file or a folder (links), then moves each file
-#                            FLAT into the account's folder under a free name ("name (2).ext", as rudolfd's dl_unique), as
-#                            every reference names a file there: "progress I N NAME" while unpacking, "dir PATH" for each
-#                            folder, "file PATH<tab>NAME ON THE DISK<tab>SIZE" for each file; ends "done FILES BYTES",
+#   dlzip.sh extract LIST    (rudolfd's job) LIST: line 1 the ZIP, line 2 the folder it is in, line 3 its way (1.6.3 Part 10,
+#                            item 1: "flat" -- the account's Downloads folder, as before, or nothing -- or "beside"). Checks
+#                            the free space for the unpacked size first, unpacks it into a fresh hidden folder there
+#                            (.unzip-XXXXXX, which dl/home does not list), removes what is not a file or a folder (links), then:
+#                            FLAT: moves each file into the account's folder under a free name ("name (2).ext", as rudolfd's
+#                            dl_unique), as every reference names a file there; BESIDE: moves the whole unpacked folder into a
+#                            free folder named after the ZIP ("game", "game (2)"), as the ZIP's own folders and names are, and
+#                            says where with "dest FOLDER". Either way: "progress I N NAME" while unpacking, "dir PATH" for
+#                            each folder, "file PATH<tab>NAME ON THE DISK<tab>SIZE" for each file; ends "done FILES BYTES",
 #                            "stopped FILES BYTES" (Cancel) or "error MESSAGE". The same lines (but progress) go to OUT.
 # The ZIP is never read or unpacked as root: as the desktop user (su), with its names given as arguments, never in a
 # command line. Entries with ".." or an absolute path refuse the whole ZIP; links are removed, never followed.
@@ -37,14 +40,15 @@ list) [ "$(id -u)" = 0 ] && { as_user list "$2"; exit $?; }
 extract)
 	[ "$(id -u)" = 0 ] || fail "This is rudolfd's."
 	L=$2; [ -f "$L" ] && [ ! -L "$L" ] || fail "No request."
-	Z=$(sed -n 1p "$L"); D=$(sed -n 2p "$L"); rm -f "$L"
+	Z=$(sed -n 1p "$L"); D=$(sed -n 2p "$L"); M=$(sed -n 3p "$L"); [ -n "$M" ] || M=flat; rm -f "$L"
 	OUT=${DLZIP_OUT:-/run/rudolf/dlzip.files}; STOP=${DLZIP_STOP:-/run/rudolf/dlzip.stop}
 	rm -f "$OUT"; (umask 077; : > "$OUT")
-	case "$Z" in "$D"/*) ;; *) echo "error The ZIP is not in the account's folder." | tee -a "$OUT"; exit 3;; esac
-	case "${Z#"$D"/}" in */*|.*|"") echo "error The ZIP is not in the account's folder." | tee -a "$OUT"; exit 3;; esac
+	NZ="The ZIP is not in that folder."; [ "$M" = flat ] && NZ="The ZIP is not in the account's folder."
+	case "$Z" in "$D"/*) ;; *) echo "error $NZ" | tee -a "$OUT"; exit 3;; esac
+	case "${Z#"$D"/}" in */*|.*|"") echo "error $NZ" | tee -a "$OUT"; exit 3;; esac
 	{ [ -d "$D" ] && [ ! -L "$D" ] && [ -f "$Z" ] && [ ! -L "$Z" ]; } || { echo "error The ZIP is not there any more." | tee -a "$OUT"; exit 3; }
 	# the desktop user's lines, each kept in OUT too (but progress, which only the window shows)
-	{ as_user unpack "$Z" "$D" "$STOP"; echo "rc $?"; } | while IFS= read -r l; do
+	{ as_user unpack "$Z" "$D" "$STOP" "$M"; echo "rc $?"; } | while IFS= read -r l; do
 		case "$l" in "rc "*) exit "${l#rc }";; esac
 		printf '%s\n' "$l"
 		case "$l" in progress\ *) ;; *) printf '%s\n' "$l" >> "$OUT";; esac
@@ -56,10 +60,11 @@ esac
 
 # ---- as the desktop user: unpack ZIP into a hidden folder in DIR, then move each file flat into DIR
 [ "$(id -u)" = 0 ] && fail "Not as root."
-Z=$2; D=$3; STOP=$4; umask 077
+Z=$2; D=$3; STOP=$4; M=${5:-flat}; umask 077
+FOLD="The account's folder"; [ "$M" = beside ] && FOLD="The ZIP's folder"
 [ -f "$Z" ] || fail "The ZIP is not there any more."
 U=""; trap '[ -n "$U" ] && rm -rf "$U" "$U.paths" "$U.out" "$U.st"' EXIT; trap 'exit 5' INT TERM HUP
-W=$(mktemp "$D/.unzip-list-XXXXXX") || fail "The account's folder cannot be written."
+W=$(mktemp "$D/.unzip-list-XXXXXX") || fail "$FOLD cannot be written."
 entries "$Z" > "$W"
 rc=$(sed -n 's/^rc //p' "$W"); N=$(awk '/^e / && !/\/$/ {n++} END {print n+0}' "$W")
 if [ "$N" = 0 ] && ! grep -q '^e ' "$W"; then rm -f "$W"; [ "$rc" = 0 ] && fail "The ZIP is empty." || fail "This file is not a ZIP archive, or it is damaged."; fi
@@ -71,7 +76,7 @@ BYTES=$(awk '/^e / {b += $2} END {printf "%.0f", b}' "$W"); BIG=$(awk '/^e / && 
 FREE=$(df -Pk "$D" 2>/dev/null | awk 'NR==2 {print $4}')
 NEED=$(( BYTES / 1024 + 1 + ${DLZIP_MARGIN_KB:-102400} ))
 [ -n "$FREE" ] && [ "$FREE" -ge "$NEED" ] 2>/dev/null || fail "Not enough free space: the files inside need $(( BYTES / 1048576 + 1 )) MB, and the disk has $(( ${FREE:-0} / 1024 )) MB free."
-U=$(mktemp -d "$D/.unzip-XXXXXX") || fail "The account's folder cannot be written."
+U=$(mktemp -d "$D/.unzip-XXXXXX") || fail "$FOLD cannot be written."
 RU=$(cd "$U" && pwd -P)
 # no file unzip writes may grow larger than the largest the ZIP says it holds (a ZIP that lies about its sizes stops there)
 LIM=$(( BIG / 512 + 2 ))
@@ -105,6 +110,30 @@ if [ "$k" != 0 ]; then
 fi
 # names the lines cannot carry (a new line or a tab in them) are left out, said so
 find "$U" -mindepth 1 \( -name "*$NL*" -o -name "*$TAB*" \) -prune -exec rm -rf {} \; -exec echo "skip a name with a new line or a tab in it" \; | sort -u
+if [ "$M" = beside ]; then
+	# the folder beside the ZIP, named after it: one rename, so nothing of it is there half-written
+	bn=${Z##*/}; case "$bn" in *.[Zz][Ii][Pp]) bn=${bn%.*};; esac
+	case "$bn" in ""|.*) bn=unzipped;; esac
+	to=$bn; k=2
+	while [ -e "$D/$to" ] || [ -L "$D/$to" ]; do [ $k -lt 10000 ] || fail "There is no free name beside the ZIP for its folder."; to="$bn ($k)"; k=$((k+1)); done
+	chmod -R go= "$U" 2>/dev/null
+	rm -f "$U.paths" "$U.out" "$U.st"
+	mv "$U" "$D/$to" || fail "The folder could not be put beside the ZIP."
+	U=""; L=$D/$to
+	echo "dest $L"
+	find "$L" -mindepth 1 -type d | sort | while IFS= read -r d; do echo "dir ${d#"$L"/}"; done
+	W=$(mktemp "$D/.unzip-files-XXXXXX") || fail "$FOLD cannot be written."
+	find "$L" -type f -exec stat -c '%s %n' {} + > "$W"
+	n=0; nb=0
+	while IFS= read -r l; do
+		s=${l%% *}; f=${l#* }; r=${f#"$L"/}
+		n=$((n+1)); nb=$((nb+s))
+		printf 'file %s\t%s\t%s\n' "$r" "$r" "$s"
+	done < "$W"
+	rm -f "$W"
+	echo "done $n $nb"
+	exit 0
+fi
 find "$U" -mindepth 1 -type d | sort | while IFS= read -r d; do echo "dir ${d#"$U"/}"; done
 # each file moved FLAT into the account's folder, under a free name: a second name (ln), which never overwrites, so a name taken
 # meanwhile goes on to the next one; the hidden folder, removed at the end, takes the first names with it

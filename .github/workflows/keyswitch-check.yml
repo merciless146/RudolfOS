@@ -1,0 +1,58 @@
+# 1.6.3 Part 0: the release key's replacement (iso/systools/keyswitch.py, docs/secure-boot.md "Replacing the release key").
+# What the switch's day rests on, and nothing else: the tool and its host test, deadcheck.py (whose new key gate these are
+# the paths for: no CI workflow ran it before) with a negative control that proves the gate fires, and on main a job in the
+# `release` environment that fails if RPK_SIGNING_KEY is gone, so a broken secret shows now instead of at the next 6-hourly
+# release. That job sees only whether the key is empty: nothing here prints, writes or uses it.
+name: Release key switch check
+on:
+  pull_request:
+    paths: ['iso/systools/**', 'iso/trusted-keys.txt', 'iso/qt/host/keyswitch_t.sh', 'docs/secure-boot.md',
+            'docs/plan-1.6.3.md', '.github/workflows/keyswitch-check.yml']
+  push:
+    branches: [main]
+    paths: ['iso/systools/**', 'iso/trusted-keys.txt', 'iso/qt/host/keyswitch_t.sh', 'docs/secure-boot.md',
+            'docs/plan-1.6.3.md', '.github/workflows/keyswitch-check.yml']
+permissions: {contents: read}
+jobs:
+  tool:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Where the replacement stands
+        run: python3 iso/systools/keyswitch.py --status
+      - name: The list is one the tools read
+        run: python3 iso/systools/keyswitch.py --check
+      - name: keyswitch_t.sh
+        run: sh iso/qt/host/keyswitch_t.sh
+  deadcheck:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - name: gcc and pkg-config (deadcheck compiles sys/*.c)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gcc pkg-config libglib2.0-dev >/dev/null
+      - name: deadcheck.py
+        run: python3 iso/systools/deadcheck.py
+      - name: The key gate inside it fires (a negative control)
+        run: |
+          cp iso/trusted-keys.txt "$RUNNER_TEMP/trusted-keys.good"
+          printf 'not-a-key\n' >> iso/trusted-keys.txt
+          if python3 iso/systools/deadcheck.py; then
+            cp "$RUNNER_TEMP/trusted-keys.good" iso/trusted-keys.txt
+            echo "::error title=Key gate::deadcheck accepted a line that is not a public key: its keyswitch step is not running"
+            exit 1
+          fi
+          cp "$RUNNER_TEMP/trusted-keys.good" iso/trusted-keys.txt
+          echo "deadcheck refuses a key list the tools cannot read, so the new gate is live"
+  signing-key:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    environment: release
+    steps:
+      - uses: actions/checkout@v5
+      - name: main can still reach the signing key
+        env: {KEY: '${{ secrets.RPK_SIGNING_KEY }}'}
+        run: |
+          test -n "$KEY" || { echo "::error title=Signing secret::main cannot see RPK_SIGNING_KEY: add it to the release environment's secrets (Settings > Environments > release) or no release can sign"; exit 1; }
+          echo "the release environment gives main its RPK_SIGNING_KEY"

@@ -5,15 +5,17 @@
    1. Never a silent failure: a Debian or Windows program that ends within a few seconds with an error is said by rudolf-debian
       as a portal request of its own kind ("lxfail"), which the desktop collects as every other (Chromium's and Lite's desktop
       page: lxPortalPoll; the native desktop: its hidden page, oneapp59.js oaPortalRun, the same lxPortal): a message with the
-      program's name, how it ended and the last lines of its log; for a Windows program whose folder is only in the old prefix,
-      the offer below with it.
+      program's name, how it ended, the first real error and the last lines of its log, and, for a Windows program, what it runs
+      with (Wine's version, its 64- and 32-bit GL and Vulkan packages, the renderer, /dev/dri, the room left, the newest logs; a
+      game that ends at once is nearly always one of these); for a Windows program whose folder is only in the old prefix, the
+      offer below with it.
    2. The offer (rudolfd-wineold.inc, wine/old and wine/bring): the Windows programs from before, copied into the account,
       owned by it, the old prefix untouched, room checked first, in the background with its progress; an administrator decides
       when the computer has several accounts (the old prefix was all of theirs). Shown once after sign-in (never copied without
       the person's choice), in Settings › Apps › Linux beside Wine, and in System health while it is pending.
    Everything here is the page's own, so the three engines show it alike (the owner's rule). */
 window.__wineold62=1;
-const WO62={st:null,dlg:null,poll:0,said:0};
+const WO62={st:null,dlg:null,poll:0,said:0,fill:{}};
 function woSize(b){b=+b||0;return b>=1e9?(b/1e9).toFixed(1)+' GB':Math.max(1,Math.round(b/1e6))+' MB'}
 async function woGet(dir){if(!RD)return null;try{const j=await rd('wine/old'+(dir?'?dir='+encodeURIComponent(dir):''));WO62.st=j;return j}catch(e){return null}}
 function woProgress(j){if(!j)return'';if(j.phase=='finish')return'Putting the copy in its place…';if(j.phase=='launchers')return'Bringing their Start menu entries and icons…';
@@ -60,20 +62,28 @@ function woWatch(on){const tick=async()=>{const s=await woGet();const j=s&&s.job
 async function woFail(id,r){try{await lxAnswer(id,{})}catch(e){}
  /* (one left from more than 10 minutes ago, when no desktop was there to say it: not said now) */
  const at=+(String(id).split('-')[1]||0);if(at&&Date.now()/1000-at>600)return;
+ if(r.fill){const f=WO62.fill[String(r.of||'')];if(f)f(r);return}   /* (what it runs with, in a request of its own: fills that box in, never another) */
  const name=String(r.name||'A program'),st=+r.status||0,secs=+r.secs||0;
  const how=st>=128?'it was stopped (signal '+(st-128)+')':st==127?'its program could not be found':'exit status '+st;
  const s=r.wine?await woGet(String(r.dir||'')):null;const offer=s&&s.on&&(s.inOld||(s.offer&&s.count));
  const o=document.createElement('div');o.className='rmodal wo62f';
  o.innerHTML=`<div class='rmbox' role='alertdialog' aria-modal='true' aria-labelledby='wo62ft' style='max-width:600px'><h3 id='wo62ft'></h3><p class='wo62fa'></p>
 <pre class='wo62fl' style='white-space:pre-wrap;word-break:break-word;max-height:9em;overflow:auto;font-size:12px;background:rgba(128,128,128,.12);padding:6px;border-radius:4px'></pre>
+<pre class='wo62fd' hidden style='white-space:pre-wrap;word-break:break-word;max-height:12em;overflow:auto;font-size:11px;background:rgba(128,128,128,.12);padding:6px;border-radius:4px;margin-top:6px'></pre>
 <p class='wo62fo'></p><p class='wo62fg' style='font-size:12px;opacity:.75'></p><div class='rmrow'><button class='wo62fc'>Close</button><button class='wo62fb pri' hidden>Bring them in…</button></div></div>`;
  const q=c=>o.querySelector(c);q('h3').textContent=name+' did not start';
  q('.wo62fa').textContent='It ended '+(secs<1?'at once':'after '+Math.round(secs)+' s')+' ('+how+') without opening a window. The last lines of its log:';
- const L=(r.lines||[]).map(String).filter(Boolean);q('.wo62fl').textContent=L.length?L.join('\n'):'(its log is empty)';q('.wo62fg').textContent=r.log?'Its whole log: '+r.log:'';
+ const L=(r.lines||[]).map(String).filter(Boolean);q('.wo62fl').textContent=L.length?L.join('\n'):'(its log is empty)';
+ q('.wo62fg').textContent=r.log?'Its whole log: '+r.log:'';
+ const fill=r2=>{   /* (what it runs with, in a request of its own: the rest the box says already) */
+  const D=(r2.diag||[]).map(String).filter(Boolean);
+  if(D.length){const d=q('.wo62fd');d.hidden=false;d.textContent='What it runs with (Wine, its 32- and 64-bit GL and Vulkan, the renderer, the GPU, room):\n'+D.join('\n')}
+  if(r2.diaglog)q('.wo62fg').textContent+=' · its whole check: '+r2.diaglog};
+ WO62.fill[id]=fill;
  if(offer){const f=String(r.dir||'').split('/').filter(Boolean).pop();
   q('.wo62fo').textContent=(s.inOld&&f?'Its folder ('+f+') is among the Windows programs from before Rudolf OS 1.5.9, which are not in your account yet.':'Your account does not have the Windows programs from before Rudolf OS 1.5.9 yet: it may be one of them.')+' They can be brought in: a copy, owned by your account.';
   const b=q('.wo62fb');b.hidden=false;b.onclick=()=>{o.remove();woOffer('fail')}}
- const done=()=>o.remove();q('.wo62fc').onclick=done;o.addEventListener('keydown',e=>{if(e.key=='Escape')done()});
+ const done=()=>{o.remove();delete WO62.fill[id]};q('.wo62fc').onclick=done;o.addEventListener('keydown',e=>{if(e.key=='Escape')done()});
  document.body.appendChild(o);setTimeout(()=>{(offer?q('.wo62fb'):q('.wo62fc')).focus()},30)}
 if(typeof lxPortal=='function'){const _p=lxPortal;lxPortal=async function(id,r){if(r&&r.kind=='lxfail')return woFail(id,r);return _p.apply(this,arguments)}}
 /* Settings › Apps › Linux: beside Wine */

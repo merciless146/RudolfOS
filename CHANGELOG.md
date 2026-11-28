@@ -8,7 +8,46 @@ Each version's first line after "Summary:" is what Settings shows before an upda
 - **PipeWire and WirePlumber, beside PulseAudio** (Part 9, begun): the camera and the microphone's capture need
   PipeWire under WebKitGTK 2.52, so it now starts with the session beside PulseAudio, which keeps the sound cards
   (WirePlumber's ALSA monitor is off). No `pipewire-pulse`; nothing listens.
+- Fixed: **the box a Windows program that ended at once is shown in** no longer shows Wine's Bluetooth and USB driver
+  setup (`winebth`, `wineusb`, and the `scmdatabase_autostart_services` line after them) — a failure on every launch that
+  harms nothing — but the first real error in the log, then the last lines; a real error is any of Wine's error lines
+  (`err:`, `err:winediag:`, its Direct3D ones), its own `wine: ` words of a failure (an unhandled exception, a file it
+  cannot find), and Direct3D's remaining lines, where a game's renderer gives up; a log of nothing else says so (the
+  owner's Asus desktop, Starport: GE and Dead Frontier, 2026-11-28).
+- New: **when a Windows program ends at once, what it runs with is read and shown** (every Windows program, from 1.6.3
+  on): Wine's version, its 64- and 32-bit GL and Vulkan packages and which of them is not installed cleanly, the OpenGL
+  renderer, Vulkan's device, `/dev/dri`, the room left, and this account's newest logs — kept beside the program's log as
+  `…/ID.diag.txt`. The box is shown before them and they fill it in (a second request of their own, `…-diag`, carrying
+  only the readings and the box it fills), so it   never waits for `glxinfo` or `vulkaninfo`; the newest logs are this
+  account's only. They always come: a check that cannot start, or that prints nothing, is said in the box in its own words
+  (and in `…/ID.diag.txt`) rather than leaving the box without them — two of the six test runs in #762's CI had written no
+  readings request at all and nothing said so. A game that ends at once is nearly always one of these; before, nothing said
+  which.
 Summary: In progress.
+- **Archive Manager, a ZIP anywhere** (Part 10, begun): the Archive Manager opens and unpacks a ZIP kept anywhere your account
+  may read — another folder in your home, a USB drive, `/tmp` — not only one in Downloads. A listing is the same answer
+  wherever the ZIP is; Extract here unpacks it into a new folder beside it, named after it (`game`, `game (2)`), with the ZIP's
+  own folders and names, and the antivirus checks every file there by its own path, quarantining or blocking a bad one as it
+  does in Downloads. Nothing is moved into Downloads, so an extraction from a path leaves your downloads as they are. That
+  check only ever touches the folder the extraction made: no other file may be read, quarantined or deleted by path, and a
+  hidden folder (where each account's unencrypted downloads and the quarantine are kept) is never one a path may name.
+- Security: an account's folder of large downloads is the signed-in account's own. Since 1.5.5 a request named an account
+  and a file in it and was answered for any account whose name was of the right shape, so a window of the desktop could
+  list, read, unpack and write in another account's downloads (they are not under a key; they belong to the desktop's
+  user). The account is now checked against the one signed in, the guest's and shared stores stay open to nobody's own,
+  and nothing is refused with nobody signed in (the sign-in screen's own housekeeping, and the checks).
+- Developers: `docs/gap-analysis-1.6.3.md` ranks what Rudolf OS still lacks beside other operating systems — the
+  hardware it does not reach, the system software only this project can add, and the files it cannot yet manage — each
+  gap with the first pull request it needs.
+- Changed: the release key's replacement (plan 1.6.3 Part 0): `iso/systools/keyswitch.py` says where the replacement
+  stands, checks the key list the tools and recovery.efi read (run by `deadcheck.py` before every pull request, and by
+  CI for every change of `iso/systools/**`), and makes the switch itself when the owner says the moment has come; the
+  gate names no key, so a later rotation passes it unchanged. Nothing is switched yet: the new key still waits behind
+  the old one, and docs/secure-boot.md now says what the switch's day is.
+- Developers: `docs/plan-1.6.4.md` is the plan for 1.6.4: the account's own folders, a system extension installed from a
+  file, device firmware seen but not touched, installing beside Windows, the Archive Manager's items 2 to 8, File
+  Explorer as a native program (gaps 1, 2, 4, 6, 7 and 8 of `docs/gap-analysis-1.6.3.md`; gaps 3, 5 and 9 are 2.0's),
+  and the last pieces of the fingerprint readers, moved from 1.6.3.
 - New: on the native desktop, Settings is the native Settings app: Privacy, Security, System health and Users join the
   pages built before it, so every page of Settings is native there (Chromium mode and Lite keep the web Settings, as the
   owner's rule says). The Users page's security keys and fingerprints are added, removed and required through the page's own
@@ -18,8 +57,25 @@ Summary: In progress.
   and fonts read from the page at build time, bold and italic and underline, the colours, the alignments, the lists, the
   spacing, undo and Find) and its editing page are now a program of its own, `rudolf-wordpro`, so WordPro is no longer
   only a web app. Its documents are the page's own `.DOC` files: Open, Save and Save As write and read that HTML, so a
-  file written natively opens unchanged in the web WordPro, and back.
-- Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
+  file written natively opens unchanged in the web WordPro, and back.- **SpreadsheetPro, native** (Part 1, begun): its window, its toolbar (the fonts and sizes read from the page at build
+  time, bold, italic, underline, strikethrough, the two colours, the three alignments, undo and redo), its name box
+  and formula bar, its grid with values and formulas, its sheet tab and its status line are now a program of its own,
+  `rudolf-sheetpro`, so SpreadsheetPro is no longer only a web app.
+- **PresentPro, native** (Part 1, begun): its window, its toolbar (the page's layouts, its themes, fonts and sizes read
+  from the page at build time, bold, italic, underline, strikethrough, the colour, the three alignments, bullets and
+  numbering, undo and redo), its list of slides, its stage with the page's eight layouts and its notes are now a program
+  of its own, `rudolf-presentpro`, so PresentPro is no longer only a web app.
+- Fixed: the Command Prompt and the Linux terminal are one Terminal again, and the way between them cannot be lost. A
+  window kept the answer it was born with: at sign-in the encrypted folder may not be open yet, its one check of Debian
+  failed then, and from that the tab bar's ＋ (Ctrl+Shift+T) gave another Command Prompt tab for the window's whole life —
+  nothing said, and no way to the Linux terminal — while on a Rudolf OS without Debian there was nothing to choose at all.
+  The answer is now asked whenever the ＋ opens its menu (a failed status call asked again once), and without Debian the
+  menu offers "Set up Linux (Debian)…" and opens that page. The Terminal is also one window: Ctrl+Alt+T, the Start menu's
+  Terminal, the taskbar, prompt() (a .BAT, a Lua program, rpk) and the desktop's Command Prompt come to the Terminal that
+  is open and add their tab there, instead of opening a second one whose tabs are somewhere else.
+- New: a fingerprint answers the native apps' administrator prompts too, as it answers the page's: the account signed in
+  puts a finger on the reader instead of typing its password (the password always still works), the one-time answer goes
+  where the password goes, and the reader is given up when the prompt closes.- Better: addwebkit.sh names GStreamer's pipewire plug-in in its copy list, for the camera's PipeWire capture, and says so
   out loud when libgstpipewire.so is not on the build host: the loop used to skip a missing plug-in without a word, which
   is how the camera went a release without a capture source; it now names every plug-in it cannot find.
 - Better: addwebkit.sh also copies the interleave plug-in: AudioSourceProviderGStreamer needs its `deinterleave` for a

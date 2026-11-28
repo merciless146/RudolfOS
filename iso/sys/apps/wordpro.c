@@ -40,13 +40,49 @@ static char *DOCPATH;   /* (the document's file, once it has been opened or save
 static int DIRTY, ASK;   /* (the page's unsaved changes: 1 while the writing is not in its file, and whether its question is up) */
 static int ASK_LAST = -1;   /* (the answer the question was given, for the state the tests read) */
 static char ON[40];   /* (the toggles the cursor's place has, as the page's updSel writes them) */
-static const char *MENU_OPEN; static int MENU_OPEN_N;   /* (the menu open now, for the state the tests read) */
+
+/* ------------------------------------------------------------------ the menu bar: the page's own (base_v24.html's MENUS,
+   generated into wordpro-gen.h by mkwordpro.py at build time -- its titles, labels, keys and separators, and an id per
+   item). What the app can do for an item is said here, by the item's id: an item with no op is drawn greyed and refuses,
+   so the bar cannot promise a command the app has not got, and an item the page drops stops the build (its id is gone)
+   instead of leaving a dead entry behind. */
+enum { M_CLOSE, M_NEW, M_OPEN, M_SAVE, M_SAVEAS, M_UNDO, M_REDO, M_CUT, M_COPY, M_PASTE, M_SELALL, M_FIND, M_FINDREP,
+	M_ZOOM, M_TOGGLE, M_LIST, M_QUOTE, M_CASE, M_WHEN, M_CLEAR, M_TABLE, M_PICTURE, M_LINK, M_CHARS, M_STATS, M_KEYS, M_ABOUT };
+typedef struct { int id, op; const char *arg; } WpOp;
+static const WpOp OPS[] = {
+	{ WPI_FILE_NEW, M_NEW, NULL }, { WPI_FILE_OPEN, M_OPEN, NULL }, { WPI_FILE_CLOSE, M_CLOSE, NULL },
+	{ WPI_FILE_SAVE, M_SAVE, NULL }, { WPI_FILE_SAVE_AS, M_SAVEAS, NULL },
+	{ WPI_FILE_DOCUMENT_STATISTICS, M_STATS, NULL }, { WPI_TOOLS_DOCUMENT_STATISTICS, M_STATS, NULL },
+	{ WPI_EDIT_CUT, M_CUT, NULL }, { WPI_EDIT_COPY, M_COPY, NULL }, { WPI_EDIT_PASTE, M_PASTE, NULL },
+	{ WPI_EDIT_PASTE_AS_PLAIN_TEXT, M_PASTE, "plain" },
+	{ WPI_INSERT_TABLE, M_TABLE, NULL }, { WPI_TABLE_INSERT_TABLE, M_TABLE, NULL },
+	{ WPI_INSERT_PICTURE, M_PICTURE, NULL }, { WPI_INSERT_HYPERLINK, M_LINK, NULL },
+	{ WPI_INSERT_DATE_LONG, M_WHEN, "long" }, { WPI_INSERT_DATE_SHORT, M_WHEN, "short" },
+	{ WPI_INSERT_TIME, M_WHEN, "time" }, { WPI_INSERT_SPECIAL_CHARACTERS, M_CHARS, NULL },
+	{ WPI_FORMAT_UPPERCASE, M_CASE, "up" }, { WPI_FORMAT_LOWERCASE, M_CASE, "low" },
+	{ WPI_FORMAT_TITLE_CASE, M_CASE, "title" }, { WPI_FORMAT_SENTENCE_CASE, M_CASE, "sen" },
+	{ WPI_FORMAT_BLOCK_QUOTE, M_QUOTE, NULL },
+	{ WPI_EDIT_UNDO, M_UNDO, NULL }, { WPI_EDIT_REDO, M_REDO, NULL }, { WPI_EDIT_SELECT_ALL, M_SELALL, NULL },
+	{ WPI_EDIT_FIND, M_FIND, NULL }, { WPI_EDIT_FIND_AND_REPLACE, M_FINDREP, NULL },
+	{ WPI_VIEW_ZOOM_50, M_ZOOM, "50" }, { WPI_VIEW_ZOOM_75, M_ZOOM, "75" }, { WPI_VIEW_ZOOM_100, M_ZOOM, "100" },
+	{ WPI_VIEW_ZOOM_125, M_ZOOM, "125" }, { WPI_VIEW_ZOOM_150, M_ZOOM, "150" }, { WPI_VIEW_ZOOM_200, M_ZOOM, "200" },
+	{ WPI_FORMAT_BOLD, M_TOGGLE, "b" }, { WPI_FORMAT_ITALIC, M_TOGGLE, "i" }, { WPI_FORMAT_UNDERLINE, M_TOGGLE, "u" },
+	{ WPI_FORMAT_STRIKETHROUGH, M_TOGGLE, "s" }, { WPI_FORMAT_SUBSCRIPT, M_TOGGLE, "sub" },
+	{ WPI_FORMAT_SUPERSCRIPT, M_TOGGLE, "sup" }, { WPI_FORMAT_CLEAR_FORMATTING, M_CLEAR, NULL },
+	{ WPI_FORMAT_BULLETED_LIST, M_LIST, "bul" }, { WPI_FORMAT_NUMBERED_LIST, M_LIST, "num" },
+	{ WPI_FORMAT_INCREASE_INDENT, M_LIST, "ind" }, { WPI_FORMAT_DECREASE_INDENT, M_LIST, "out" },
+	{ WPI_HELP_KEYBOARD_SHORTCUTS, M_KEYS, NULL }, { WPI_HELP_ABOUT_WORDPRO, M_ABOUT, NULL } };
+static const WpOp *op_of(int id) { for (guint i = 0; i < G_N_ELEMENTS(OPS); i++) if (OPS[i].id == id) return &OPS[i]; return NULL; }
+#define NMENUS WPMENUS_N
+static int MENU_OPEN_I = -1;   /* (the menu open now: the tests read it, and a second press on its button closes it) */
 
 /* ------------------------------------------------------------------ tags, and the page's "select some text first" */
 static void state_soon(void);
+static gboolean menu_hook(gpointer d);
+static void menu_do(int id);
+static void hist_push(void); static void hist_undo(void); static void hist_redo(void);
 static void counts(void);
 static void upd_sel(void);
-static int menus_n(void);
 static void obj_counts(int *w, int *c);
 static void state_objs(GString *s);
 static void state_steps(GString *s);
@@ -74,6 +110,9 @@ static void css(void)
 {
 	static const char *T =
 		".wp-tb{background:#f9fafb;border-bottom:1px solid #d1d5db}"
+		".wp-mb{background:#f3f4f6;border-bottom:1px solid #d1d5db}"
+		"button.wp-mb-b{border:0;background:transparent;padding:3px 9px;border-radius:4px;font-size:13px;color:#111}"
+		"button.wp-mb-b:hover{background:#dbe6ff}"
 		"button.wp-tb{min-width:26px;padding:0 5px;border:1px solid transparent;background:transparent;border-radius:4px;font-size:13px;color:#111}"
 		"button.wp-tb:hover{background:#e0e7ff;border-color:#c7d2fe}"
 		"button.wp-on{background:#c7d2fe;border-color:#818cf8}"   /* (the page's .wp-tb button.on) */
@@ -125,8 +164,12 @@ static void apply_name(const char *name)
 	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;
 	GtkTextTag *t = tag_new(name);
 	if (all_have(&s, &e, name)) gtk_text_buffer_remove_tag(BUF, t, &s, &e);   /* (a second press takes it off, as the page's) */
-	else gtk_text_buffer_apply_tag(BUF, t, &s, &e);
-	counts(); upd_sel(); hist_push(); state_soon();   /* (a format change is a step of the history, as typing is) */
+	else {
+		const char *other = !strcmp(name, "sub") ? "sup" : !strcmp(name, "sup") ? "sub" : NULL;
+		if (other) gtk_text_buffer_remove_tag(BUF, tag_new(other), &s, &e);   /* (a character is one or the other, never both) */
+		gtk_text_buffer_apply_tag(BUF, t, &s, &e);
+	}
+	hist_push(); counts(); upd_sel(); state_soon();
 }
 static void apply_str(const char *name, const char *prop, const char *v)
 {
@@ -182,6 +225,12 @@ static void on_style(GtkComboBox *c, gpointer d)
 		{ 12, 1, 0, GTK_JUSTIFY_LEFT }, { 26, 1, 0, GTK_JUSTIFY_CENTER }, { 14, 0, 1, GTK_JUSTIFY_CENTER }, { 12, 0, 1, GTK_JUSTIFY_LEFT },
 		{ 11, 0, 0, GTK_JUSTIFY_LEFT } };
 	int n = (int)(sizeof ST / sizeof ST[0]); if (i >= n) i = n - 1;
+	/* (a paragraph is one style: the one it had goes, as the page's own does) */
+	for (int j = 0; j < NWPSTYLES; j++) {
+		char on[48]; snprintf(on, sizeof on, "st:%s", WP_STYLES[j].k);
+		GtkTextTag *o = gtk_text_tag_table_lookup(gtk_text_buffer_get_tag_table(BUF), on);
+		if (o) gtk_text_buffer_remove_tag(BUF, o, &s, &e);
+	}
 	char nm[48]; snprintf(nm, sizeof nm, "st:%s", WP_STYLES[i].k); GtkTextTag *t = tag_new(nm);
 	g_object_set(G_OBJECT(t), "size-points", ST[i].pt, "weight", ST[i].bold ? PANGO_WEIGHT_BOLD : PANGO_WEIGHT_NORMAL,
 		"style", ST[i].italic ? PANGO_STYLE_ITALIC : PANGO_STYLE_NORMAL, "justification", ST[i].just, NULL);
@@ -199,28 +248,65 @@ static void on_align(GtkWidget *b, gpointer d)
 	gtk_text_buffer_apply_tag(BUF, t, &s, &e); counts(); hist_push(); state_soon();
 }
 /* bullets, numbering and the indent: the page's block commands, on each line of the choice */
+/* (a line's first characters, for the two block commands that can be taken off again) */
+static char *line_head(GtkTextIter at)
+{
+	GtkTextIter s = at, e;
+	gtk_text_iter_set_line_offset(&s, 0); e = s; gtk_text_iter_forward_chars(&e, 10);
+	return gtk_text_iter_get_slice(&s, &e);
+}
+static int has_prefix(const char *h, const char *kind)
+{
+	if (!strcmp(kind, "bul"))   /* (a bullet's three UTF-8 bytes and the space after it) */
+		return (unsigned char)h[0] == 0xe2 && (unsigned char)h[1] == 0x80 && (unsigned char)h[2] == 0xa2 && h[3] == ' ';
+	if (!strcmp(kind, "num")) {
+		const char *p = h;
+		if (!(*p >= '0' && *p <= '9')) return 0;
+		while (*p >= '0' && *p <= '9') p++;
+		return p[0] == '.' && p[1] == ' ';
+	}
+	return 0;
+}
+/* (the page's block commands, on each line of the choice. A second press takes the bullet or the number off, as the page's
+   own does, and the lines are taken by their number: an inserted prefix does not move the ones still to come.) */
 static void line_prefix(const char *kind)
 {
-	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;   /* (the choice itself: its end was read unfilled) */
-	int end = gtk_text_iter_get_offset(&e); gtk_text_iter_set_line_offset(&s, 0); int n = 0;
-	for (;;) {
-		GtkTextIter line = s;
-		if (!strcmp(kind, "ind") || !strcmp(kind, "out")) {
-			gtk_text_iter_set_line_offset(&line, 0);
-			if (!strcmp(kind, "ind")) gtk_text_buffer_insert(BUF, &line, "    ", -1);
-			else {
-				GtkTextIter t = line; int k = 0;
-				while (k < 4 && gtk_text_iter_get_char(&t) == ' ') { gtk_text_iter_forward_char(&t); k++; }
-				if (k) gtk_text_buffer_delete(BUF, &line, &t);
-			}
+	GtkTextIter s, e; if (!need_sel() || !sel(&s, &e)) return;   /* (need_sel fills its own iterators, not these) */
+	int l0 = gtk_text_iter_get_line(&s), l1 = gtk_text_iter_get_line(&e), block = !strcmp(kind, "ind") || !strcmp(kind, "out");
+	if (l1 > l0 && gtk_text_iter_get_line_offset(&e) == 0) l1--;   /* (a choice ending at a line's start does not take that line) */
+	int all = 1, n = 0;
+	for (int L = l0; L <= l1; L++) {
+		GtkTextIter i; gtk_text_buffer_get_iter_at_line(BUF, &i, L);
+		char *h = line_head(i);
+		if (!block && !has_prefix(h, kind)) all = 0;
+		g_free(h); n++;
+	}
+	all = all && n > 0;
+	for (int L = l0, num = 0; L <= l1; L++) {
+		GtkTextIter i; gtk_text_buffer_get_iter_at_line(BUF, &i, L);
+		GtkTextIter t = i; gtk_text_iter_set_line_offset(&t, 0);
+		if (!strcmp(kind, "ind")) { gtk_text_buffer_insert(BUF, &t, "    ", -1); continue; }
+		if (!strcmp(kind, "out")) {
+			GtkTextIter u = t; int k = 0;
+			while (k < 4 && gtk_text_iter_get_char(&u) == ' ') { gtk_text_iter_forward_char(&u); k++; }
+			if (k) gtk_text_buffer_delete(BUF, &t, &u);
+			continue;
+		}
+		if (all) {
+			GtkTextIter u = t;
+			if (!strcmp(kind, "num")) {
+				while (gtk_text_iter_get_char(&u) >= '0' && gtk_text_iter_get_char(&u) <= '9') gtk_text_iter_forward_char(&u);
+				gtk_text_iter_forward_char(&u);                              /* (the dot) */
+				if (gtk_text_iter_get_char(&u) == ' ') gtk_text_iter_forward_char(&u);
+			} else gtk_text_iter_forward_chars(&u, 2);                       /* (the bullet and its space) */
+			gtk_text_buffer_delete(BUF, &t, &u);
 		} else {
 			char m[16];
-			if (!strcmp(kind, "num")) snprintf(m, sizeof m, "%d. ", ++n); else snprintf(m, sizeof m, "• ");
-			gtk_text_buffer_insert(BUF, &line, m, -1);
+			if (!strcmp(kind, "num")) snprintf(m, sizeof m, "%d. ", ++num); else snprintf(m, sizeof m, "• ");
+			gtk_text_buffer_insert(BUF, &t, m, -1);
 		}
-		if (!gtk_text_iter_forward_line(&s) || gtk_text_iter_get_offset(&s) > end) break;
 	}
-	counts(); state_soon();
+	hist_push(); counts(); state_soon();
 }
 static void on_list(GtkWidget *b, gpointer d) { (void)b; line_prefix((const char *)d); }
 static void on_spacing(GtkComboBox *c, gpointer d)
@@ -262,6 +348,13 @@ static void reveal(GtkTextIter *a, GtkTextIter *b)
 	GtkTextMark *m = gtk_text_buffer_create_mark(BUF, NULL, a, 0);
 	gtk_text_view_scroll_mark_onscreen(GTK_TEXT_VIEW(ED), m); gtk_text_buffer_delete_mark(BUF, m);
 }
+/* (the match is marked, as the page marks it: the tag exists for this and nothing else) */
+static void mark_find(GtkTextIter *a, GtkTextIter *b)
+{
+	GtkTextIter s, e; gtk_text_buffer_get_bounds(BUF, &s, &e);
+	gtk_text_buffer_remove_tag(BUF, tag_new("find"), &s, &e);
+	gtk_text_buffer_apply_tag(BUF, tag_new("find"), a, b);
+}
 static void find_next(void)
 {
 	const char *n = gtk_entry_get_text(GTK_ENTRY(FI)); if (!*n) { say(""); return; }
@@ -271,7 +364,7 @@ static void find_next(void)
 		gtk_text_buffer_get_start_iter(BUF, &at);
 		if (!gtk_text_iter_forward_search(&at, n, 0, &a, &b, NULL)) { say("Not found."); state_soon(); return; }
 	}
-	reveal(&a, &b); state_soon();
+	mark_find(&a, &b); reveal(&a, &b); state_soon();
 }
 static void find_prev(void)
 {
@@ -282,7 +375,7 @@ static void find_prev(void)
 		while (gtk_text_iter_forward_search(&at, n, 0, &a, &b, NULL) && gtk_text_iter_compare(&a, &stop) < 0) { ha = a; hb = b; have = 1; at = b; } }
 	else while (gtk_text_iter_forward_search(&at, n, 0, &a, &b, NULL)) { ha = a; hb = b; have = 1; at = b; }
 	if (!have) { say("Not found."); state_soon(); return; }
-	reveal(&ha, &hb); state_soon();
+	mark_find(&ha, &hb); reveal(&ha, &hb); state_soon();
 }
 static void replace_all(void)
 {
@@ -360,8 +453,7 @@ static void state_write(void)
 	GtkTextIter a, b; int has = sel(&a, &b);
 	g_string_append_printf(s, "font %s\nsize %.1f\nzoom %d\nwords %d\nchars %d\nsel %d\nsay %s\nstyles %d\nfonts %d\n",
 		FAMILY, PT, ZOOM, w, c, has, SAY, NWPSTYLES, NWPFONTS);
-	g_string_append_printf(s, "menus %d\n", menus_n());
-	if (MENU_OPEN) g_string_append_printf(s, "menu %s %d\n", MENU_OPEN, MENU_OPEN_N);
+	if (MENU_OPEN_I >= 0) g_string_append_printf(s, "menu %s %d\n", WP_MENUS[MENU_OPEN_I].title, WP_MENUS[MENU_OPEN_I].n);
 	state_objs(s);
 	g_string_append_printf(s, "hist %d %d\n", HIST_I, HIST_N);   /* (where the undo stands: the tests read it) */
 	state_steps(s);
@@ -389,6 +481,23 @@ static void state_write(void)
 		if (*line && strcmp(line, last)) { g_string_append_printf(s, " %s", line); snprintf(last, sizeof last, "%s", line); }
 	}
 	g_string_append_c(s, '\n');
+	gtk_text_buffer_get_start_iter(BUF, &a); gtk_text_buffer_get_end_iter(BUF, &b);
+	g_string_append_printf(s, "mb %d", NMENUS);
+	for (int i = 0; i < NMENUS; i++) g_string_append_printf(s, "%s%s", i ? "," : " ", WP_MENUS[i].title);
+	g_string_append_c(s, '\n');
+	/* (what the page has and the app has no command for, menu by menu: the tests read these, so a command that
+	   joins the page's bar cannot arrive here quietly, greyed, with nobody noticing) */
+	for (int i = 0; i < NMENUS; i++) {
+		int later = 0;
+		for (int k = 0; k < WP_MENUS[i].n; k++) { const WpItem *m = &WP_MENUS[i].items[k]; if (m->label && !op_of(m->id)) later++; }
+		g_string_append_printf(s, "later %s %d\n", WP_MENUS[i].title, later);
+	}
+	if (MENU_OPEN_I >= 0) {
+		g_string_append_printf(s, "menuopen %s %d\n", WP_MENUS[MENU_OPEN_I].title, WP_MENUS[MENU_OPEN_I].n);
+		g_string_append(s, "grey");
+		for (int i = 0; i < WP_MENUS[MENU_OPEN_I].n; i++) { const WpItem *m = &WP_MENUS[MENU_OPEN_I].items[i]; if (m->label && !op_of(m->id)) g_string_append_printf(s, " %s", m->label); }
+		g_string_append_c(s, '\n');
+	}
 	g_string_append_printf(s, "text %s\n", t); g_free(t);
 	char *tmp = g_strdup_printf("%s.t", f); g_file_set_contents(tmp, s->str, -1, NULL); rename(tmp, f); g_free(tmp); g_string_free(s, TRUE);
 }
@@ -506,11 +615,6 @@ static void build_toolbar(void)
    as the page draws one that cannot be chosen (dimmed), so the bar reads as the page's while what is there works. The
    dropdowns are rui_menu, the desktop's menus in the page's own look. An item names one operation: the tables say what an
    item does, and one dispatch does it, so no item needs a function of its own for a single call. */
-enum { OP_NONE, OP_NEW, OP_CLOSE, OP_UNDO, OP_REDO, OP_CUT, OP_COPY, OP_PASTE, OP_SELALL, OP_FIND, OP_REPLACE, OP_ZOOM,
-	OP_TAG, OP_LIST, OP_QUOTE, OP_CLEAR, OP_CASE, OP_WHEN, OP_STATS, OP_KEYS, OP_ABOUT, OP_PICTURE, OP_TABLE, OP_LINK,
-	OP_CHARS, OP_OPEN, OP_SAVE };
-typedef struct { const char *label, *key; int off; const char *tag; int z; int op; const char *arg; } Mi;
-#define WPS { NULL, NULL, 0, NULL, 0, OP_NONE, NULL }
 static void noop(int i, void *d) { (void)i; (void)d; }
 /* the page's question before the writing is thrown away (base_v24.html's confirmDiscard): Save, Don't save, or Cancel.
    It stands before New, Open and Close, as on the page, and nothing is thrown away until it is answered. */
@@ -601,13 +705,6 @@ static void show_stats(void)
 	g_free(t);
 	static const char *B[] = { "OK" };
 	rui_confirm(W, rui_tr("Document statistics"), m, B, 1, 1, noop, NULL);
-}
-static void show_keys(void)
-{
-	static const char *B[] = { "OK" };
-	rui_confirm(W, rui_tr("Keyboard shortcuts"),
-		"Ctrl+B / I / U - bold, italic, underline\nCtrl+Z / Y - undo, redo\nCtrl+X / C / V - cut, copy, paste\n"
-		"Ctrl+A - select all\nCtrl+F - find\nCtrl+K - insert a link\nCtrl+P - print", B, 1, 1, noop, NULL);
 }
 /* ------------------------------------------------------------------ the document's objects: a picture and a table
    The model, decided before either was written (docs/plan-1.6.3.md, "The document model"): a picture or a table is a
@@ -1671,154 +1768,6 @@ static void open_doc(const char *path)
 	g_free(DOCPATH); DOCPATH = g_strdup(path); DIRTY = 0; set_title();   /* (what was opened is its file's, with nothing unsaved) */
 	state_soon();
 }
-static void menu_do(const Mi *s)
-{
-	GtkTextIter a, b;
-	switch (s->op) {
-	case OP_NEW: new_page(); break;
-	case OP_CLOSE: confirm_discard(ASK_CLOSE, NULL); break;
-	case OP_UNDO: hist_undo(); break;
-	case OP_REDO: hist_redo(); break;
-	case OP_CUT: gtk_text_buffer_cut_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), TRUE); counts(); state_soon(); break;
-	case OP_COPY: gtk_text_buffer_copy_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD)); break;
-	case OP_PASTE:
-		if (s->arg) { paste_plain(); break; }
-		gtk_text_buffer_get_iter_at_mark(BUF, &a, gtk_text_buffer_get_insert(BUF));
-		gtk_text_buffer_paste_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), &a, TRUE);
-		counts(); state_soon(); break;
-	case OP_SELALL:
-		gtk_text_buffer_get_bounds(BUF, &a, &b); gtk_text_buffer_select_range(BUF, &b, &a);
-		gtk_widget_grab_focus(ED); state_soon(); break;
-	case OP_FIND: on_find_open(NULL, NULL); break;
-	case OP_REPLACE: gtk_widget_show_all(FIND); gtk_widget_grab_focus(REPL); state_soon(); break;
-	case OP_ZOOM: zoom_to(s->z); break;
-	case OP_TAG: apply_name(s->tag); break;
-	case OP_LIST: line_prefix(s->arg); break;
-	case OP_QUOTE: quote_style(); break;
-	case OP_CLEAR: on_clear(NULL, NULL); break;
-	case OP_CASE: case_do(!strcmp(s->arg, "up") ? 0 : !strcmp(s->arg, "low") ? 1 : !strcmp(s->arg, "title") ? 2 : 3); break;
-	case OP_WHEN: insert_when(s->arg); break;
-	case OP_OPEN: choose_open(); break;
-	case OP_SAVE: save_now(); break;
-	case OP_PICTURE: pic_dlg(); break;   /* (the page's own dialog: a file, a web address, a description) */
-	case OP_TABLE: table_dlg(); break;   /* (the page's own dialog: its counts, its heading row and its borders) */
-	case OP_LINK: link_dlg(); break;   /* (the page's own dialog: the words and the address) */
-	case OP_CHARS: chars_dlg(); break;   /* (the page's own dialog: its symbols, and a press puts one in) */
-	case OP_STATS: show_stats(); break;
-	case OP_KEYS: show_keys(); break;
-	case OP_ABOUT:
-		rui_about(W, "WordPro 1.0", rui_tr("A word processor for Rudolf OS with styles, the four alignments, bullets, numbering, "
-			"find and replace, and the page's own lists. Documents are saved as .DOC files that WordLite and Oracle can also open."));
-		break;
-	default: break;
-	}
-}
-static const Mi FILE_I[] = {
-	{ "New", "Ctrl+N", 0, NULL, 0, OP_NEW, NULL }, { "Open...", "Ctrl+O", 0, NULL, 0, OP_OPEN, NULL },
-	{ "Save", "Ctrl+S", 0, NULL, 0, OP_SAVE, NULL }, { "Save As...", "", 0, NULL, 0, OP_SAVE, NULL }, WPS,
-	{ "Import text or HTML file...", "", 1, NULL, 0, OP_NONE, NULL }, { "Export as text (.TXT)...", "", 1, NULL, 0, OP_NONE, NULL },
-	{ "Export as web page (.HTM)...", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
-	{ "Page setup...", "", 1, NULL, 0, OP_NONE, NULL }, { "Print...", "Ctrl+P", 1, NULL, 0, OP_NONE, NULL }, WPS,
-	{ "Document statistics...", "", 0, NULL, 0, OP_STATS, NULL }, { "Close", "", 0, NULL, 0, OP_CLOSE, NULL } };
-static const Mi EDIT_I[] = {
-	{ "Undo", "Ctrl+Z", 0, NULL, 0, OP_UNDO, NULL }, { "Redo", "Ctrl+Y", 0, NULL, 0, OP_REDO, NULL }, WPS,
-	{ "Cut", "Ctrl+X", 0, NULL, 0, OP_CUT, NULL }, { "Copy", "Ctrl+C", 0, NULL, 0, OP_COPY, NULL },
-	{ "Paste", "Ctrl+V", 0, NULL, 0, OP_PASTE, NULL }, { "Paste as plain text", "Ctrl+Shift+V", 0, NULL, 0, OP_PASTE, "plain" }, WPS,
-	{ "Select all", "Ctrl+A", 0, NULL, 0, OP_SELALL, NULL }, WPS,
-	{ "Find...", "Ctrl+F", 0, NULL, 0, OP_FIND, NULL }, { "Find and replace...", "Ctrl+H", 0, NULL, 0, OP_REPLACE, NULL } };
-static const Mi VIEW_I[] = {
-	{ "Print layout", "", 1, NULL, 0, OP_NONE, NULL }, { "Web layout", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
-	{ "Zoom 50%", "", 0, NULL, 50, OP_ZOOM, NULL }, { "Zoom 75%", "", 0, NULL, 75, OP_ZOOM, NULL },
-	{ "Zoom 100%", "", 0, NULL, 100, OP_ZOOM, NULL }, { "Zoom 125%", "", 0, NULL, 125, OP_ZOOM, NULL },
-	{ "Zoom 150%", "", 0, NULL, 150, OP_ZOOM, NULL }, { "Zoom 200%", "", 0, NULL, 200, OP_ZOOM, NULL }, WPS,
-	{ "Outline pane", "", 1, NULL, 0, OP_NONE, NULL }, { "Show formatting marks", "", 1, NULL, 0, OP_NONE, NULL },
-	{ "Spell check as you type", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
-	{ "Show Notey, the assistant", "", 1, NULL, 0, OP_NONE, NULL } };
-static const Mi INSERT_I[] = {
-	{ "Table...", "", 0, NULL, 0, OP_TABLE, NULL }, { "Picture...", "", 0, NULL, 0, OP_PICTURE, NULL },
-	{ "Hyperlink...", "Ctrl+K", 0, NULL, 0, OP_LINK, NULL }, { "Bookmark...", "", 1, NULL, 0, OP_NONE, NULL },
-	{ "Links in this document...", "", 1, NULL, 0, OP_NONE, NULL }, { "Horizontal line", "", 1, NULL, 0, OP_NONE, NULL },
-	{ "Page break", "Ctrl+Enter", 1, NULL, 0, OP_NONE, NULL }, WPS,
-	{ "Date (long)", "", 0, NULL, 0, OP_WHEN, "long" }, { "Date (short)", "", 0, NULL, 0, OP_WHEN, "short" },
-	{ "Time", "", 0, NULL, 0, OP_WHEN, "time" }, { "Special characters...", "", 0, NULL, 0, OP_CHARS, NULL }, WPS,
-	{ "Footnote...", "", 1, NULL, 0, OP_NONE, NULL }, { "Table of contents / update", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
-	{ "Header and footer...", "", 1, NULL, 0, OP_NONE, NULL }, { "Page numbers", "", 1, NULL, 0, OP_NONE, NULL } };
-static const Mi FORMAT_I[] = {
-	{ "Bold", "Ctrl+B", 0, "b", 0, OP_TAG, NULL }, { "Italic", "Ctrl+I", 0, "i", 0, OP_TAG, NULL },
-	{ "Underline", "Ctrl+U", 0, "u", 0, OP_TAG, NULL }, { "Strikethrough", "", 0, "s", 0, OP_TAG, NULL },
-	{ "Subscript", "", 0, "sub", 0, OP_TAG, NULL }, { "Superscript", "", 0, "sup", 0, OP_TAG, NULL }, WPS,
-	{ "UPPERCASE", "", 0, NULL, 0, OP_CASE, "up" }, { "lowercase", "", 0, NULL, 0, OP_CASE, "low" },
-	{ "Title Case", "", 0, NULL, 0, OP_CASE, "title" }, { "Sentence case", "", 0, NULL, 0, OP_CASE, "sen" },
-	{ "Clear formatting", "", 0, NULL, 0, OP_CLEAR, NULL }, WPS,
-	{ "Paragraph...", "", 1, NULL, 0, OP_NONE, NULL }, { "Bulleted list", "", 0, NULL, 0, OP_LIST, "bul" },
-	{ "Numbered list", "", 0, NULL, 0, OP_LIST, "num" }, { "Increase indent", "", 0, NULL, 0, OP_LIST, "ind" },
-	{ "Decrease indent", "", 0, NULL, 0, OP_LIST, "out" }, { "Block quote", "", 0, NULL, 0, OP_QUOTE, NULL }, WPS,
-	{ "One column", "", 1, NULL, 0, OP_NONE, NULL }, { "Two columns", "", 1, NULL, 0, OP_NONE, NULL },
-	{ "Three columns", "", 1, NULL, 0, OP_NONE, NULL }, { "Drop cap", "", 1, NULL, 0, OP_NONE, NULL } };
-static const Mi TABLE_I[] = {
-	{ "Insert table...", "", 0, NULL, 0, OP_TABLE, NULL }, WPS,
-	{ "Insert row above", "", 1, NULL, 0, OP_NONE, NULL }, { "Insert row below", "", 1, NULL, 0, OP_NONE, NULL },
-	{ "Insert column left", "", 1, NULL, 0, OP_NONE, NULL }, { "Insert column right", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
-	{ "Delete row", "", 1, NULL, 0, OP_NONE, NULL }, { "Delete column", "", 1, NULL, 0, OP_NONE, NULL },
-	{ "Delete table", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
-	{ "Merge with cell to the right", "", 1, NULL, 0, OP_NONE, NULL }, { "Shade cell...", "", 1, NULL, 0, OP_NONE, NULL },
-	{ "Toggle borders", "", 1, NULL, 0, OP_NONE, NULL }, { "Toggle header row", "", 1, NULL, 0, OP_NONE, NULL } };
-static const Mi TOOLS_I[] = {
-	{ "Check my writing (Notey)", "", 1, NULL, 0, OP_NONE, NULL }, { "Document statistics...", "", 0, NULL, 0, OP_STATS, NULL },
-	{ "Smart quotes while typing", "", 1, NULL, 0, OP_NONE, NULL }, WPS,
-	{ "Change page colour...", "", 1, NULL, 0, OP_NONE, NULL } };
-static const Mi HELP_I[] = {
-	{ "Keyboard shortcuts", "", 0, NULL, 0, OP_KEYS, NULL }, { "About WordPro", "", 0, NULL, 0, OP_ABOUT, NULL } };
-static const struct { const char *title; const Mi *items; int n; } MENUS[] = {
-	{ "File", FILE_I, G_N_ELEMENTS(FILE_I) }, { "Edit", EDIT_I, G_N_ELEMENTS(EDIT_I) },
-	{ "View", VIEW_I, G_N_ELEMENTS(VIEW_I) }, { "Insert", INSERT_I, G_N_ELEMENTS(INSERT_I) },
-	{ "Format", FORMAT_I, G_N_ELEMENTS(FORMAT_I) }, { "Table", TABLE_I, G_N_ELEMENTS(TABLE_I) },
-	{ "Tools", TOOLS_I, G_N_ELEMENTS(TOOLS_I) }, { "Help", HELP_I, G_N_ELEMENTS(HELP_I) } };
-#define NMENUS ((int)G_N_ELEMENTS(MENUS))
-static GtkWidget *MBAR, *MBTNS[NMENUS];
-static int menus_n(void) { return NMENUS; }
-static void menu_pick(int i, void *d)
-{
-	int m = (int)(intptr_t)d; MENU_OPEN = NULL;
-	if (i >= 0 && i < MENUS[m].n && !MENUS[m].items[i].off) menu_do(&MENUS[m].items[i]);
-	upd_sel(); state_soon();
-}
-static void open_menu(GtkWidget *b, int m)
-{
-	RuiMenuItem *it = g_new0(RuiMenuItem, MENUS[m].n); char **lab = g_new0(char *, MENUS[m].n); int nlab = 0;
-	GtkTextIter at; gtk_text_buffer_get_iter_at_mark(BUF, &at, gtk_text_buffer_get_insert(BUF));
-	for (int k = 0; k < MENUS[m].n; k++) {
-		const Mi *s = &MENUS[m].items[k];
-		it[k].label = s->label; it[k].key = s->key; it[k].off = s->off; it[k].sep = s->label == NULL;
-		if (s->label && ((s->tag && has_tag_at(&at, s->tag)) || (s->z && s->z == ZOOM))) it[k].label = lab[nlab++] = g_strconcat("\xe2\x9c\x93 ", s->label, NULL);
-	}
-	GtkAllocation a; gtk_widget_get_allocation(b, &a); int ox = 0, oy = 0;
-	if (gtk_widget_get_window(b)) gdk_window_get_origin(gtk_widget_get_window(b), &ox, &oy);
-	MENU_OPEN = MENUS[m].title; MENU_OPEN_N = MENUS[m].n;
-	rui_menu(b, ox, oy + a.height, NULL, it, MENUS[m].n, menu_pick, (void *)(intptr_t)m);
-	for (int k = 0; k < nlab; k++) g_free(lab[k]);
-	g_free(lab); g_free(it); state_soon();
-}
-static void mb_click(GtkWidget *b, gpointer d) { open_menu(b, (int)(intptr_t)d); }
-static void build_menubar(void)
-{
-	MBAR = gtk_flow_box_new();
-	gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(MBAR), GTK_SELECTION_NONE);
-	gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(MBAR), (int)lround(rui_px(1)));
-	gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(MBAR), 12);
-	gtk_widget_set_margin_start(MBAR, (int)lround(rui_px(4)));
-	gtk_widget_set_margin_top(MBAR, (int)lround(rui_px(2))); gtk_widget_set_margin_bottom(MBAR, (int)lround(rui_px(2)));
-	gtk_style_context_add_class(gtk_widget_get_style_context(MBAR), "wp-mb");
-	for (int i = 0; i < NMENUS; i++) {
-		GtkWidget *b = gtk_button_new_with_label(MENUS[i].title);
-		gtk_style_context_add_class(gtk_widget_get_style_context(b), "rui");
-		gtk_style_context_add_class(gtk_widget_get_style_context(b), "wp-mb-b");
-		gtk_widget_set_can_focus(b, FALSE); gtk_widget_set_valign(b, GTK_ALIGN_CENTER);
-		g_signal_connect(b, "clicked", G_CALLBACK(mb_click), (gpointer)(intptr_t)i);
-		gtk_flow_box_insert(GTK_FLOW_BOX(MBAR), b, -1); MBTNS[i] = b;
-	}
-	gtk_box_pack_start(GTK_BOX(W->body), MBAR, FALSE, FALSE, 0);
-}
 static gboolean io_hook(gpointer d)
 {
 	(void)d;
@@ -1827,7 +1776,6 @@ static gboolean io_hook(gpointer d)
 	if (sv && *sv) save_doc(sv);
 	return G_SOURCE_REMOVE;
 }
-static gboolean menu_hook(gpointer d) { int m = (int)(intptr_t)d; open_menu(MBTNS[m], m); return G_SOURCE_REMOVE; }
 static void on_find_text(GtkEditable *e, gpointer d) { (void)e; (void)d; state_soon(); }
 static void build_find(void)
 {
@@ -1871,6 +1819,7 @@ static void build_editor(void)
 	gtk_text_buffer_create_tag(BUF, "sub", "rise", -4000, "size-points", 9.0, NULL);
 	gtk_text_buffer_create_tag(BUF, "sup", "rise", 6000, "size-points", 9.0, NULL);
 	gtk_text_buffer_create_tag(BUF, "find", "background", "#fde68a", NULL);
+	hist_push();   /* (the empty page is the step undo comes back to) */
 	set_editor_font();
 	gtk_container_add(GTK_CONTAINER(paper), ED);
 	gtk_box_pack_start(GTK_BOX(area), paper, TRUE, TRUE, 0);
@@ -1914,7 +1863,7 @@ static gboolean key(GtkWidget *w, GdkEventKey *e, gpointer d)
 	case GDK_KEY_b: apply_name("b"); return TRUE;
 	case GDK_KEY_i: apply_name("i"); return TRUE;
 	case GDK_KEY_u: apply_name("u"); return TRUE;
-	case GDK_KEY_z: hist_undo(); return TRUE;
+	case GDK_KEY_z: if (e->state & GDK_SHIFT_MASK) hist_redo(); else hist_undo(); return TRUE;
 	case GDK_KEY_y: hist_redo(); return TRUE;
 	case GDK_KEY_f: gtk_widget_show_all(FIND); gtk_widget_grab_focus(FI); return TRUE;
 	case GDK_KEY_h: gtk_widget_show_all(FIND); gtk_widget_grab_focus(REPL); state_soon(); return TRUE;
@@ -1978,6 +1927,135 @@ static gboolean answer_hook(gpointer d)
 	g_free(btn); g_free(lab);   /* (LAST keeps its own copy of what it read) */
 	return G_SOURCE_CONTINUE;
 }
+/* (the check's hand on the toolbar's own commands: RUDOLF_WP_DO=bul,bul applies each to the whole writing, once there is
+   some -- a click on a button is the person's, and the check cannot aim one) */
+static int DO_TICKS;
+static gboolean do_hook(gpointer d)
+{
+	if (!gtk_text_buffer_get_char_count(BUF) && ++DO_TICKS < 50) return G_SOURCE_CONTINUE;
+	char *copy = g_strdup((const char *)d), *sv = NULL;
+	for (char *tok = strtok_r(copy, ",", &sv); tok; tok = strtok_r(NULL, ",", &sv)) {
+		GtkTextIter a, b;
+		gtk_text_buffer_get_bounds(BUF, &a, &b);
+		gtk_text_buffer_select_range(BUF, &a, &b);   /* (the page's commands act on the choice, so the whole writing is one) */
+		if (!strncmp(tok, "menu:", 5)) { int m = atoi(tok + 5); if (m >= 0 && m < NMENUS) g_idle_add(menu_hook, (gpointer)(intptr_t)m); }
+		else if (!strncmp(tok, "mi:", 3)) { int m = atoi(tok + 3), k = (strchr(tok + 3, ':')) ? atoi(strchr(tok + 3, ':') + 1) : -1;
+			if (m >= 0 && m < NMENUS && k >= 0 && k < WP_MENUS[m].n) menu_do(WP_MENUS[m].items[k].id); }
+		if (!strcmp(tok, "bul") || !strcmp(tok, "num") || !strcmp(tok, "ind") || !strcmp(tok, "out")) line_prefix(tok);
+		else if (!strncmp(tok, "style:", 6)) {
+			int k = atoi(tok + 6);
+			if (k >= 0 && k < NWPSTYLES && STYLEW) {
+				UPDATING = 1; gtk_combo_box_set_active(GTK_COMBO_BOX(STYLEW), k); UPDATING = 0;
+				on_style(GTK_COMBO_BOX(STYLEW), NULL);
+			}
+		}
+	}
+	g_free(copy);
+	state_soon();
+	return G_SOURCE_REMOVE;
+}
+/* ------------------------------------------------------------------ the menus themselves: the bar, its drop-downs and what
+   each item does (the page's own commands; an item whose step is later has no op and refuses) */
+static GtkWidget *MBAR, *MBTNS[WPMENUS_N];
+static void menu_do(int id)
+{
+	const WpOp *o = op_of(id); if (!o) return;   /* (an item the app has no command for: greyed, and it refuses) */
+	switch (o->op) {
+	case M_CLOSE: gtk_widget_destroy(W->win); break;
+	case M_UNDO: hist_undo(); break;
+	case M_REDO: hist_redo(); break;
+	case M_SELALL: { GtkTextIter a, b; gtk_text_buffer_get_bounds(BUF, &a, &b); gtk_text_buffer_select_range(BUF, &a, &b); state_soon(); break; }
+	case M_FIND: on_find_open(NULL, NULL); break;
+	case M_FINDREP: on_find_open(NULL, NULL); if (REPL) gtk_widget_grab_focus(REPL); break;
+	case M_ZOOM: zoom_to(atoi(o->arg)); break;
+	case M_TOGGLE: toggle(NULL, (gpointer)o->arg); break;
+	case M_LIST: on_list(NULL, (gpointer)o->arg); break;
+	case M_CLEAR: on_clear(NULL, NULL); break;
+	case M_NEW: new_page(); break;
+	case M_OPEN: confirm_discard(ASK_OPEN, NULL); break;
+	case M_SAVE: save_now(); break;
+	case M_SAVEAS: choose_save(); break;
+	case M_STATS: show_stats(); break;
+	case M_CUT: gtk_text_buffer_cut_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), TRUE);
+		counts(); state_soon(); break;
+	case M_COPY: gtk_text_buffer_copy_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD)); break;
+	case M_PASTE:
+		if (o->arg && !strcmp(o->arg, "plain")) paste_plain();
+		else gtk_text_buffer_paste_clipboard(BUF, gtk_clipboard_get(GDK_SELECTION_CLIPBOARD), NULL, TRUE);
+		counts(); state_soon(); break;
+	case M_QUOTE: quote_style(); break;
+	case M_CASE: case_do(!strcmp(o->arg, "up") ? 0 : !strcmp(o->arg, "low") ? 1 : !strcmp(o->arg, "title") ? 2 : 3); break;
+	case M_WHEN: insert_when(o->arg); break;
+	case M_TABLE: table_dlg(); break;
+	case M_PICTURE: pic_dlg(); break;
+	case M_LINK: link_dlg(); break;
+	case M_CHARS: chars_dlg(); break;
+	case M_KEYS:
+		rui_about(W, rui_tr("Keyboard shortcuts"), rui_tr("Ctrl+B / I / U  Bold, italic, underline.\n"
+			"Ctrl+Z / Y  Undo, redo.\nCtrl+F / H  Find, find and replace.\nCtrl+K  Insert a link."
+			"\nCtrl+N / O / S  New, open, save.\nCtrl+Click a link  Open it in Oracle.\nTab (in a table)  The next cell."));
+		break;
+	case M_ABOUT:
+		rui_about(W, "WordPro 1.0", rui_tr("A full word processor for Rudolf OS with styles, tables, pictures, footnotes, "
+			"headers and footers, the page's layout, find and replace, and Notey, your sticky-note writing assistant. "
+			"Documents are saved as .DOC files that WordLite and Oracle can also open."));
+		break;
+	default: break;
+	}
+}
+static void menu_pick(int i, void *d)
+{
+	int m = (int)(intptr_t)d; MENU_OPEN_I = -1;
+	if (i >= 0 && i < WP_MENUS[m].n) menu_do(WP_MENUS[m].items[i].id);
+	state_soon();
+}
+static void open_menu(GtkWidget *b, int m)
+{
+	RuiMenuItem *it = g_new0(RuiMenuItem, WP_MENUS[m].n);
+	for (int k = 0; k < WP_MENUS[m].n; k++) {
+		const WpItem *s = &WP_MENUS[m].items[k];
+		it[k].label = s->label; it[k].key = s->key; it[k].sep = s->label == NULL;
+		it[k].off = s->label && !op_of(s->id);
+	}
+	GtkAllocation a; gtk_widget_get_allocation(b, &a); int ox = 0, oy = 0;
+	if (gtk_widget_get_window(b)) gdk_window_get_origin(gtk_widget_get_window(b), &ox, &oy);
+	MENU_OPEN_I = m;
+	rui_menu(b, ox, oy + a.height, NULL, it, WP_MENUS[m].n, menu_pick, (void *)(intptr_t)m);
+	g_free(it); state_soon();
+}
+static void mb_click(GtkWidget *b, gpointer d)
+{
+	int m = (int)(intptr_t)d;
+	if (MENU_OPEN_I == m) { MENU_OPEN_I = -1; state_soon(); return; }   /* (the page's second press closes it) */
+	open_menu(b, m);
+}
+static void build_menubar(void)
+{
+	MBAR = gtk_flow_box_new();
+	gtk_flow_box_set_selection_mode(GTK_FLOW_BOX(MBAR), GTK_SELECTION_NONE);
+	gtk_flow_box_set_column_spacing(GTK_FLOW_BOX(MBAR), (int)lround(rui_px(1)));
+	gtk_flow_box_set_max_children_per_line(GTK_FLOW_BOX(MBAR), 12);
+	gtk_widget_set_margin_start(MBAR, (int)lround(rui_px(4)));
+	gtk_widget_set_margin_end(MBAR, (int)lround(rui_px(4)));
+	gtk_widget_set_margin_top(MBAR, (int)lround(rui_px(2))); gtk_widget_set_margin_bottom(MBAR, (int)lround(rui_px(2)));
+	gtk_style_context_add_class(gtk_widget_get_style_context(MBAR), "wp-mb");
+	for (int i = 0; i < NMENUS; i++) {
+		GtkWidget *b = gtk_button_new_with_label(rui_tr(WP_MENUS[i].title));
+		gtk_style_context_add_class(gtk_widget_get_style_context(b), "rui");
+		gtk_style_context_add_class(gtk_widget_get_style_context(b), "wp-mb-b");
+		gtk_widget_set_can_focus(b, FALSE);
+		g_signal_connect(b, "clicked", G_CALLBACK(mb_click), (gpointer)(intptr_t)i);
+		gtk_flow_box_insert(GTK_FLOW_BOX(MBAR), b, -1); MBTNS[i] = b;
+	}
+	gtk_box_pack_start(GTK_BOX(W->body), MBAR, FALSE, FALSE, 0);
+}
+static gboolean menu_hook(gpointer d)
+{
+	int m = (int)(intptr_t)d;
+	if (m >= 0 && m < NMENUS) open_menu(MBTNS[m], m);
+	return G_SOURCE_REMOVE;
+}
+
 int main(int argc, char **argv)
 {
 	rui_init(&argc, &argv, "wordpro");
@@ -1988,7 +2066,7 @@ int main(int argc, char **argv)
 	g_signal_connect(W->win, "delete-event", G_CALLBACK(on_delete), NULL);
 	gtk_widget_show_all(W->win); gtk_widget_hide(FIND);
 	{ const char *mo = getenv("RUDOLF_WP_MENU");   /* (the tests: the menu a click on the bar opens) */
-	  if (mo && *mo) for (int i = 0; i < NMENUS; i++) if (!strcmp(MENUS[i].title, mo)) { g_timeout_add(400, menu_hook, (gpointer)(intptr_t)i); break; } }
+	  if (mo && *mo) for (int i = 0; i < NMENUS; i++) if (!strcmp(WP_MENUS[i].title, mo)) { g_timeout_add(400, menu_hook, (gpointer)(intptr_t)i); break; } }
 	if (getenv("RUDOLF_WP_OPEN") || getenv("RUDOLF_WP_SAVE")) g_timeout_add(400, io_hook, NULL);
 	{ const char *ins = getenv("RUDOLF_WP_INSERT");   /* (the tests: a picture or a table put in as the menu puts it) */
 	  if (ins && *ins) g_timeout_add(400, insert_hook, (gpointer)ins); }
@@ -2003,5 +2081,6 @@ int main(int argc, char **argv)
 	if (getenv("RUDOLF_WP_PICTOOLS")) g_timeout_add(1200, pic_tools_hook, NULL);   /* (the tests: the picture tools, as a
 																			  click on the picture opens them) */
 	counts(); state_soon();
+	{ const char *w = getenv("RUDOLF_WP_DO"); if (w && *w) g_timeout_add(200, do_hook, (gpointer)w); }
 	gtk_main(); return 0;
 }

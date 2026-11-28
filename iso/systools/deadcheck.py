@@ -75,6 +75,12 @@ if _r.returncode: bad.extend('noremote: ' + l for l in _r.stdout.splitlines() if
 _w = _sp.run([sys.executable, os.path.join(ISO, 'systools', 'wfkeys.py')], capture_output=True, text=True)
 if _w.returncode: bad.extend(l for l in _w.stdout.splitlines() if not l.startswith('wfkeys: FAILED'))
 
+# ---- 1.6.3 Part 0: the release key list is one the tools read (keyswitch.py --check): one to four public keys (as
+# mkuki.py puts them in recovery.efi), no key twice, and at least one of the two official release keys -- a list without
+# one makes every computer refuse this tree's releases
+_s = _sp.run([sys.executable, os.path.join(ISO, 'systools', 'keyswitch.py'), '--check'], capture_output=True, text=True)
+if _s.returncode: bad.extend(l for l in _s.stdout.splitlines() if not l.startswith('keyswitch: FAILED'))
+
 # ---- 1.6.2: every listener the sources start is in the list of listeners (listeners59_t.sh, as the release build runs it;
 # rudolf-shares' finding stopped the release build of 2026-11-23 although every pull request's own checks passed)
 _l = _sp.run(['sh', os.path.join(ISO, 'qt', 'host', 'listeners59_t.sh')], capture_output=True, text=True, cwd=ISO)

@@ -74,15 +74,6 @@ sleep 1
 grep -q '^words 2$' "$ST" && grep -q '^chars 6$' "$ST"
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
 ok "8. a second line is counted as text, its newline not a character" "$([ $? = 0 ] && echo 1)" "$(grep -E '^(words|chars|text) ' "$ST")"
-grep -q '^menus 8$' "$ST"
-ok "9. the menu bar is the page's eight menus, File to Help" "$([ $? = 0 ] && echo 1)" "$(grep '^menus' "$ST")"
-# (a second copy of the app opens one menu as a press on the bar opens it, so the items that appear are the page's own)
-ST2=$T/state2.txt; rm -f "$ST2"
-RUDOLF_WP_STATE=$ST2 RUDOLF_WP_MENU=Format DISPLAY=$DSP "$BIN" >"$T/wp2.log" 2>&1 & WPP2=$!
-i=0; while [ $i -lt 40 ] && ! grep -q '^menu ' "$ST2" 2>/dev/null; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
-grep -q '^menu Format 24$' "$ST2"; RC=$?
-kill $WPP2 2>/dev/null
-ok "10. ...and Format opens with the page's items: six toggles, the four cases, the lists, 24 rows with their separators" "$([ $RC = 0 ] && echo 1)" "$(grep '^menu' "$ST2" 2>/dev/null); $(tail -3 "$T/wp2.log" 2>/dev/null)"
 # (New is a step of the history, as the page's own is: undo brings the page back, redo empties it again. There are
 #  unsaved changes on the page, so New asks first, and Don't save -- the answer the test would press -- throws it away)
 echo "Don't save" > "$ANS"
@@ -94,9 +85,74 @@ B=$(grep -c '^words 2$' "$ST")
 DISPLAY=$DSP xdotool key ctrl+y; sleep 0.9
 C=$(grep -c '^words 0$' "$ST")
 [ "$A$B$C" = 111 ]
-ok "11. New is a step of the history: undo brings the page back, redo empties it again" "$([ $? = 0 ] && echo 1)" "after New $A, after undo $B, after redo $C (words: $(grep '^words' "$ST"))"
-kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
-# the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
+ok "9. New is a step of the history: undo brings the page back, redo empties it again" "$([ $? = 0 ] && echo 1)" "after New $A, after undo $B, after redo $C (words: $(grep '^words' "$ST"))"
+# ---- 10. undo puts the writing back *with its marks*: the bold is still there, and the cursor is where it was
+# (a step is the writing and its tag set, so undoing a letter no longer takes every mark in the document with it)
+DISPLAY=$DSP xdotool mousemove --window "$WIN" 480 300 click 1; sleep 0.5
+DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key ctrl+b; sleep 0.8   # (bold all of it)
+DISPLAY=$DSP xdotool key Right; sleep 0.3; DISPLAY=$DSP xdotool type --delay 12 '!'; sleep 0.9
+grep -q '^chars 7$' "$ST"   # (the letter went in: 6 + 1, the newline not a character)
+DISPLAY=$DSP xdotool key ctrl+z; sleep 1.0
+RC=0
+grep -q '^chars 6$' "$ST" || RC=1
+grep '^tags' "$ST" | grep -q 'b' || RC=1     # (the undo did not take the bold with it)
+ok "10. Ctrl+Z takes the letter back and leaves the bold where it was" \
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(chars|tags|text) ' "$ST" | tr '\n' ' ')"
+# ---- 11. Find marks what it found (the page's highlight, not only the choice)
+DISPLAY=$DSP xdotool key ctrl+f; sleep 0.6
+DISPLAY=$DSP xdotool type --delay 12 'two'; DISPLAY=$DSP xdotool key Return; sleep 0.9
+grep '^tags' "$ST" | grep -q 'find'
+ok "11. Ctrl+F marks the match (the find tag is on the writing, not only on the choice)" \
+	"$([ $? = 0 ] && echo 1)" "$(grep -E '^(tags|sel) ' "$ST" | tr '\n' ' ')"
+kill $WPP 2>/dev/null; sleep 0.6
+# (the app of the first cases is put away by its window's own process: it was a child of this shell rather than the shell)
+for w in $(DISPLAY=$DSP xdotool search --name '^WordPro$' 2>/dev/null); do
+	p=$(DISPLAY=$DSP xdotool getwindowpid "$w" 2>/dev/null); [ -n "$p" ] && kill "$p" 2>/dev/null; done
+sleep 1.5
+# (a fresh app of the same kind: the window takes the keys, the press puts the writing ready -- retried, because a press
+#  into a window that has just appeared can be lost -- and RUDOLF_WP_DO is the check's hand on the toolbar's buttons)
+start_bul() {
+	ST_B=$1; rm -f "$ST_B"
+	RUDOLF_WP_STATE=$ST_B RUDOLF_WP_DO=$2 DISPLAY=$DSP "$BIN" >"$T/wp_bul.log" 2>&1 & WPP_B=$!
+	i=0; while [ $i -lt 80 ] && [ ! -s "$ST_B" ]; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done
+	WIN_B=$(DISPLAY=$DSP xdotool search --sync --name '^WordPro$' 2>/dev/null | head -1)
+	i=0; while [ $i -lt 80 ] && [ -n "$WIN_B" ]; do DISPLAY=$DSP xdotool windowfocus --sync "$WIN_B" 2>/dev/null
+		[ "$(DISPLAY=$DSP xdotool getwindowfocus 2>/dev/null)" = "$WIN_B" ] && break; timeout 0.2 tail -f /dev/null; i=$((i+1)); done
+	sleep 2; DISPLAY=$DSP xdotool mousemove --window "$WIN_B" 480 300 click 1; sleep 0.8
+	i=0; while [ $i -lt 8 ]; do
+		DISPLAY=$DSP xdotool type --delay 12 'Hello'; sleep 1.2
+		grep -q '^chars 5$' "$ST_B" && break
+		DISPLAY=$DSP xdotool key ctrl+a; DISPLAY=$DSP xdotool key BackSpace; sleep 0.4; i=$((i+1)); done
+}
+wait_for() { i=0; while [ $i -lt 60 ] && ! eval "$1" >/dev/null 2>&1; do timeout 0.25 tail -f /dev/null; i=$((i+1)); done; }
+# ---- 12. a bullet goes on with one press and comes off with the next (the page's own toggle)
+start_bul "$T/state_bul" bul
+wait_for 'grep -q "^chars 7$" "$ST_B"'     # (the five letters and the bullet's two)
+ok "12. Bullets puts a bullet on the writing" "$([ $? = 0 ] && echo 1)" \
+	"$(head -14 "$ST_B" | tr '\n' ' '); $(head -6 "$T/wp_bul.log")"
+kill $WPP_B 2>/dev/null; sleep 0.6
+# ---- 13. ...and a second press takes it off again (before this, every press added another one)
+start_bul "$T/state_bul2" "bul,bul"
+wait_for 'grep -q "^chars 5$" "$ST_B" && grep -q "^text Hello$" "$ST_B"'
+ok "13. a second Bullets press takes the bullet off again" "$([ $? = 0 ] && echo 1)" \
+	"$(head -14 "$ST_B" | tr '\n' ' '); $(head -6 "$T/wp_bul.log")"
+kill $WPP_B 2>/dev/null; sleep 0.4
+# ---- 14. the menu bar is the page's own eight menus, in its order (base_v24.html's MENUS)
+grep -q '^mb 8 File,Edit,View,Insert,Format,Table,Tools,Help$' "$ST"
+ok "14. the menu bar has the page's eight menus, in its order" "$([ $? = 0 ] && echo 1)" "$(grep '^mb' "$ST")"
+# ---- 15. File opens with the page's items, and the ones whose step is later are greyed (and so refuse)
+start_bul "$T/state_menu" menu:0
+wait_for 'grep -q "^menuopen File 14$" "$ST_B"'
+if grep -q '^menuopen File 14$' "$ST_B" && grep -q '^grey .*Page setup…' "$ST_B" && grep -q '^grey .*Print…' "$ST_B" \
+   && ! grep -q '^grey .* Close$' "$ST_B"; then G=1; else G=0; fi
+ok "15. File's menu is the page's, with the later steps greyed" "$G" "$(grep -E '^(menuopen|grey)' "$ST_B")"
+kill $WPP_B 2>/dev/null; sleep 0.6
+# ---- 16. a command from a menu does what the toolbar's button does (Format > Bold)
+start_bul "$T/state_bold" mi:4:0
+wait_for 'grep -q "^chars 5$" "$ST_B"'
+grep -q 'tags b' "$ST_B"
+ok "16. Format > Bold bolds the writing, as the toolbar's B does" "$([ $? = 0 ] && echo 1)" "$(head -14 "$ST_B" | tr '\n' ' ')"
+kill $WPP_B 2>/dev/null; sleep 0.4# the build-time reading of the page: a page without the lists stops the build instead of quietly shipping a blank toolbar
 mkdir -p "$T/page/iso/sys/apps" "$T/page/iso/sys/ui" "$T/page/desktop"
 sed 's/const WP_STYLES=/const WP_STYLES_GONE=/' "$R/desktop/base_v24.html" > "$T/page/desktop/base_v24.html"
 cp "$R/iso/sys/apps/mkwordpro.py" "$T/page/iso/sys/apps/mkwordpro.py"
@@ -106,6 +162,23 @@ if [ $RC = 1 ] && grep -q 'WP_STYLES' "$T/mk.log"; then
 else
 	ok "12. mkwordpro.py refuses a page it cannot read (no quiet default)" 0 "rc=$RC $(cat "$T/mk.log")"
 fi
+# ---- 17. the menu bar is the page's: a page without MENUS stops the build instead of leaving a hand-copied bar
+cp "$R/desktop/base_v24.html" "$T/page/desktop/base_v24.html"
+sed -i 's/const MENUS=/const MENUS_GONE=/' "$T/page/desktop/base_v24.html"
+python3 "$T/page/iso/sys/apps/mkwordpro.py" "$T/gone2.h" >"$T/mk2.log" 2>&1; RC=$?
+if [ $RC = 1 ] && grep -q 'MENUS' "$T/mk2.log"; then
+	ok "17. mkwordpro.py refuses a page without the menu bar (no hand-copied labels)" 1
+else
+	ok "17. mkwordpro.py refuses a page without the menu bar (no hand-copied labels)" 0 "rc=$RC $(cat "$T/mk2.log")"
+fi
+# ---- 18. the page's commands the app has not got are counted, menu by menu (39 of them now): a command the page adds
+#      moves a number here, so it cannot arrive as a silent greyed entry, and a wired one the page renames or drops stops
+#      the build by its id
+L18=1
+for pair in "File 5" "Edit 0" "View 6" "Insert 8" "Format 5" "Table 11" "Tools 3" "Help 1"; do
+	grep -q "^later $pair$" "$ST" || L18=0
+done
+ok "18. the page's commands the app has not got are counted, menu by menu" "$L18" "$(grep '^later' "$ST" | tr '\n' ' ')"
 kill -0 $WPP 2>/dev/null || echo "NOTE the app had exited: $(cat "$T/app.exit" 2>/dev/null)"
 # (the shortcuts the bar advertises: Ctrl+H is the Find bar's replace box, as the page's)
 DISPLAY=$DSP xdotool key ctrl+h; sleep 0.8

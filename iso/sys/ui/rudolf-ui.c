@@ -710,11 +710,13 @@ void rui_menu(GtkWidget *rel, double x, double y, const char *title, const RuiMe
 GtkWidget *rui_menu_window(void) { return MENU ? MENU->win : NULL; }
 
 /* ------------------------------------------------------------------ dialogs over the window's body (the page's sdlg, .dlg) */
-typedef struct { GtkWidget *dim, *box; RuiWin *w; void (*cb)(int, void *); void *d; int n; GtkWidget *entry; GtkWidget *who; GtkWidget *err; char *reason; void (*cred)(const char *, const char *, void *); } Dlg;   /* (cred: rui_elevate_cred's) */
+typedef struct { GtkWidget *dim, *box; RuiWin *w; void (*cb)(int, void *); void *d; int n; GtkWidget *entry; GtkWidget *who; GtkWidget *err; char *reason; void (*cred)(const char *, const char *, void *);
+	GtkWidget *fpline; char fpacct[80]; char *fpname; } Dlg;   /* (cred: rui_elevate_cred's; fp*: the finger, 1.6.3) */
 static Dlg *DLG;
+static void fp_stop(void);
 static void dlg_end(int i)
 {
-	if (!DLG) return; Dlg *g = DLG; DLG = NULL; gtk_widget_destroy(g->dim); void (*cb)(int, void *) = g->cb; void *d = g->d; void (*cr)(const char *, const char *, void *) = g->cred; g_free(g->reason); g_free(g); if (cb) cb(i, d); else if (cr && i != 1) cr(NULL, NULL, d);
+	if (!DLG) return; Dlg *g = DLG; DLG = NULL; fp_stop(); gtk_widget_destroy(g->dim); void (*cb)(int, void *) = g->cb; void *d = g->d; void (*cr)(const char *, const char *, void *) = g->cred; g_free(g->reason); g_free(g->fpname); g_free(g); if (cb) cb(i, d); else if (cr && i != 1) cr(NULL, NULL, d);
 }
 static void on_dlg_esc(void) { dlg_end(-1); }
 static void dlg_btn(GtkButton *b, gpointer d) { (void)d; dlg_end(GPOINTER_TO_INT(g_object_get_data(G_OBJECT(b), "rui-i"))); }
@@ -952,6 +954,70 @@ static void el_allow(GtkWidget *b, gpointer d)
 	gtk_label_set_text(GTK_LABEL(g->err), c == 429 ? err : rui_tr("Wrong password.")); gtk_entry_set_text(GTK_ENTRY(g->entry), "");
 }
 static void el_cancel(GtkWidget *b, gpointer d) { (void)b; (void)d; dlg_end(0); }
+
+/* ---- 1.6.3 (docs/plan-1.6.3.md Part 2's last step): the administrator's prompt takes a finger, as the page's prompt does
+   (core25.js elevate's __elevOpened, fprint63.js's fpLoop): the account signed in, an administrator whose sign-in needs no
+   security key, and rudolfd saying a finger is taken now (fp/status's ready) -- "Or NAME puts a finger on the reader"
+   while the password works as ever. A match answers the prompt: the finger's one-time answer goes where the password goes
+   ("fp:" and fp/verify's "t"), which rudolfd takes once, in that account's name (fp_admin_pass, so desk_admin_check and
+   desktop/admin accept it). The wait ends with the dialog (fp/cancel), as the page's does; a wrong password leaves it
+   waiting, as the page leaves it. */
+typedef struct { guint gen; char acct[80]; int code, left; char ticket[64], err[200]; } FpAsk;
+static guint FPGEN; static int FPWAIT;
+static void fp_say(Dlg *g)
+{
+	if (!g || !g->fpline || !g->who || !g->fpname) return;
+	char *a = gtk_combo_box_text_get_active_text(GTK_COMBO_BOX_TEXT(g->who)), m[300];
+	if (a && !strcmp(a, g->fpname)) snprintf(m, sizeof m, "\xe2\x98\x9d\xef\xb8\x8f Or %s puts a finger on the reader.", g->fpname);
+	else snprintf(m, sizeof m, "\xe2\x98\x9d\xef\xb8\x8f A finger answers for the account signed in only: type the password.");
+	g_free(a); gtk_label_set_text(GTK_LABEL(g->fpline), m);
+}
+static gpointer fp_cancel_thread(gpointer p) { (void)p; static const char B[] = "{}"; char *o = NULL; size_t on = 0; rui_http("POST", "/api/fp/cancel", B, sizeof B - 1, &o, &on); g_free(o); return NULL; }
+/* (the dialog went, or the password answered it: rudolfd gives the reader up, as the page tells it) */
+static void fp_stop(void) { FPGEN++; if (FPWAIT > 0) { FPWAIT = 0; g_thread_unref(g_thread_new("fpcancel", fp_cancel_thread, NULL)); } }
+static gboolean fp_done(gpointer p);
+static gpointer fp_thread(gpointer p)
+{
+	FpAsk *j = p; GString *b = g_string_new("{\"acct\":\"");
+	for (const char *s = j->acct; *s; s++) { unsigned char c = *s; if (c == '"' || c == '\\') g_string_append_printf(b, "\\%c", c); else if (c >= 32) g_string_append_c(b, c); }
+	g_string_append(b, "\",\"for\":\"admin\"}");
+	char *o = NULL; j->code = rui_http("POST", "/api/fp/verify", b->str, b->len, &o, NULL); g_string_free(b, TRUE);
+	RuiJ *v = o ? rui_jparse(o) : NULL;
+	if (v) { const char *t = rui_jstr(v, "t"), *e = rui_jstr(v, "error");
+		if (t) snprintf(j->ticket, sizeof j->ticket, "%s", t);
+		if (e) snprintf(j->err, sizeof j->err, "%s", e);
+		j->left = (int)rui_jnum(v, "left", 0); rui_jfree(v); }
+	g_free(o); g_idle_add(fp_done, j); return NULL;
+}
+static void fp_start(void)
+{
+	Dlg *g = DLG; if (!g || !g->fpacct[0]) return;
+	FpAsk *j = g_new0(FpAsk, 1); j->gen = FPGEN; snprintf(j->acct, sizeof j->acct, "%s", g->fpacct); FPWAIT++;
+	g_thread_unref(g_thread_new("fpask", fp_thread, j));
+}
+static gboolean fp_again(gpointer p) { if (GPOINTER_TO_UINT(p) == FPGEN && DLG && DLG->fpline) fp_start(); return G_SOURCE_REMOVE; }
+static gboolean fp_begin(gpointer p) { (void)p; if (DLG && DLG->fpline) { fp_say(DLG); fp_start(); } return G_SOURCE_REMOVE; }
+static void fp_changed(GtkWidget *w, gpointer d) { (void)w; fp_say((Dlg *)d); }
+static gboolean fp_done(gpointer p)
+{
+	FpAsk *j = p; Dlg *g = DLG;
+	if (FPWAIT > 0) FPWAIT--;
+	if (!g || j->gen != FPGEN || !g->fpline) { g_free(j); return G_SOURCE_REMOVE; }
+	if (j->code == 200 && j->ticket[0]) {   /* (the finger answered: the prompt's Allow, the one-time answer where a password goes) */
+		char *pp = g_strdup_printf("fp:%s", j->ticket);
+		if (g->cred) { void (*cr)(const char *, const char *, void *) = g->cred; void *d = g->d; char *nm = g_strdup(g->fpname ? g->fpname : "");
+			g->cb = NULL; dlg_end(1); cr(nm, pp, d); explicit_bzero(pp, strlen(pp)); g_free(pp); g_free(nm); }
+		else { dlg_end(1); g_free(pp); }
+		g_free(j); return G_SOURCE_REMOVE;
+	}
+	if (j->code == 403 && j->left > 0) { char m[300];
+		snprintf(m, sizeof m, "\xe2\x98\x9d\xef\xb8\x8f That finger was not recognised: try again (%d %s left), or type the password.", j->left, j->left == 1 ? "try" : "tries");
+		gtk_label_set_text(GTK_LABEL(g->fpline), m); g_timeout_add(100, fp_again, GUINT_TO_POINTER(j->gen)); }
+	else if (j->code == 408 || j->code == 409 || j->code == 0) g_timeout_add(j->code == 409 ? 1000 : 100, fp_again, GUINT_TO_POINTER(j->gen));
+	else { char m[320]; snprintf(m, sizeof m, "\xe2\x98\x9d\xef\xb8\x8f %s", j->err[0] ? j->err : "The fingerprint reader is not available: type the password.");
+		gtk_label_set_text(GTK_LABEL(g->fpline), m); }
+	g_free(j); return G_SOURCE_REMOVE;
+}
 void rui_elevate(RuiWin *w, const char *reason, void (*cb)(int, void *), void *d)
 {
 	char t[120]; snprintf(t, sizeof t, "🛡️ %s", rui_tr("Administrator permission"));
@@ -962,16 +1028,30 @@ void rui_elevate(RuiWin *w, const char *reason, void (*cb)(int, void *), void *d
 	RuiJ *acc = rui_get("/api/desktop/accounts"), *l = rui_jprop(acc, "accounts"); RuiJ *se = rui_get("/api/desktop/session"); const char *me = rui_jstr(se, "n");
 	int at = 0, k = 0; for (int i = 0; i < rui_jlen(l); i++) { RuiJ *a = rui_jat(l, i); const char *r = rui_jstr(a, "r"), *n = rui_jstr(a, "n"); if (!r || strcmp(r, "admin") || !n) continue;
 		gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(g->who), n); if (me && !strcmp(me, n)) at = k; k++; }
-	gtk_combo_box_set_active(GTK_COMBO_BOX(g->who), at); rui_jfree(acc); rui_jfree(se);
+	gtk_combo_box_set_active(GTK_COMBO_BOX(g->who), at);
+	/* 1.6.3 Part 2: the finger, when rudolfd says one is taken now and the account signed in is an administrator whose
+	   sign-in needs no security key (the page's __elevOpened) */
+	int fpok = 0; char *fpname = NULL;
+	if (me && se) { const char *id = rui_jstr(se, "id"), *ro = rui_jstr(se, "r"); RuiJ *fd = rui_jprop(se, "fido");
+		if (id && id[0] && ro && !strcmp(ro, "admin") && !(fd && rui_jstr(fd, "n"))) {
+			char p[200]; snprintf(p, sizeof p, "/api/fp/status?acct=%s", id);   /* (the account's own id: hex) */
+			RuiJ *fs = rui_get(p); fpok = fs && rui_jbool(fs, "ready"); if (fs) rui_jfree(fs);
+			if (fpok) { fpname = g_strdup(me); snprintf(g->fpacct, sizeof g->fpacct, "%s", id); } } }
+	rui_jfree(acc); rui_jfree(se);
 	gtk_grid_attach(GTK_GRID(grid), rui_label("Account"), 0, 0, 1, 1); gtk_grid_attach(GTK_GRID(grid), g->who, 1, 0, 1, 1);
 	gtk_grid_attach(GTK_GRID(grid), rui_label("Password"), 0, 1, 1, 1); gtk_grid_attach(GTK_GRID(grid), g->entry, 1, 1, 1, 1); gtk_widget_set_hexpand(g->entry, TRUE);
 	gtk_box_pack_start(GTK_BOX(g->box), grid, FALSE, FALSE, 0);
+	if (fpok) { g->fpname = fpname; g->fpline = rui_label(""); gtk_label_set_xalign(GTK_LABEL(g->fpline), 0);
+		gtk_widget_set_margin_top(g->fpline, (int)lround(rui_px(6))); gtk_widget_set_margin_bottom(g->fpline, (int)lround(rui_px(6)));
+		gtk_box_pack_start(GTK_BOX(g->box), g->fpline, FALSE, FALSE, 0); g_signal_connect(g->who, "changed", G_CALLBACK(fp_changed), g); }
+	else g_free(fpname);
 	g->err = gtk_label_new(""); cls(g->err, "rui-msg"); gtk_label_set_xalign(GTK_LABEL(g->err), 0); gtk_box_pack_start(GTK_BOX(g->box), g->err, FALSE, FALSE, 0);
 	GtkWidget *row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, (int)lround(rui_px(8))); gtk_widget_set_halign(row, GTK_ALIGN_END);
 	GtkWidget *c = rui_button("Cancel", 0), *a = rui_button("Allow", 1); g_signal_connect(c, "clicked", G_CALLBACK(el_cancel), NULL); g_signal_connect(a, "clicked", G_CALLBACK(el_allow), NULL);
 	g_signal_connect(g->entry, "activate", G_CALLBACK(el_allow), NULL);
 	gtk_box_pack_start(GTK_BOX(row), c, FALSE, FALSE, 0); gtk_box_pack_start(GTK_BOX(row), a, FALSE, FALSE, 0);
 	dlg_show(g, row); gtk_widget_grab_focus(g->entry);
+	if (g->fpline) g_timeout_add(80, fp_begin, NULL);   /* (after rui_elevate_cred has given the dialog its cred) */
 }
 /* (the page's elevate(reason, {cred:true}): cred(n, p) once an administrator's password is right, the request then sent with them;
    NULL, NULL when cancelled) */

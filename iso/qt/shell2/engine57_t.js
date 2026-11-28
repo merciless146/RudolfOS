@@ -72,8 +72,9 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
   ok('no page error (WebKit)', !errs.length, errs);
   await p.close(); ({p, errs} = await page('chromium'));
   ok('5. desktop in Chromium: only the sign-in sites go to the browser window, as before', await p.evaluate("webWants('https://accounts.google.com/')&&!webWants('https://example.com/a')"));
+  await p.evaluate("(()=>{svj('bd95setup',1);const o=document.getElementById('oobe');o&&o.remove();return 1})()");   // (1.6.3: not before Rudolf OS is set up)
   await p.evaluate("M.calls.length=0;shellOffer()"); await wait(1500);
-  ok('7. ...the Chromium desktop still does, once', await p.evaluate("M.calls.some(x=>/POST shell\\/switch/.test(x))"), await p.evaluate('M.calls'));
+  ok('7. ...the Chromium desktop, once Rudolf OS is set up, still does, once', await p.evaluate("M.calls.some(x=>/POST shell\\/switch/.test(x))"), await p.evaluate('M.calls'));
   ok('9. ...and in Chromium they are left as they were', await p.evaluate("!document.documentElement.classList.contains('webkit')&&(()=>{const e=document.createElement('select');document.body.appendChild(e);const a=getComputedStyle(e).appearance;e.remove();return a!='none'})()"));
   ok('no page error (Chromium)', !errs.length, errs);
   await b.close(); srv.close(); console.log(R.filter(x => x).length + '/' + R.length + ' passed'); process.exit(R.every(x => x) ? 0 : 1);
