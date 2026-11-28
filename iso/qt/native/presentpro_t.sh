@@ -201,11 +201,11 @@ i=0; while [ $i -lt 40 ] && ! grep -q "^notes Speaker" "$ST" 2>/dev/null; do tim
 sleep 1.2   # (the pause the step is taken after)
 RC=0
 grep -q "^notes Speaker's line$" "$ST" || RC=1
-grep -q '^hist 2 2$' "$ST" || RC=1          # (the slide, and the notes as one more step)
+grep -q '^hist 1 2$' "$ST" || RC=1          # (step 0 is the deck, step 1 the notes: the history counts from 0)
 focus "$WIN"
 DISPLAY=$DSP xdotool key ctrl+z; sleep 1.0
 grep -q '^notes *$' "$ST" || RC=1           # (the note is gone)
-grep -q '^hist 1 2$' "$ST" || RC=1          # (and the history went back one step, not more)
+grep -q '^hist 0 2$' "$ST" || RC=1          # (and the history went back one step, not more)
 ok "16. typing notes is a step of the undo, and Ctrl+Z takes the note back" \
 	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(notes|hist|text) ' "$ST" | tr '\n' ' '); $(cat "$T/app.log")"
 stop
