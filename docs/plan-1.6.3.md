@@ -663,6 +663,21 @@ a USB reader): a touchscreen or touchpad senses at a few millimetres, far too co
   sample and each language's ▶ speak; Reduce motion, Sticky keys, Mouse keys take effect; Reset to defaults. 5. The memory in Task
   Manager.
 
+#### Status (2026-11-28, session): the app fits its 1 MB budget again, so the release builds
+- **The release stopped building** (run `46070129245` of 11-27 21:24 UTC and `46123511452` of 11-28 07:56 UTC, both at "Build the
+  release": `systools/ci_release.sh`'s `rudolf-settings is 1126 KB: over a native app's 1 MB budget`): its last pages took the app
+  past the budget, and no beta has been made since `r2026112708` on 11-27 08:43 UTC — the PipeWire work, the terminal's tabs, the
+  setup wizard and the Wine box are in no image yet.
+- **What was cut: nothing of the app.** 913 KB of its source is 142 KB of strings and label tables and the rest code, so the size is
+  code, and the budget is met by how it is built rather than by taking a page or a string out. Measured on one tree as the release
+  builds it (hardened, no warning, stripped) on 2026-11-28: **-O2 1126 KB** (what the release did), -O2 with
+  `-ffunction-sections -fdata-sections -Wl,--gc-sections` 1110 KB, **-Os 1003 KB**, **-Os with the sections 991 KB**, -Os without
+  the unwind tables 911 KB. `sys/ui/build.sh` now builds `settings` with `-Os -ffunction-sections -fdata-sections -Wl,--gc-sections`:
+  **991 KB, 32 KB under the 1 MB budget**, every page, label and string kept, so every caller (the release, `qt/native/settings_t.sh`,
+  native-apps-check.yml's size notice) builds and measures the same program. The 1 MB rule stands as it is; the unwind tables were
+  left in (911 KB without them) because a crash trace or a debugger reads them.
+- **Its check:** native-apps-check.yml's settings job — the size notice, then `settings_t.sh`'s pages against the web ones.
+
 ### Part 4. Oracle's Chromium, its memory (moved from 1.6.2 Part 38, item 5)
 On Native, Oracle runs in Rudolf's own Chromium; each tab keeps its own process and memory, also when it has not been
 looked at for an hour (estimated, before measuring: ~100-150 MB with one tab, ~450-700 MB with six). Measured with one,
