@@ -806,7 +806,8 @@ static void pending_do(void)
 }
 static void ask_cb(int i, void *d)
 {
-	(void)d; ASK = 0; LAST_ANS = i; state_soon();
+	(void)d; ASK = 0; if (i < 0) i = 0;   /* (Escape is the Cancel button: rui_confirm's -1) */
+	LAST_ANS = i; state_soon();
 	if (i != 1 && i != 2) { g_free(PEND_PATH); PEND_PATH = NULL; PEND = PEND_NONE; return; }  /* (Cancel, or Escape) */
 	if (i == 1) { pending_do(); return; }                                                     /* (Discard) */
 	do_save(0);                                                                               /* (Save: then the act) */

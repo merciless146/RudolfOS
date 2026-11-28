@@ -279,7 +279,7 @@ grep -q '^answer 0$' "$ST8" || RC=1   # (Cancel: the question was answered, and 
 grep -q '^cells 2$' "$ST8" || RC=1
 [ "$(md5sum "$F4" | cut -d' ' -f1)" = "$SUM4" ] || RC=1
 ok "20. closing a modified book asks first, and Cancel keeps it with nothing written" \
-	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|dirty|ask|cells|say) ' "$ST8" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_ask.log")"
+	"$([ $RC = 0 ] && echo 1)" "$(grep -E '^(title|dirty|ask|answer|cells|say) ' "$ST8" 2>/dev/null | tr '\n' ' '); $(cat "$T/sp_ask.log")"
 kill $SPP8 2>/dev/null; sleep 0.4
 # ---- 21. ...and Save answers it: the change is written and the window goes
 # (RUDOLF_SP_ANSWER is the check's press on the overlay's Save, which it cannot aim; the way through is the one a click takes)
