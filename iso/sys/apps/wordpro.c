@@ -32,81 +32,33 @@ static int UPDATING;
 static int ZOOM = 100; static char SAY[200]; static const char *FAMILY = "Times New Roman"; static double PT = 12;
 static char ON[40];   /* (the toggles the cursor's place has, as the page's updSel writes them) */
 
-/* ------------------------------------------------------------------ the menu bar, as the page's .wp-mb has it (base_v24.html's
-   MENUS): the eight menus, their items in the page's order, each with the key the page gives it. An item whose step is
-   later is drawn greyed and refuses, as the page's own are until they are built (SpreadsheetPro's way). The tables are
-   data only; what an item does is menu_do, below, where the commands are. */
+/* ------------------------------------------------------------------ the menu bar: the page's own (base_v24.html's MENUS,
+   generated into wordpro-gen.h by mkwordpro.py at build time -- its titles, labels, keys and separators, and an id per
+   item). What the app can do for an item is said here, by the item's id: an item with no op is drawn greyed and refuses,
+   so the bar cannot promise a command the app has not got, and an item the page drops stops the build (its id is gone)
+   instead of leaving a dead entry behind. */
 enum { M_NONE, M_CLOSE, M_UNDO, M_REDO, M_SELALL, M_FIND, M_FINDREP, M_ZOOM, M_TOGGLE, M_ALIGN, M_LIST, M_CLEAR, M_KEYS, M_ABOUT };
-typedef struct { const char *label, *key; int off, op; const char *arg; } WpMi;
-#define WPMI_END { NULL, NULL, 0, M_NONE, NULL }
-static const WpMi FILE_I[] = {
-	{ "New", "Ctrl+N", 1, M_NONE, NULL }, { "Open…", "Ctrl+O", 1, M_NONE, NULL },
-	{ "Save", "Ctrl+S", 1, M_NONE, NULL }, { "Save As…", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Import text or HTML file…", "", 1, M_NONE, NULL },
-	{ "Export as text (.TXT)…", "", 1, M_NONE, NULL }, { "Export as web page (.HTM)…", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Page setup…", "", 1, M_NONE, NULL }, { "Print…", "Ctrl+P", 1, M_NONE, NULL }, WPMI_END,
-	{ "Document statistics…", "", 1, M_NONE, NULL }, { "Close", "", 0, M_CLOSE, NULL } };
-static const WpMi EDIT_I[] = {
-	{ "Undo", "Ctrl+Z", 0, M_UNDO, NULL }, { "Redo", "Ctrl+Y", 0, M_REDO, NULL }, WPMI_END,
-	{ "Cut", "Ctrl+X", 1, M_NONE, NULL }, { "Copy", "Ctrl+C", 1, M_NONE, NULL },
-	{ "Paste", "Ctrl+V", 1, M_NONE, NULL }, { "Paste as plain text", "Ctrl+Shift+V", 1, M_NONE, NULL }, WPMI_END,
-	{ "Select all", "Ctrl+A", 0, M_SELALL, NULL }, WPMI_END,
-	{ "Find…", "Ctrl+F", 0, M_FIND, NULL }, { "Find and replace…", "Ctrl+H", 0, M_FINDREP, NULL } };
-static const WpMi VIEW_I[] = {
-	{ "Print layout", "", 1, M_NONE, NULL }, { "Web layout", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Zoom 50%", "", 0, M_ZOOM, "50" }, { "Zoom 75%", "", 0, M_ZOOM, "75" }, { "Zoom 100%", "", 0, M_ZOOM, "100" },
-	{ "Zoom 125%", "", 0, M_ZOOM, "125" }, { "Zoom 150%", "", 0, M_ZOOM, "150" }, { "Zoom 200%", "", 0, M_ZOOM, "200" }, WPMI_END,
-	{ "Outline pane", "", 1, M_NONE, NULL }, { "Show formatting marks", "", 1, M_NONE, NULL },
-	{ "Spell check as you type", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Show Notey, the assistant", "", 1, M_NONE, NULL } };
-static const WpMi INSERT_I[] = {
-	{ "Table…", "", 1, M_NONE, NULL }, { "Picture…", "", 1, M_NONE, NULL },
-	{ "Hyperlink…", "Ctrl+K", 1, M_NONE, NULL }, { "Bookmark…", "", 1, M_NONE, NULL },
-	{ "Links in this document…", "", 1, M_NONE, NULL }, { "Horizontal line", "", 1, M_NONE, NULL },
-	{ "Page break", "Ctrl+Enter", 1, M_NONE, NULL }, WPMI_END,
-	{ "Date (long)", "", 1, M_NONE, NULL }, { "Date (short)", "", 1, M_NONE, NULL }, { "Time", "", 1, M_NONE, NULL },
-	{ "Special characters…", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Footnote…", "", 1, M_NONE, NULL }, { "Table of contents / update", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Header and footer…", "", 1, M_NONE, NULL }, { "Page numbers", "", 1, M_NONE, NULL } };
-static const WpMi FORMAT_I[] = {
-	{ "Bold", "Ctrl+B", 0, M_TOGGLE, "b" }, { "Italic", "Ctrl+I", 0, M_TOGGLE, "i" },
-	{ "Underline", "Ctrl+U", 0, M_TOGGLE, "u" }, { "Strikethrough", "", 0, M_TOGGLE, "s" },
-	{ "Subscript", "", 0, M_TOGGLE, "sub" }, { "Superscript", "", 0, M_TOGGLE, "sup" }, WPMI_END,
-	{ "UPPERCASE", "", 1, M_NONE, NULL }, { "lowercase", "", 1, M_NONE, NULL },
-	{ "Title Case", "", 1, M_NONE, NULL }, { "Sentence case", "", 1, M_NONE, NULL },
-	{ "Clear formatting", "", 0, M_CLEAR, NULL }, WPMI_END,
-	{ "Paragraph…", "", 1, M_NONE, NULL }, { "Bulleted list", "", 0, M_LIST, "bul" },
-	{ "Numbered list", "", 0, M_LIST, "num" }, { "Increase indent", "", 0, M_LIST, "ind" },
-	{ "Decrease indent", "", 0, M_LIST, "out" }, { "Block quote", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "One column", "", 1, M_NONE, NULL }, { "Two columns", "", 1, M_NONE, NULL },
-	{ "Three columns", "", 1, M_NONE, NULL }, { "Drop cap", "", 1, M_NONE, NULL } };
-static const WpMi TABLE_I[] = {
-	{ "Insert table…", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Insert row above", "", 1, M_NONE, NULL }, { "Insert row below", "", 1, M_NONE, NULL },
-	{ "Insert column left", "", 1, M_NONE, NULL }, { "Insert column right", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Delete row", "", 1, M_NONE, NULL }, { "Delete column", "", 1, M_NONE, NULL },
-	{ "Delete table", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Merge with cell to the right", "", 1, M_NONE, NULL }, { "Shade cell…", "", 1, M_NONE, NULL },
-	{ "Toggle borders", "", 1, M_NONE, NULL }, { "Toggle header row", "", 1, M_NONE, NULL } };
-static const WpMi TOOLS_I[] = {
-	{ "Check my writing (Notey)", "", 1, M_NONE, NULL }, { "Document statistics…", "", 1, M_NONE, NULL },
-	{ "Smart quotes while typing", "", 1, M_NONE, NULL }, WPMI_END,
-	{ "Change page colour…", "", 1, M_NONE, NULL } };
-static const WpMi HELP_I[] = {
-	{ "Ask Notey…", "", 1, M_NONE, NULL }, { "Keyboard shortcuts", "", 0, M_KEYS, NULL },
-	{ "About WordPro", "", 0, M_ABOUT, NULL } };
-static const struct { const char *title, *key; const WpMi *items; int n; } MENUS[] = {
-	{ "File", "Alt+F", FILE_I, G_N_ELEMENTS(FILE_I) }, { "Edit", "Alt+E", EDIT_I, G_N_ELEMENTS(EDIT_I) },
-	{ "View", "Alt+V", VIEW_I, G_N_ELEMENTS(VIEW_I) }, { "Insert", "Alt+I", INSERT_I, G_N_ELEMENTS(INSERT_I) },
-	{ "Format", "Alt+O", FORMAT_I, G_N_ELEMENTS(FORMAT_I) }, { "Table", "Alt+A", TABLE_I, G_N_ELEMENTS(TABLE_I) },
-	{ "Tools", "Alt+T", TOOLS_I, G_N_ELEMENTS(TOOLS_I) }, { "Help", "Alt+H", HELP_I, G_N_ELEMENTS(HELP_I) } };
-#define NMENUS ((int)G_N_ELEMENTS(MENUS))
+typedef struct { int id, op; const char *arg; } WpOp;
+static const WpOp OPS[] = {
+	{ WPI_FILE_CLOSE, M_CLOSE, NULL },
+	{ WPI_EDIT_UNDO, M_UNDO, NULL }, { WPI_EDIT_REDO, M_REDO, NULL }, { WPI_EDIT_SELECT_ALL, M_SELALL, NULL },
+	{ WPI_EDIT_FIND, M_FIND, NULL }, { WPI_EDIT_FIND_AND_REPLACE, M_FINDREP, NULL },
+	{ WPI_VIEW_ZOOM_50, M_ZOOM, "50" }, { WPI_VIEW_ZOOM_75, M_ZOOM, "75" }, { WPI_VIEW_ZOOM_100, M_ZOOM, "100" },
+	{ WPI_VIEW_ZOOM_125, M_ZOOM, "125" }, { WPI_VIEW_ZOOM_150, M_ZOOM, "150" }, { WPI_VIEW_ZOOM_200, M_ZOOM, "200" },
+	{ WPI_FORMAT_BOLD, M_TOGGLE, "b" }, { WPI_FORMAT_ITALIC, M_TOGGLE, "i" }, { WPI_FORMAT_UNDERLINE, M_TOGGLE, "u" },
+	{ WPI_FORMAT_STRIKETHROUGH, M_TOGGLE, "s" }, { WPI_FORMAT_SUBSCRIPT, M_TOGGLE, "sub" },
+	{ WPI_FORMAT_SUPERSCRIPT, M_TOGGLE, "sup" }, { WPI_FORMAT_CLEAR_FORMATTING, M_CLEAR, NULL },
+	{ WPI_FORMAT_BULLETED_LIST, M_LIST, "bul" }, { WPI_FORMAT_NUMBERED_LIST, M_LIST, "num" },
+	{ WPI_FORMAT_INCREASE_INDENT, M_LIST, "ind" }, { WPI_FORMAT_DECREASE_INDENT, M_LIST, "out" },
+	{ WPI_HELP_KEYBOARD_SHORTCUTS, M_KEYS, NULL }, { WPI_HELP_ABOUT_WORDPRO, M_ABOUT, NULL } };
+static const WpOp *op_of(int id) { for (guint i = 0; i < G_N_ELEMENTS(OPS); i++) if (OPS[i].id == id) return &OPS[i]; return NULL; }
+#define NMENUS WPMENUS_N
 static int MENU_OPEN_I = -1;   /* (the menu open now: the tests read it, and a second press on its button closes it) */
 
 /* ------------------------------------------------------------------ tags, and the page's "select some text first" */
 static void state_soon(void);
 static gboolean menu_hook(gpointer d);
-static void menu_do(const WpMi *s);
+static void menu_do(int id);
 static void hist_push(void); static void hist_undo(void); static void hist_redo(void);
 static void counts(void);
 static void upd_sel(void);
@@ -493,12 +445,12 @@ static void state_write(void)
 	g_string_append_c(s, '\n');
 	gtk_text_buffer_get_start_iter(BUF, &a); gtk_text_buffer_get_end_iter(BUF, &b);
 	g_string_append_printf(s, "mb %d", NMENUS);
-	for (int i = 0; i < NMENUS; i++) g_string_append_printf(s, "%s%s", i ? "," : " ", MENUS[i].title);
+	for (int i = 0; i < NMENUS; i++) g_string_append_printf(s, "%s%s", i ? "," : " ", WP_MENUS[i].title);
 	g_string_append_c(s, '\n');
 	if (MENU_OPEN_I >= 0) {
-		g_string_append_printf(s, "menuopen %s %d\n", MENUS[MENU_OPEN_I].title, MENUS[MENU_OPEN_I].n);
+		g_string_append_printf(s, "menuopen %s %d\n", WP_MENUS[MENU_OPEN_I].title, WP_MENUS[MENU_OPEN_I].n);
 		g_string_append(s, "grey");
-		for (int i = 0; i < MENUS[MENU_OPEN_I].n; i++) { const WpMi *m = &MENUS[MENU_OPEN_I].items[i]; if (m->off && m->label) g_string_append_printf(s, " %s", m->label); }
+		for (int i = 0; i < WP_MENUS[MENU_OPEN_I].n; i++) { const WpItem *m = &WP_MENUS[MENU_OPEN_I].items[i]; if (m->label && !op_of(m->id)) g_string_append_printf(s, " %s", m->label); }
 		g_string_append_c(s, '\n');
 	}
 	g_string_append_printf(s, "text %s\n", t); g_free(t);
@@ -717,7 +669,7 @@ static gboolean do_hook(gpointer d)
 		gtk_text_buffer_select_range(BUF, &a, &b);   /* (the page's commands act on the choice, so the whole writing is one) */
 		if (!strncmp(tok, "menu:", 5)) { int m = atoi(tok + 5); if (m >= 0 && m < NMENUS) g_idle_add(menu_hook, (gpointer)(intptr_t)m); }
 		else if (!strncmp(tok, "mi:", 3)) { int m = atoi(tok + 3), k = (strchr(tok + 3, ':')) ? atoi(strchr(tok + 3, ':') + 1) : -1;
-			if (m >= 0 && m < NMENUS && k >= 0 && k < MENUS[m].n) menu_do(&MENUS[m].items[k]); }
+			if (m >= 0 && m < NMENUS && k >= 0 && k < WP_MENUS[m].n) menu_do(WP_MENUS[m].items[k].id); }
 		if (!strcmp(tok, "bul") || !strcmp(tok, "num") || !strcmp(tok, "ind") || !strcmp(tok, "out")) line_prefix(tok);
 		else if (!strncmp(tok, "style:", 6)) {
 			int k = atoi(tok + 6);
@@ -733,21 +685,21 @@ static gboolean do_hook(gpointer d)
 }
 /* ------------------------------------------------------------------ the menus themselves: the bar, its drop-downs and what
    each item does (the page's own commands; an item whose step is later has no op and refuses) */
-static GtkWidget *MBAR, *MBTNS[8];
-static void menu_do(const WpMi *s)
+static GtkWidget *MBAR, *MBTNS[WPMENUS_N];
+static void menu_do(int id)
 {
-	if (!s || s->off) return;
-	switch (s->op) {
+	const WpOp *o = op_of(id); if (!o) return;   /* (an item the app has no command for: greyed, and it refuses) */
+	switch (o->op) {
 	case M_CLOSE: gtk_widget_destroy(W->win); break;
 	case M_UNDO: hist_undo(); break;
 	case M_REDO: hist_redo(); break;
 	case M_SELALL: { GtkTextIter a, b; gtk_text_buffer_get_bounds(BUF, &a, &b); gtk_text_buffer_select_range(BUF, &a, &b); state_soon(); break; }
 	case M_FIND: on_find_open(NULL, NULL); break;
 	case M_FINDREP: on_find_open(NULL, NULL); if (REPL) gtk_widget_grab_focus(REPL); break;
-	case M_ZOOM: ZOOM = atoi(s->arg); set_editor_font(); state_soon(); break;
-	case M_TOGGLE: toggle(NULL, (gpointer)s->arg); break;
-	case M_ALIGN: on_align(NULL, (gpointer)s->arg); break;
-	case M_LIST: on_list(NULL, (gpointer)s->arg); break;
+	case M_ZOOM: ZOOM = atoi(o->arg); set_editor_font(); state_soon(); break;
+	case M_TOGGLE: toggle(NULL, (gpointer)o->arg); break;
+	case M_ALIGN: on_align(NULL, (gpointer)o->arg); break;
+	case M_LIST: on_list(NULL, (gpointer)o->arg); break;
 	case M_CLEAR: on_clear(NULL, NULL); break;
 	case M_KEYS:
 		rui_about(W, rui_tr("Keyboard shortcuts"), rui_tr("Ctrl+B / I / U  Bold, italic, underline.\n"
@@ -765,20 +717,21 @@ static void menu_do(const WpMi *s)
 static void menu_pick(int i, void *d)
 {
 	int m = (int)(intptr_t)d; MENU_OPEN_I = -1;
-	if (i >= 0 && i < MENUS[m].n) menu_do(&MENUS[m].items[i]);
+	if (i >= 0 && i < WP_MENUS[m].n) menu_do(WP_MENUS[m].items[i].id);
 	state_soon();
 }
 static void open_menu(GtkWidget *b, int m)
 {
-	RuiMenuItem *it = g_new0(RuiMenuItem, MENUS[m].n);
-	for (int k = 0; k < MENUS[m].n; k++) {
-		const WpMi *s = &MENUS[m].items[k];
-		it[k].label = s->label; it[k].key = s->key; it[k].off = s->off; it[k].sep = s->label == NULL;
+	RuiMenuItem *it = g_new0(RuiMenuItem, WP_MENUS[m].n);
+	for (int k = 0; k < WP_MENUS[m].n; k++) {
+		const WpItem *s = &WP_MENUS[m].items[k];
+		it[k].label = s->label; it[k].key = s->key; it[k].sep = s->label == NULL;
+		it[k].off = s->label && !op_of(s->id);
 	}
 	GtkAllocation a; gtk_widget_get_allocation(b, &a); int ox = 0, oy = 0;
 	if (gtk_widget_get_window(b)) gdk_window_get_origin(gtk_widget_get_window(b), &ox, &oy);
 	MENU_OPEN_I = m;
-	rui_menu(b, ox, oy + a.height, NULL, it, MENUS[m].n, menu_pick, (void *)(intptr_t)m);
+	rui_menu(b, ox, oy + a.height, NULL, it, WP_MENUS[m].n, menu_pick, (void *)(intptr_t)m);
 	g_free(it); state_soon();
 }
 static void mb_click(GtkWidget *b, gpointer d)
@@ -798,7 +751,7 @@ static void build_menubar(void)
 	gtk_widget_set_margin_top(MBAR, (int)lround(rui_px(2))); gtk_widget_set_margin_bottom(MBAR, (int)lround(rui_px(2)));
 	gtk_style_context_add_class(gtk_widget_get_style_context(MBAR), "wp-mb");
 	for (int i = 0; i < NMENUS; i++) {
-		GtkWidget *b = gtk_button_new_with_label(rui_tr(MENUS[i].title));
+		GtkWidget *b = gtk_button_new_with_label(rui_tr(WP_MENUS[i].title));
 		gtk_style_context_add_class(gtk_widget_get_style_context(b), "rui");
 		gtk_style_context_add_class(gtk_widget_get_style_context(b), "wp-mb-b");
 		gtk_widget_set_can_focus(b, FALSE);
